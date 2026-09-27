@@ -4,8 +4,10 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from voiceger_accent_adapter.output import SavedOutput
 from voiceger_accent_adapter.pronunciation import AccentPhrase, Pronunciation
 from voiceger_accent_adapter.voiceger_adapter import (
+    VoicegerAdapter,
     VoicegerAdapterError,
     pronunciation_to_spoken_text,
     resolve_pronunciation,
@@ -63,6 +65,43 @@ class ResolvePronunciationTests(unittest.TestCase):
     def test_rejects_newlines(self):
         with self.assertRaises(ValueError):
             resolve_pronunciation("一行目\n二行目")
+
+    def test_synthesize_uses_shared_output_saver_and_can_save_text(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            wav_path = root / "output" / "20260927_175506_雨.wav"
+            text_path = wav_path.with_suffix(".txt")
+            adapter = VoicegerAdapter(
+                voiceger_root=root,
+                output_dir=wav_path.parent,
+            )
+            audio_result = {
+                "audio": [0.0],
+                "sampling_rate": 32000,
+                "resolved_pronunciation": "ア'メ。",
+            }
+            with patch.object(
+                adapter,
+                "synthesize_audio",
+                return_value=audio_result,
+            ):
+                with patch(
+                    "voiceger_accent_adapter.voiceger_adapter.save_output",
+                    return_value=SavedOutput(wav_path, text_path),
+                ) as save_output:
+                    result = adapter.synthesize(text=" 雨 ", save_text=True)
+
+            save_output.assert_called_once_with(
+                audio=[0.0],
+                sampling_rate=32000,
+                source_text=" 雨 ",
+                output_dir=adapter.output_dir,
+                save_text=True,
+                filename_text="雨",
+            )
+            self.assertEqual(result["file_name"], wav_path.name)
+            self.assertEqual(result["file_path"], str(wav_path))
+            self.assertEqual(result["text_file_path"], str(text_path))
 
     def test_mixed_synthesis_injects_and_restores_english_clean_text(self):
         with TemporaryDirectory() as temp_dir:
