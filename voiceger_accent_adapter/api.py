@@ -39,8 +39,11 @@ def get_adapter() -> VoicegerAdapter:
 
 
 def _validate_speaker(speaker: int) -> None:
-    if speaker < 0:
-        raise HTTPException(status_code=422, detail="speaker must be non-negative")
+    if speaker != 1:
+        raise HTTPException(
+            status_code=422,
+            detail="speaker=1 is the only supported Voiceger style in v1",
+        )
 
 
 def _query_terminator(query: AudioQuery) -> str:
@@ -94,11 +97,44 @@ def root():
         "name": "voiceger-accent-adapter",
         "version": "0.1.0-dev",
         "endpoints": [
+            "/version",
+            "/speakers",
             "/audio_query",
             "/accent_phrases",
             "/synthesis",
         ],
     }
+
+
+@app.get("/version")
+def version():
+    """Return an engine-style version string."""
+
+    return "0.1.0-dev"
+
+
+@app.get("/speakers")
+def speakers():
+    """Return the single locally configured Voiceger talk style."""
+
+    adapter = get_adapter()
+    return [
+        {
+            "name": adapter.character_name,
+            "speaker_uuid": "voiceger-accent-adapter-zundamon",
+            "styles": [
+                {
+                    "name": adapter.style_name,
+                    "id": 1,
+                    "type": "talk",
+                }
+            ],
+            "version": "1",
+            "supported_features": {
+                "permitted_synthesis_morphing": "NOTHING"
+            },
+        }
+    ]
 
 
 @app.post("/audio_query", response_model=AudioQuery)
