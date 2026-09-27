@@ -49,19 +49,19 @@ v1 supports one utterance per request; embedded newlines are rejected.
 
 ## Start the API
 
-Assuming Voiceger is installed at `~/voiceger_v2`:
+Set `VOICEGER_ROOT` to your local Voiceger installation, then run the adapter from this repository:
 
 ```bash
-cd ~/Code/voiceger-accent-adapter
-~/voiceger_v2/.venv/bin/python -m pip install -e '.[api]'
+cd /path/to/voiceger-accent-adapter
+export VOICEGER_ROOT=/path/to/voiceger_v2
 
-~/voiceger_v2/.venv/bin/python -m uvicorn \
+"$VOICEGER_ROOT/.venv/bin/python" -m pip install -e '.[api]'
+
+"$VOICEGER_ROOT/.venv/bin/python" -m uvicorn \
   voiceger_accent_adapter.api:app \
   --host 127.0.0.1 \
   --port 8001
 ```
-
-Override the Voiceger location with `VOICEGER_ROOT` when needed.
 
 ## Styles / speaker IDs
 
@@ -295,11 +295,11 @@ Real Voiceger synthesis tests are opt-in so the normal unit-test suite does not 
 Run them with:
 
 ```bash
-cd ~/Code/voiceger-accent-adapter
+cd /path/to/voiceger-accent-adapter
+export VOICEGER_ROOT=/path/to/voiceger_v2
 
 VOICEGER_RUN_INTEGRATION=1 \
-VOICEGER_ROOT=~/voiceger_v2 \
-~/voiceger_v2/.venv/bin/python -m unittest discover \
+"$VOICEGER_ROOT/.venv/bin/python" -m unittest discover \
   -s tests/integration \
   -p 'test_*.py' \
   -v
