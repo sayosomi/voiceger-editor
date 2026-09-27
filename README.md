@@ -99,7 +99,7 @@ Choose the desired reference-audio style with `speaker`:
 ```bash
 curl -sS -X POST -G \
   'http://127.0.0.1:8001/audio_query' \
-  --data-urlencode 'text=今日は雨ですね。' \
+  --data-urlencode 'text=今日は雨なのだ。' \
   --data-urlencode 'speaker=1' \
   > query.json
 ```
@@ -121,7 +121,7 @@ Editable kana can also be converted directly to structured accent phrases:
 ```bash
 curl -sS -X POST -G \
   'http://127.0.0.1:8001/accent_phrases' \
-  --data-urlencode "text=キョ'ーワ/アメデスネ'。" \
+  --data-urlencode "text=キョ'ーワ/ア'メ/ナ'ノダ。" \
   --data-urlencode 'speaker=1' \
   --data-urlencode 'is_kana=true'
 ```
@@ -151,7 +151,7 @@ Japanese-English mixed text is supported in v1.
 Example:
 
 ```text
-今日はhelloと言うよ。
+今日はhelloと言うのだ。
 ```
 
 For mixed text, `/audio_query` adds an optional `voicegerSegments` extension. Japanese segments reference slices of the normal `accent_phrases` array, while English segments preserve their original text.
@@ -178,7 +178,7 @@ Example shape:
     },
     {
       "language": "ja",
-      "text": "を使うよ。",
+      "text": "と言うのだ。",
       "accentPhraseStart": 1,
       "accentPhraseCount": 2
     }
