@@ -15,6 +15,12 @@ api = [
   "uvicorn==0.34.2",
   "soundfile==0.13.1",
 ]
+tui = [
+  "soundfile==0.13.1",
+]
+
+[project.scripts]
+voiceger-accent-adapter = "voiceger_accent_adapter.tui:main"
 
 [tool.setuptools.packages.find]
 include = ["voiceger_accent_adapter*"]
