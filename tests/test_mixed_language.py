@@ -134,6 +134,13 @@ class MixedLanguageTests(unittest.TestCase):
             query = build_mixed_audio_query(
                 "今日はOpenAI",
                 segments=segments,
+                english_g2p=lambda _: [
+                    "OW1",
+                    "P",
+                    "AH0",
+                    "N",
+                    "EY1",
+                ],
             )
 
         with patch(
