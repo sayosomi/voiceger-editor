@@ -248,6 +248,38 @@ def replace_english_base_phonemes(
     )
 
 
+def replace_english_phoneme_groups(
+    query: AudioQuery,
+    *,
+    segment_index: int,
+    phoneme_groups: Sequence[Sequence[str]],
+) -> AudioQuery:
+    """Apply a completed transient word grouping to one flat query segment.
+
+    Group boundaries belong to the caller's editing session; AudioQuery keeps
+    only its canonical flat Voiceger phoneme sequence.
+    """
+
+    english_editor_state(query, segment_index=segment_index)
+    if isinstance(phoneme_groups, (str, bytes)) or not isinstance(
+        phoneme_groups, Sequence
+    ) or not phoneme_groups:
+        raise ValueError("English phoneme groups must be a non-empty sequence")
+
+    flattened: list[str] = []
+    for group in phoneme_groups:
+        if isinstance(group, (str, bytes)) or not isinstance(group, Sequence):
+            raise ValueError("each English phoneme group must be a sequence")
+        flattened.extend(group)
+
+    replacement_state = english_phonemes_to_editor_state(flattened)
+    return replace_english_editor_state(
+        query,
+        segment_index=segment_index,
+        state=replacement_state,
+    )
+
+
 def move_english_primary_stress(
     query: AudioQuery,
     *,
