@@ -8,13 +8,22 @@ This project adds editable Japanese pronunciation and pitch-accent control in fr
 
 The public API intentionally follows the VOICEVOX workflow:
 
-1. Send ordinary Japanese text to `POST /audio_query`.
-2. Receive an `AudioQuery` containing `accent_phrases` and readable `kana`.
-3. Edit `accent_phrases` when pronunciation or accent needs correction.
+1. Send ordinary Japanese or Japanese-English mixed text to `POST /audio_query`.
+2. Receive an `AudioQuery` containing editable Japanese `accent_phrases`.
+3. Edit `accent_phrases` when Japanese pronunciation or accent needs correction.
 4. Send the edited query to `POST /synthesis`.
 5. Receive `audio/wav`.
 
 The older experimental `/pronunciation` and `/tts` APIs are not retained.
+
+### v1 language scope
+
+The documented and validated v1 language scope is:
+
+- Japanese
+- Japanese + English mixed text
+
+Other multilingual combinations are not part of the v1 compatibility guarantee.
 
 ## 2. Pronunciation notation
 
@@ -50,7 +59,7 @@ VOICEVOX-style query creation:
 POST /audio_query?text=今日は雨ですね。&speaker=1
 ```
 
-The response contains:
+For pure Japanese, the response contains the normal VOICEVOX-like fields:
 
 - `accent_phrases`
 - `speedScale`
@@ -65,11 +74,13 @@ The response contains:
 - `outputStereo`
 - `kana`
 
-`kana` is a readable representation. Synthesis is driven by `accent_phrases`, matching the VOICEVOX model. The adapter does not add a private `text` field to `AudioQuery`; the query returned by `/audio_query` is sufficient input for `/synthesis`.
+`kana` is a readable representation. Synthesis is driven by `accent_phrases`, matching the VOICEVOX model.
+
+For Japanese-English mixed input, `voicegerSegments` is additionally present to preserve the English text and map Japanese sections to the corresponding `accent_phrases`.
 
 ### POST /accent_phrases
 
-Ordinary text:
+Ordinary Japanese text:
 
 ```http
 POST /accent_phrases?text=今日は雨ですね。&speaker=1
@@ -142,6 +153,8 @@ Validated examples:
 
 ## 6. Internal architecture
 
+Pure Japanese:
+
 ```text
 text
   ↓
@@ -162,12 +175,33 @@ runtime G2P hook
 Voiceger / GPT-SoVITS
 ```
 
-Core modules:
+Japanese-English mixed:
+
+```text
+text
+  ↓
+LangSegment
+  ↓
+ja / en segments
+  ↓
+ja: OpenJTalk -> editable AccentPhrase data
+en: original English text retained
+  ↓
+AudioQuery + voicegerSegments
+  ↓
+ja: edited G2P override
+en: Voiceger native Japanese-English Mixed path
+  ↓
+Voiceger / GPT-SoVITS
+```
+
+Core modules include:
 
 ```text
 voiceger_accent_adapter/
   pronunciation.py
   openjtalk_converter.py
+  mixed_language.py
   voicevox_api_models.py
   voicevox_query.py
   voiceger_tokens.py
@@ -198,11 +232,11 @@ Because the adapter hooks before `clean_text()`, public `/` maps to `#` at the h
 
 Dropping the boundary token entirely was tested and caused unstable synthesis.
 
-## 8. Mixed-language extension
+## 8. Japanese-English mixed extension
 
 Pure Japanese remains a normal VOICEVOX-shaped `AudioQuery`.
 
-For mixed-language input, the adapter adds optional `voicegerSegments` metadata. Each segment preserves its language and original text. Japanese segments additionally point to a contiguous range in the shared `accent_phrases` array:
+For Japanese-English mixed input, the adapter adds optional `voicegerSegments` metadata. Each segment preserves its language and original text. Japanese segments additionally point to a contiguous range in the shared `accent_phrases` array:
 
 ```json
 {
@@ -213,17 +247,27 @@ For mixed-language input, the adapter adds optional `voicegerSegments` metadata.
 }
 ```
 
-Non-Japanese segments omit the accent phrase range.
+English segments omit the accent phrase range:
+
+```json
+{
+  "language": "en",
+  "text": "OpenAI"
+}
+```
 
 At synthesis time:
 
-1. Reconstruct the original segment order.
-2. Convert the referenced Japanese accent phrases back to Voiceger/OpenJTalk prosody tokens.
+1. Reconstruct the original Japanese/English segment order.
+2. Convert referenced Japanese accent phrases back to Voiceger/OpenJTalk prosody tokens.
 3. Hook only those Japanese G2P calls.
-4. Let Voiceger handle non-Japanese segments through its native mixed-language frontend.
-5. Use `Japanese-English Mixed` for Japanese/English-only input and `Multilingual Mixed` when other detected languages are present.
+4. Let Voiceger process English through its native `Japanese-English Mixed` frontend.
 
-The first validation target is Japanese-English mixed speech. Automatic Chinese/Japanese classification for Han-only text is inherently ambiguous and is not guaranteed by this initial design.
+Automatic segmentation uses Voiceger's bundled LangSegment.
+
+The Japanese-English mixed path has been validated locally end to end.
+
+Other language combinations are intentionally outside the documented v1 scope. The implementation may expose underlying Voiceger multilingual behavior, but it is not currently guaranteed or treated as a compatibility target.
 
 ## 9. AudioQuery support
 
@@ -248,21 +292,27 @@ Changing an unsupported field returns an error rather than silently ignoring it.
 
 ## 10. Compatibility scope
 
-Initial scope:
+Initial v1 scope:
 
-- Japanese talk synthesis only.
+- Japanese talk synthesis.
+- Japanese-English mixed talk synthesis.
 - One utterance per request; embedded newlines are rejected.
 - `speaker` is a VOICEVOX-style style ID selecting a local Voiceger reference WAV.
-- The known preset styles are Neutral, Sweet, Snippy, Sexy, Whispering, Murmuring, Exhausted, and Sobbing (IDs 1–8 when the corresponding WAV files exist).
-- Editable kana accepts hiragana and katakana.
+- Known preset styles are Neutral, Sweet, Snippy, Sexy, Whispering, Murmuring, Exhausted, and Sobbing (IDs 1–8 when the corresponding WAV files exist).
+- Editable Japanese kana accepts hiragana and katakana.
 - Adapter integration should be tested against known Voiceger revisions because it relies on upstream runtime internals.
 
-This project aims for a VOICEVOX-like API workflow, not full drop-in VOICEVOX ENGINE compatibility.
+Not guaranteed in v1:
+
+- Chinese/Japanese mixed automatic classification.
+- Korean or other multilingual combinations.
+- Full drop-in VOICEVOX ENGINE compatibility.
 
 ## 11. Non-goals for the first version
 
 - Full reproduction of all AquesTalk symbols.
 - Full VOICEVOX ENGINE endpoint coverage.
+- General-purpose multilingual accent editing.
 - Bundling Voiceger.
 - Bundling Voiceger/GPT-SoVITS models or reference audio.
 - Reimplementing GPT-SoVITS inference.
@@ -271,13 +321,15 @@ This project aims for a VOICEVOX-like API workflow, not full drop-in VOICEVOX EN
 ## 12. Acceptance criteria
 
 - Plain Japanese text produces a usable `AudioQuery`.
-- Every generated accent phrase has a valid 1-based `accent`.
+- Every generated Japanese accent phrase has a valid 1-based `accent`.
 - `あ'め` parses as `accent=1`.
 - `あめ'` parses as `accent=2`.
-- Editing `accent_phrases[n].accent` changes synthesized accent.
+- Editing `accent_phrases[n].accent` changes synthesized Japanese accent.
 - `/accent_phrases?is_kana=true` converts editable kana into structured accent phrases.
 - `/synthesis` returns a valid WAV.
-- The engine API does not persist synthesis output; callers can choose filenames appropriate to their workflow.
+- Japanese-English mixed input preserves English text and keeps Japanese sections accent-editable.
+- Japanese-English mixed synthesis completes successfully through Voiceger's native mixed frontend.
+- The engine API does not persist synthesis output; callers choose filenames appropriate to their workflow.
 - Selecting different supported `speaker` IDs uses the corresponding reference WAV.
 - Core parser/converter tests can run independently of Voiceger where practical.
 - Voiceger-dependent tests remain isolated.
@@ -288,7 +340,6 @@ This project aims for a VOICEVOX-like API workflow, not full drop-in VOICEVOX EN
 - Add VOICEVOX-style `、` pause delimiters and `_` devoicing.
 - Improve interrogative handling.
 - Decide whether automatic `kana` output should always canonicalize to katakana.
-- Mixed Japanese/English handling.
 - Support more AudioQuery acoustic controls.
 - Consider additional VOICEVOX metadata endpoints beyond `/version` and `/speakers`.
 - Version compatibility strategy for future Voiceger/GPT-SoVITS changes.
