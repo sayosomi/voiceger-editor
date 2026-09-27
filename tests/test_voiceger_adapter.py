@@ -106,6 +106,10 @@ class ResolvePronunciationTests(unittest.TestCase):
                     english.g2p("record"),
                     ["R", "IH0", "K", "AO1", "R", "D"],
                 )
+                self.assertEqual(
+                    english.g2p(".record"),
+                    ["R", "IH0", "K", "AO1", "R", "D"],
+                )
                 yield 32000, [0]
 
             adapter._loaded = True
