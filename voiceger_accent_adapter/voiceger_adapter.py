@@ -367,11 +367,15 @@ class VoicegerAdapter:
                 normalized = japanese.text_normalize(segment_text)
                 japanese_override_queues[normalized].append(list(tokens))
 
-            english_override_queues = defaultdict(deque)
+            english_override_entries = []
             for segment_text, tokens in english_overrides or []:
                 normalized = english.text_normalize(segment_text)
-                english_override_queues[normalized].append(
-                    normalize_english_phonemes(tokens)
+                english_override_entries.append(
+                    {
+                        "normalized": normalized,
+                        "tokens": normalize_english_phonemes(tokens),
+                        "consumed": False,
+                    }
                 )
 
             def controlled_japanese_g2p(
@@ -385,9 +389,14 @@ class VoicegerAdapter:
                 return original_japanese_g2p(norm_text, with_prosody)
 
             def controlled_english_g2p(norm_text: str):
-                queue = english_override_queues.get(norm_text)
-                if queue:
-                    return queue.popleft()
+                # Voiceger retries short English input by prefixing "." and
+                # running G2P again. Keep the same override available for
+                # that retry instead of consuming it only once.
+                for entry in english_override_entries:
+                    expected = entry["normalized"]
+                    if norm_text == expected or norm_text == "." + expected:
+                        entry["consumed"] = True
+                        return list(entry["tokens"])
                 return original_english_g2p(norm_text)
 
             try:
@@ -424,8 +433,9 @@ class VoicegerAdapter:
                 )
 
             remaining_english = sum(
-                len(queue)
-                for queue in english_override_queues.values()
+                1
+                for entry in english_override_entries
+                if not entry["consumed"]
             )
             if remaining_english:
                 raise VoicegerAdapterError(
