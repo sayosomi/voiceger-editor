@@ -13,7 +13,6 @@ from unittest.mock import Mock, call, patch
 from voiceger_accent_adapter.settings import Settings
 from voiceger_accent_adapter.tui import (
     TuiApp,
-    _take_key_action,
     build_argument_parser,
     format_english_phonemes,
     settings_for_invocation,
@@ -75,6 +74,10 @@ class FakeSession:
         self.candidates = tuple(candidates)
         self.replace_query_calls = []
         self.replace_settings_calls = []
+        self.replace_source_text_calls = []
+        self.rebuild_calls = 0
+        self.pronunciation_needs_rebuild = False
+        self.rebuild_error = None
         self.discard_calls = 0
         self.close_calls = 0
         self.accept_calls = []
@@ -87,6 +90,30 @@ class FakeSession:
         self.replace_query_calls.append(query)
         self.query = query
         self.candidates = ()
+
+    def replace_source_text(self, source_text):
+        self.replace_source_text_calls.append(source_text)
+        self.source_text = source_text
+        self.pronunciation_needs_rebuild = getattr(
+            self, "rebuild_required_for_source", False
+        )
+        segment_texts = getattr(self, "segment_texts_after_source_change", None)
+        if segment_texts is not None and self.query.voicegerSegments is not None:
+            for segment, text in zip(self.query.voicegerSegments, segment_texts):
+                segment.text = text
+        self.candidates = ()
+
+    def rebuild_pronunciation(self):
+        self.rebuild_calls += 1
+        if self.rebuild_error is not None:
+            raise self.rebuild_error
+        self.pronunciation_needs_rebuild = False
+        self.candidates = ()
+
+    def generate_takes(self):
+        if self.pronunciation_needs_rebuild:
+            raise RuntimeError("pronunciation must be rebuilt before generation")
+        return iter(())
 
     def replace_settings(self, settings):
         self.replace_settings_calls.append(settings)
@@ -178,29 +205,6 @@ class TuiTests(unittest.TestCase):
         self.assertNotIn("1", rendered)
         self.assertNotIn("2", rendered)
 
-    def test_take_review_key_helper_keeps_nonwrapping_candidate_edges(self):
-        numbers = [1, 2, 4]
-        self.assertEqual(
-            _take_key_action(curses.KEY_DOWN, candidate_numbers=numbers, current_number=2),
-            ("select", 4),
-        )
-        self.assertEqual(
-            _take_key_action(curses.KEY_UP, candidate_numbers=numbers, current_number=4),
-            ("select", 2),
-        )
-        self.assertEqual(
-            _take_key_action("4", candidate_numbers=numbers, current_number=1),
-            ("select", 4),
-        )
-        self.assertEqual(
-            _take_key_action("r", candidate_numbers=numbers, current_number=2),
-            ("regenerate", 2),
-        )
-        self.assertEqual(
-            _take_key_action("R", candidate_numbers=numbers, current_number=2),
-            ("regenerate_all", None),
-        )
-
     def test_command_line_options_still_override_persisted_defaults(self):
         args = build_argument_parser().parse_args(
             ["example", "--take-count", "8", "--style", "2", "--speed", "1.25", "--save-text"]
@@ -234,33 +238,65 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(
             app._navigation_items(),
             [
+                ("settings_summary", None),
+                ("output", None),
                 ("text", None),
                 ("segment", 0),
                 ("segment", 1),
+                ("rebuild", None),
                 ("generate", None),
                 ("candidate", 1),
                 ("candidate", 2),
-                ("regenerate_selected", 2),
-                ("settings", None),
                 ("help", None),
                 ("quit", None),
             ],
         )
 
+    def test_top_settings_and_output_rows_are_selectable_and_focused(self):
+        app = self.make_app(query=mixed_query())
+        screen = FakeScreen()
+        app._screen = screen
+
+        app._set_focus_key(("settings_summary", None))
+        app._render()
+        summary = next(item for item in screen.drawn if item[0] == 1)
+        self.assertTrue(summary[2].startswith("▶ Style 1"))
+        self.assertTrue(summary[3] & curses.A_REVERSE)
+
+        app._set_focus_key(("output", None))
+        app._render()
+        output = next(item for item in screen.drawn if item[0] == 2)
+        self.assertTrue(output[2].startswith("▶ Output:"))
+        self.assertTrue(output[3] & curses.A_REVERSE)
+        self.assertNotIn(("settings", None), app._navigation_items())
+
+    def test_settings_summary_opens_style_and_output_opens_path_input(self):
+        app = self.make_app(query=mixed_query())
+        app._set_focus_key(("settings_summary", None))
+        app._handle_key("\n")
+        self.assertEqual(app._editor.selection, "style_id")
+        self.assertIsNone(app._editor.active_field)
+
+        app._cancel_editor()
+        app._set_focus_key(("output", None))
+        app._handle_key("\n")
+        self.assertEqual(app._editor.selection, "output_dir")
+        self.assertEqual(app._editor.active_field, "output_dir")
+
     def test_navigation_is_nonwrapping_at_both_ends(self):
         app = self.make_app(query=mixed_query())
-        app._set_focus_key(("text", None))
+        app._set_focus_key(("settings_summary", None))
         app._handle_key(curses.KEY_UP)
-        self.assertEqual(app._focus_key, ("text", None))
+        self.assertEqual(app._focus_key, ("settings_summary", None))
         app._set_focus_key(("quit", None))
         app._handle_key(curses.KEY_DOWN)
         self.assertEqual(app._focus_key, ("quit", None))
 
     def test_text_and_generate_are_reachable_with_only_vertical_arrows(self):
         app = self.make_app(query=mixed_query())
-        app._set_focus_key(("text", None))
+        app._set_focus_key(("settings_summary", None))
         app._handle_key(curses.KEY_UP)
-        self.assertEqual(app._focus_key, ("text", None))
+        self.assertEqual(app._focus_key, ("settings_summary", None))
         while app._focus_key != ("generate", None):
             app._handle_key(curses.KEY_DOWN)
         app._start_generation = Mock()
@@ -331,6 +367,36 @@ class TuiTests(unittest.TestCase):
         app._set_focus_key(("segment", 1))
         app._handle_key("\n")
         self.assertEqual(app._editor.kind, "english_segment")
+
+    def test_text_is_one_selectable_wrapped_row_without_source_or_edit_metadata(self):
+        source = "今日はhelloと言うよ。" * 8
+        app = self.make_app(query=mixed_query())
+        app.session.source_text = source
+        app._set_focus_key(("text", None))
+        rows = app._navigation_document(24)
+        text_rows = [(line, key) for line, key in rows if key == ("text", None)]
+        text_index = next(i for i, (_line, key) in enumerate(rows) if key == ("text", None))
+        continuations = []
+        for line, key in rows[text_index + 1:]:
+            if key is not None:
+                break
+            if line.startswith(" " * len("▶ Text : ")):
+                continuations.append(line.strip())
+            else:
+                break
+
+        self.assertEqual(len(text_rows), 1)
+        self.assertTrue(text_rows[0][0].startswith("▶ Text : "))
+        self.assertEqual("".join([text_rows[0][0].removeprefix("▶ Text : ").strip(), *continuations]), source)
+        visible = "\n".join(line for line, _key in rows)
+        self.assertNotIn("Source:", visible)
+        self.assertNotIn("[Enter: Edit]", visible)
+
+    def test_no_candidates_are_rendered_on_one_compact_line(self):
+        app = self.make_app(query=mixed_query())
+        rows = app._navigation_document(80)
+        self.assertIn(("Candidates   No candidates yet.", None), rows)
+        self.assertEqual(sum("No candidates yet." in line for line, _ in rows), 1)
 
     def test_navigation_render_has_no_footer_and_leaves_final_row_unused(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
@@ -448,36 +514,117 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app.session.source_text, original)
         self.assertEqual(app.session.replace_query_calls, [])
 
-    def test_text_editor_applies_on_single_enter_and_rebuilds_source(self):
+    def test_text_editor_applies_existing_session_source_without_reconstruction(self):
         app = self.make_app(query=mixed_query())
+        session = app.session
+        app._english_grouping(1)
+        self.assertIn(1, app._english_groupings)
+        query = session.query.model_dump()
         app._set_focus_key(("text", None))
-        replacement = FakeSession(query=mixed_query(), candidates=())
         app._open_text_editor("new source")
         with patch(
             "voiceger_accent_adapter.tui.UtteranceSession.from_text",
-            return_value=replacement,
-        ):
+            side_effect=AssertionError("existing session must be reused"),
+        ) as from_text:
             app._handle_editor_key("\n")
-        self.assertIs(app.session, replacement)
+        from_text.assert_not_called()
+        self.assertIs(app.session, session)
         self.assertIsNone(app._editor)
         self.assertEqual(app._focus_key, ("text", None))
-        self.assertEqual(replacement.close_calls, 0)
+        self.assertEqual(session.replace_source_text_calls, ["new source"])
+        self.assertEqual(session.replace_query_calls, [])
+        self.assertEqual(session.query.model_dump(), query)
         self.assertEqual(app._english_groupings, {})
+        self.assertIsNone(app._current_take)
+
+    def test_same_signature_text_change_displays_updated_source_with_preserved_pronunciation(self):
+        app = self.make_app(query=mixed_query())
+        app.session.segment_texts_after_source_change = ["新しい日本語", "new English"]
+        original_phones = app.session.query.voicegerSegments[1].phonemes[:]
+        app._open_text_editor("新しい日本語 new English")
+        app._handle_editor_key("\n")
+
+        rows = app._navigation_document(100)
+        rendered = "\n".join(line for line, _key in rows)
+        self.assertIn("新しい日本語", rendered)
+        self.assertIn("new English", rendered)
+        self.assertIn("ア'", rendered)
+        self.assertEqual(app.session.query.voicegerSegments[1].phonemes, original_phones)
+        self.assertFalse(app.session.pronunciation_needs_rebuild)
+
+    def test_rebuild_required_text_hides_old_segments_and_fails_closed(self):
+        app = self.make_app(query=mixed_query())
+        app.session.rebuild_required_for_source = True
+        app._open_text_editor("new-source-signature")
+        app._handle_editor_key("\n")
+
+        items = app._navigation_items()
+        rows = app._navigation_document(80)
+        rendered = "\n".join(line for line, _key in rows)
+        self.assertNotIn(("segment", 0), items)
+        self.assertNotIn(("segment", 1), items)
+        self.assertIn(("rebuild", None), items)
+        self.assertIn(("generate", None), items)
+        self.assertIn("Pronunciation   Rebuild required", rendered)
+        self.assertNotIn("JA |", rendered)
+        self.assertNotIn("EN |", rendered)
+        self.assertNotIn("[Enter: Edit]", rendered)
+
+        app._set_focus_key(("generate", None))
+        app._handle_key("\n")
+        self.assertIn("must be rebuilt", app._status)
+
+    def test_explicit_rebuild_stops_playback_resets_transients_and_focuses_segment(self):
+        app = self.make_app(query=mixed_query())
+        app.session.pronunciation_needs_rebuild = True
+        app._english_groupings[1] = app._english_grouping(1)
+        app._current_take = 2
+        events = []
+        app._stop_playback = Mock(side_effect=lambda: events.append("stop"))
+        original_rebuild = app.session.rebuild_pronunciation
+
+        def rebuild():
+            events.append("rebuild")
+            original_rebuild()
+
+        app.session.rebuild_pronunciation = Mock(side_effect=rebuild)
+        app._set_focus_key(("rebuild", None))
+        app._handle_key("\n")
+
+        self.assertEqual(events, ["stop", "rebuild"])
+        self.assertEqual(app._english_groupings, {})
+        self.assertIsNone(app._current_take)
+        self.assertEqual(app._segment_index, 0)
+        self.assertEqual(app._focus_key, ("segment", 0))
+        self.assertIn("Pronunciation rebuilt", app._status)
+
+    def test_failed_explicit_rebuild_preserves_query_and_required_state(self):
+        app = self.make_app(query=mixed_query())
+        app.session.pronunciation_needs_rebuild = True
+        app._current_take = 2
+        query = app.session.query.model_dump()
+        app.session.rebuild_error = RuntimeError("analysis failed")
+        app._set_focus_key(("rebuild", None))
+        app._handle_key("\n")
+
+        self.assertEqual(app.session.query.model_dump(), query)
+        self.assertTrue(app.session.pronunciation_needs_rebuild)
+        self.assertEqual(app._current_take, 2)
+        self.assertIn("analysis failed", app._status)
 
     def test_text_apply_failure_preserves_draft_and_remains_editable(self):
         app = self.make_app(query=mixed_query())
         app._open_text_editor("bad draft")
         editor = app._editor
-        with patch(
-            "voiceger_accent_adapter.tui.UtteranceSession.from_text",
-            side_effect=ValueError("query creation failed"),
-        ):
-            app._handle_editor_key("\n")
+        app.session.replace_source_text = Mock(
+            side_effect=ValueError("source replacement failed")
+        )
+        app._handle_editor_key("\n")
         self.assertIs(app._editor, editor)
         self.assertEqual(editor.active_field, "draft")
         self.assertEqual(editor.input_value, "bad draft")
         self.assertEqual(editor.payload["draft"], "bad draft")
-        self.assertIn("query creation failed", editor.error)
+        self.assertIn("source replacement failed", editor.error)
         app._handle_editor_key("!")
         self.assertEqual(editor.input_value, "bad draft!")
 
@@ -541,9 +688,6 @@ class TuiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             app = self.make_app(query=mixed_query())
             app.config_path = Path(directory) / "config.json"
-            for _ in range(4):
-                app._handle_key(curses.KEY_DOWN)
-            self.assertEqual(app._focus_key, ("settings", None))
             app._handle_key("\n")
             self.assertEqual(app._editor.kind, "settings")
             app._editor.selection = "take_count"
@@ -563,6 +707,102 @@ class TuiTests(unittest.TestCase):
             self.assertIsNone(app._editor)
             self.assertEqual(app.settings.take_count, 2)
             self.assertEqual(json.loads(app.config_path.read_text())["take_count"], 2)
+
+    def test_settings_arrows_edit_only_the_draft_and_apply_rows_are_compact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+            app.config_path = Path(directory) / "settings.json"
+            original_settings = app.settings
+            app._open_settings_editor()
+            editor = app._editor
+
+            editor.selection = "speed"
+            app._handle_editor_key(curses.KEY_RIGHT)
+            self.assertEqual(editor.payload["draft_settings"]["speed"], "1.01")
+            editor.payload["draft_settings"]["speed"] = "0.02"
+            app._handle_editor_key(curses.KEY_LEFT)
+            self.assertEqual(editor.payload["draft_settings"]["speed"], "0.01")
+            app._handle_editor_key(curses.KEY_LEFT)
+            self.assertEqual(editor.payload["draft_settings"]["speed"], "0.01")
+
+            editor.selection = "take_count"
+            editor.payload["draft_settings"]["take_count"] = "8"
+            app._handle_editor_key(curses.KEY_RIGHT)
+            self.assertEqual(editor.payload["draft_settings"]["take_count"], "8")
+            app._handle_editor_key(curses.KEY_LEFT)
+            self.assertEqual(editor.payload["draft_settings"]["take_count"], "7")
+
+            editor.selection = "save_text"
+            app._handle_editor_key(curses.KEY_LEFT)
+            self.assertFalse(editor.payload["draft_settings"]["save_text"])
+            app._handle_editor_key(curses.KEY_RIGHT)
+            self.assertTrue(editor.payload["draft_settings"]["save_text"])
+            self.assertEqual(app.settings, original_settings)
+            self.assertEqual(app.session.replace_settings_calls, [])
+            self.assertEqual(app.session.candidates, (candidate(1),))
+            self.assertFalse(app.config_path.exists())
+
+            screen = FakeScreen()
+            app._screen = screen
+            app._render()
+            rendered = self.rendered(screen)
+            for label in ("Style:", "Speed:", "Take count:", "Output directory:", "TXT sidecar:"):
+                self.assertIn(label, rendered)
+            self.assertIn("Apply and save settings", rendered)
+            self.assertNotIn("[Enter: Edit]", rendered)
+            self.assertNotIn("[Enter: Toggle]", rendered)
+            self.assertNotIn("Cancel and discard settings", rendered)
+            self.assertNotIn("↑/↓ Select field/action", rendered)
+            self.assertNotIn(22, [row for row, _column, _text, _attr in screen.drawn])
+
+    def test_settings_style_arrows_follow_available_order_without_wrapping(self):
+        styles = (
+            SimpleNamespace(id=2, name="Sweet"),
+            SimpleNamespace(id=4, name="Sexy"),
+            SimpleNamespace(id=7, name="Exhausted"),
+        )
+        app = self.make_app()
+        app._open_settings_editor("style_id")
+        editor = app._editor
+        editor.payload["draft_settings"]["style_id"] = "4"
+        with patch("voiceger_accent_adapter.tui.available_styles", return_value=styles):
+            app._handle_editor_key(curses.KEY_RIGHT)
+            self.assertEqual(editor.payload["draft_settings"]["style_id"], "7")
+            app._handle_editor_key(curses.KEY_RIGHT)
+            self.assertEqual(editor.payload["draft_settings"]["style_id"], "7")
+            app._handle_editor_key(curses.KEY_LEFT)
+            self.assertEqual(editor.payload["draft_settings"]["style_id"], "4")
+            editor.payload["draft_settings"]["style_id"] = "2"
+            app._handle_editor_key(curses.KEY_LEFT)
+            self.assertEqual(editor.payload["draft_settings"]["style_id"], "2")
+
+    def test_generate_arrows_persist_count_clear_old_batch_and_respect_bounds_and_busy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+            app.config_path = Path(directory) / "settings.json"
+            app._set_focus_key(("generate", None))
+            app._status = ""
+            app._handle_key(curses.KEY_LEFT)
+            self.assertEqual(app.settings.take_count, 3)
+            self.assertEqual(app.session.replace_settings_calls[-1].take_count, 3)
+            self.assertEqual(app.session.candidates, ())
+            self.assertEqual(app._focus_key, ("generate", None))
+            self.assertEqual(app._status, "")
+            self.assertEqual(json.loads(app.config_path.read_text())["take_count"], 3)
+
+            app.settings = Settings(take_count=1)
+            app._persisted_settings = app.settings
+            app._handle_key(curses.KEY_LEFT)
+            self.assertEqual(app.settings.take_count, 1)
+            app.settings = Settings(take_count=8)
+            app._persisted_settings = app.settings
+            app._handle_key(curses.KEY_RIGHT)
+            self.assertEqual(app.settings.take_count, 8)
+
+            app._busy = True
+            app._handle_key(curses.KEY_LEFT)
+            self.assertEqual(app.settings.take_count, 8)
+            self.assertIn("Wait for the current synthesis operation to finish", app._status)
 
     def test_settings_escape_from_active_field_discards_the_entire_modal_draft(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -591,6 +831,7 @@ class TuiTests(unittest.TestCase):
         settings_footer = self.rendered(settings_screen)
         self.assertIn("Enter Finish field", settings_footer)
         self.assertIn("Esc Cancel Settings", settings_footer)
+        self.assertNotIn("[Enter: Edit]", settings_footer)
 
         english_app = self.make_app(
             query=english_query(["HH", "AY1"], text="Hi"),
@@ -653,7 +894,9 @@ class TuiTests(unittest.TestCase):
             ("text", None),
             ("segment", 0),
             ("generate", None),
-            ("settings", None),
+            ("settings_summary", None),
+            ("output", None),
+            ("rebuild", None),
         ):
             app._set_focus_key(key)
             app._handle_key("\n")
@@ -662,8 +905,6 @@ class TuiTests(unittest.TestCase):
         app._focus_candidate(1)
         app._handle_key("\n")
         self.assertEqual(app.session.accept_calls, [])
-        app._set_focus_key(("regenerate_selected", 1))
-        app._handle_key("\n")
         app._start_generation.assert_not_called()
         app._start_regenerate_all.assert_not_called()
         app._start_regeneration.assert_not_called()
@@ -671,55 +912,52 @@ class TuiTests(unittest.TestCase):
         app._handle_key(" ")
         app._play_take.assert_called_with(1)
 
-    def test_query_replacement_clears_stale_selected_take_and_r_cannot_regenerate_it(self):
+    def test_candidate_regeneration_uses_only_focused_candidate(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
         app._current_take = 1
-        app._set_focus_key(("candidate", 1))
-        replacement = app.session.query.model_copy(deep=True)
-        replacement.voicegerSegments[1].phonemes = ["HH", "EH1"]
-        app._apply_session_query(replacement)
-
-        self.assertEqual(app.session.candidates, ())
-        self.assertIsNone(app._current_take)
-        self.assertNotIn(("regenerate_selected", 1), app._navigation_items())
         app._start_regeneration = Mock()
+        app._set_focus_key(("generate", None))
         app._handle_key("r")
         app._start_regeneration.assert_not_called()
         self.assertEqual(app._status, "Select a candidate before regenerating it.")
 
-        app.session.candidates = (candidate(2),)
+        app.session.candidates = (candidate(1), candidate(2))
         app._play_take = Mock()
         app._focus_candidate(2)
-        self.assertIn(("regenerate_selected", 2), app._navigation_items())
+        app._handle_key("r")
+        app._start_regeneration.assert_called_once_with(2)
 
-    def test_busy_navigation_marks_every_unavailable_action_without_reordering(self):
+    def test_candidate_rows_have_no_current_suffix_or_visible_selected_regenerate_action(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
+        app._current_take = 2
+        app._set_focus_key(("candidate", 2))
+        rows = app._navigation_document(80)
+        labels = [line for line, _key in rows]
+        self.assertIn("  Take 1  0.01s", labels)
+        self.assertIn("▶ Take 2  0.01s", labels)
+        visible = "\n".join(labels)
+        self.assertNotIn("(current)", visible)
+        self.assertNotIn("Regenerate selected", visible)
+        self.assertNotIn("regenerate_selected", [key for _line, key in rows])
+
+    def test_busy_navigation_uses_compact_rows_without_unavailable_suffixes(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
         app._current_take = 1
         app._busy = True
+        app._worker_operation = "initial"
+        app._operation_total = 4
 
         items = app._navigation_items()
         rows = app._navigation_document(80)
         labels = {key: line for line, key in rows if key is not None}
 
-        self.assertEqual([key for _line, key in rows if key is not None], items)
-        self.assertIn("(unavailable while generating)", labels[("text", None)])
-        for index in (0, 1):
-            self.assertIn(
-                "(unavailable while generating)",
-                labels[("segment", index)],
-            )
-        self.assertIn("busy; unavailable while generating", labels[("generate", None)])
-        self.assertIn(
-            "Space replay; Enter unavailable while generating",
-            labels[("candidate", 1)],
-        )
-        self.assertIn(
-            "(unavailable while generating)",
-            labels[("regenerate_selected", 1)],
-        )
-        self.assertIn("(unavailable while generating)", labels[("settings", None)])
+        self.assertNotIn("regenerate_selected", [key[0] for key in items])
+        self.assertIn("[ Generating 1/4 ]", labels[("generate", None)])
+        self.assertNotIn("unavailable while generating", "\n".join(labels.values()))
+        self.assertNotIn("Space replay", "\n".join(labels.values()))
+        self.assertNotIn("(current)", "\n".join(labels.values()))
 
-    def test_busy_candidate_remains_playable_with_inline_unavailable_cue_and_no_footer(self):
+    def test_busy_candidate_remains_playable_without_inline_unavailable_cues(self):
         app = self.make_app(candidates=(candidate(1), candidate(2)))
         app._play_take = Mock()
         app._busy = True
@@ -733,8 +971,9 @@ class TuiTests(unittest.TestCase):
         app._screen = screen
         app._render()
         rendered = self.rendered(screen)
-        self.assertIn("Space replay; Enter unavailable while generating", rendered)
-        self.assertIn("Enter unavailable while generating", rendered)
+        self.assertIn("Take 2", rendered)
+        self.assertNotIn("unavailable while generating", rendered)
+        self.assertNotIn("Enter unavailable", rendered)
         self.assertNotIn("Enter accepts and saves", rendered)
         self.assertNotIn("↑↓ Move/play", rendered)
         self.assertNotIn("↑/↓ Move", rendered)
@@ -1092,10 +1331,10 @@ class TuiTests(unittest.TestCase):
         moved._busy = True
         moved._play_take = Mock()
         moved._focus_candidate(1)
-        moved._set_focus_key(("settings", None), moved=True)
+        moved._set_focus_key(("settings_summary", None), moved=True)
         moved._events.put(("candidate", second))
         moved._consume_events()
-        self.assertEqual(moved._focus_key, ("settings", None))
+        self.assertEqual(moved._focus_key, ("settings_summary", None))
         moved._play_take.assert_called_once_with(1)
 
     def test_initial_generation_completion_keeps_a_meaningful_ready_status(self):
@@ -1170,13 +1409,13 @@ class TuiTests(unittest.TestCase):
         app._worker_target = 2
         app._operation_total = 1
         app._current_take = 2
-        app._set_focus_key(("regenerate_selected", 2))
+        app._set_focus_key(("candidate", 2))
         app._busy = True
         app._play_take = Mock()
         app._events.put(("candidate", replacement))
         app._consume_events()
         self.assertEqual(app._current_take, 2)
-        self.assertEqual(app._focus_key, ("regenerate_selected", 2))
+        self.assertEqual(app._focus_key, ("candidate", 2))
         app._play_take.assert_called_once_with(2)
 
     def test_manual_candidate_change_during_single_regeneration_is_not_stolen(self):
@@ -1247,23 +1486,21 @@ class TuiTests(unittest.TestCase):
             app._change_settings(take_count=2)
         self.assertEqual(events, ["stop", "settings"])
 
-    def test_source_rebuild_stops_playback_before_closing_old_session(self):
+    def test_source_replacement_stops_playback_before_session_invalidation(self):
         app = self.make_app(query=mixed_query())
         app._english_grouping(1)
         events = []
-        old = app.session
-        old.close = Mock(side_effect=lambda: events.append("close"))
+        session = app.session
         app._stop_playback = Mock(side_effect=lambda: events.append("stop"))
-        replacement = FakeSession(query=mixed_query())
+        session.replace_source_text = Mock(
+            side_effect=lambda source: events.append("replace")
+        )
         app._open_text_editor("new source")
         app._editor.payload["draft"] = "new source"
         app._editor.active_field = None
-        with patch(
-            "voiceger_accent_adapter.tui.UtteranceSession.from_text",
-            return_value=replacement,
-        ):
-            app._apply_editor()
-        self.assertEqual(events, ["stop", "close"])
+        app._apply_editor()
+        self.assertEqual(events, ["stop", "replace"])
+        self.assertIs(app.session, session)
         self.assertEqual(app._english_groupings, {})
 
     def test_stop_playback_terminates_and_reaps_child(self):

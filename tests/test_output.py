@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import errno
 from datetime import datetime
 from pathlib import Path
 from types import ModuleType
@@ -31,6 +32,7 @@ class OutputSaveTests(unittest.TestCase):
                 audio=[0.0],
                 sampling_rate=32000,
                 source_text=source_text,
+                style_name="Neutral",
                 output_dir=root,
                 save_text=save_text,
                 timestamp=self.timestamp,
@@ -41,6 +43,7 @@ class OutputSaveTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             existing = root / build_output_filename(
+                style_name="Neutral",
                 text=source_text,
                 timestamp=self.timestamp,
             )
@@ -56,6 +59,7 @@ class OutputSaveTests(unittest.TestCase):
     def test_paired_output_skips_basename_if_either_target_exists(self):
         source_text = "雨です。\r\n 次です。"
         initial_wav = build_output_filename(
+            style_name="Neutral",
             text=source_text,
             timestamp=self.timestamp,
         )
@@ -79,6 +83,38 @@ class OutputSaveTests(unittest.TestCase):
                         source_text.encode("utf-8"),
                     )
                     self.assertEqual(saved.wav_path.read_bytes(), b"new wav")
+
+    def test_filename_too_long_fails_without_truncating_or_leaving_reservations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.dict(
+                "sys.modules",
+                {"soundfile": self.fake_soundfile_module()},
+            ), patch("voiceger_accent_adapter.output._reserve") as reserve:
+                def reserve_then_fail(path):
+                    if reserve.call_count == 1:
+                        with path.open("xb"):
+                            pass
+                        return None
+                    raise OSError(errno.ENAMETOOLONG, "filename too long", str(path))
+
+                reserve.side_effect = reserve_then_fail
+                with self.assertRaisesRegex(
+                    OSError,
+                    "Output filename is too long; the source text was not truncated automatically",
+                ) as raised:
+                    save_output(
+                        audio=[0.0],
+                        sampling_rate=32000,
+                        source_text="a very long source text",
+                        style_name="Neutral",
+                        output_dir=root,
+                        save_text=True,
+                        timestamp=self.timestamp,
+                    )
+
+            self.assertEqual(raised.exception.errno, errno.ENAMETOOLONG)
+            self.assertEqual(list(root.iterdir()), [])
 
 
 if __name__ == "__main__":
