@@ -45,6 +45,8 @@ Internally these map to the Voiceger/OpenJTalk prosody tokens already validated 
 The primary API is intentionally VOICEVOX-style.
 
 ```http
+GET  /version
+GET  /speakers
 POST /audio_query
 POST /accent_phrases
 POST /synthesis
@@ -52,7 +54,7 @@ POST /synthesis
 
 The older experimental `/pronunciation` and `/tts` endpoints are not kept.
 
-v1 supports one Japanese utterance per request; embedded newlines are rejected.
+v1 supports one Japanese utterance per request; embedded newlines are rejected. The only current style is `speaker=1`.
 
 ### Start the API
 
@@ -69,6 +71,15 @@ cd ~/Code/voiceger-accent-adapter
 ```
 
 Override the Voiceger location with `VOICEGER_ROOT` when needed.
+
+## Engine metadata
+
+```bash
+curl -s http://127.0.0.1:8001/version
+curl -s http://127.0.0.1:8001/speakers
+```
+
+`/speakers` exposes the configured character/style as a single VOICEVOX-style talk style with `id: 1`.
 
 ## Create an AudioQuery
 
