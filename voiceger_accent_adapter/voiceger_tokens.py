@@ -1,12 +1,14 @@
-"""Convert editable pronunciation to Voiceger/GPT-SoVITS Japanese tokens.
+"""Convert editable pronunciation to Voiceger Japanese frontend tokens.
 
 This layer is intentionally independent of Voiceger's source tree. It uses
 pyopenjtalk only for mora-to-phoneme conversion and inserts the Japanese
-prosody symbols understood by Voiceger v2.
+prosody symbols produced by Voiceger's own OpenJTalk path.
 
-Voiceger v2 accepts "[" and "]" but not OpenJTalk's "#" accent-phrase
-boundary token. For the initial adapter, "/" boundaries are represented by
-starting a fresh phrase prosody pattern with no literal boundary token.
+Important: these are tokens returned at the `text.japanese.g2p()` hook point,
+not the model's final symbol IDs. Voiceger v2's downstream `clean_text()`
+preserves "[" and "]" and converts the OpenJTalk accent-phrase boundary "#"
+to "UNK". To reproduce Voiceger's normal frontend semantics, "/" therefore
+maps to "#" here and the existing cleaner is allowed to perform that conversion.
 """
 
 from __future__ import annotations
@@ -50,7 +52,7 @@ def accent_phrase_to_voiceger_tokens(
     *,
     mora_g2p: MoraG2P | None = None,
 ) -> list[str]:
-    """Convert one accent phrase to Voiceger v2 Japanese phone/prosody tokens."""
+    """Convert one accent phrase to Voiceger's Japanese frontend tokens."""
 
     if mora_g2p is None:
         mora_g2p = _default_mora_g2p
@@ -83,10 +85,7 @@ def accent_phrase_to_voiceger_tokens(
         if mora_count > 1 and mora_index == 1:
             tokens.append("]" if phrase.accent == 1 else "[")
 
-        if (
-            1 < phrase.accent < mora_count
-            and mora_index == phrase.accent
-        ):
+        if 1 < phrase.accent < mora_count and mora_index == phrase.accent:
             tokens.append("]")
 
     return tokens
@@ -97,10 +96,15 @@ def pronunciation_to_voiceger_tokens(
     *,
     mora_g2p: MoraG2P | None = None,
 ) -> list[str]:
-    """Convert Pronunciation to Voiceger v2 Japanese phone/prosody tokens."""
+    """Convert Pronunciation to tokens for Voiceger's Japanese G2P hook."""
 
     tokens: list[str] = []
-    for phrase in value.phrases:
+    for phrase_index, phrase in enumerate(value.phrases):
+        if phrase_index > 0:
+            # Match Voiceger/OpenJTalk's normal g2p() output exactly.
+            # Voiceger v2's cleaner later maps this "#" to "UNK".
+            tokens.append("#")
+
         tokens.extend(
             accent_phrase_to_voiceger_tokens(
                 phrase,
