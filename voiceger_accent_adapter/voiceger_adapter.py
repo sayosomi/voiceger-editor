@@ -7,6 +7,7 @@ for one target utterance, then restores the original function.
 
 from __future__ import annotations
 
+from collections import defaultdict, deque
 from contextlib import contextmanager
 from dataclasses import replace
 import os
@@ -277,6 +278,104 @@ class VoicegerAdapter:
                 "audio": audio,
                 "sampling_rate": int(sample_rate),
                 "resolved_pronunciation": resolved,
+            }
+
+    def synthesize_mixed_audio(
+        self,
+        *,
+        text: str,
+        japanese_overrides: list[tuple[str, list[str]]],
+        text_language: str,
+        ref_wav_path: Optional[str | Path] = None,
+        prompt_text: Optional[str] = None,
+        top_k: int = 20,
+        top_p: float = 0.6,
+        temperature: float = 0.6,
+        speed: float = 1.0,
+    ) -> dict[str, Any]:
+        """Synthesize mixed-language text with Japanese G2P overrides."""
+
+        synthesis_text = _ensure_single_utterance(text)
+
+        selected_ref_wav = Path(
+            ref_wav_path or self.default_ref_wav
+        ).expanduser().resolve()
+        if not selected_ref_wav.is_file():
+            raise VoicegerAdapterError(
+                f"reference WAV not found: {selected_ref_wav}"
+            )
+
+        if prompt_text is None:
+            if not self.default_ref_text.is_file():
+                raise VoicegerAdapterError(
+                    f"reference text not found: {self.default_ref_text}"
+                )
+            selected_prompt_text = self.default_ref_text.read_text(
+                encoding="utf-8"
+            ).strip()
+        else:
+            selected_prompt_text = prompt_text.strip()
+
+        if not selected_prompt_text:
+            raise VoicegerAdapterError("reference prompt text must not be empty")
+
+        self._ensure_runtime()
+
+        with self._lock:
+            japanese = self._runtime["japanese"]
+            MhaPatched = self._runtime["MhaPatched"]
+            get_tts_wav = self._runtime["get_tts_wav"]
+            original_g2p = japanese.g2p
+
+            override_queues = defaultdict(deque)
+            for segment_text, tokens in japanese_overrides:
+                normalized = japanese.text_normalize(segment_text)
+                override_queues[normalized].append(list(tokens))
+
+            def controlled_g2p(norm_text: str, with_prosody: bool = True):
+                if with_prosody:
+                    queue = override_queues.get(norm_text)
+                    if queue:
+                        return queue.popleft()
+                return original_g2p(norm_text, with_prosody)
+
+            try:
+                japanese.g2p = controlled_g2p
+                with _pushd(self.sovits_dir):
+                    with MhaPatched():
+                        results = list(
+                            get_tts_wav(
+                                ref_wav_path=str(selected_ref_wav),
+                                prompt_text=selected_prompt_text,
+                                prompt_language="Japanese",
+                                text=synthesis_text,
+                                text_language=text_language,
+                                top_k=top_k,
+                                top_p=top_p,
+                                temperature=temperature,
+                                speed=speed,
+                            )
+                        )
+            finally:
+                japanese.g2p = original_g2p
+
+            remaining = sum(
+                len(queue)
+                for queue in override_queues.values()
+            )
+            if remaining:
+                raise VoicegerAdapterError(
+                    "Voiceger mixed-language segmentation did not consume "
+                    f"{remaining} Japanese pronunciation override(s)"
+                )
+
+            if not results:
+                raise VoicegerAdapterError("Voiceger returned no audio")
+
+            sample_rate, audio = results[-1]
+            return {
+                "audio": audio,
+                "sampling_rate": int(sample_rate),
             }
 
     def synthesize(
