@@ -144,6 +144,15 @@ The response includes the canonical pronunciation actually used:
 }
 ```
 
+Generated WAV files use a readable local-date + source-text filename:
+
+```text
+20260927_今日は雨ですね。.wav
+20260927_今日は雨ですね。_2.wav
+```
+
+Characters that are unsafe in common filesystems are replaced with `_`, and very long source text is truncated in the filename only.
+
 See [docs/japanese-pronunciation.md](docs/japanese-pronunciation.md) for the current design.
 
 ## Upstream dependency
