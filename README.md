@@ -73,21 +73,29 @@ with an utterance or enter the text after launch:
 voiceger-accent-adapter "今日はhelloと言うよ。"
 ```
 
-The TUI edits Japanese `'` / `/` pronunciation notation and English ARPAbet
-phonemes. Tab moves focus through Text, Pronunciation, Generate, and available
-Takes areas; Enter edits or activates the focused area. In the Japanese
-pronunciation editor, type `'` and `/` directly or use `a` to toggle `'` and
-`p` to toggle `/` at the cursor. English stress digits are hidden; select an
-English segment and use `Shift+Tab` to cycle its primary-stress markers, then
-use the left/right arrows to move the selected marker. Generate takes with the
-visible Generate action, `F5`, or `Ctrl+G` (terminal-safe equivalents for
-Command+Enter), then use the up/down arrows, `Space`, `Enter`, or `1`–`8` to
-audition and accept. Use `r` to regenerate the current take and `R` to
-regenerate the batch. Candidate WAVs are temporary until accepted. Press `t`,
-`s`, `v`, `n`, `o`, or `x` to edit text, style, speed, take count, output
-directory, or paired `.txt` output. Press `?` for the full shortcut list. These
-defaults persist in the platform user config; command-line options override
-them for one invocation.
+The TUI uses one continuous, non-wrapping vertical action list. Use `↑` / `↓`
+to move through Text, pronunciation segments in source order, Generate or
+Regenerate all, available candidates, Regenerate selected, Settings, Help, and
+Quit. `Enter` opens or performs the focused action; `Space` replays a focused
+candidate. `Tab` is an optional accelerator. Candidate review keeps the
+candidate in the same list; `Esc` returns to the last selected pronunciation
+segment. The candidate footer states that `Enter` accepts and saves the take.
+
+Editing opens a separate modal screen with an unsaved draft, selectable fields,
+and Apply/Cancel actions. The Japanese editor shows the literal AquesTalk-style
+pronunciation; type `'` and `/` directly, with ordinary cursor movement and
+editing. English segments show selectable lexical word/token rows. Select a
+word to edit its stress-free phoneme tokens and each existing primary-stress
+marker in a dedicated word editor. Stress digits are hidden; primary stress is
+shown with brackets. Voiceger's whole-segment English G2P supplies the transient
+word boundaries, and the editor fails closed if those groups do not reproduce
+Voiceger's canonical flat phoneme sequence. Settings are also reachable in the
+action list and use the same draft/apply/cancel flow.
+
+`F5` / `Ctrl+G`, number keys `1`–`8`, `r`, `R`, `t`, `s`, `v`, `n`, `o`, `x`,
+and `?` remain accelerators to the corresponding visible actions. These
+settings persist in the platform user config; command-line options override
+them for one invocation. Candidate WAVs remain temporary until accepted.
 
 ## Styles / speaker IDs
 

@@ -42,6 +42,16 @@ class VoicegerIntegrationTests(unittest.TestCase):
 
         self.assertEqual(revision, SUPPORTED_VOICEGER_REVISION)
 
+    def test_english_word_groups_flatten_to_voiceger_public_g2p(self):
+        text = "Hi There! I'm Zundamon now noda!"
+
+        groups = self.adapter.english_word_phoneme_groups(text)
+
+        self.assertEqual(
+            [phoneme for _label, group in groups for phoneme in group],
+            self.adapter.english_phonemes(text),
+        )
+
     def test_manual_japanese_accent_synthesizes_without_runaway(self):
         query = build_audio_query(
             pronunciation=parse_pronunciation("キョ'ーワ/アメデスネ'。"),
