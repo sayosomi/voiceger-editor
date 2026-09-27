@@ -44,6 +44,7 @@ class TtsRequest(BaseModel):
 class TtsResponse(BaseModel):
     message: str = "success"
     resolved_pronunciation: str
+    file_name: str
     file_path: str
     sampling_rate: int
 
