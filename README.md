@@ -35,34 +35,107 @@ audio
 - Isolate Voiceger-specific integration behind an adapter so the pronunciation/prosody core can be tested independently.
 - Do not copy or redistribute Voiceger source code, models, reference audio, or other Voiceger assets in this repository.
 
-## Validated spike
+## Validated path
 
-A local runtime spike confirmed that Voiceger can be controlled without modifying upstream files:
+Local spikes have validated the complete path without modifying Voiceger files:
 
 ```text
-雨 -> a ] m e
-飴 -> a [ m e
+text
+  -> OpenJTalk
+  -> editable pronunciation
+  -> parser
+  -> Voiceger-compatible G2P tokens
+  -> runtime hook
+  -> natural audio
 ```
 
-Injecting only that prosody difference into the same sentence produced natural audio with an audible accent difference.
+For example:
+
+```text
+雨 -> ア'メ -> a ] m e
+飴 -> アメ' -> a [ m e
+```
 
 At the Japanese G2P hook point, `/` is converted to OpenJTalk's `#` boundary token. Voiceger v2's existing `clean_text()` then converts `#` to `UNK`, reproducing the normal Voiceger frontend path. Dropping the boundary token entirely was tested and can destabilize synthesis.
 
-## Planned API
+## API
 
-Conceptually:
+The current development API provides:
 
 ```http
 POST /pronunciation
-```
-
-Converts Japanese `text` into an editable pronunciation representation.
-
-```http
 POST /tts
 ```
 
-Synthesizes speech from `text` plus an optional manually edited `pronunciation`.
+v1 currently supports one Japanese utterance per request (no embedded newlines).
+
+### Run with the existing Voiceger environment
+
+Assuming Voiceger is installed at `~/voiceger_v2`:
+
+```bash
+cd ~/Code/voiceger-accent-adapter
+
+~/voiceger_v2/.venv/bin/python -m uvicorn \
+  voiceger_accent_adapter.api:app \
+  --host 127.0.0.1 \
+  --port 8001
+```
+
+Override the Voiceger location when needed:
+
+```bash
+VOICEGER_ROOT=/path/to/voiceger_v2 \
+  /path/to/voiceger/.venv/bin/python -m uvicorn \
+  voiceger_accent_adapter.api:app \
+  --host 127.0.0.1 \
+  --port 8001
+```
+
+### Automatic pronunciation
+
+```bash
+curl -s http://127.0.0.1:8001/pronunciation \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"今日は雨ですね。"}'
+```
+
+Expected shape:
+
+```json
+{
+  "text": "今日は雨ですね。",
+  "pronunciation": "キョ'ーワ/ア'メデスネ。",
+  "source": "openjtalk"
+}
+```
+
+### Synthesis with automatic pronunciation
+
+```bash
+curl -s http://127.0.0.1:8001/tts \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"今日は雨ですね。"}'
+```
+
+### Synthesis with a manual override
+
+```bash
+curl -s http://127.0.0.1:8001/tts \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"今日は雨ですね。","pronunciation":"キョ'\''ーワ/アメデスネ'\''。"}'
+```
+
+The response includes the canonical pronunciation actually used:
+
+```json
+{
+  "message": "success",
+  "resolved_pronunciation": "...",
+  "file_path": "...",
+  "sampling_rate": 32000
+}
+```
 
 See [docs/japanese-pronunciation.md](docs/japanese-pronunciation.md) for the current design.
 
@@ -72,11 +145,11 @@ Voiceger is developed separately at:
 
 https://github.com/zunzun999/voiceger_v2
 
-This repository is not a fork and does not contain Voiceger itself. The initial integration may import Voiceger / GPT-SoVITS internals at runtime and adapt its Japanese G2P path.
+This repository is not a fork and does not contain Voiceger itself. Runtime integration imports the locally installed Voiceger / GPT-SoVITS modules and temporarily hooks the Japanese G2P path during synthesis.
 
 ## Status
 
-Early implementation / spike phase. No stable API yet.
+Early implementation. The pronunciation and runtime-injection path is validated locally; the HTTP API is now ready for local integration testing.
 
 ## License
 
