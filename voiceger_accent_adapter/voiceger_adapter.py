@@ -29,6 +29,24 @@ _SENTENCE_END = {
     "?": "？",
 }
 
+class VoicegerAdapterError(RuntimeError):
+    """Raised when the local Voiceger runtime cannot be used safely."""
+
+
+def _ensure_single_utterance(text: str) -> str:
+    if not text or not text.strip():
+        raise ValueError("text must not be empty")
+    if "\n" in text or "\r" in text:
+        raise ValueError(
+            "v1 supports one utterance per request; newlines are not supported"
+        )
+    return text.strip()
+
+
+def _text_terminator(text: str) -> str:
+    return _SENTENCE_END.get(text[-1], "。")
+
+
 def resolve_pronunciation(
     text: str,
     pronunciation: str | None = None,
