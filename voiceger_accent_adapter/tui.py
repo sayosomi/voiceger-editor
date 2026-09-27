@@ -512,9 +512,13 @@ class TuiApp:
     def _activate_regenerate_selected(self) -> None:
         if self._busy:
             self._status = "Wait for the current synthesis operation to finish."
-        elif self._current_take is None:
+        elif (
+            ("regenerate_selected", self._current_take)
+            not in self._navigation_items()
+        ):
             self._status = "Select a candidate before regenerating it."
         else:
+            assert self._current_take is not None
             self._start_regeneration(self._current_take)
 
     def _activate_quit(self) -> None:
@@ -694,6 +698,7 @@ class TuiApp:
             return
         self._stop_playback()
         self.session.replace_query(query)
+        self._current_take = None
         segments = query.voicegerSegments or []
         for index, cached in tuple(self._english_groupings.items()):
             if (
@@ -1445,7 +1450,13 @@ class TuiApp:
             status_attr |= self._attribute("A_REVERSE")
         self._safe_add(status_row, 0, status, width, status_attr)
         if self._focus_key[0] == "candidate":
-            footer = "↑/↓ Move/play | Space Replay | Enter accepts and saves | Esc Back | q Quit"
+            if self._busy:
+                footer = (
+                    "↑↓ Move/play | Space Replay | Enter unavailable while generating "
+                    "| Esc | q Quit"
+                )
+            else:
+                footer = "↑/↓ Move/play | Space Replay | Enter accepts and saves | Esc Back | q Quit"
         else:
             footer = "↑/↓ Move | Enter Action | Esc Back | ? Help | q Quit"
         self._safe_add(status_row + 1, 0, footer, width, self._attribute("A_BOLD"))
@@ -1471,13 +1482,17 @@ class TuiApp:
             marker = "▶ " if key == self._focus_key else "  "
             lines.append((marker + label, key))
 
-        action(("text", None), "Text  [Enter: Edit]")
+        unavailable = " (unavailable while generating)" if self._busy else ""
+        action(("text", None), f"Text  [Enter: Edit]{unavailable}")
         if self.session is not None:
             wrapped("Source: ", self.session.source_text)
             plain()
             plain("Pronunciation")
             for index, (language, source, model_index) in enumerate(self._segments()):
-                action(("segment", index), f"{language.upper()} segment {index + 1}  [Enter: Edit]")
+                action(
+                    ("segment", index),
+                    f"{language.upper()} segment {index + 1}  [Enter: Edit]{unavailable}",
+                )
                 wrapped("Source: ", source)
                 if language == "ja":
                     try:
@@ -1508,7 +1523,7 @@ class TuiApp:
                 else f"Generate {self.settings.take_count} takes"
             )
             if self._busy:
-                generate_label += "  (busy)"
+                generate_label += "  (busy; unavailable while generating)"
             action(("generate", None), f"[ {generate_label} ]")
             plain("Candidates")
             if not self.session.candidates:
@@ -1516,15 +1531,17 @@ class TuiApp:
             for candidate in self.session.candidates:
                 duration = _duration_seconds(candidate.audio, candidate.sampling_rate)
                 suffix = "  (current)" if candidate.number == self._current_take else ""
+                if self._busy:
+                    suffix += "  (Space replay; Enter unavailable while generating)"
                 action(("candidate", candidate.number), f"Take {candidate.number}  {duration:.2f}s{suffix}")
             if ("regenerate_selected", self._current_take) in self._navigation_items():
                 action(
                     ("regenerate_selected", self._current_take),
-                    f"Regenerate selected take {self._current_take}",
+                    f"Regenerate selected take {self._current_take}{unavailable}",
                 )
             plain()
 
-        action(("settings", None), "Settings  [Enter: Edit]")
+        action(("settings", None), f"Settings  [Enter: Edit]{unavailable}")
         action(("help", None), "Help  [Enter: Open]")
         action(("quit", None), "Quit  [Enter: Exit]")
         return lines
