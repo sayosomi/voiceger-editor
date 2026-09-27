@@ -134,14 +134,13 @@ curl -s -X POST \
 ## Synthesize
 
 ```bash
-curl -X POST \
+curl -OJ -X POST \
   'http://127.0.0.1:8001/synthesis?speaker=1' \
   -H 'Content-Type: application/json' \
-  --data-binary @manual.json \
-  --output result.wav
+  --data-binary @manual.json
 ```
 
-`/synthesis` returns `audio/wav`, like VOICEVOX ENGINE.
+`/synthesis` returns `audio/wav`, like VOICEVOX ENGINE. The response also sets a readable `Content-Disposition` filename, so `curl -OJ` keeps the VOICEVOX-style filename automatically.
 
 The adapter also stores the generated WAV under:
 
