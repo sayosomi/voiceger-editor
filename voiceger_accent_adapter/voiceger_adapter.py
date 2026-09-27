@@ -182,6 +182,83 @@ class VoicegerAdapter:
             normalized = english.text_normalize(text)
             return normalize_english_phonemes(english.g2p(normalized))
 
+    def english_word_phoneme_groups(
+        self, text: str
+    ) -> tuple[tuple[str, tuple[str, ...]], ...]:
+        """Return Voiceger-tokenized groups from its whole-segment G2P pass.
+
+        Voiceger's public ``english.g2p`` removes the separator entries that
+        its internal whole-segment pass emits between tokenizer groups. Keep
+        that pass, tokenizer, and post-processing behind this adapter boundary,
+        then prove that flattening the groups is exactly the public result.
+        """
+
+        if not text or not text.strip():
+            raise ValueError("English segment text must not be empty")
+        if "\n" in text or "\r" in text:
+            raise ValueError("English segment text must not contain newlines")
+
+        with self._lock:
+            self._require_text_paths()
+            self._ensure_import_paths()
+            with _pushd(self.sovits_dir):
+                import text.english as english
+
+            normalized = english.text_normalize(text)
+            labels = list(english.word_tokenize(normalized))
+            try:
+                internal = list(english._g2p(normalized))
+            except Exception as exc:
+                raise VoicegerAdapterError(
+                    "Voiceger English whole-segment token boundaries are unavailable"
+                ) from exc
+
+            raw_groups: list[list[str]] = [[]]
+            for phoneme in internal:
+                if phoneme == " ":
+                    if not raw_groups[-1]:
+                        raise VoicegerAdapterError(
+                            "Voiceger English G2P returned an empty token boundary"
+                        )
+                    raw_groups.append([])
+                else:
+                    raw_groups[-1].append(phoneme)
+            if raw_groups and not raw_groups[-1]:
+                raw_groups.pop()
+
+            if len(labels) != len(raw_groups):
+                raise VoicegerAdapterError(
+                    "Voiceger English tokenizer and G2P token boundaries disagree"
+                )
+
+            def public_postprocess(values: list[str]) -> tuple[str, ...]:
+                mapped = [
+                    "UNK" if phoneme == "<unk>" else phoneme
+                    for phoneme in values
+                    if phoneme not in {" ", "<pad>", "UW", "</s>", "<s>"}
+                ]
+                return tuple(english.replace_phs(mapped))
+
+            groups = tuple(
+                (label, public_postprocess(group))
+                for label, group in zip(labels, raw_groups)
+            )
+            flattened = [phoneme for _label, group in groups for phoneme in group]
+            canonical = list(english.g2p(normalized))
+            if flattened != canonical:
+                raise VoicegerAdapterError(
+                    "Voiceger English token grouping does not reproduce its "
+                    "canonical whole-segment G2P output"
+                )
+
+            # The TUI consumes the same strict token validation as the normal
+            # English editor. Empty groups are preserved for fixed punctuation
+            # tokenizer entries that Voiceger's post-processor removes.
+            for _label, group in groups:
+                if group:
+                    normalize_english_phonemes(group)
+            return groups
+
     def _ensure_runtime(self) -> None:
         if self._loaded:
             return

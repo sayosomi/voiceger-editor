@@ -11,6 +11,7 @@ from voiceger_accent_adapter.query_editing import (
     move_english_primary_stress,
     replace_english_base_phonemes,
     replace_english_editor_state,
+    replace_english_phoneme_groups,
     replace_japanese_pronunciation,
 )
 from voiceger_accent_adapter.voicevox_api_models import (
@@ -67,6 +68,24 @@ class QueryEditingTests(unittest.TestCase):
 
         self.assertEqual(japanese_pronunciation(question), "ア'メ？")
         self.assertEqual(japanese_pronunciation(fallback), "ア'メ？")
+
+    def test_grouped_english_draft_commits_to_existing_flat_segment(self):
+        query = _mixed_query(
+            [],
+            [VoicegerSegment(language="en", text="Hi!", phonemes=["HH", "AY1", "!"])],
+        )
+
+        updated = replace_english_phoneme_groups(
+            query,
+            segment_index=0,
+            phoneme_groups=(("HH", "IY1"), ("!",)),
+        )
+
+        self.assertEqual(query.voicegerSegments[0].phonemes, ["HH", "AY1", "!"])
+        self.assertEqual(
+            updated.voicegerSegments[0].phonemes,
+            ["HH", "IY1", "!"],
+        )
 
     def test_pure_japanese_replacement_returns_a_copy_and_preserves_controls(self):
         query = _pure_query(
