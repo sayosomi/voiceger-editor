@@ -26,12 +26,27 @@ audio
 
 - Keep display text and spoken pronunciation separate.
 - Generate a usable pronunciation automatically from Japanese text.
-- Allow manual correction using an AquesTalk/SofTalk-inspired notation.
-- Use `'` for an accent nucleus and `/` for an accent-phrase boundary in the initial notation design.
+- Allow manual correction using a VOICEVOX-style / AquesTalk-style notation.
+- Every accent phrase has exactly one `'`; `あ'め` means accent position 1 and `あめ'` means accent position 2.
+- Use `/` for a no-pause accent-phrase boundary.
+- Accept both hiragana and katakana in the editable notation.
 - Prefer an explicitly supplied pronunciation over automatic analysis.
 - Return the resolved pronunciation actually used for synthesis.
 - Isolate Voiceger-specific integration behind an adapter so the pronunciation/prosody core can be tested independently.
 - Do not copy or redistribute Voiceger source code, models, reference audio, or other Voiceger assets in this repository.
+
+## Validated spike
+
+A local runtime spike confirmed that Voiceger can be controlled without modifying upstream files:
+
+```text
+雨 -> a ] m e
+飴 -> a [ m e
+```
+
+Injecting only that prosody difference into the same sentence produced natural audio with an audible accent difference.
+
+Phrase boundaries remain an open adapter problem because OpenJTalk's `#` token is converted to `UNK` by Voiceger v2.
 
 ## Planned API
 
@@ -61,7 +76,7 @@ This repository is not a fork and does not contain Voiceger itself. The initial 
 
 ## Status
 
-Design phase. No stable API yet.
+Early implementation / spike phase. No stable API yet.
 
 ## License
 
