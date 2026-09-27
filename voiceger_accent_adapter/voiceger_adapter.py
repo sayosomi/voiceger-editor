@@ -19,6 +19,7 @@ from typing import Any, Optional
 from .filename import build_output_filename, next_output_index
 from .openjtalk_converter import text_to_pronunciation
 from .pronunciation import Pronunciation, format_pronunciation, parse_pronunciation
+from .runtime_locks import LANGSEGMENT_LOCK
 from .voiceger_tokens import pronunciation_to_voiceger_tokens
 
 
@@ -341,21 +342,22 @@ class VoicegerAdapter:
 
             try:
                 japanese.g2p = controlled_g2p
-                with _pushd(self.sovits_dir):
-                    with MhaPatched():
-                        results = list(
-                            get_tts_wav(
-                                ref_wav_path=str(selected_ref_wav),
-                                prompt_text=selected_prompt_text,
-                                prompt_language="Japanese",
-                                text=synthesis_text,
-                                text_language=text_language,
-                                top_k=top_k,
-                                top_p=top_p,
-                                temperature=temperature,
-                                speed=speed,
+                with LANGSEGMENT_LOCK:
+                    with _pushd(self.sovits_dir):
+                        with MhaPatched():
+                            results = list(
+                                get_tts_wav(
+                                    ref_wav_path=str(selected_ref_wav),
+                                    prompt_text=selected_prompt_text,
+                                    prompt_language="Japanese",
+                                    text=synthesis_text,
+                                    text_language=text_language,
+                                    top_k=top_k,
+                                    top_p=top_p,
+                                    temperature=temperature,
+                                    speed=speed,
+                                )
                             )
-                        )
             finally:
                 japanese.g2p = original_g2p
 
