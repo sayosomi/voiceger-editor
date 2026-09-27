@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from voiceger_accent_adapter.mixed_language import DetectedSegment
 from voiceger_accent_adapter.output import SavedOutput
 from voiceger_accent_adapter.session import UtteranceSession
 from voiceger_accent_adapter.settings import Settings
@@ -11,6 +12,7 @@ from voiceger_accent_adapter.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
     Mora,
+    VoicegerSegment,
 )
 
 
@@ -23,6 +25,42 @@ def _query(*, speed_scale=1.0, mora_text="ア"):
             )
         ],
         speedScale=speed_scale,
+    )
+
+
+def _mixed_pronunciation_query():
+    return AudioQuery(
+        accent_phrases=[
+            AccentPhrase(
+                moras=[Mora(text="古", vowel="a", vowel_length=0.1)],
+                accent=1,
+            ),
+            AccentPhrase(
+                moras=[Mora(text="締", vowel="i", vowel_length=0.1)],
+                accent=1,
+            ),
+        ],
+        voicegerSegments=[
+            VoicegerSegment(
+                language="ja",
+                text="old-ja",
+                accentPhraseStart=0,
+                accentPhraseCount=1,
+                pronunciationTerminator="",
+            ),
+            VoicegerSegment(
+                language="en",
+                text="old-en",
+                phonemes=["HH", "AH1"],
+            ),
+            VoicegerSegment(
+                language="ja",
+                text="old-end",
+                accentPhraseStart=1,
+                accentPhraseCount=1,
+                pronunciationTerminator="？",
+            ),
+        ],
     )
 
 
@@ -186,6 +224,229 @@ class UtteranceSessionTests(unittest.TestCase):
 
         self.assertEqual(session.query.speedScale, self.settings.speed)
         self.assertEqual(session.query.accent_phrases[0].moras[0].text, "ア")
+
+    def test_same_signature_source_replacement_preserves_pronunciation_and_discards_takes(self):
+        session = self.make_session(
+            source_text="old-ja old-en old-end",
+            query=_mixed_pronunciation_query(),
+        )
+        old_query = session.query
+        batch = self.activate_batch(session)
+        batch._candidates.append(
+            TakeCandidate(1, Path("/tmp/existing.wav"), object(), 32000)
+        )
+        detected = [
+            DetectedSegment("ja", "new-ja"),
+            DetectedSegment("en", "new-en"),
+            DetectedSegment("ja", "new-end!"),
+        ]
+
+        with patch(
+            "voiceger_accent_adapter.session.detect_language_segments",
+            return_value=detected,
+        ) as detect, patch(
+            "voiceger_accent_adapter.session.build_mixed_audio_query"
+        ) as build_query:
+            session.replace_source_text("new-ja new-en new-end!")
+
+        detect.assert_called_once_with("new-ja new-en new-end!")
+        build_query.assert_not_called()
+        self.adapter.english_phonemes.assert_not_called()
+        self.assertEqual(session.source_text, "new-ja new-en new-end!")
+        self.assertFalse(session.pronunciation_needs_rebuild)
+        self.assertTrue(batch.closed)
+        self.assertFalse(session.has_active_batch)
+        self.assertEqual(session.candidates, ())
+        updated = session.query
+        self.assertEqual(
+            [segment.text for segment in updated.voicegerSegments],
+            ["new-ja", "new-en", "new-end!"],
+        )
+        self.assertEqual(updated.accent_phrases, old_query.accent_phrases)
+        self.assertEqual(
+            [segment.pronunciationTerminator for segment in updated.voicegerSegments],
+            ["", None, "？"],
+        )
+        self.assertEqual(
+            updated.voicegerSegments[1].phonemes,
+            old_query.voicegerSegments[1].phonemes,
+        )
+        self.assertEqual(
+            [
+                (segment.accentPhraseStart, segment.accentPhraseCount)
+                for segment in updated.voicegerSegments
+            ],
+            [
+                (segment.accentPhraseStart, segment.accentPhraseCount)
+                for segment in old_query.voicegerSegments
+            ],
+        )
+
+    def test_changed_signature_marks_rebuild_required_and_keeps_old_query(self):
+        session = self.make_session(source_text="雨", query=_query(mora_text="旧"))
+        old_query = session.query
+        batch = self.activate_batch(session)
+        batch._candidates.append(
+            TakeCandidate(1, Path("/tmp/existing.wav"), object(), 32000)
+        )
+
+        with patch(
+            "voiceger_accent_adapter.session.detect_language_segments",
+            return_value=[DetectedSegment("en", "hello")],
+        ), patch(
+            "voiceger_accent_adapter.session.build_mixed_audio_query"
+        ) as build_query:
+            session.replace_source_text("hello")
+            self.assertEqual(session.source_text, "hello")
+            self.assertTrue(session.pronunciation_needs_rebuild)
+            self.assertEqual(session.query, old_query)
+            self.assertTrue(batch.closed)
+            self.assertFalse(session.has_active_batch)
+            self.assertEqual(session.candidates, ())
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "pronunciation must be rebuilt after the source-text structure changed",
+            ):
+                session.generate_takes()
+
+        build_query.assert_not_called()
+
+    def test_source_replacement_detection_failure_preserves_session_and_batch(self):
+        session = self.make_session(source_text="old", query=_query())
+        old_query = session.query
+        batch = self.activate_batch(session)
+
+        with patch(
+            "voiceger_accent_adapter.session.detect_language_segments",
+            side_effect=RuntimeError("segmentation failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "segmentation failed"):
+                session.replace_source_text("new")
+
+        self.assertEqual(session.source_text, "old")
+        self.assertEqual(session.query, old_query)
+        self.assertFalse(session.pronunciation_needs_rebuild)
+        self.assertFalse(batch.closed)
+        self.assertTrue(session.has_active_batch)
+
+    def test_explicit_rebuild_installs_automatic_query_and_preserves_settings_speed(self):
+        session = self.make_session(source_text="old", query=_query(mora_text="manual"))
+        with patch(
+            "voiceger_accent_adapter.session.detect_language_segments",
+            return_value=[DetectedSegment("en", "new")],
+        ):
+            session.replace_source_text("new")
+        automatic_query = _query(speed_scale=0.6, mora_text="automatic")
+
+        with patch(
+            "voiceger_accent_adapter.session.build_mixed_audio_query",
+            return_value=automatic_query,
+        ) as build_query:
+            session.rebuild_pronunciation()
+
+        build_query.assert_called_once_with(
+            "new",
+            english_g2p=self.adapter.english_phonemes,
+            output_sampling_rate=32000,
+        )
+        self.assertFalse(session.has_active_batch)
+        self.assertFalse(session.pronunciation_needs_rebuild)
+        self.assertEqual(session.query.speedScale, self.settings.speed)
+        self.assertEqual(
+            session.query.accent_phrases[0].moras[0].text,
+            "automatic",
+        )
+
+    def test_successful_explicit_rebuild_discards_existing_takes(self):
+        session = self.make_session(source_text="old", query=_query(mora_text="manual"))
+        batch = self.activate_batch(session)
+
+        with patch(
+            "voiceger_accent_adapter.session.build_mixed_audio_query",
+            return_value=_query(mora_text="automatic"),
+        ):
+            session.rebuild_pronunciation()
+
+        self.assertTrue(batch.closed)
+        self.assertFalse(session.has_active_batch)
+        self.assertEqual(
+            session.query.accent_phrases[0].moras[0].text,
+            "automatic",
+        )
+
+    def test_manual_query_and_settings_replacement_do_not_clear_rebuild_state(self):
+        session = self.make_session(source_text="old", query=_query(mora_text="manual"))
+        with patch(
+            "voiceger_accent_adapter.session.detect_language_segments",
+            return_value=[DetectedSegment("en", "new")],
+        ):
+            session.replace_source_text("new")
+        replacement_settings = Settings(style_id=2, speed=0.9)
+
+        with patch(
+            "voiceger_accent_adapter.session.build_mixed_audio_query"
+        ) as build_query, patch(
+            "voiceger_accent_adapter.session.get_style",
+            return_value=self.other_style,
+        ):
+            session.replace_query(_query(mora_text="manual edit"))
+            session.replace_settings(replacement_settings)
+
+        build_query.assert_not_called()
+        self.assertTrue(session.pronunciation_needs_rebuild)
+        self.assertEqual(session.query.accent_phrases[0].moras[0].text, "manual edit")
+        self.assertEqual(session.query.speedScale, replacement_settings.speed)
+
+    def test_unchanged_source_text_is_a_no_op(self):
+        session = self.make_session(source_text="same", query=_query())
+        old_query = session.query
+        batch = self.activate_batch(session)
+
+        with patch(
+            "voiceger_accent_adapter.session.detect_language_segments"
+        ) as detect:
+            session.replace_source_text("same")
+
+        detect.assert_not_called()
+        self.assertTrue(batch.closed is False)
+        self.assertEqual(session.query, old_query)
+        self.assertFalse(session.pronunciation_needs_rebuild)
+
+    def test_invalid_source_replacement_preserves_active_batch(self):
+        session = self.make_session(source_text="old", query=_query())
+        batch = self.activate_batch(session)
+
+        with patch(
+            "voiceger_accent_adapter.session.detect_language_segments"
+        ) as detect:
+            with self.assertRaises(ValueError):
+                session.replace_source_text("two\nlines")
+
+        detect.assert_not_called()
+        self.assertEqual(session.source_text, "old")
+        self.assertFalse(session.pronunciation_needs_rebuild)
+        self.assertFalse(batch.closed)
+        self.assertTrue(session.has_active_batch)
+
+    def test_failed_explicit_rebuild_preserves_query_stale_state_and_takes(self):
+        session = self.make_session(source_text="old", query=_query(mora_text="manual"))
+        with patch(
+            "voiceger_accent_adapter.session.detect_language_segments",
+            return_value=[DetectedSegment("en", "new")],
+        ):
+            session.replace_source_text("new")
+        old_query = session.query
+        with patch(
+            "voiceger_accent_adapter.session.build_mixed_audio_query",
+            side_effect=RuntimeError("automatic analysis failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "automatic analysis failed"):
+                session.rebuild_pronunciation()
+
+        self.assertEqual(session.query, old_query)
+        self.assertTrue(session.pronunciation_needs_rebuild)
+        self.assertFalse(session.has_active_batch)
 
     def test_from_text_builds_query_with_exact_source_callback_and_sampling_rate(self):
         source = "  今日はhello  "

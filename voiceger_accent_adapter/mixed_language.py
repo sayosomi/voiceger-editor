@@ -93,6 +93,24 @@ def is_pure_japanese(segments: Sequence[DetectedSegment]) -> bool:
     return bool(segments) and all(segment.language == "ja" for segment in segments)
 
 
+def resolve_japanese_segment_terminator(
+    segment: VoicegerSegment,
+) -> str | None:
+    """Resolve explicit pronunciation state or a legacy source-text ending."""
+
+    explicit = segment.pronunciationTerminator
+    if explicit is not None:
+        return explicit or None
+
+    if segment.text.endswith(("。", ".")):
+        return "。"
+    if segment.text.endswith(("？", "?")):
+        return "？"
+    if segment.text.endswith(("！", "!")):
+        return "！"
+    return None
+
+
 def build_mixed_audio_query(
     text: str,
     *,
@@ -125,6 +143,9 @@ def build_mixed_audio_query(
                     text=segment.text,
                     accentPhraseStart=start,
                     accentPhraseCount=len(phrases),
+                    pronunciationTerminator=(
+                        pronunciation.terminator or ""
+                    ),
                 )
             )
         elif segment.language == "en":
@@ -228,16 +249,9 @@ def build_mixed_synthesis_plan(query: AudioQuery) -> MixedSynthesisPlan:
                 "Japanese voicegerSegments must reference accent phrases"
             )
 
-        if segment.text.endswith(("？", "?")):
-            terminator = "？"
-        elif segment.text.endswith(("。", "！", "!")):
-            terminator = "。"
-        else:
-            terminator = None
-
         pronunciation = accent_phrases_to_pronunciation(
             segment_phrases,
-            terminator=terminator,
+            terminator=resolve_japanese_segment_terminator(segment),
         )
         japanese_overrides.append(
             (

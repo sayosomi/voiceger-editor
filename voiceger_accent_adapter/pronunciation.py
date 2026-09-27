@@ -10,7 +10,7 @@ Initial subset:
 - `'` follows the mora selected as the accent position;
 - every accent phrase must contain exactly one `'`;
 - `/` separates accent phrases without an explicit pause;
-- an optional final `。` or `？` is preserved as the utterance terminator.
+- an optional final `。`, `？`, or `！` is preserved as the utterance terminator.
 
 Examples:
 
@@ -28,7 +28,7 @@ from dataclasses import dataclass
 _SMALL_KANA = frozenset(
     "ぁぃぅぇぉゃゅょゎァィゥェォャュョヮ"
 )
-_TERMINATORS = frozenset({"。", "？"})
+_TERMINATORS = frozenset({"。", "？", "！"})
 
 
 class PronunciationSyntaxError(ValueError):

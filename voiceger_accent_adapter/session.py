@@ -5,7 +5,11 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Iterator
 
-from .mixed_language import build_mixed_audio_query
+from .mixed_language import (
+    build_mixed_audio_query,
+    detect_language_segments,
+    is_pure_japanese,
+)
 from .output import SavedOutput
 from .settings import Settings
 from .styles import VoicegerStyle, get_style
@@ -36,6 +40,12 @@ def _validate_query(query: AudioQuery) -> None:
         raise TypeError("query must be an AudioQuery instance")
 
 
+def _query_language_signature(query: AudioQuery) -> tuple[str, ...]:
+    if query.voicegerSegments is None:
+        return ("ja",)
+    return tuple(segment.language for segment in query.voicegerSegments)
+
+
 class UtteranceSession:
     """Own one source utterance, its editable query, settings, and take batch."""
 
@@ -61,6 +71,7 @@ class UtteranceSession:
         self._settings = settings
         self._style = style
         self._active_batch: TakeBatch | None = None
+        self._pronunciation_needs_rebuild = False
 
     @classmethod
     def from_text(
@@ -88,6 +99,10 @@ class UtteranceSession:
     @property
     def source_text(self) -> str:
         return self._source_text
+
+    @property
+    def pronunciation_needs_rebuild(self) -> bool:
+        return self._pronunciation_needs_rebuild
 
     @property
     def settings(self) -> Settings:
@@ -123,6 +138,56 @@ class UtteranceSession:
         self.discard_takes()
         self._query = replacement
 
+    def replace_source_text(self, source_text: str) -> None:
+        """Replace source text while retaining pronunciation for matching runs."""
+
+        if source_text == self._source_text:
+            return
+
+        _validate_source_text(source_text)
+        detected = detect_language_segments(source_text)
+        detected_signature = (
+            ("ja",)
+            if is_pure_japanese(detected)
+            else tuple(segment.language for segment in detected)
+        )
+        same_signature = detected_signature == _query_language_signature(
+            self._query
+        )
+
+        replacement_query = deepcopy(self._query)
+        if same_signature and replacement_query.voicegerSegments is not None:
+            for segment, detected_segment in zip(
+                replacement_query.voicegerSegments,
+                detected,
+            ):
+                segment.text = detected_segment.text
+
+        self.discard_takes()
+        self._source_text = source_text
+        if same_signature:
+            self._query = replacement_query
+            self._pronunciation_needs_rebuild = False
+        else:
+            self._pronunciation_needs_rebuild = True
+
+    def rebuild_pronunciation(self) -> None:
+        """Replace current pronunciation data with fresh automatic analysis."""
+
+        replacement_query = deepcopy(
+            build_mixed_audio_query(
+                self._source_text,
+                english_g2p=self._adapter.english_phonemes,
+                output_sampling_rate=32000,
+            )
+        )
+        _validate_query(replacement_query)
+        replacement_query.speedScale = self._settings.speed
+
+        self.discard_takes()
+        self._query = replacement_query
+        self._pronunciation_needs_rebuild = False
+
     def replace_settings(self, settings: Settings) -> None:
         """Resolve new settings before invalidating the current take batch."""
 
@@ -145,6 +210,10 @@ class UtteranceSession:
     ) -> Iterator[TakeCandidate]:
         """Start a take batch using a fixed snapshot of synthesis conditions."""
 
+        if self._pronunciation_needs_rebuild:
+            raise RuntimeError(
+                "pronunciation must be rebuilt after the source-text structure changed"
+            )
         if self._active_batch is not None:
             raise RuntimeError("a take batch is already active")
 

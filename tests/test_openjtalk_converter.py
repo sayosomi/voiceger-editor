@@ -74,6 +74,28 @@ class OpenJTalkConverterTests(unittest.TestCase):
             "アメ'？",
         )
 
+    def test_sentence_terminators_are_normalized_independently(self):
+        for symbol, expected in (
+            ("。", "。"),
+            (".", "。"),
+            ("？", "？"),
+            ("?", "？"),
+            ("！", "！"),
+            ("!", "！"),
+        ):
+            with self.subTest(symbol=symbol):
+                features = [
+                    node("アメ", acc=0, mora_size=2),
+                    node(symbol, acc=0, mora_size=0, string=symbol, pos="記号"),
+                ]
+                value = frontend_features_to_pronunciation(features)
+                self.assertEqual(value.terminator, expected)
+
+        without_terminator = frontend_features_to_pronunciation(
+            [node("アメ", acc=0, mora_size=2)]
+        )
+        self.assertIsNone(without_terminator.terminator)
+
     def test_digraph_counts_as_one_mora(self):
         features = [node("キャク", acc=1, mora_size=2)]
         self.assertEqual(

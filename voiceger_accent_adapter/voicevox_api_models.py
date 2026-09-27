@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, model_serializer
+from pydantic import BaseModel, Field, field_validator, model_serializer
 
 
 class Mora(BaseModel):
@@ -31,12 +31,25 @@ class VoicegerSegment(BaseModel):
     accentPhraseStart: Optional[int] = None
     accentPhraseCount: Optional[int] = None
     phonemes: Optional[List[str]] = None
+    pronunciationTerminator: Optional[str] = None
+
+    @field_validator("pronunciationTerminator")
+    @classmethod
+    def _validate_pronunciation_terminator(
+        cls,
+        value: Optional[str],
+    ) -> Optional[str]:
+        if value is not None and value not in {"", "。", "？", "！"}:
+            raise ValueError("unsupported pronunciation terminator")
+        return value
 
     @model_serializer(mode="wrap")
     def _serialize_optional_fields(self, handler):
         data = handler(self)
         if self.phonemes is None:
             data.pop("phonemes", None)
+        if self.pronunciationTerminator is None:
+            data.pop("pronunciationTerminator", None)
         return data
 
 
@@ -63,4 +76,3 @@ class AudioQuery(BaseModel):
         if self.voicegerSegments is None:
             data.pop("voicegerSegments", None)
         return data
-

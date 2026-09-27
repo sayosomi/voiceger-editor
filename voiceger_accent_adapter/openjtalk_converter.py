@@ -16,8 +16,9 @@ from .pronunciation import AccentPhrase, Pronunciation, format_pronunciation
 _SMALL_KANA = frozenset("ァィゥェォャュョヮぁぃぅぇぉゃゅょゎ")
 _SENTENCE_END = {
     "。": "。",
-    "！": "。",
-    "!": "。",
+    ".": "。",
+    "！": "！",
+    "!": "！",
     "？": "？",
     "?": "？",
 }
