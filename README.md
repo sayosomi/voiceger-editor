@@ -22,6 +22,17 @@ audio/wav
 
 The adapter uses OpenJTalk for automatic Japanese pronunciation and injects the resolved prosody into the locally installed Voiceger runtime.
 
+## v1 scope
+
+The supported language scope for v1 is:
+
+- Japanese
+- Japanese + English mixed text
+
+Japanese-English mixed synthesis has been validated locally. Japanese sections remain accent-editable through `accent_phrases`, while English sections are passed through Voiceger's native `Japanese-English Mixed` frontend.
+
+Other multilingual combinations are not part of the v1 compatibility guarantee, even if the underlying Voiceger/GPT-SoVITS runtime may support them.
+
 ## API
 
 ```http
@@ -34,7 +45,7 @@ POST /synthesis
 
 The older experimental `/pronunciation` and `/tts` endpoints are not kept.
 
-v1 supports one Japanese utterance per request; embedded newlines are rejected.
+v1 supports one utterance per request; embedded newlines are rejected.
 
 ## Start the API
 
@@ -93,9 +104,9 @@ curl -sS -X POST -G \
   > query.json
 ```
 
-The returned `AudioQuery` follows the VOICEVOX shape and does not contain adapter-only display-text fields.
+The returned `AudioQuery` follows the VOICEVOX shape for pure Japanese and does not contain adapter-only display-text fields.
 
-The readable `kana` field is included, but synthesis is driven by `accent_phrases`.
+The readable `kana` field is included for pure Japanese, but synthesis is driven by `accent_phrases`.
 
 ## Edit an accent
 
@@ -129,17 +140,23 @@ curl -sS -X POST \
 
 `/synthesis` returns `audio/wav`, like VOICEVOX ENGINE.
 
-The engine API does **not** permanently save the WAV. It creates a temporary WAV for the response and deletes it after transmission. The caller (for example nuiReel or a CLI) chooses the final output filename and destination.
+The engine API does **not** permanently save the WAV. It creates a temporary WAV for the response and deletes it after transmission. The caller chooses the final output filename and destination.
 
 This also means the `AudioQuery` returned by `/audio_query` can be sent directly to `/synthesis`, matching the VOICEVOX workflow.
 
-## Mixed-language text
+## Japanese-English mixed text
 
-Pure Japanese requests keep the normal VOICEVOX-shaped `AudioQuery` with no adapter-only extension.
+Japanese-English mixed text is supported in v1.
 
-When other languages are detected, `/audio_query` adds an optional `voicegerSegments` field. Japanese segments reference slices of the normal `accent_phrases` array; non-Japanese segments keep their original text and language.
+Example:
 
-Example concept:
+```text
+今日はOpenAIを使うよ。
+```
+
+For mixed text, `/audio_query` adds an optional `voicegerSegments` extension. Japanese segments reference slices of the normal `accent_phrases` array, while English segments preserve their original text.
+
+Example shape:
 
 ```json
 {
@@ -171,11 +188,13 @@ Example concept:
 During synthesis:
 
 - Japanese segments use the edited `accent_phrases` and the adapter's Voiceger G2P hook.
-- English segments are handled by Voiceger's native `Japanese-English Mixed` path.
-- Other detected languages fall back to Voiceger's `Multilingual Mixed` path.
-- The original segment order is preserved.
+- English segments are handled by Voiceger's native `Japanese-English Mixed` frontend.
+- Original segment order is preserved.
+- Automatic segmentation uses Voiceger's bundled LangSegment.
 
-Current automatic segmentation uses Voiceger's bundled LangSegment. Japanese/English is the primary validated design target. Han-only Chinese vs Japanese can be inherently ambiguous and should not be treated as guaranteed automatic classification yet.
+This Japanese-English path has been validated locally end to end.
+
+Other language combinations are currently out of scope for the documented v1 behavior.
 
 Inspect local segmentation with:
 
@@ -232,6 +251,13 @@ text
   -> natural audio
 ```
 
+Validated paths include:
+
+- pure Japanese automatic pronunciation;
+- manual Japanese accent edits;
+- selectable reference-audio styles;
+- Japanese-English mixed text.
+
 For representative Japanese phrases, adapter-generated G2P tokens matched Voiceger's built-in G2P tokens exactly, including accent-phrase boundaries.
 
 ## Upstream dependency
@@ -244,7 +270,7 @@ This repository is not a fork and does not contain Voiceger source, model weight
 
 ## Status
 
-Early implementation. The pronunciation path, runtime hook, VOICEVOX-style AudioQuery flow, local reference-audio style discovery, and mixed-language query extension are implemented and ready for local integration testing.
+Early implementation. The core Japanese pronunciation path, VOICEVOX-style AudioQuery flow, reference-audio style selection, and Japanese-English mixed synthesis are validated locally.
 
 ## License
 
