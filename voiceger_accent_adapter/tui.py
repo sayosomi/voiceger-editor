@@ -1756,7 +1756,8 @@ class TuiApp:
         else:
             plain("Changes stay in this draft until Apply.")
         if editor.kind == "text":
-            plain("Context: replace the utterance and rebuild its pronunciation.")
+            plain("Context: edit Text; compatible pronunciation is preserved.")
+            plain("Rebuild pronunciation is an explicit Navigation action.")
             draft = editor.input_value if editor.active_field == "draft" else editor.payload["draft"]
             wrap("Draft source: ", draft)
             if editor.active_field == "draft":
