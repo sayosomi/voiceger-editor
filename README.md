@@ -46,7 +46,7 @@ A local runtime spike confirmed that Voiceger can be controlled without modifyin
 
 Injecting only that prosody difference into the same sentence produced natural audio with an audible accent difference.
 
-Phrase boundaries remain an open adapter problem because OpenJTalk's `#` token is converted to `UNK` by Voiceger v2.
+At the Japanese G2P hook point, `/` is converted to OpenJTalk's `#` boundary token. Voiceger v2's existing `clean_text()` then converts `#` to `UNK`, reproducing the normal Voiceger frontend path. Dropping the boundary token entirely was tested and can destabilize synthesis.
 
 ## Planned API
 
