@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import os
+from tempfile import NamedTemporaryFile
 from typing import List
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from .openjtalk_converter import OpenJTalkConversionError
@@ -14,9 +16,11 @@ from .pronunciation import (
     format_pronunciation,
     parse_pronunciation,
 )
+from .styles import available_styles, get_style
 from .voiceger_adapter import (
     VoicegerAdapter,
     VoicegerAdapterError,
+    pronunciation_to_spoken_text,
     resolve_pronunciation,
 )
 from .voicevox_api_models import AccentPhrase, AudioQuery
@@ -38,12 +42,12 @@ def get_adapter() -> VoicegerAdapter:
     return VoicegerAdapter()
 
 
-def _validate_speaker(speaker: int) -> None:
-    if speaker != 1:
-        raise HTTPException(
-            status_code=422,
-            detail="speaker=1 is the only supported Voiceger style in v1",
-        )
+def _resolve_style(speaker: int):
+    adapter = get_adapter()
+    try:
+        return get_style(adapter.voiceger_root, speaker)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _query_terminator(query: AudioQuery) -> str:
@@ -53,8 +57,7 @@ def _query_terminator(query: AudioQuery) -> str:
         if query.kana.endswith("。"):
             return "。"
 
-    text = query.text.strip()
-    if text.endswith(("？", "?")):
+    if query.accent_phrases and query.accent_phrases[-1].is_interrogative:
         return "？"
     return "。"
 
@@ -115,19 +118,22 @@ def version():
 
 @app.get("/speakers")
 def speakers():
-    """Return the single locally configured Voiceger talk style."""
+    """Expose local Voiceger reference WAVs as VOICEVOX talk styles."""
 
     adapter = get_adapter()
+    styles = available_styles(adapter.voiceger_root)
+
     return [
         {
             "name": adapter.character_name,
             "speaker_uuid": "voiceger-accent-adapter-zundamon",
             "styles": [
                 {
-                    "name": adapter.style_name,
-                    "id": 1,
+                    "name": style.name,
+                    "id": style.id,
                     "type": "talk",
                 }
+                for style in styles
             ],
             "version": "1",
             "supported_features": {
@@ -144,12 +150,11 @@ def audio_query(
 ):
     """Create a VOICEVOX-style synthesis query from ordinary Japanese text."""
 
-    _validate_speaker(speaker)
+    _resolve_style(speaker)
 
     try:
         _, parsed, _ = resolve_pronunciation(text)
         return build_audio_query(
-            text=text.strip(),
             pronunciation=parsed,
             output_sampling_rate=32000,
         )
@@ -165,7 +170,7 @@ def accent_phrases(
 ):
     """Create accent phrases from normal text or editable AquesTalk-style kana."""
 
-    _validate_speaker(speaker)
+    _resolve_style(speaker)
 
     try:
         if is_kana:
@@ -200,11 +205,12 @@ def accent_phrases(
 )
 def synthesis(
     query: AudioQuery,
+    background_tasks: BackgroundTasks,
     speaker: int = Query(...),
 ):
     """Synthesize a WAV from a VOICEVOX-style AudioQuery."""
 
-    _validate_speaker(speaker)
+    style = _resolve_style(speaker)
     _validate_supported_query_controls(query)
 
     try:
@@ -213,12 +219,35 @@ def synthesis(
             terminator=_query_terminator(query),
         )
         resolved_pronunciation = format_pronunciation(pronunciation)
+        synthesis_text = pronunciation_to_spoken_text(pronunciation)
 
-        result = get_adapter().synthesize(
-            text=query.text,
+        result = get_adapter().synthesize_audio(
+            text=synthesis_text,
             pronunciation=resolved_pronunciation,
+            ref_wav_path=style.reference_path(get_adapter().voiceger_root),
+            prompt_text=style.prompt_text,
             speed=query.speedScale,
         )
+
+        try:
+            import soundfile as sf
+        except ImportError as exc:
+            raise VoicegerAdapterError(
+                "soundfile is required to write synthesized WAV files"
+            ) from exc
+
+        temp = NamedTemporaryFile(delete=False, suffix=".wav")
+        temp_path = temp.name
+        temp.close()
+
+        sf.write(
+            temp_path,
+            result["audio"],
+            result["sampling_rate"],
+            format="WAV",
+        )
+        background_tasks.add_task(os.unlink, temp_path)
+
     except (
         ValueError,
         PronunciationSyntaxError,
@@ -229,7 +258,7 @@ def synthesis(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return FileResponse(
-        result["file_path"],
+        temp_path,
         media_type="audio/wav",
-        filename=result["file_name"],
+        background=background_tasks,
     )
