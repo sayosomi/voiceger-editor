@@ -60,8 +60,27 @@ class VoicegerIntegrationTests(unittest.TestCase):
         )
 
     def test_japanese_english_mixed_synthesizes_without_runaway(self):
-        query = build_mixed_audio_query("今日はOpenAIを使うよ。")
+        query = build_mixed_audio_query(
+            "今日はhelloと言うよ。",
+            english_g2p=self.adapter.english_phonemes,
+        )
         self.assertIsNotNone(query.voicegerSegments)
+
+        english_segment = next(
+            segment
+            for segment in query.voicegerSegments
+            if segment.language == "en"
+        )
+        self.assertTrue(english_segment.phonemes)
+
+        for index, token in enumerate(english_segment.phonemes):
+            if token[-1:] in {"0", "1", "2"}:
+                english_segment.phonemes[index] = (
+                    token[:-1] + ("2" if token[-1] != "2" else "1")
+                )
+                break
+        else:
+            self.fail("English G2P returned no stress-bearing vowel")
 
         plan = build_mixed_synthesis_plan(query)
         self.assertEqual(plan.text_language, "Japanese-English Mixed")
@@ -70,6 +89,7 @@ class VoicegerIntegrationTests(unittest.TestCase):
             text=plan.text,
             japanese_overrides=list(plan.japanese_overrides),
             text_language=plan.text_language,
+            english_overrides=list(plan.english_overrides),
             ref_wav_path=self.style.reference_path(self.voiceger_root),
             prompt_text=self.style.prompt_text,
         )
