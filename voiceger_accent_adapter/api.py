@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 
 from .mixed_language import (
     build_mixed_audio_query,
-    voiceger_text_language,
+    build_mixed_synthesis_plan,
 )
 from .openjtalk_converter import OpenJTalkConversionError
 from .pronunciation import (
@@ -21,7 +21,6 @@ from .pronunciation import (
     parse_pronunciation,
 )
 from .styles import available_styles, get_style
-from .voiceger_tokens import pronunciation_to_voiceger_tokens
 from .voiceger_adapter import (
     VoicegerAdapter,
     VoicegerAdapterError,
@@ -219,62 +218,11 @@ def synthesis(
 
     try:
         if query.voicegerSegments:
-            synthesis_text = "".join(
-                segment.text for segment in query.voicegerSegments
-            )
-            japanese_overrides = []
-
-            for segment in query.voicegerSegments:
-                if segment.language != "ja":
-                    continue
-
-                if (
-                    segment.accentPhraseStart is None
-                    or segment.accentPhraseCount is None
-                ):
-                    raise ValueError(
-                        "Japanese voicegerSegments require accent phrase references"
-                    )
-
-                start = segment.accentPhraseStart
-                end = start + segment.accentPhraseCount
-                if start < 0 or end > len(query.accent_phrases):
-                    raise ValueError(
-                        "voicegerSegments accent phrase range is out of bounds"
-                    )
-
-                segment_phrases = query.accent_phrases[start:end]
-                if not segment_phrases:
-                    raise ValueError(
-                        "Japanese voicegerSegments must reference accent phrases"
-                    )
-
-                if segment.text.endswith(("？", "?")):
-                    terminator = "？"
-                elif segment.text.endswith(("。", "！", "!")):
-                    terminator = "。"
-                else:
-                    terminator = None
-
-                segment_pronunciation = accent_phrases_to_pronunciation(
-                    segment_phrases,
-                    terminator=terminator,
-                )
-                japanese_overrides.append(
-                    (
-                        segment.text,
-                        pronunciation_to_voiceger_tokens(
-                            segment_pronunciation
-                        ),
-                    )
-                )
-
+            plan = build_mixed_synthesis_plan(query)
             result = get_adapter().synthesize_mixed_audio(
-                text=synthesis_text,
-                japanese_overrides=japanese_overrides,
-                text_language=voiceger_text_language(
-                    query.voicegerSegments
-                ),
+                text=plan.text,
+                japanese_overrides=list(plan.japanese_overrides),
+                text_language=plan.text_language,
                 ref_wav_path=style.reference_path(
                     get_adapter().voiceger_root
                 ),
