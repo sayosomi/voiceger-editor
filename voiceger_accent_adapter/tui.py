@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import curses
+from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import replace
 import os
 from pathlib import Path
@@ -37,6 +38,26 @@ _VOWELS = frozenset(
 )
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
 _ESCAPE = "\x1b"
+_HELP_ITEMS = (
+    "Tab: next area",
+    "Enter: edit / activate / accept according to focus",
+    "Up/Down: pronunciation or take navigation according to focus",
+    "Left/Right: English primary stress movement",
+    "Shift+Tab: select another English primary-stress marker",
+    "F5 / Ctrl+G: generate",
+    "Space: replay take",
+    "1-8: select take",
+    "r: regenerate current take",
+    "R (Shift+R): regenerate all takes",
+    "t: edit text",
+    "s: style",
+    "v: speed",
+    "n: take count",
+    "o: output directory",
+    "x: toggle text sidecar",
+    "?: help",
+    "q: quit",
+)
 
 
 def format_english_phonemes(
@@ -177,12 +198,19 @@ class TuiApp:
         self._selected_primary: dict[int, int] = {}
         self._status = "Enter text, edit pronunciation, then press F5 to generate."
         self._player: subprocess.Popen[Any] | None = None
+        self._help_open = False
+        self._editor_prompt: str | None = None
+        self._editor_type: str | None = None
+        self._editor_value = ""
+        self._editor_cursor = 0
+        self._color_attr = 0
 
     def run(self, screen: Any) -> None:
         self._screen = screen
         try:
             screen.keypad(True)
             screen.timeout(100)
+            self._initialize_colors()
             try:
                 curses.curs_set(0)
             except curses.error:
@@ -207,7 +235,7 @@ class TuiApp:
                     )
                     self._status = "Query ready. Edit pronunciation, then press F5 to generate."
                 except Exception as exc:
-                    self._status = f"Unable to prepare utterance: {exc}"
+                    self._status = f"Error: Unable to prepare utterance: {exc}"
                     self._render()
                     source_text = self._read_line("Source text", source_text)
                     if source_text is None:
@@ -251,11 +279,45 @@ class TuiApp:
             return _ESCAPE
         return key
 
+    def _initialize_colors(self) -> None:
+        """Set up optional theme-default colors; attributes remain the main cue."""
+
+        self._color_attr = 0
+        try:
+            if not curses.has_colors():
+                return
+            curses.start_color()
+            curses.use_default_colors()
+            curses.init_pair(1, curses.COLOR_CYAN, -1)
+            self._color_attr = curses.color_pair(1)
+        except (AttributeError, curses.error):
+            self._color_attr = 0
+
+    @staticmethod
+    def _attribute(name: str) -> int:
+        return int(getattr(curses, name, 0))
+
+    def _focus_attribute(self) -> int:
+        return (
+            self._attribute("A_REVERSE")
+            | self._attribute("A_BOLD")
+            | self._color_attr
+        )
+
     def _handle_key(self, key: Any) -> None:
         if key in ("q", "Q", "\x03"):
             self._exit_requested = True
             if self._busy:
                 self._status = "Finishing the current sequential synthesis before cleanup…"
+            return
+
+        if self._help_open:
+            if key == "?" or key == _ESCAPE or key in _ENTER_KEYS:
+                self._help_open = False
+            return
+
+        if key == "?":
+            self._help_open = True
             return
 
         if key == _ESCAPE:
@@ -305,10 +367,17 @@ class TuiApp:
                 self._status = "Wait for synthesis to finish before editing source text."
             else:
                 self._edit_source_text()
+        elif self._focus == "generate" and key in _ENTER_KEYS:
+            if self._busy:
+                self._status = "A sequential take operation is already running."
+            elif self.session is not None and self.session.has_active_batch:
+                self._start_regenerate_all()
+            else:
+                self._start_generation()
 
     def _cycle_focus(self) -> None:
         candidates = self.session.candidates if self.session is not None else ()
-        order = ["source", "pronunciation"]
+        order = ["source", "pronunciation", "generate"]
         if candidates:
             order.append("takes")
         try:
@@ -404,10 +473,10 @@ class TuiApp:
             try:
                 current = japanese_pronunciation(query, segment_index=segment_index)
             except Exception as exc:
-                self._status = f"Cannot render Japanese pronunciation: {exc}"
+                self._status = f"Error: Cannot render Japanese pronunciation: {exc}"
                 return
             replacement = self._read_line(
-                f"JA {segment_text} pronunciation (' accent, / phrase)", current
+                f"JA {segment_text} pronunciation", current, editor_type="japanese"
             )
             if replacement is None:
                 self._status = "Pronunciation edit canceled."
@@ -422,18 +491,19 @@ class TuiApp:
                 self.session.replace_query(updated)
                 self._status = "Japanese pronunciation updated; old takes cleared."
             except Exception as exc:
-                self._status = f"Pronunciation was not changed: {exc}"
+                self._status = f"Error: Pronunciation was not changed: {exc}"
             return
 
         if language == "en" and model_index is not None:
             try:
                 state = english_editor_state(query, segment_index=model_index)
             except Exception as exc:
-                self._status = f"Cannot edit English phonemes: {exc}"
+                self._status = f"Error: Cannot edit English phonemes: {exc}"
                 return
             replacement = self._read_line(
                 f"EN {segment_text} phonemes (stress digits hidden)",
                 " ".join(state.base_phonemes),
+                editor_type="english",
             )
             if replacement is None:
                 self._status = "English phoneme edit canceled."
@@ -450,10 +520,10 @@ class TuiApp:
                 self._refresh_selected_primary(model_index, new_state)
                 self._status = "English phonemes updated; stress was retained by vowel position."
             except Exception as exc:
-                self._status = f"English phonemes were not changed: {exc}"
+                self._status = f"Error: English phonemes were not changed: {exc}"
             return
 
-        self._status = f"Pronunciation editing is not available for {language!r} segments."
+        self._status = f"Error: Pronunciation editing is not available for {language!r} segments."
 
     def _move_selected_stress(self, delta: int) -> None:
         if self.session is None:
@@ -468,7 +538,7 @@ class TuiApp:
         try:
             state = english_editor_state(query, segment_index=model_index)
         except Exception as exc:
-            self._status = f"Cannot move English stress: {exc}"
+            self._status = f"Error: Cannot move English stress: {exc}"
             return
         primary = state.primary_stress_vowel_positions
         if not primary:
@@ -496,7 +566,7 @@ class TuiApp:
             self._selected_primary[model_index] = target
             self._status = "Primary stress moved; other stress markers were preserved."
         except Exception as exc:
-            self._status = f"Primary stress was not changed: {exc}"
+            self._status = f"Error: Primary stress was not changed: {exc}"
 
     def _cycle_selected_primary(self) -> None:
         if self.session is None:
@@ -513,7 +583,7 @@ class TuiApp:
                 segment_index=model_index,
             )
         except Exception as exc:
-            self._status = f"Cannot select English stress marker: {exc}"
+            self._status = f"Error: Cannot select English stress marker: {exc}"
             return
         positions = state.primary_stress_vowel_positions
         if not positions:
@@ -552,7 +622,7 @@ class TuiApp:
                 settings=self.settings,
             )
         except Exception as exc:
-            self._status = f"Source text was not changed: {exc}"
+            self._status = f"Error: Source text was not changed: {exc}"
             return
         self._stop_playback()
         self.session.close()
@@ -573,7 +643,7 @@ class TuiApp:
             try:
                 self._change_settings(style_id=int(raw))
             except ValueError as exc:
-                self._status = f"Style was not changed: {exc}"
+                self._status = f"Error: Style was not changed: {exc}"
             return
         if name == "speed":
             raw = self._read_line("Speed (positive number)", str(self.settings.speed))
@@ -582,7 +652,7 @@ class TuiApp:
             try:
                 self._change_settings(speed=float(raw))
             except (ValueError, SettingsError) as exc:
-                self._status = f"Speed was not changed: {exc}"
+                self._status = f"Error: Speed was not changed: {exc}"
             return
         if name == "take_count":
             raw = self._read_line("Take count (1–8)", str(self.settings.take_count))
@@ -591,7 +661,7 @@ class TuiApp:
             try:
                 self._change_settings(take_count=int(raw))
             except (ValueError, SettingsError) as exc:
-                self._status = f"Take count was not changed: {exc}"
+                self._status = f"Error: Take count was not changed: {exc}"
             return
         if name == "output_dir":
             raw = self._read_line("Output directory", str(self.settings.output_dir))
@@ -600,7 +670,7 @@ class TuiApp:
             try:
                 self._change_settings(output_dir=Path(raw).expanduser())
             except (ValueError, SettingsError) as exc:
-                self._status = f"Output directory was not changed: {exc}"
+                self._status = f"Error: Output directory was not changed: {exc}"
 
     def _change_settings(self, **changes: Any) -> None:
         try:
@@ -609,13 +679,13 @@ class TuiApp:
                 self._stop_playback()
                 self.session.replace_settings(updated)
         except (SettingsError, ValueError) as exc:
-            self._status = f"Settings were not changed: {exc}"
+            self._status = f"Error: Settings were not changed: {exc}"
             return
         self.settings = updated
         try:
             persisted = replace(self._persisted_settings, **changes)
         except SettingsError as exc:
-            self._status = f"Settings changed for this run but were not saved: {exc}"
+            self._status = f"Error: Settings changed for this run but were not saved: {exc}"
             return
         self._persisted_settings = persisted
         self._current_take = None
@@ -623,7 +693,7 @@ class TuiApp:
         try:
             save_settings(persisted, self.config_path)
         except OSError as exc:
-            self._status = f"Settings changed for this run but could not be saved: {exc}"
+            self._status = f"Error: Settings changed for this run but could not be saved: {exc}"
         else:
             self._status = "Settings saved. Existing temporary takes were cleared."
 
@@ -639,7 +709,7 @@ class TuiApp:
         try:
             iterator = self.session.generate_takes()
         except Exception as exc:
-            self._status = f"Could not start take generation: {exc}"
+            self._status = f"Error: Could not start take generation: {exc}"
             return
         self._focus = "takes"
         self._current_take = None
@@ -667,7 +737,7 @@ class TuiApp:
         try:
             iterator = self.session.regenerate_all_takes()
         except Exception as exc:
-            self._status = f"Could not regenerate all takes: {exc}"
+            self._status = f"Error: Could not regenerate all takes: {exc}"
             return
         self._run_in_worker(
             lambda: iterator,
@@ -691,8 +761,10 @@ class TuiApp:
 
         def work() -> None:
             try:
-                for candidate in make_values():
-                    self._events.put(("candidate", candidate))
+                with open(os.devnull, "w", encoding="utf-8") as sink:
+                    with redirect_stdout(sink), redirect_stderr(sink):
+                        for candidate in make_values():
+                            self._events.put(("candidate", candidate))
             except BaseException as exc:
                 self._events.put(("error", exc))
             finally:
@@ -723,7 +795,7 @@ class TuiApp:
                         self._play_take(value.number)
             elif kind == "error":
                 self._worker_error = value
-                self._status = f"Generation failed: {value}"
+                self._status = f"Error: Generation failed: {value}"
                 if self._worker_operation == "initial":
                     self._stop_playback()
                     if self.session is not None:
@@ -734,7 +806,7 @@ class TuiApp:
                 operation = self._worker_operation
                 self._busy = False
                 if self._worker_error is not None:
-                    self._status = f"Generation failed: {self._worker_error}"
+                    self._status = f"Error: Generation failed: {self._worker_error}"
                 elif operation == "initial" and self.session is not None and self.session.candidates:
                     if self._current_take is None:
                         self._current_take = self.session.candidates[0].number
@@ -780,7 +852,7 @@ class TuiApp:
                     else None
                 )
             if command is None:
-                self._status = "Playback needs afplay (macOS) or ffplay (other systems)."
+                self._status = "Error: Playback needs afplay (macOS) or ffplay (other systems)."
                 return
             self._player = subprocess.Popen(
                 command,
@@ -791,7 +863,7 @@ class TuiApp:
             self._current_take = number
             self._status = f"Playing take {number}."
         except OSError as exc:
-            self._status = f"Could not play take {number}: {exc}"
+            self._status = f"Error: Could not play take {number}: {exc}"
 
     def _stop_playback(self) -> None:
         process = self._player
@@ -813,81 +885,113 @@ class TuiApp:
         try:
             saved = self.session.accept_take(number)
         except Exception as exc:
-            self._status = f"Could not save take {number}: {exc}"
+            self._status = f"Error: Could not save take {number}: {exc}"
             return
         self._current_take = None
         self._focus = "pronunciation"
         sidecar = f" and {saved.text_path.name}" if saved.text_path else ""
         self._status = f"Saved {saved.wav_path.name}{sidecar}."
 
-    def _read_line(self, prompt: str, initial: str = "") -> str | None:
+    def _read_line(
+        self,
+        prompt: str,
+        initial: str = "",
+        *,
+        editor_type: str = "text",
+    ) -> str | None:
         if self._screen is None:
             return None
         buffer = list(initial)
         cursor = len(buffer)
+        self._editor_prompt = prompt
+        self._editor_type = editor_type
         try:
             curses.curs_set(1)
         except curses.error:
             pass
-        while True:
-            self._render()
-            height, width = self._screen.getmaxyx()
-            prompt_row = max(0, height - 3)
-            input_row = max(0, height - 2)
-            self._safe_add(prompt_row, 0, prompt, width)
-            self._safe_add(input_row, 0, " " * max(1, width - 1), width)
-            visible, cursor_cells = _visible_input(
-                "".join(buffer), cursor, max(1, width - 2)
-            )
-            self._safe_add(input_row, 0, visible, width)
-            prompt_x = min(width - 1, cursor_cells)
+        try:
+            while True:
+                self._editor_value = "".join(buffer)
+                self._editor_cursor = cursor
+                self._render()
+                try:
+                    key = self._screen.get_wch()
+                except curses.error:
+                    continue
+                if key in _ENTER_KEYS:
+                    self._status = ""
+                    return "".join(buffer)
+                if key == _ESCAPE or key == "\x03":
+                    return None
+                if editor_type == "japanese" and key in {"a", "p"}:
+                    marker = "'" if key == "a" else "/"
+                    if cursor > 0 and buffer[cursor - 1] == marker:
+                        del buffer[cursor - 1]
+                        cursor -= 1
+                    else:
+                        buffer.insert(cursor, marker)
+                        cursor += 1
+                elif key == curses.KEY_LEFT:
+                    cursor = max(0, cursor - 1)
+                elif key == curses.KEY_RIGHT:
+                    cursor = min(len(buffer), cursor + 1)
+                elif key == curses.KEY_HOME or key == "\x01":
+                    cursor = 0
+                elif key == curses.KEY_END or key == "\x05":
+                    cursor = len(buffer)
+                elif key in (curses.KEY_BACKSPACE, "\x7f", "\x08"):
+                    if cursor:
+                        cursor -= 1
+                        del buffer[cursor]
+                elif key == curses.KEY_DC:
+                    if cursor < len(buffer):
+                        del buffer[cursor]
+                elif isinstance(key, str) and len(key) == 1 and key.isprintable():
+                    buffer.insert(cursor, key)
+                    cursor += 1
+        finally:
+            self._editor_prompt = None
+            self._editor_type = None
+            self._editor_value = ""
+            self._editor_cursor = 0
             try:
-                self._screen.move(input_row, prompt_x)
+                curses.curs_set(0)
             except curses.error:
                 pass
-            self._screen.refresh()
-            try:
-                key = self._screen.get_wch()
-            except curses.error:
-                continue
-            if key in _ENTER_KEYS:
-                result = "".join(buffer)
-                self._status = ""
-                try:
-                    curses.curs_set(0)
-                except curses.error:
-                    pass
-                return result
-            if key == _ESCAPE:
-                try:
-                    curses.curs_set(0)
-                except curses.error:
-                    pass
-                return None
-            if key == "\x03":
-                try:
-                    curses.curs_set(0)
-                except curses.error:
-                    pass
-                return None
-            if key == curses.KEY_LEFT:
-                cursor = max(0, cursor - 1)
-            elif key == curses.KEY_RIGHT:
-                cursor = min(len(buffer), cursor + 1)
-            elif key == curses.KEY_HOME or key == "\x01":
-                cursor = 0
-            elif key == curses.KEY_END or key == "\x05":
-                cursor = len(buffer)
-            elif key in (curses.KEY_BACKSPACE, "\x7f", "\x08"):
-                if cursor:
-                    cursor -= 1
-                    del buffer[cursor]
-            elif key == curses.KEY_DC:
-                if cursor < len(buffer):
-                    del buffer[cursor]
-            elif isinstance(key, str) and len(key) == 1 and key.isprintable():
-                buffer.insert(cursor, key)
-                cursor += 1
+
+    def _render_help(self, width: int) -> None:
+        self._safe_add(
+            0,
+            0,
+            "Voiceger Accent Adapter — Help",
+            width,
+            self._attribute("A_BOLD"),
+        )
+        self._safe_add(1, 0, "Keyboard shortcuts", width, self._attribute("A_UNDERLINE"))
+        if width >= 118:
+            half = width // 2
+            for index, item in enumerate(_HELP_ITEMS):
+                row = 2 + index // 2
+                column = 1 if index % 2 == 0 else half
+                self._safe_add(row, column, item, half if index % 2 == 0 else width)
+        else:
+            for index, item in enumerate(_HELP_ITEMS):
+                self._safe_add(2 + index, 1, item, width)
+
+    def _context_hints(self) -> str:
+        if self._editor_prompt is not None:
+            if self._editor_type == "japanese":
+                return "←/→ cursor | Home/End | Backspace/Delete"
+            return "←/→ cursor | Home/End | Backspace/Delete | Enter Save | Esc Cancel"
+        if self._help_open:
+            return "? / Esc / Enter close help"
+        if self._focus == "source":
+            return "Text: Enter edit | t shortcut | Tab next area"
+        if self._focus == "pronunciation":
+            return "Pronunciation: Enter edit | ↑/↓ segment | Shift+Tab EN marker | ←/→ EN stress"
+        if self._focus == "generate":
+            return "Generate: Enter action | F5/Ctrl+G | Tab next area"
+        return "Takes: ↑/↓ select/play | Space replay | Enter accept | 1–8 | r/R regenerate"
 
     def _render(self) -> None:
         if self._screen is None:
@@ -895,114 +999,219 @@ class TuiApp:
         screen = self._screen
         height, width = screen.getmaxyx()
         screen.erase()
-        self._safe_add(0, 0, "Voiceger Accent Adapter", width)
-        settings = self.settings
-        style_name = next(
-            (
-                style.name
-                for style in available_styles(self.adapter.voiceger_root)
-                if style.id == settings.style_id
-            ),
-            "unavailable",
-        )
-        self._safe_add(
-            1,
-            0,
-            f"Style {settings.style_id} ({style_name})  Speed {settings.speed:.2f}  "
-            f"Takes {settings.take_count}",
-            width,
-        )
-        self._safe_add(
-            2,
-            0,
-            f"Output {settings.output_dir}  Text sidecar {'on' if settings.save_text else 'off'}",
-            width,
-        )
 
-        if self.session is not None:
-            self._safe_add(4, 0, f"Text  [{'*' if self._focus == 'source' else ' '}]", width)
-            self._safe_add(5, 2, self.session.source_text, width)
-            self._safe_add(7, 0, f"Pronunciation  [{'*' if self._focus == 'pronunciation' else ' '}]", width)
-            segments = self._segments()
-            for index, (language, text, model_index) in enumerate(segments):
-                row = 8 + index
-                marker = "▶" if index == self._segment_index else " "
-                if language == "ja":
-                    try:
-                        query = self.session.query
-                        pronunciation = japanese_pronunciation(
-                            query,
-                            segment_index=(
-                                model_index if query.voicegerSegments is not None else None
-                            ),
-                        )
-                        description = f"{marker} JA {text}: {pronunciation}"
-                    except Exception as exc:
-                        description = f"{marker} JA {text}: <{exc}>"
-                elif language == "en" and model_index is not None:
-                    try:
-                        query = self.session.query
-                        segment = query.voicegerSegments[model_index]
-                        state = english_editor_state(query, segment_index=model_index)
-                        primary = state.primary_stress_vowel_positions
-                        selected = self._selected_primary.get(
-                            model_index,
-                            primary[0] if primary else None,
-                        )
-                        if selected is not None and selected not in primary:
-                            selected = primary[0] if primary else None
-                        description = (
-                            f"{marker} EN {text}: "
-                            f"{format_english_phonemes(segment.phonemes or (), selected_primary=selected)}"
-                        )
-                    except Exception as exc:
-                        description = f"{marker} EN {text}: <{exc}>"
-                else:
-                    description = f"{marker} {language.upper()} {text}"
-                self._safe_add(row, 2, description, width)
+        if self._help_open:
+            self._render_help(width)
+        else:
+            self._safe_add(0, 0, "Voiceger Accent Adapter", width, self._attribute("A_BOLD"))
+            settings = self.settings
+            style_name = next(
+                (
+                    style.name
+                    for style in available_styles(self.adapter.voiceger_root)
+                    if style.id == settings.style_id
+                ),
+                "unavailable",
+            )
+            settings_prefix = (
+                f"Style {settings.style_id} {style_name} | Speed {settings.speed:.2f} | "
+                f"Takes {settings.take_count}"
+            )
+            text_state = "TXT ON" if settings.save_text else "TXT OFF"
+            prefix_limit = max(0, width - len(text_state) - 4)
+            settings_line = (
+                f"{settings_prefix[:prefix_limit]} | {text_state}"
+                if prefix_limit
+                else text_state
+            )
+            self._safe_add(1, 0, settings_line, width)
+            self._safe_add(2, 0, f"Output: {settings.output_dir}", width)
 
-            candidate_row = min(height - 8, max(10, 8 + len(segments)))
-            self._safe_add(candidate_row, 0, f"Candidates  [{'*' if self._focus == 'takes' else ' '}]", width)
-            candidates = self.session.candidates
-            for offset, candidate in enumerate(candidates):
-                row = candidate_row + 1 + offset
-                duration = _duration_seconds(candidate.audio, candidate.sampling_rate)
-                selected = "▶" if candidate.number == self._current_take else " "
-                self._safe_add(row, 2, f"{selected} {candidate.number}  {duration:.2f}s", width)
-                if row >= height - 5:
-                    break
+            editor_active = self._editor_prompt is not None
+            content_bottom = height - (9 if editor_active else 4)
+            if self.session is not None:
+                source_focused = self._focus == "source"
+                source_attr = self._focus_attribute() if source_focused else 0
+                self._safe_add(
+                    4,
+                    0,
+                    f"{'▶' if source_focused else ' '} Text",
+                    width,
+                    source_attr,
+                )
+                edit_hint = "[Enter: Edit]"
+                edit_column = max(2, width - len(edit_hint) - 2)
+                self._safe_add(5, 2, self.session.source_text, edit_column)
+                self._safe_add(5, edit_column, edit_hint, width, source_attr)
+
+                pronunciation_focused = self._focus == "pronunciation"
+                self._safe_add(
+                    7,
+                    0,
+                    f"{'▶' if pronunciation_focused else ' '} Pronunciation",
+                    width,
+                    self._focus_attribute() if pronunciation_focused else 0,
+                )
+                segments = self._segments()
+                for index, (language, text, model_index) in enumerate(segments):
+                    row = 8 + index
+                    selected_segment = index == self._segment_index
+                    marker = "▶" if selected_segment else " "
+                    if language == "ja":
+                        try:
+                            query = self.session.query
+                            pronunciation = japanese_pronunciation(
+                                query,
+                                segment_index=(
+                                    model_index if query.voicegerSegments is not None else None
+                                ),
+                            )
+                            description = f"{marker} JA {text}: {pronunciation}"
+                        except Exception as exc:
+                            description = f"{marker} JA {text}: <{exc}>"
+                    elif language == "en" and model_index is not None:
+                        try:
+                            query = self.session.query
+                            segment = query.voicegerSegments[model_index]
+                            state = english_editor_state(query, segment_index=model_index)
+                            primary = state.primary_stress_vowel_positions
+                            selected_primary = self._selected_primary.get(
+                                model_index,
+                                primary[0] if primary else None,
+                            )
+                            if selected_primary is not None and selected_primary not in primary:
+                                selected_primary = primary[0] if primary else None
+                            description = (
+                                f"{marker} EN {text}: "
+                                f"{format_english_phonemes(segment.phonemes or (), selected_primary=selected_primary)}"
+                            )
+                        except Exception as exc:
+                            description = f"{marker} EN {text}: <{exc}>"
+                    else:
+                        description = f"{marker} {language.upper()} {text}"
+                    selected_attr = (
+                        self._attribute("A_REVERSE") | self._attribute("A_BOLD")
+                        if selected_segment and pronunciation_focused
+                        else self._attribute("A_UNDERLINE") if selected_segment else 0
+                    )
+                    self._safe_add(row, 2, description, width, selected_attr)
+
+                generate_row = 8 + len(segments)
+                has_batch = self.session.has_active_batch
+                action = (
+                    f"[ Regenerate all {settings.take_count} takes ]"
+                    if has_batch
+                    else f"[ Generate {settings.take_count} takes ]"
+                )
+                generate_focused = self._focus == "generate"
+                self._safe_add(
+                    generate_row,
+                    0,
+                    f"{'▶ ' if generate_focused else '  '}{action}",
+                    width,
+                    self._focus_attribute() if generate_focused else 0,
+                )
+
+                candidate_row = generate_row + 2
+                takes_focused = self._focus == "takes"
+                self._safe_add(
+                    candidate_row,
+                    0,
+                    f"{'▶' if takes_focused else ' '} Candidates",
+                    width,
+                    self._focus_attribute() if takes_focused else 0,
+                )
+                for offset, candidate in enumerate(self.session.candidates):
+                    row = candidate_row + 1 + offset
+                    duration = _duration_seconds(candidate.audio, candidate.sampling_rate)
+                    selected_take = candidate.number == self._current_take
+                    description = (
+                        f"{'▶' if selected_take else ' '} {candidate.number}  {duration:.2f}s"
+                    )
+                    selected_attr = (
+                        self._focus_attribute()
+                        if selected_take and takes_focused
+                        else self._attribute("A_BOLD") if selected_take else 0
+                    )
+                    self._safe_add(row, 2, description, width, selected_attr)
+                    if row >= content_bottom:
+                        break
+
+        status_row = height - 3
         status = self._status
-        if self._busy:
+        if self._busy and not self._help_open:
             status = "Synthesis is sequential; completed takes are available above."
-        self._safe_add(height - 4, 0, status, width)
+        if status and not status.startswith(("Status:", "Error:")):
+            status = f"Status: {status}"
+        status_attr = self._attribute("A_BOLD")
+        if status.startswith("Error:"):
+            status_attr |= self._attribute("A_REVERSE")
+        self._safe_add(status_row, 0, status, width, status_attr)
+        self._safe_add(status_row + 1, 0, self._context_hints(), width)
         self._safe_add(
-            height - 3,
+            status_row + 2,
             0,
-            "F5/Ctrl+G generate | ↑/↓ play | Space replay | Enter accept | 1–8 jump",
+            "? Help   q Quit",
             width,
+            self._attribute("A_BOLD"),
         )
-        self._safe_add(
-            height - 2,
-            0,
-            "r current | Shift+R all | Enter edit | Shift+Tab EN marker | ←/→ move",
-            width,
-        )
-        self._safe_add(
-            height - 1,
-            0,
-            "Esc pronunciation | t text | s style | v speed | n takes | o dir | x .txt | Tab focus | q quit",
-            width,
-        )
+
+        if self._editor_prompt is not None:
+            label_row = height - 7
+            input_row = height - 4
+            self._safe_add(
+                label_row,
+                0,
+                f"Editor: {self._editor_prompt}",
+                width,
+                self._attribute("A_BOLD"),
+            )
+            if self._editor_type == "japanese":
+                self._safe_add(label_row + 1, 0, "a Accent (') | p Phrase (/)", width)
+                self._safe_add(
+                    label_row + 2,
+                    0,
+                    "' / direct input | Enter Save | Esc Cancel",
+                    width,
+                )
+            else:
+                self._safe_add(
+                    label_row + 1,
+                    0,
+                    "←/→ Move | Home/End | Backspace/Delete",
+                    width,
+                )
+                self._safe_add(label_row + 2, 0, "Enter Save | Esc Cancel", width)
+            visible, cursor_cells = _visible_input(
+                self._editor_value,
+                self._editor_cursor,
+                max(1, width - 4),
+            )
+            self._safe_add(input_row, 0, f"> {visible}", width, self._focus_attribute())
+            try:
+                screen.move(input_row, min(width - 1, 2 + cursor_cells))
+            except curses.error:
+                pass
         screen.refresh()
 
-    def _safe_add(self, row: int, column: int, value: str, width: int) -> None:
+    def _safe_add(
+        self,
+        row: int,
+        column: int,
+        value: str,
+        width: int,
+        attr: int = 0,
+    ) -> None:
         if self._screen is None or row < 0 or column < 0 or width <= column:
             return
         try:
-            self._screen.addnstr(row, column, value, max(0, width - column - 1))
+            arguments = (row, column, value, max(0, width - column - 1))
+            if attr:
+                self._screen.addnstr(*arguments, attr)
+            else:
+                self._screen.addnstr(*arguments)
         except curses.error:
             pass
-
 
 def _duration_seconds(audio: Any, sampling_rate: int) -> float:
     try:
