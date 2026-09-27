@@ -13,15 +13,23 @@ from .pronunciation import (
     format_pronunciation,
     parse_pronunciation,
 )
+from .voiceger_tokens import (
+    VoicegerTokenConversionError,
+    accent_phrase_to_voiceger_tokens,
+    pronunciation_to_voiceger_tokens,
+)
 
 __all__ = [
     "AccentPhrase",
     "OpenJTalkConversionError",
     "Pronunciation",
     "PronunciationSyntaxError",
+    "VoicegerTokenConversionError",
+    "accent_phrase_to_voiceger_tokens",
     "format_pronunciation",
     "frontend_features_to_pronunciation",
     "parse_pronunciation",
+    "pronunciation_to_voiceger_tokens",
     "text_to_pronunciation",
     "text_to_pronunciation_string",
 ]
