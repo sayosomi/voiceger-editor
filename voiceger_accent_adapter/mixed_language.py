@@ -29,6 +29,7 @@ class MixedSynthesisPlan:
     text: str
     text_language: str
     japanese_overrides: tuple[tuple[str, list[str]], ...]
+    english_overrides: tuple[tuple[str, list[str]], ...]
 
 
 def _voiceger_segments(text: str) -> Sequence[dict[str, Any]]:
@@ -95,6 +96,7 @@ def build_mixed_audio_query(
     text: str,
     *,
     segments: Optional[Sequence[DetectedSegment]] = None,
+    english_g2p: Optional[Callable[[str], Sequence[str]]] = None,
     output_sampling_rate: int = 32000,
 ) -> AudioQuery:
     """Build AudioQuery plus voicegerSegments for mixed-language input."""
@@ -122,6 +124,19 @@ def build_mixed_audio_query(
                     text=segment.text,
                     accentPhraseStart=start,
                     accentPhraseCount=len(phrases),
+                )
+            )
+        elif segment.language == "en":
+            phonemes = (
+                list(english_g2p(segment.text))
+                if english_g2p is not None
+                else None
+            )
+            extension_segments.append(
+                VoicegerSegment(
+                    language="en",
+                    text=segment.text,
+                    phonemes=phonemes,
                 )
             )
         else:
@@ -170,8 +185,21 @@ def build_mixed_synthesis_plan(query: AudioQuery) -> MixedSynthesisPlan:
         segment.text for segment in query.voicegerSegments
     )
     japanese_overrides: list[tuple[str, list[str]]] = []
+    english_overrides: list[tuple[str, list[str]]] = []
 
     for segment in query.voicegerSegments:
+        if segment.language == "en":
+            if segment.phonemes is not None:
+                english_overrides.append(
+                    (segment.text, list(segment.phonemes))
+                )
+            continue
+
+        if segment.phonemes is not None:
+            raise ValueError(
+                "voicegerSegments.phonemes is supported only for English"
+            )
+
         if segment.language != "ja":
             continue
 
@@ -218,4 +246,5 @@ def build_mixed_synthesis_plan(query: AudioQuery) -> MixedSynthesisPlan:
         text=synthesis_text,
         text_language=voiceger_text_language(query.voicegerSegments),
         japanese_overrides=tuple(japanese_overrides),
+        english_overrides=tuple(english_overrides),
     )
