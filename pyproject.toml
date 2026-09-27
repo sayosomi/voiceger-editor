@@ -9,5 +9,8 @@ description = "Japanese pronunciation and pitch-accent adapter for Voiceger"
 requires-python = ">=3.9"
 dependencies = []
 
+[project.optional-dependencies]
+api = ["fastapi", "uvicorn", "soundfile"]
+
 [tool.setuptools.packages.find]
 include = ["voiceger_accent_adapter*"]
