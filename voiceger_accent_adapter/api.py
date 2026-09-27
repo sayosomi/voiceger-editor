@@ -10,26 +10,20 @@ from typing import List
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from .mixed_language import (
-    build_mixed_audio_query,
-    build_mixed_synthesis_plan,
-)
+from .mixed_language import build_mixed_audio_query
 from .openjtalk_converter import OpenJTalkConversionError
 from .pronunciation import (
     PronunciationSyntaxError,
-    format_pronunciation,
     parse_pronunciation,
 )
+from .synthesis import synthesize_audio_query
 from .styles import available_styles, get_style
 from .voiceger_adapter import (
     VoicegerAdapter,
     VoicegerAdapterError,
-    pronunciation_to_spoken_text,
-    resolve_pronunciation,
 )
 from .voicevox_api_models import AccentPhrase, AudioQuery
 from .voicevox_query import (
-    accent_phrases_to_pronunciation,
     build_audio_query,
     pronunciation_to_accent_phrases,
 )
@@ -52,50 +46,6 @@ def _resolve_style(speaker: int):
         return get_style(adapter.voiceger_root, speaker)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-def _query_terminator(query: AudioQuery) -> str:
-    if query.kana:
-        if query.kana.endswith("？"):
-            return "？"
-        if query.kana.endswith("。"):
-            return "。"
-
-    if query.accent_phrases and query.accent_phrases[-1].is_interrogative:
-        return "？"
-    return "。"
-
-
-def _validate_supported_query_controls(query: AudioQuery) -> None:
-    unsupported = []
-
-    if query.pitchScale != 0:
-        unsupported.append("pitchScale")
-    if query.intonationScale != 1:
-        unsupported.append("intonationScale")
-    if query.volumeScale != 1:
-        unsupported.append("volumeScale")
-    if query.prePhonemeLength != 0.1:
-        unsupported.append("prePhonemeLength")
-    if query.postPhonemeLength != 0.1:
-        unsupported.append("postPhonemeLength")
-    if query.pauseLength is not None:
-        unsupported.append("pauseLength")
-    if query.pauseLengthScale != 1:
-        unsupported.append("pauseLengthScale")
-    if query.outputSamplingRate != 32000:
-        unsupported.append("outputSamplingRate")
-    if query.outputStereo:
-        unsupported.append("outputStereo")
-
-    if unsupported:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "currently unsupported AudioQuery fields were changed: "
-                + ", ".join(unsupported)
-            ),
-        )
 
 
 @app.get("/")
@@ -215,39 +165,13 @@ def synthesis(
     """Synthesize a WAV from a VOICEVOX-style AudioQuery."""
 
     style = _resolve_style(speaker)
-    _validate_supported_query_controls(query)
 
     try:
-        if query.voicegerSegments:
-            plan = build_mixed_synthesis_plan(query)
-            result = get_adapter().synthesize_mixed_audio(
-                text=plan.text,
-                japanese_overrides=list(plan.japanese_overrides),
-                text_language=plan.text_language,
-                english_overrides=list(plan.english_overrides),
-                ref_wav_path=style.reference_path(
-                    get_adapter().voiceger_root
-                ),
-                prompt_text=style.prompt_text,
-                speed=query.speedScale,
-            )
-        else:
-            pronunciation = accent_phrases_to_pronunciation(
-                query.accent_phrases,
-                terminator=_query_terminator(query),
-            )
-            resolved_pronunciation = format_pronunciation(pronunciation)
-            synthesis_text = pronunciation_to_spoken_text(pronunciation)
-
-            result = get_adapter().synthesize_audio(
-                text=synthesis_text,
-                pronunciation=resolved_pronunciation,
-                ref_wav_path=style.reference_path(
-                    get_adapter().voiceger_root
-                ),
-                prompt_text=style.prompt_text,
-                speed=query.speedScale,
-            )
+        result = synthesize_audio_query(
+            adapter=get_adapter(),
+            query=query,
+            style=style,
+        )
 
         try:
             import soundfile as sf
