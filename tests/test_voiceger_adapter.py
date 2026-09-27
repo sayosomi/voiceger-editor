@@ -64,7 +64,7 @@ class ResolvePronunciationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             resolve_pronunciation("一行目\n二行目")
 
-    def test_mixed_synthesis_injects_and_restores_english_g2p(self):
+    def test_mixed_synthesis_injects_and_restores_english_clean_text(self):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             sovits_dir = root / "GPT-SoVITS"
@@ -77,17 +77,26 @@ class ResolvePronunciationTests(unittest.TestCase):
                 fromlist=["VoicegerAdapter"],
             ).VoicegerAdapter(voiceger_root=root)
 
-            original_english_g2p = lambda text: ["NATIVE_EN"]
             original_japanese_g2p = (
                 lambda text, with_prosody=True: ["NATIVE_JA"]
             )
             english = SimpleNamespace(
-                g2p=original_english_g2p,
                 text_normalize=lambda text: text,
             )
             japanese = SimpleNamespace(
                 g2p=original_japanese_g2p,
                 text_normalize=lambda text: text,
+            )
+            original_clean_text_inf = (
+                lambda text, language, version: (
+                    ["NATIVE_EN"],
+                    None,
+                    text,
+                )
+            )
+            inference_webui = SimpleNamespace(
+                clean_text_inf=original_clean_text_inf,
+                cleaned_text_to_sequence=lambda phones, version: list(phones),
             )
 
             class FakeMhaPatched:
@@ -103,11 +112,19 @@ class ResolvePronunciationTests(unittest.TestCase):
                     ["k", "y", "o"],
                 )
                 self.assertEqual(
-                    english.g2p("record"),
+                    inference_webui.clean_text_inf(
+                        "record",
+                        "en",
+                        "v2",
+                    )[0],
                     ["R", "IH0", "K", "AO1", "R", "D"],
                 )
                 self.assertEqual(
-                    english.g2p(".record"),
+                    inference_webui.clean_text_inf(
+                        ".record",
+                        "en",
+                        "v2",
+                    )[0],
                     ["R", "IH0", "K", "AO1", "R", "D"],
                 )
                 yield 32000, [0]
@@ -117,6 +134,7 @@ class ResolvePronunciationTests(unittest.TestCase):
                 "MhaPatched": FakeMhaPatched,
                 "english": english,
                 "japanese": japanese,
+                "inference_webui": inference_webui,
                 "get_tts_wav": fake_get_tts_wav,
             }
 
@@ -132,7 +150,10 @@ class ResolvePronunciationTests(unittest.TestCase):
             )
 
             self.assertEqual(result["sampling_rate"], 32000)
-            self.assertIs(english.g2p, original_english_g2p)
+            self.assertIs(
+                inference_webui.clean_text_inf,
+                original_clean_text_inf,
+            )
             self.assertIs(japanese.g2p, original_japanese_g2p)
 
 
