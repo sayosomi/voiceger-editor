@@ -161,6 +161,8 @@ class SynthesisTests(unittest.TestCase):
         cases = (
             ("文末。", True, "。"),
             ("文末？", False, "？"),
+            ("文末！", False, "！"),
+            ("文末", True, ""),
             (None, True, "？"),
             (None, False, "。"),
         )
@@ -184,16 +186,29 @@ class SynthesisTests(unittest.TestCase):
                     style=self.style,
                 )
 
-                self.assertTrue(
-                    adapter.synthesize_audio.call_args.kwargs[
-                        "pronunciation"
-                    ].endswith(expected)
-                )
-                self.assertTrue(
-                    adapter.synthesize_audio.call_args.kwargs["text"].endswith(
-                        expected
+                self.assertTrue(adapter.synthesize_audio.called)
+                if expected:
+                    self.assertTrue(
+                        adapter.synthesize_audio.call_args.kwargs[
+                            "pronunciation"
+                        ].endswith(expected)
                     )
-                )
+                    self.assertTrue(
+                        adapter.synthesize_audio.call_args.kwargs["text"].endswith(
+                            expected
+                        )
+                    )
+                else:
+                    self.assertEqual(
+                        adapter.synthesize_audio.call_args.kwargs[
+                            "pronunciation"
+                        ],
+                        "ア'メ",
+                    )
+                    self.assertEqual(
+                        adapter.synthesize_audio.call_args.kwargs["text"],
+                        "アメ",
+                    )
 
     def test_mixed_query_uses_plan_and_forwards_all_options(self):
         result_mapping = {"audio": object(), "sampling_rate": 32000}

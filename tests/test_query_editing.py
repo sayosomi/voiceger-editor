@@ -125,15 +125,18 @@ class QueryEditingTests(unittest.TestCase):
         ):
             self.assertEqual(getattr(updated, field), getattr(query, field))
 
-    def test_pure_japanese_replacement_rejects_changed_or_missing_terminator(self):
-        query = _pure_query("ア'メ？")
-        original_fields = query.model_dump()
-
-        for replacement in ("アメ'。", "アメ'"):
+    def test_pure_replacement_can_change_terminator_independently_of_text(self):
+        for replacement in ("オ'ト", "オ'ト。", "オ'ト？", "オ'ト！"):
             with self.subTest(replacement=replacement):
-                with self.assertRaisesRegex(ValueError, "terminator"):
-                    replace_japanese_pronunciation(query, replacement)
-                self.assertEqual(query.model_dump(), original_fields)
+                query = _pure_query("ア'メ。")
+                updated = replace_japanese_pronunciation(query, replacement)
+
+                self.assertEqual(updated.kana, replacement)
+                self.assertEqual(japanese_pronunciation(updated), replacement)
+                self.assertEqual(
+                    updated.accent_phrases[-1].is_interrogative,
+                    replacement.endswith("？"),
+                )
 
     def test_pure_japanese_rejects_explicit_segment_index(self):
         query = _pure_query()
@@ -172,7 +175,7 @@ class QueryEditingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not Japanese"):
             replace_japanese_pronunciation(query, "オ'ト", segment_index=1)
 
-    def test_mixed_japanese_rendering_uses_only_target_slice_and_source_terminator(self):
+    def test_mixed_japanese_rendering_uses_explicit_then_legacy_terminator(self):
         query = _mixed_query(
             ["ア'メ", "サ'ク"],
             [
@@ -181,6 +184,7 @@ class QueryEditingTests(unittest.TestCase):
                     text="雨が",
                     accentPhraseStart=0,
                     accentPhraseCount=1,
+                    pronunciationTerminator="！",
                 ),
                 VoicegerSegment(language="en", text="hello", phonemes=["HH", "AH0"]),
                 VoicegerSegment(
@@ -192,7 +196,7 @@ class QueryEditingTests(unittest.TestCase):
             ],
         )
 
-        self.assertEqual(japanese_pronunciation(query, segment_index=0), "ア'メ")
+        self.assertEqual(japanese_pronunciation(query, segment_index=0), "ア'メ！")
         self.assertEqual(japanese_pronunciation(query, segment_index=2), "サ'ク。")
 
     def test_mixed_japanese_replacement_with_same_phrase_count(self):
@@ -330,22 +334,33 @@ class QueryEditingTests(unittest.TestCase):
                     )
                 self.assertEqual(query.model_dump(), original_fields)
 
-    def test_mixed_replacement_rejects_incorrect_source_terminator(self):
+    def test_mixed_replacement_persists_any_explicit_terminator_without_text_change(self):
         query = _mixed_query(
             ["ア'メ。"],
             [VoicegerSegment(language="ja", text="雨。", accentPhraseStart=0, accentPhraseCount=1)],
         )
-        original_fields = query.model_dump()
 
-        for replacement in ("オ'ト", "オ'ト？"):
+        for replacement, expected in (
+            ("オ'ト", ""),
+            ("オ'ト。", "。"),
+            ("オ'ト？", "？"),
+            ("オ'ト！", "！"),
+        ):
             with self.subTest(replacement=replacement):
-                with self.assertRaisesRegex(ValueError, "terminator"):
-                    replace_japanese_pronunciation(
-                        query,
-                        replacement,
-                        segment_index=0,
-                    )
-                self.assertEqual(query.model_dump(), original_fields)
+                updated = replace_japanese_pronunciation(
+                    query,
+                    replacement,
+                    segment_index=0,
+                )
+                self.assertEqual(updated.voicegerSegments[0].text, "雨。")
+                self.assertEqual(
+                    updated.voicegerSegments[0].pronunciationTerminator,
+                    expected,
+                )
+                self.assertEqual(
+                    japanese_pronunciation(updated, segment_index=0),
+                    replacement,
+                )
 
     def test_english_editor_state_hides_stress_suffixes(self):
         query = _mixed_query(

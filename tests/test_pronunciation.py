@@ -37,6 +37,20 @@ class PronunciationParserTests(unittest.TestCase):
             "あしたの'/て'んきわ/はれ'。",
         )
 
+    def test_terminators_round_trip(self):
+        for suffix in ("", "。", "？", "！"):
+            with self.subTest(suffix=suffix):
+                self.assertEqual(
+                    format_pronunciation(parse_pronunciation("ア'メ" + suffix)),
+                    "ア'メ" + suffix,
+                )
+
+    def test_sentence_terminators_are_only_supported_at_the_end(self):
+        for source in ("ア。'メ", "ア'メ/？", "ア'！メ"):
+            with self.subTest(source=source):
+                with self.assertRaises(PronunciationSyntaxError):
+                    parse_pronunciation(source)
+
     def test_compound_mora_marker_must_follow_complete_mora(self):
         good = parse_pronunciation("きゃ'く")
         self.assertEqual(good.phrases[0].morae, ("きゃ", "く"))

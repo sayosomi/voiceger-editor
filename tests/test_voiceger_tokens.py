@@ -57,6 +57,23 @@ class VoicegerTokenTests(unittest.TestCase):
             ["a", "[", "m", "e", "#", "a", "]", "m", "e", "."],
         )
 
+    def test_sentence_terminators_map_to_distinct_voiceger_tokens(self):
+        cases = (
+            ("", ["a", "]", "m", "e"]),
+            ("。", ["a", "]", "m", "e", "."]),
+            ("？", ["a", "]", "m", "e", "?"]),
+            ("！", ["a", "]", "m", "e", "!"]),
+        )
+        for suffix, expected in cases:
+            with self.subTest(suffix=suffix):
+                self.assertEqual(
+                    pronunciation_to_voiceger_tokens(
+                        parse_pronunciation("あ'め" + suffix),
+                        mora_g2p=fake_g2p,
+                    ),
+                    expected,
+                )
+
     def test_long_vowel_repeats_previous_vowel(self):
         value = parse_pronunciation("きょ'ーわ")
         self.assertEqual(

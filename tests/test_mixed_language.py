@@ -9,10 +9,38 @@ from voiceger_accent_adapter.mixed_language import (
     voiceger_text_language,
 )
 from voiceger_accent_adapter.pronunciation import AccentPhrase, Pronunciation
-from voiceger_accent_adapter.voicevox_api_models import VoicegerSegment
+from voiceger_accent_adapter.voicevox_api_models import (
+    AccentPhrase as ApiAccentPhrase,
+    AudioQuery,
+    Mora,
+    VoicegerSegment,
+)
 
 
 class MixedLanguageTests(unittest.TestCase):
+    def test_pronunciation_terminator_validation_and_serialization(self):
+        for value in (None, "", "。", "？", "！"):
+            with self.subTest(value=value):
+                segment = VoicegerSegment(
+                    language="ja",
+                    text="雨。",
+                    pronunciationTerminator=value,
+                )
+                serialized = segment.model_dump()
+                if value is None:
+                    self.assertNotIn("pronunciationTerminator", serialized)
+                else:
+                    self.assertEqual(serialized["pronunciationTerminator"], value)
+
+        for value in ("?", "!", ".", "invalid"):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    VoicegerSegment(
+                        language="ja",
+                        text="雨。",
+                        pronunciationTerminator=value,
+                    )
+
     def test_detects_and_merges_adjacent_segments(self):
         def fake(_):
             return [
@@ -99,6 +127,71 @@ class MixedLanguageTests(unittest.TestCase):
             query.voicegerSegments[1].phonemes,
             ["OW1", "P", "AH0", "N", "EY1"],
         )
+
+    def test_new_mixed_japanese_segments_store_explicit_terminator_state(self):
+        for terminator, expected in (
+            (None, ""),
+            ("。", "。"),
+            ("？", "？"),
+            ("！", "！"),
+        ):
+            with self.subTest(terminator=terminator):
+                pronunciation = Pronunciation(
+                    phrases=(AccentPhrase(("ア", "メ"), 1),),
+                    terminator=terminator,
+                )
+                with patch(
+                    "voiceger_accent_adapter.mixed_language.text_to_pronunciation",
+                    return_value=pronunciation,
+                ):
+                    query = build_mixed_audio_query(
+                        "雨" + (terminator or "") + "hello",
+                        segments=[
+                            DetectedSegment("ja", "雨" + (terminator or "")),
+                            DetectedSegment("en", "hello"),
+                        ],
+                    )
+
+                self.assertEqual(
+                    query.voicegerSegments[0].pronunciationTerminator,
+                    expected,
+                )
+                self.assertIsNone(
+                    query.voicegerSegments[1].pronunciationTerminator
+                )
+
+    def test_mixed_plan_uses_explicit_or_legacy_terminator_resolution(self):
+        phrase = ApiAccentPhrase(
+            moras=[Mora(text="ア", vowel="a")],
+            accent=1,
+        )
+        cases = (
+            ("。", None, "。"),
+            ("?", None, "？"),
+            ("!", None, "！"),
+            ("雨。", "！", "！"),
+            ("雨！", "", None),
+        )
+        for text, explicit, expected in cases:
+            with self.subTest(text=text, explicit=explicit):
+                segment = VoicegerSegment(
+                    language="ja",
+                    text=text,
+                    accentPhraseStart=0,
+                    accentPhraseCount=1,
+                    pronunciationTerminator=explicit,
+                )
+                query = AudioQuery(
+                    accent_phrases=[phrase],
+                    voicegerSegments=[segment],
+                )
+                with patch(
+                    "voiceger_accent_adapter.mixed_language.pronunciation_to_voiceger_tokens",
+                    side_effect=lambda value: [value.terminator],
+                ):
+                    plan = build_mixed_synthesis_plan(query)
+
+                self.assertEqual(plan.japanese_overrides, ((text, [expected]),))
 
     def test_pure_japanese_serialization_omits_extension(self):
         japanese = Pronunciation(
