@@ -13,6 +13,9 @@ from voiceger_accent_adapter.voiceger_adapter import (
 
 
 class ResolvePronunciationTests(unittest.TestCase):
+    def test_adapter_error_is_available_for_api_import(self):
+        self.assertTrue(issubclass(VoicegerAdapterError, RuntimeError))
+
     def test_manual_pronunciation_is_canonicalized(self):
         text, parsed, resolved = resolve_pronunciation(
             "今日は雨ですね。",
