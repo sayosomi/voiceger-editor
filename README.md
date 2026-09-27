@@ -137,7 +137,7 @@ Output WAV filenames follow VOICEVOX's default naming shape:
 
 ```text
 001_ずんだもん（style_1）_今日は雨ですね。.wav
-002_ずんだもん（style_1）_明日の天気は晴….wav
+002_ずんだもん（style_1）_明日の天気は晴れでしょうか….wav
 ```
 
 The default character/style labels are `ずんだもん` and `style_1`. Override them with `VOICEGER_CHARACTER_NAME` and `VOICEGER_STYLE_NAME` when needed. The text fragment is sanitized and shortened with the same 10-character rule used by VOICEVOX.
