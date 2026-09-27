@@ -198,7 +198,34 @@ Because the adapter hooks before `clean_text()`, public `/` maps to `#` at the h
 
 Dropping the boundary token entirely was tested and caused unstable synthesis.
 
-## 8. AudioQuery support
+## 8. Mixed-language extension
+
+Pure Japanese remains a normal VOICEVOX-shaped `AudioQuery`.
+
+For mixed-language input, the adapter adds optional `voicegerSegments` metadata. Each segment preserves its language and original text. Japanese segments additionally point to a contiguous range in the shared `accent_phrases` array:
+
+```json
+{
+  "language": "ja",
+  "text": "今日は",
+  "accentPhraseStart": 0,
+  "accentPhraseCount": 1
+}
+```
+
+Non-Japanese segments omit the accent phrase range.
+
+At synthesis time:
+
+1. Reconstruct the original segment order.
+2. Convert the referenced Japanese accent phrases back to Voiceger/OpenJTalk prosody tokens.
+3. Hook only those Japanese G2P calls.
+4. Let Voiceger handle non-Japanese segments through its native mixed-language frontend.
+5. Use `Japanese-English Mixed` for Japanese/English-only input and `Multilingual Mixed` when other detected languages are present.
+
+The first validation target is Japanese-English mixed speech. Automatic Chinese/Japanese classification for Han-only text is inherently ambiguous and is not guaranteed by this initial design.
+
+## 9. AudioQuery support
 
 Currently applied:
 
@@ -219,7 +246,7 @@ Present for VOICEVOX-style API shape but not yet implemented:
 
 Changing an unsupported field returns an error rather than silently ignoring it.
 
-## 9. Compatibility scope
+## 10. Compatibility scope
 
 Initial scope:
 
@@ -232,7 +259,7 @@ Initial scope:
 
 This project aims for a VOICEVOX-like API workflow, not full drop-in VOICEVOX ENGINE compatibility.
 
-## 10. Non-goals for the first version
+## 11. Non-goals for the first version
 
 - Full reproduction of all AquesTalk symbols.
 - Full VOICEVOX ENGINE endpoint coverage.
@@ -241,7 +268,7 @@ This project aims for a VOICEVOX-like API workflow, not full drop-in VOICEVOX EN
 - Reimplementing GPT-SoVITS inference.
 - A graphical accent editor.
 
-## 11. Acceptance criteria
+## 12. Acceptance criteria
 
 - Plain Japanese text produces a usable `AudioQuery`.
 - Every generated accent phrase has a valid 1-based `accent`.
@@ -256,7 +283,7 @@ This project aims for a VOICEVOX-like API workflow, not full drop-in VOICEVOX EN
 - Voiceger-dependent tests remain isolated.
 - No upstream Voiceger source or bundled assets are committed to this repository.
 
-## 12. Open questions
+## 13. Open questions
 
 - Add VOICEVOX-style `、` pause delimiters and `_` devoicing.
 - Improve interrogative handling.
