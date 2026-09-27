@@ -312,8 +312,10 @@ class TuiTests(unittest.TestCase):
         self.assertIn("EDIT TEXT", rendered)
         self.assertNotIn("NAVIGATION", rendered)
         self.assertNotIn("? Help   q Quit", rendered)
-        self.assertIn("Cancel and discard text draft", rendered)
-        self.assertIn("Esc Discard field", rendered)
+        self.assertIn("Enter Apply", rendered)
+        self.assertIn("Esc Cancel", rendered)
+        self.assertNotIn("Apply text and rebuild pronunciation", rendered)
+        self.assertNotIn("Cancel and discard text draft", rendered)
 
     def test_text_entry_supports_cursor_backspace_delete_and_vertical_wrapping(self):
         app = self.make_app(query=mixed_query())
@@ -344,31 +346,47 @@ class TuiTests(unittest.TestCase):
     def test_text_editor_cancel_discards_unsaved_draft(self):
         app = self.make_app(query=mixed_query())
         original = app.session.source_text
+        app._set_focus_key(("text", None))
         app._open_text_editor(original)
         app._handle_editor_key("!")
-        app._handle_editor_key("\n")
-        app._handle_editor_key(curses.KEY_DOWN)
-        app._handle_editor_key(curses.KEY_DOWN)
-        app._handle_editor_key("\n")
+        app._handle_editor_key("\x1b")
         self.assertIsNone(app._editor)
+        self.assertEqual(app._focus_key, ("text", None))
         self.assertEqual(app.session.source_text, original)
         self.assertEqual(app.session.replace_query_calls, [])
 
-    def test_text_editor_apply_rebuilds_source_only_after_apply(self):
+    def test_text_editor_applies_on_single_enter_and_rebuilds_source(self):
         app = self.make_app(query=mixed_query())
+        app._set_focus_key(("text", None))
         replacement = FakeSession(query=mixed_query(), candidates=())
         app._open_text_editor("new source")
-        app._editor.payload["draft"] = "new source"
-        app._editor.active_field = None
         with patch(
             "voiceger_accent_adapter.tui.UtteranceSession.from_text",
             return_value=replacement,
         ):
-            app._editor.selection = "apply"
-            app._apply_editor()
+            app._handle_editor_key("\n")
         self.assertIs(app.session, replacement)
+        self.assertIsNone(app._editor)
+        self.assertEqual(app._focus_key, ("text", None))
         self.assertEqual(replacement.close_calls, 0)
         self.assertEqual(app._english_groupings, {})
+
+    def test_text_apply_failure_preserves_draft_and_remains_editable(self):
+        app = self.make_app(query=mixed_query())
+        app._open_text_editor("bad draft")
+        editor = app._editor
+        with patch(
+            "voiceger_accent_adapter.tui.UtteranceSession.from_text",
+            side_effect=ValueError("query creation failed"),
+        ):
+            app._handle_editor_key("\n")
+        self.assertIs(app._editor, editor)
+        self.assertEqual(editor.active_field, "draft")
+        self.assertEqual(editor.input_value, "bad draft")
+        self.assertEqual(editor.payload["draft"], "bad draft")
+        self.assertIn("query creation failed", editor.error)
+        app._handle_editor_key("!")
+        self.assertEqual(editor.input_value, "bad draft!")
 
     def test_japanese_modal_accepts_literal_markers_and_ordinary_cursor_motion(self):
         app = self.make_app(query=mixed_query())
@@ -386,18 +404,45 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(editor.input_value, "ア'メ'/。")
         self.assertEqual(editor.active_field, "draft")
 
+    def test_japanese_editor_applies_on_single_enter_from_active_input(self):
+        app = self.make_app(query=mixed_query())
+        app._edit_selected_segment(0)
+        editor = app._editor
+        self.assertEqual(editor.kind, "japanese")
+        editor.input_value = editor.payload["draft"]
+        app._handle_editor_key("\n")
+        self.assertIsNone(app._editor)
+        self.assertEqual(app._focus_key, ("segment", 0))
+        self.assertEqual(len(app.session.replace_query_calls), 1)
+
+    def test_japanese_editor_escape_discards_modal_in_one_press(self):
+        app = self.make_app(query=mixed_query())
+        original = app.session.query.model_dump()
+        app._edit_selected_segment(0)
+        editor = app._editor
+        editor.input_value += "x"
+        app._handle_editor_key("\x1b")
+        self.assertIsNone(app._editor)
+        self.assertEqual(app._focus_key, ("segment", 0))
+        self.assertEqual(app.session.query.model_dump(), original)
+        self.assertEqual(app.session.replace_query_calls, [])
+
     def test_japanese_validation_failure_keeps_the_modal_draft_open(self):
         app = self.make_app(query=mixed_query())
         original = app.session.query.model_dump()
         app._edit_selected_segment(0)
         editor = app._editor
-        editor.payload["draft"] = "not a pronunciation"
-        editor.active_field = None
-        editor.selection = "apply"
-        app._apply_editor()
+        editor.input_value = "not a pronunciation"
+        editor.input_cursor = len(editor.input_value)
+        app._handle_editor_key("\n")
         self.assertIs(app._editor, editor)
+        self.assertEqual(editor.active_field, "draft")
+        self.assertEqual(editor.input_value, "not a pronunciation")
+        self.assertEqual(editor.payload["draft"], "not a pronunciation")
         self.assertIn("Error:", editor.error)
         self.assertEqual(app.session.query.model_dump(), original)
+        app._handle_editor_key("x")
+        self.assertEqual(editor.input_value, "not a pronunciationx")
 
     def test_settings_are_reachable_and_editable_without_shortcuts(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -413,12 +458,71 @@ class TuiTests(unittest.TestCase):
             app._handle_key(curses.KEY_BACKSPACE)
             app._handle_key("2")
             app._handle_key("\n")
+            editor = app._editor
+            self.assertIsNotNone(editor)
+            self.assertEqual(editor.kind, "settings")
+            self.assertIsNone(editor.active_field)
+            self.assertEqual(app.settings.take_count, 4)
+            self.assertFalse(app.config_path.exists())
             for _ in range(3):
                 app._handle_key(curses.KEY_DOWN)
             app._handle_key("\n")
             self.assertIsNone(app._editor)
             self.assertEqual(app.settings.take_count, 2)
             self.assertEqual(json.loads(app.config_path.read_text())["take_count"], 2)
+
+    def test_settings_escape_from_active_field_discards_the_entire_modal_draft(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(query=mixed_query())
+            app.config_path = Path(directory) / "config.json"
+            original_settings = app.settings
+            app._open_settings_editor("speed")
+            editor = app._editor
+            editor.payload["draft_settings"]["take_count"] = "2"
+            app._handle_editor_key("\n")
+            self.assertEqual(editor.active_field, "speed")
+            app._handle_editor_key("9")
+            app._handle_editor_key("\x1b")
+            self.assertIsNone(app._editor)
+            self.assertEqual(app.settings, original_settings)
+            self.assertEqual(app.session.replace_settings_calls, [])
+            self.assertFalse(app.config_path.exists())
+
+    def test_active_field_footers_describe_settings_and_english_escape_scope(self):
+        settings_app = self.make_app()
+        settings_app._open_settings_editor("speed")
+        settings_app._handle_editor_key("\n")
+        settings_screen = FakeScreen()
+        settings_app._screen = settings_screen
+        settings_app._render()
+        settings_footer = self.rendered(settings_screen)
+        self.assertIn("Enter Finish field", settings_footer)
+        self.assertIn("Esc Cancel Settings", settings_footer)
+
+        english_app = self.make_app(
+            query=english_query(["HH", "AY1"], text="Hi"),
+            groups=(("Hi", ("HH", "AY1")),),
+        )
+        english_app._edit_selected_segment(0)
+        english_app._handle_editor_key("\n")
+        english_app._handle_editor_key("\n")
+        english_screen = FakeScreen()
+        english_app._screen = english_screen
+        english_app._render()
+        english_footer = self.rendered(english_screen)
+        self.assertIn("Enter Commit phonemes", english_footer)
+        self.assertIn("Esc Cancel word editor", english_footer)
+
+        japanese_app = self.make_app(query=mixed_query())
+        japanese_app._edit_selected_segment(0)
+        japanese_screen = FakeScreen()
+        japanese_app._screen = japanese_screen
+        japanese_app._render()
+        japanese_footer = self.rendered(japanese_screen)
+        self.assertIn("Enter Apply", japanese_footer)
+        self.assertIn("Esc Cancel", japanese_footer)
+        self.assertNotIn("Apply pronunciation changes", japanese_footer)
+        self.assertNotIn("Cancel and discard pronunciation draft", japanese_footer)
 
     def test_invalid_settings_apply_keeps_editor_and_draft(self):
         app = self.make_app()
@@ -669,6 +773,80 @@ class TuiTests(unittest.TestCase):
             app.session.query.voicegerSegments[0].phonemes,
             ["AA1", "K", "IH2", "!", "DH", "EH1", "R"],
         )
+
+    def test_enter_finishes_phonemes_into_word_draft_and_keeps_stress_editable(self):
+        app = self.make_app(
+            query=english_query(["HH", "AY1"], text="Hi"),
+            groups=(("Hi", ("HH", "AY1")),),
+        )
+        original_query = app.session.query.model_dump()
+        app._edit_selected_segment(0)
+        parent = app._editor
+        app._handle_editor_key("\n")
+        word_editor = app._editor
+        app._handle_editor_key("\n")
+        word_editor.input_value = "HH AA K IY"
+        word_editor.input_cursor = len(word_editor.input_value)
+        app._handle_editor_key("\n")
+
+        self.assertIs(app._editor, word_editor)
+        self.assertIsNone(word_editor.active_field)
+        self.assertEqual(
+            word_editor.payload["draft_state"].base_phonemes,
+            ("HH", "AA", "K", "IY"),
+        )
+        self.assertEqual(parent.payload["groups"][0].phonemes, ("HH", "AY1"))
+        word_editor.selection = ("primary", 0)
+        app._handle_editor_key("\n")
+        app._handle_editor_key(curses.KEY_RIGHT)
+        app._handle_editor_key("\n")
+        self.assertEqual(
+            word_editor.payload["draft_state"].primary_stress_vowel_positions,
+            (1,),
+        )
+        self.assertIs(app._editor, word_editor)
+        self.assertEqual(app.session.query.model_dump(), original_query)
+
+    def test_escape_from_active_phoneme_input_cancels_the_word_editor_in_one_press(self):
+        app = self.make_app(
+            query=english_query(["HH", "AY1"], text="Hi"),
+            groups=(("Hi", ("HH", "AY1")),),
+        )
+        app._edit_selected_segment(0)
+        parent = app._editor
+        original_groups = parent.payload["groups"]
+        original_query = app.session.query.model_dump()
+        app._handle_editor_key("\n")
+        word_editor = app._editor
+        app._handle_editor_key("\n")
+        word_editor.input_value = "HH AA M"
+        app._handle_editor_key("\x1b")
+        self.assertIs(app._editor, parent)
+        self.assertEqual(parent.payload["groups"], original_groups)
+        self.assertEqual(app.session.query.model_dump(), original_query)
+
+    def test_escape_from_english_segment_discards_word_draft_to_navigation(self):
+        app = self.make_app(
+            query=english_query(["HH", "AY1"], text="Hi"),
+            groups=(("Hi", ("HH", "AY1")),),
+        )
+        app._set_focus_key(("segment", 0))
+        original_query = app.session.query.model_dump()
+        app._edit_selected_segment(0)
+        parent = app._editor
+        app._handle_editor_key("\n")
+        app._handle_editor_key("\n")
+        word_editor = app._editor
+        word_editor.input_value = "HH AA"
+        app._handle_editor_key("\n")
+        word_editor.selection = "done"
+        app._handle_editor_key("\n")
+        self.assertIs(app._editor, parent)
+        self.assertNotEqual(parent.payload["groups"][0].phonemes, ("HH", "AY1"))
+        app._handle_editor_key("\x1b")
+        self.assertIsNone(app._editor)
+        self.assertEqual(app._focus_key, ("segment", 0))
+        self.assertEqual(app.session.query.model_dump(), original_query)
 
     @staticmethod
     def english_phoneme_state(phonemes):
