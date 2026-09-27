@@ -1,6 +1,6 @@
 # voiceger-accent-adapter
 
-An experimental adapter that exposes Voiceger / GPT-SoVITS through a VOICEVOX-style Japanese TTS API with editable accent phrases and selectable reference-audio styles.
+An experimental adapter that exposes Voiceger / GPT-SoVITS through a VOICEVOX-style TTS API with editable Japanese accent phrases, editable English stress, and selectable reference-audio styles.
 
 ## Goal
 
@@ -29,7 +29,7 @@ The supported language scope for v1 is:
 - Japanese
 - Japanese + English mixed text
 
-Japanese-English mixed synthesis has been validated locally. Japanese sections remain accent-editable through `accent_phrases`, while English sections are passed through Voiceger's native `Japanese-English Mixed` frontend.
+Japanese-English mixed synthesis has been validated locally. Japanese sections remain accent-editable through `accent_phrases`. English sections expose Voiceger's native stress-bearing ARPAbet tokens through `voicegerSegments[].phonemes`, so lexical stress can be edited before synthesis.
 
 Other multilingual combinations are not part of the v1 compatibility guarantee, even if the underlying Voiceger/GPT-SoVITS runtime may support them.
 
@@ -151,7 +151,7 @@ Japanese-English mixed text is supported in v1.
 Example:
 
 ```text
-今日はOpenAIを使うよ。
+今日はhelloと言うよ。
 ```
 
 For mixed text, `/audio_query` adds an optional `voicegerSegments` extension. Japanese segments reference slices of the normal `accent_phrases` array, while English segments preserve their original text.
@@ -173,7 +173,8 @@ Example shape:
     },
     {
       "language": "en",
-      "text": "OpenAI"
+      "text": "hello",
+      "phonemes": ["HH", "AH0", "L", "OW1"]
     },
     {
       "language": "ja",
@@ -188,11 +189,31 @@ Example shape:
 During synthesis:
 
 - Japanese segments use the edited `accent_phrases` and the adapter's Voiceger G2P hook.
-- English segments are handled by Voiceger's native `Japanese-English Mixed` frontend.
+- English segments use the editable `phonemes` list when present. Older queries without `phonemes` still fall back to Voiceger's native English G2P.
 - Original segment order is preserved.
 - Automatic segmentation uses Voiceger's bundled LangSegment.
 
 This Japanese-English path has been validated locally end to end.
+
+### Edit English stress
+
+English phonemes use the same ARPAbet stress markers as Voiceger/GPT-SoVITS:
+
+- `0`: unstressed
+- `1`: primary stress
+- `2`: secondary stress
+
+For example:
+
+```json
+{
+  "language": "en",
+  "text": "record",
+  "phonemes": ["R", "IH0", "K", "AO1", "R", "D"]
+}
+```
+
+Changing the stress digit on a vowel changes the stress information sent to Voiceger. Only valid Voiceger ARPAbet tokens are accepted; invalid values such as `AH3` return an error instead of silently becoming `UNK`.
 
 Other language combinations are currently out of scope for the documented v1 behavior.
 
@@ -256,7 +277,8 @@ Validated paths include:
 - pure Japanese automatic pronunciation;
 - manual Japanese accent edits;
 - selectable reference-audio styles;
-- Japanese-English mixed text.
+- Japanese-English mixed text;
+- editable English ARPAbet stress overrides.
 
 For representative Japanese phrases, adapter-generated G2P tokens matched Voiceger's built-in G2P tokens exactly, including accent-phrase boundaries.
 

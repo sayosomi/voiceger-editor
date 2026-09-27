@@ -152,13 +152,14 @@ def audio_query(
     text: str,
     speaker: int = Query(...),
 ):
-    """Create a VOICEVOX-style synthesis query from ordinary Japanese text."""
+    """Create a VOICEVOX-style synthesis query from ordinary text."""
 
     _resolve_style(speaker)
 
     try:
         return build_mixed_audio_query(
             text,
+            english_g2p=get_adapter().english_phonemes,
             output_sampling_rate=32000,
         )
     except (ValueError, OpenJTalkConversionError) as exc:
@@ -223,6 +224,7 @@ def synthesis(
                 text=plan.text,
                 japanese_overrides=list(plan.japanese_overrides),
                 text_language=plan.text_language,
+                english_overrides=list(plan.english_overrides),
                 ref_wav_path=style.reference_path(
                     get_adapter().voiceger_root
                 ),

@@ -73,6 +73,13 @@ class MixedLanguageTests(unittest.TestCase):
             query = build_mixed_audio_query(
                 "今日はOpenAI",
                 segments=segments,
+                english_g2p=lambda _: [
+                    "OW1",
+                    "P",
+                    "AH0",
+                    "N",
+                    "EY1",
+                ],
             )
 
         self.assertIsNone(query.kana)
@@ -87,6 +94,10 @@ class MixedLanguageTests(unittest.TestCase):
         )
         self.assertIsNone(
             query.voicegerSegments[1].accentPhraseStart
+        )
+        self.assertEqual(
+            query.voicegerSegments[1].phonemes,
+            ["OW1", "P", "AH0", "N", "EY1"],
         )
 
     def test_pure_japanese_serialization_omits_extension(self):
@@ -123,6 +134,13 @@ class MixedLanguageTests(unittest.TestCase):
             query = build_mixed_audio_query(
                 "今日はOpenAI",
                 segments=segments,
+                english_g2p=lambda _: [
+                    "OW1",
+                    "P",
+                    "AH0",
+                    "N",
+                    "EY1",
+                ],
             )
 
         with patch(
@@ -137,6 +155,24 @@ class MixedLanguageTests(unittest.TestCase):
             plan.japanese_overrides,
             (("今日は", ["dummy"]),),
         )
+        self.assertEqual(
+            plan.english_overrides,
+            (("OpenAI", ["OW1", "P", "AH0", "N", "EY1"]),),
+        )
+
+    def test_mixed_synthesis_plan_rejects_invalid_english_stress(self):
+        query = build_mixed_audio_query(
+            "hello",
+            segments=[DetectedSegment("en", "hello")],
+            english_g2p=lambda _: ["HH", "AH0", "L", "OW1"],
+        )
+        query.voicegerSegments[0].phonemes = ["HH", "AH3", "L", "OW1"]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "unsupported English phoneme",
+        ):
+            build_mixed_synthesis_plan(query)
 
 
 if __name__ == "__main__":
