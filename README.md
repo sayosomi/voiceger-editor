@@ -1,39 +1,63 @@
 # voiceger-accent-adapter
 
-An experimental adapter that exposes Voiceger / GPT-SoVITS through a VOICEVOX-style TTS API with editable Japanese accent phrases, editable English stress, and selectable reference-audio styles.
+An experimental adapter for Voiceger that adds more control over pronunciation and speech generation.
 
-## Goal
+It provides:
 
-Keep Voiceger itself unmodified while providing a workflow close to VOICEVOX ENGINE:
+- editable Japanese pronunciation and accent;
+- editable English stress;
+- multiple generation candidates;
+- selectable Voiceger reference-audio styles;
+- a VOICEVOX-style TTS API;
+- a keyboard-first terminal interface.
 
-```text
-text
-  ↓
-POST /audio_query?text=...&speaker=...
-  ↓
-AudioQuery
-  ↓
-edit accent_phrases if needed
-  ↓
-POST /synthesis?speaker=...
-  ↓
-audio/wav
+Voiceger itself is not modified.
+
+## Requirements
+
+You need a local installation of Voiceger:
+
+https://github.com/zunzun999/voiceger_v2
+
+This adapter is currently tested with Voiceger revision:
+
+`f77c1172baf1f490bb962f2d2acd01c852ef3464`
+
+Other revisions may also work, but they are not currently guaranteed.
+
+Set `VOICEGER_ROOT` to your local Voiceger directory:
+
+```bash
+export VOICEGER_ROOT=/path/to/voiceger_v2
 ```
 
-The adapter uses OpenJTalk for automatic Japanese pronunciation and injects the resolved prosody into the locally installed Voiceger runtime.
+## Terminal Interface
 
-## v1 scope
+Install the TUI in the Voiceger Python environment:
 
-The supported language scope for v1 is:
+```bash
+"$VOICEGER_ROOT/.venv/bin/python" -m pip install -e '.[tui]'
+```
 
-- Japanese
-- Japanese + English mixed text
+Start it with:
 
-Japanese-English mixed synthesis has been validated locally. Japanese sections remain accent-editable through `accent_phrases`. English sections expose Voiceger's native stress-bearing ARPAbet tokens through `voicegerSegments[].phonemes`, so lexical stress can be edited before synthesis.
+```bash
+voiceger-accent-adapter
+```
 
-Other multilingual combinations are not part of the v1 compatibility guarantee, even if the underlying Voiceger/GPT-SoVITS runtime may support them.
+You can also give it text directly:
+
+```bash
+voiceger-accent-adapter "このずんだ餅はvery sweetなのだ。"
+```
+
+The TUI is still under active development.
+
+Its layout, controls, and shortcuts may change. Detailed TUI documentation will be added after the interface becomes more stable.
 
 ## API
+
+This project also provides a VOICEVOX-style HTTP API.
 
 ```http
 GET  /version
@@ -43,360 +67,122 @@ POST /accent_phrases
 POST /synthesis
 ```
 
-The older experimental `/pronunciation` and `/tts` endpoints are not kept.
-
-v1 supports one utterance per request; embedded newlines are rejected.
-
-## Start the API
-
-Set `VOICEGER_ROOT` to your local Voiceger installation, then run the adapter from this repository:
+Install the API dependencies:
 
 ```bash
-cd /path/to/voiceger-accent-adapter
-export VOICEGER_ROOT=/path/to/voiceger_v2
-
 "$VOICEGER_ROOT/.venv/bin/python" -m pip install -e '.[api]'
+```
 
+Start the API:
+
+```bash
 "$VOICEGER_ROOT/.venv/bin/python" -m uvicorn \
   voiceger_accent_adapter.api:app \
   --host 127.0.0.1 \
   --port 8001
 ```
 
-## Keyboard-first terminal interface
-
-Install the terminal interface in Voiceger's Python environment, then start it
-with an utterance or enter the text after launch:
-
-```bash
-"$VOICEGER_ROOT/.venv/bin/python" -m pip install -e '.[tui]'
-voiceger-accent-adapter "今日はhelloと言うよ。"
-```
-
-The TUI uses one continuous, non-wrapping vertical action list. Its first
-selectable rows are the settings summary, `Output: <path>`, and one
-`Text : <full source>` row. Pronunciation segments follow in source order, then
-the explicit `[ Rebuild pronunciation ]` action, Generate, candidates, Help,
-and Quit. Long source and pronunciation rows wrap without truncating their content. The title
-row stays fixed, and focused top rows use the same focus marker as the rest of
-Navigation.
-
-Use `↑` / `↓` to move and `Enter` to open or activate a row. Enter on the
-settings summary opens Settings at Style; Enter on Output starts editing the
-directory path. `←` / `→` on Generate decreases or increases the persisted take
-count from 1 through 8. Candidates remain selectable and replayable while other
-takes generate. `Space` replays the focused candidate, `Enter` accepts it, `r`
-regenerates only the focused candidate, and `R` regenerates all takes. A
-candidate's focus marker is its only current-selection indicator. When there
-are no candidates, the list shows `Candidates   No candidates yet.`
-`Tab` moves down one row. `Esc` from candidate review returns to the last
-selected pronunciation segment, `?` opens Help, and `q` quits.
-
-Text and Japanese pronunciation each open as a single-field modal: Enter applies
-the input and Esc discards it directly back to Navigation. Text apply updates
-the existing session while preserving compatible pronunciation edits. If the
-language-segment structure changes, the TUI keeps the new Text and requires the
-explicit Rebuild action before generation; rebuild is also available whenever
-you want to replace manual pronunciation with fresh automatic analysis. If
-applying either field fails, its modal stays open with the input ready for
-correction. The Japanese editor shows the literal AquesTalk-style
-pronunciation; type `'` and `/` directly, with ordinary cursor movement and
-editing. English segments show selectable lexical word/token rows. Select a
-word to edit its stress-free phoneme tokens and each existing primary-stress
-marker in a dedicated word editor. Enter commits phonemes into the word draft
-while leaving stress editable; Done returns the word draft to its segment, and
-Esc cancels the current English editor layer. Stress digits are hidden; primary
-stress is shown with brackets. Voiceger's whole-segment English G2P supplies
-the transient word boundaries, and the editor fails closed if those groups do
-not reproduce Voiceger's canonical flat phoneme sequence.
-
-Settings remain a multi-field draft. `←` / `→` moves through available Styles
-without wrapping, changes Speed by `0.01` down to `0.01`, changes Take count by
-one within 1–8, and sets TXT sidecar OFF/ON. Output directory is edited with
-Enter. These changes affect live and persisted settings only after `Apply and
-save settings`; Esc discards the complete draft. Settings has no persistent
-navigation footer. `F5` / `Ctrl+G`, number keys `1`–`8`, `t`, `s`, `v`, `n`,
-`o`, `x`, and `?` remain shortcuts. Command-line options override persisted
-settings for one invocation.
-
-Accepted output uses the local-time basename
-`YYYYMMDDHHMMSS_StyleName_full-source-text`, including the resolved generation
-style and complete sanitized source text. For example:
-`20260928014532_Neutral_今日はhelloと言うよ。.wav`. The source text is never
-shortened automatically. If the filesystem cannot reserve the full name,
-saving reports an explicit filename-too-long error. When enabled, the matching
-`.txt` sidecar contains exactly the original source text. Candidate WAVs remain
-temporary until accepted.
-
-## Styles / speaker IDs
-
-The numbered WAV files under Voiceger's local `reference/` directory are exposed as VOICEVOX talk styles.
-
-| speaker | style | reference WAV |
-| ---: | --- | --- |
-| 1 | Neutral | `01_ref_emoNormal026.wav` |
-| 2 | Sweet | `02_ref_emoAma026.wav` |
-| 3 | Snippy | `03_ref_emoTsun026.wav` |
-| 4 | Sexy | `04_ref_emoSexy026.wav` |
-| 5 | Whispering | `05_ref_emoSasa026.wav` |
-| 6 | Murmuring | `06_ref_emoMurmur026.wav` |
-| 7 | Exhausted | `07_ref_emoHero026.wav` |
-| 8 | Sobbing | `08_ref_emoSobbing026.wav` |
-
-Only styles whose reference WAV exists locally are returned by `GET /speakers`.
-
-The preset reference WAVs use the common prompt text:
-
-```text
-私はいつもミネラルウォーターを持ち歩いています。
-```
-
-Check available styles:
-
-```bash
-curl -sS http://127.0.0.1:8001/speakers | jq
-```
-
-## Create an AudioQuery
-
-Choose the desired reference-audio style with `speaker`:
-
-```bash
-curl -sS -X POST -G \
-  'http://127.0.0.1:8001/audio_query' \
-  --data-urlencode 'text=今日は雨なのだ。' \
-  --data-urlencode 'speaker=1' \
-  > query.json
-```
-
-The returned `AudioQuery` follows the VOICEVOX shape for pure Japanese and does not contain adapter-only display-text fields.
-
-The readable `kana` field is included for pure Japanese, but synthesis is driven by `accent_phrases`.
-
-## Edit an accent
-
-For example, move the second accent phrase to accent position 5:
-
-```bash
-jq '.accent_phrases[1].accent = 5' query.json > manual.json
-```
-
-Editable kana can also be converted directly to structured accent phrases:
-
-```bash
-curl -sS -X POST -G \
-  'http://127.0.0.1:8001/accent_phrases' \
-  --data-urlencode "text=キョ'ーワ/ア'メ/ナ'ノダ。" \
-  --data-urlencode 'speaker=1' \
-  --data-urlencode 'is_kana=true'
-```
-
-## Synthesize
-
-Use the same or another available style ID when synthesizing:
-
-```bash
-curl -sS -X POST \
-  'http://127.0.0.1:8001/synthesis?speaker=1' \
-  -H 'Content-Type: application/json' \
-  --data-binary @manual.json \
-  --output result.wav
-```
-
-`/synthesis` returns `audio/wav`, like VOICEVOX ENGINE.
-
-The engine API does **not** permanently save the WAV. It creates a temporary WAV for the response and deletes it after transmission. The caller chooses the final output filename and destination.
-
-This also means the `AudioQuery` returned by `/audio_query` can be sent directly to `/synthesis`, matching the VOICEVOX workflow.
-
-## Japanese-English mixed text
-
-Japanese-English mixed text is supported in v1.
-
-Example:
-
-```text
-今日はhelloと言うのだ。
-```
-
-For mixed text, `/audio_query` adds an optional `voicegerSegments` extension. Japanese segments reference slices of the normal `accent_phrases` array, while English segments preserve their original text.
-
-Example shape:
-
-```json
-{
-  "accent_phrases": [
-    "... Japanese accent phrases ..."
-  ],
-  "kana": null,
-  "voicegerSegments": [
-    {
-      "language": "ja",
-      "text": "今日は",
-      "accentPhraseStart": 0,
-      "accentPhraseCount": 1
-    },
-    {
-      "language": "en",
-      "text": "hello",
-      "phonemes": ["HH", "AH0", "L", "OW1"]
-    },
-    {
-      "language": "ja",
-      "text": "と言うのだ。",
-      "accentPhraseStart": 1,
-      "accentPhraseCount": 2
-    }
-  ]
-}
-```
-
-During synthesis:
-
-- Japanese segments use the edited `accent_phrases` and the adapter's Voiceger G2P hook.
-- English segments use the editable `phonemes` list when present. Older queries without `phonemes` still fall back to Voiceger's native English G2P.
-- Original segment order is preserved.
-- Automatic segmentation uses Voiceger's bundled LangSegment.
-
-This Japanese-English path has been validated locally end to end.
-
-### Edit English stress
-
-English phonemes use the same ARPAbet stress markers as Voiceger/GPT-SoVITS:
-
-- `0`: unstressed
-- `1`: primary stress
-- `2`: secondary stress
-
-For example:
-
-```json
-{
-  "language": "en",
-  "text": "record",
-  "phonemes": ["R", "IH0", "K", "AO1", "R", "D"]
-}
-```
-
-Changing the stress digit on a vowel changes the stress information sent to Voiceger. Only valid Voiceger ARPAbet tokens are accepted; invalid values such as `AH3` return an error instead of silently becoming `UNK`.
-
-Other language combinations are currently out of scope for the documented v1 behavior.
-
-Inspect local segmentation with:
-
-```bash
-~/voiceger_v2/.venv/bin/python scripts/probe_mixed_language.py
-```
-
-## Pronunciation notation
-
-The editable kana notation follows the core VOICEVOX / AquesTalk-style rules:
-
-- every accent phrase contains exactly one `'`;
-- `'` follows the selected mora;
-- `/` separates accent phrases without a pause;
-- both hiragana and katakana are accepted by this adapter.
-
-Examples:
-
-```text
-雨 -> ア'メ
-飴 -> アメ'
-```
-
-## Current AudioQuery support
-
-Currently applied:
-
-- `accent_phrases`
-- `speedScale`
-
-The following familiar VOICEVOX fields are present but not implemented yet. Changing them returns an explicit error instead of being silently ignored:
-
-- `pitchScale`
-- `intonationScale`
-- `volumeScale`
-- `prePhonemeLength`
-- `postPhonemeLength`
-- `pauseLength`
-- `pauseLengthScale`
-- non-32000 `outputSamplingRate`
-- `outputStereo=true`
-
-## Validated Voiceger integration
-
-The complete pronunciation path has been validated locally without modifying Voiceger source files:
+Basic workflow:
 
 ```text
 text
-  -> OpenJTalk
-  -> editable pronunciation
-  -> AccentPhrase data
-  -> Voiceger-compatible G2P tokens
-  -> runtime hook
-  -> natural audio
+  ↓
+POST /audio_query
+  ↓
+edit pronunciation or accent if needed
+  ↓
+POST /synthesis
+  ↓
+audio/wav
 ```
 
-Validated paths include:
+The API does not permanently save generated WAV files.
 
-- pure Japanese automatic pronunciation;
-- manual Japanese accent edits;
-- selectable reference-audio styles;
-- Japanese-English mixed text;
-- editable English ARPAbet stress overrides.
+## Language Support
 
-For representative Japanese phrases, adapter-generated G2P tokens matched Voiceger's built-in G2P tokens exactly, including accent-phrase boundaries.
+The current supported scope is:
 
-## Integration test
+- Japanese
+- Japanese + English mixed text
 
-The recorded Voiceger compatibility target for v1 is:
+Japanese pronunciation and pitch accent can be edited.
 
-```text
-f77c1172baf1f490bb962f2d2acd01c852ef3464
-```
+English stress can also be edited using Voiceger-compatible ARPAbet phonemes.
 
-Real Voiceger synthesis tests are opt-in so the normal unit-test suite does not load the models.
+Other language combinations may work through Voiceger, but they are not currently part of the compatibility guarantee.
 
-Run them with:
+For technical details about Japanese pronunciation and accent handling, see:
 
-```bash
-cd /path/to/voiceger-accent-adapter
-export VOICEGER_ROOT=/path/to/voiceger_v2
+[`docs/japanese-pronunciation.md`](docs/japanese-pronunciation.md)
 
-VOICEGER_RUN_INTEGRATION=1 \
-"$VOICEGER_ROOT/.venv/bin/python" -m unittest discover \
-  -s tests/integration \
-  -p 'test_*.py' \
-  -v
-```
+## Voiceger Styles
 
-The integration suite checks:
+Voiceger's local reference audio files are available as selectable styles.
 
-- the local Voiceger checkout revision;
-- Japanese manual-accent synthesis;
-- Japanese-English mixed synthesis;
-- basic duration bounds to catch semantic-token runaway regressions.
+Current presets include:
 
-## Upstream dependency
+- Neutral
+- Sweet
+- Snippy
+- Sexy
+- Whispering
+- Murmuring
+- Exhausted
+- Sobbing
 
-Voiceger is developed separately at:
+Only reference audio that exists in the user's local Voiceger installation is used.
+
+## Project Boundaries
+
+voiceger-accent-adapter is an unofficial project.
+
+It is not made, approved, or supported by the Voiceger project or the Tohoku Zunko / Zundamon Project.
+
+This adapter uses Voiceger as it is. It does not try to remove or bypass safety rules, usage limits, or other restrictions added by Voiceger.
+
+This project only adds more control over Voiceger inference, such as pronunciation, accent, English stress, generation candidates, and inference settings.
+
+If Voiceger has a safety feature or restriction, this project will not add a feature to disable or avoid it.
+
+This project does not modify or redistribute the official Voiceger models or reference audio.
+
+Voiceger is a separate project:
 
 https://github.com/zunzun999/voiceger_v2
 
-This repository is not a fork and does not contain Voiceger source, model weights, or reference audio. Runtime integration uses the user's local Voiceger installation.
+## Generated Audio License
+
+> [!IMPORTANT]
+> Audio generated with Voiceger:Zundamon is **not covered by the MIT License of this adapter**.
+>
+> You must follow the official Voiceger Zundamon terms of use when using, publishing, or distributing generated audio.
+>
+> The official terms require the credit:
+>
+> `Voiceger:Zundamon`
+>
+> Please read the latest official terms before using generated audio:
+>
+> https://zunko.jp/con_ongen_kiyaku.html
+
+The Voiceger Zundamon terms also include rules about how the voice may and may not be used.
+
+These rules still apply when the audio is generated through voiceger-accent-adapter.
+
+## This Adapter License
+
+The code in this repository is licensed under the MIT License.
+
+The MIT License applies **only to the code in this repository**.
+
+It does not grant any rights to Voiceger, GPT-SoVITS, the Voiceger:Zundamon models, reference audio, or other third-party assets.
+
+**The MIT License does not grant rights to the Zundamon character, name, voice, or related trademarks.**
+
+Voiceger and other third-party software and assets remain subject to their own licenses and terms.
 
 ## Status
 
-Early implementation. The core Japanese pronunciation path, VOICEVOX-style AudioQuery flow, reference-audio style selection, and Japanese-English mixed synthesis are validated locally.
+voiceger-accent-adapter is under active development.
 
-## Generated audio and Voiceger terms
-
-Audio generated through this adapter using the Voiceger Zundamon voice is subject to the official Voiceger Zundamon audio usage terms.
-
-Please check the latest terms before using, publishing, or distributing generated audio:
-
-https://zunko.jp/con_ongen_kiyaku.html
-
-## License
-
-Not selected yet. Before public release, only code authored in this repository should be licensed here; Voiceger and its dependencies/assets remain subject to their own terms.
+The API, TUI, settings, and other interfaces may change before the first stable release.
