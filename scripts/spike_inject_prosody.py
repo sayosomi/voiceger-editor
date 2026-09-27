@@ -36,19 +36,17 @@ SOVITS_MODEL = VOICEGER_ROOT / "SoVITS_weights_v2" / "zudamon_style_1_e8_s96.pth
 REF_WAV = VOICEGER_ROOT / "reference" / "reference.wav"
 REF_TEXT = VOICEGER_ROOT / "reference" / "ref_text.txt"
 
-TARGET_TEXT = "雨、雨、雨。"
+# A natural sentence is deliberately used here. Very short/repetitive text can
+# make the autoregressive semantic decoder unstable and obscure the actual
+# prosody experiment.
+TARGET_TEXT = "今日は雨ですね。"
 
-# Same spoken phonemes, different prosody symbols.
-RAIN_TOKENS = [
-    "a", "]", "m", "e", ",",
-    "a", "]", "m", "e", ",",
-    "a", "]", "m", "e", ".",
-]
-CANDY_TOKENS = [
-    "a", "[", "m", "e", ",",
-    "a", "[", "m", "e", ",",
-    "a", "[", "m", "e", ".",
-]
+# Use Voiceger's own normal inference defaults. The first version of this spike
+# intentionally used near-greedy decoding (top_k=1, temperature=0.1) for
+# repeatability, but that caused semantic-token runaway on this model.
+TOP_K = 20
+TOP_P = 0.6
+TEMPERATURE = 0.6
 
 
 def require(path: Path) -> None:
@@ -97,6 +95,21 @@ def reset_seed(seed: int = 12345) -> None:
     torch.manual_seed(seed)
 
 
+def replace_once(tokens: list[str], old: list[str], new: list[str]) -> list[str]:
+    """Replace exactly one token subsequence, or fail loudly."""
+    matches = [
+        i
+        for i in range(len(tokens) - len(old) + 1)
+        if tokens[i : i + len(old)] == old
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"Expected exactly one {old!r} in {tokens!r}, found {len(matches)}"
+        )
+    i = matches[0]
+    return tokens[:i] + new + tokens[i + len(old) :]
+
+
 def synthesize(label: str, tokens: list[str], output_dir: Path) -> Path:
     def controlled_g2p(norm_text: str, with_prosody: bool = True):
         if norm_text == TARGET_TEXT:
@@ -116,18 +129,25 @@ def synthesize(label: str, tokens: list[str], output_dir: Path) -> Path:
             prompt_language="Japanese",
             text=TARGET_TEXT,
             text_language="Japanese",
-            top_k=1,
-            top_p=1,
-            temperature=0.1,
+            top_k=TOP_K,
+            top_p=TOP_P,
+            temperature=TEMPERATURE,
         )
     )
     if not result_list:
         raise RuntimeError(f"No audio returned for {label}")
 
     sample_rate, audio = result_list[-1]
+    duration = len(audio) / sample_rate
+    if duration > 15:
+        print(
+            f"WARNING: {label} is {duration:.1f}s long for a short sentence; "
+            "semantic decoding may have run away."
+        )
+
     out = output_dir / f"{label}.wav"
     sf.write(out, audio, sample_rate)
-    print(f"[{label}] wrote {out}")
+    print(f"[{label}] wrote {out} ({duration:.2f}s)")
     return out
 
 
@@ -141,12 +161,29 @@ def main() -> None:
     print("Built-in 飴:", ORIGINAL_G2P("飴"))
     print("Target text:", TARGET_TEXT)
 
+    baseline_tokens = ORIGINAL_G2P(TARGET_TEXT)
+    print("Built-in target g2p:", baseline_tokens)
+
+    # Keep the full natural sentence exactly as Voiceger/OpenJTalk generated it,
+    # then change only the minimal-pair sequence for 雨:
+    #   雨: a ] m e
+    #   飴: a [ m e
+    rain_tokens = list(baseline_tokens)
+    candy_tokens = replace_once(
+        baseline_tokens,
+        ["a", "]", "m", "e"],
+        ["a", "[", "m", "e"],
+    )
+
+    print("Rain tokens: ", rain_tokens)
+    print("Candy tokens:", candy_tokens)
+
     try:
         with MhaPatched():
             change_gpt_weights(gpt_path=str(GPT_MODEL))
             change_sovits_weights(sovits_path=str(SOVITS_MODEL))
-            rain = synthesize("rain-accent", RAIN_TOKENS, output_dir)
-            candy = synthesize("candy-accent", CANDY_TOKENS, output_dir)
+            rain = synthesize("rain-accent", rain_tokens, output_dir)
+            candy = synthesize("candy-accent", candy_tokens, output_dir)
     finally:
         japanese.g2p = ORIGINAL_G2P
 
@@ -154,8 +191,8 @@ def main() -> None:
     print(rain)
     print(candy)
     print(
-        "\nThey use the same visible text and phonemes; only the injected "
-        "prosody marker differs (] vs [)."
+        "\nThey use the same visible sentence and the same Voiceger settings. "
+        "Only the 雨/飴 pitch-accent marker is changed (] vs [)."
     )
 
 
