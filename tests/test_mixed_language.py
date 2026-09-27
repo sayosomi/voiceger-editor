@@ -4,6 +4,7 @@ from unittest.mock import patch
 from voiceger_accent_adapter.mixed_language import (
     DetectedSegment,
     build_mixed_audio_query,
+    build_mixed_synthesis_plan,
     detect_language_segments,
     voiceger_text_language,
 )
@@ -104,6 +105,38 @@ class MixedLanguageTests(unittest.TestCase):
 
         serialized = query.model_dump()
         self.assertNotIn("voicegerSegments", serialized)
+
+    def test_mixed_synthesis_plan_preserves_text_and_language(self):
+        japanese = Pronunciation(
+            phrases=(AccentPhrase(("キョ", "ー", "ワ"), 1),),
+            terminator=None,
+        )
+        segments = [
+            DetectedSegment("ja", "今日は"),
+            DetectedSegment("en", "OpenAI"),
+        ]
+
+        with patch(
+            "voiceger_accent_adapter.mixed_language.text_to_pronunciation",
+            return_value=japanese,
+        ):
+            query = build_mixed_audio_query(
+                "今日はOpenAI",
+                segments=segments,
+            )
+
+        with patch(
+            "voiceger_accent_adapter.mixed_language.pronunciation_to_voiceger_tokens",
+            return_value=["dummy"],
+        ):
+            plan = build_mixed_synthesis_plan(query)
+
+        self.assertEqual(plan.text, "今日はOpenAI")
+        self.assertEqual(plan.text_language, "Japanese-English Mixed")
+        self.assertEqual(
+            plan.japanese_overrides,
+            (("今日は", ["dummy"]),),
+        )
 
 
 if __name__ == "__main__":
