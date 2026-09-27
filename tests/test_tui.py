@@ -473,6 +473,9 @@ class TuiTests(unittest.TestCase):
         self.assertNotIn("? Help   q Quit", rendered)
         self.assertIn("Enter Apply", rendered)
         self.assertIn("Esc Cancel", rendered)
+        self.assertIn("compatible pronunciation is preserved", rendered)
+        self.assertIn("Rebuild pronunciation is an explicit Navigation action", rendered)
+        self.assertNotIn("rebuild its pronunciation", rendered)
         self.assertNotIn("Apply text and rebuild pronunciation", rendered)
         self.assertNotIn("Cancel and discard text draft", rendered)
 
