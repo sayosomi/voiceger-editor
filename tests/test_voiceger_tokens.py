@@ -50,11 +50,11 @@ class VoicegerTokenTests(unittest.TestCase):
             ["t", "e", "[", "N", "]", "k", "i"],
         )
 
-    def test_phrase_boundary_adds_no_hash_token(self):
+    def test_phrase_boundary_emits_openjtalk_hash(self):
         value = parse_pronunciation("あめ'/あ'め。")
         self.assertEqual(
             pronunciation_to_voiceger_tokens(value, mora_g2p=fake_g2p),
-            ["a", "[", "m", "e", "a", "]", "m", "e", "."],
+            ["a", "[", "m", "e", "#", "a", "]", "m", "e", "."],
         )
 
     def test_long_vowel_repeats_previous_vowel(self):
