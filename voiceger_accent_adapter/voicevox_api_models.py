@@ -23,6 +23,15 @@ class AccentPhrase(BaseModel):
     is_interrogative: bool = False
 
 
+class VoicegerSegment(BaseModel):
+    """Adapter extension used only when the utterance is multilingual."""
+
+    language: str
+    text: str
+    accentPhraseStart: Optional[int] = None
+    accentPhraseCount: Optional[int] = None
+
+
 class AudioQuery(BaseModel):
     """VOICEVOX-like synthesis query."""
 
@@ -38,4 +47,5 @@ class AudioQuery(BaseModel):
     outputSamplingRate: int = Field(default=32000, gt=0)
     outputStereo: bool = False
     kana: Optional[str] = None
+    voicegerSegments: Optional[List[VoicegerSegment]] = None
 
