@@ -4,6 +4,7 @@ from argparse import Namespace
 from pathlib import Path
 import subprocess
 import tempfile
+from threading import Event, Thread
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
@@ -74,6 +75,12 @@ class FakeScreen:
 
     def getmaxyx(self):
         return self.rows, self.columns
+
+    def keypad(self, enabled):
+        return None
+
+    def timeout(self, milliseconds):
+        return None
 
     def addnstr(self, *args):
         return None
@@ -474,6 +481,96 @@ class TuiTests(unittest.TestCase):
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+        )
+
+    def test_run_busy_shutdown_tolerates_input_timeout_and_cleans_up_after_worker(self):
+        app = self.make_app()
+        app._initial_text = "example"
+        app._busy = True
+        timeout_read = Event()
+        worker_finished = Event()
+        cleanup_order = []
+
+        def finish_worker():
+            timeout_read.wait()
+            cleanup_order.append("worker-finished")
+            app._events.put(("done", None))
+            worker_finished.set()
+
+        worker = Thread(target=finish_worker, name="test-tui-worker")
+        app._worker = worker
+
+        class TimeoutDuringDrainScreen(FakeScreen):
+            reads = 0
+
+            def get_wch(self):
+                self.reads += 1
+                if self.reads == 1:
+                    return "q"
+                timeout_read.set()
+                if not worker_finished.wait(timeout=2):
+                    raise AssertionError("worker did not finish during busy drain")
+                raise curses.error("screen input timed out")
+
+        def stop_playback():
+            self.assertFalse(worker.is_alive())
+            cleanup_order.append("playback-stopped")
+
+        def close_session():
+            self.assertFalse(worker.is_alive())
+            cleanup_order.append("session-closed")
+
+        app._stop_playback = Mock(side_effect=stop_playback)
+        app.session.close = Mock(side_effect=close_session)
+        screen = TimeoutDuringDrainScreen()
+        worker.start()
+
+        app.run(screen)
+
+        self.assertEqual(screen.reads, 2)
+        self.assertFalse(app._busy)
+        self.assertEqual(
+            cleanup_order,
+            ["worker-finished", "playback-stopped", "session-closed"],
+        )
+
+    def test_run_exception_joins_worker_before_cleanup(self):
+        app = self.make_app()
+        app._initial_text = "example"
+        app._busy = True
+        worker_release = Event()
+        cleanup_order = []
+
+        def finish_worker():
+            worker_release.wait()
+            cleanup_order.append("worker-finished")
+
+        worker = Thread(target=finish_worker, name="test-tui-worker")
+        app._worker = worker
+
+        def fail_render():
+            worker_release.set()
+            raise RuntimeError("render failed")
+
+        def stop_playback():
+            self.assertFalse(worker.is_alive())
+            cleanup_order.append("playback-stopped")
+
+        def close_session():
+            self.assertFalse(worker.is_alive())
+            cleanup_order.append("session-closed")
+
+        app._render = Mock(side_effect=fail_render)
+        app._stop_playback = Mock(side_effect=stop_playback)
+        app.session.close = Mock(side_effect=close_session)
+        worker.start()
+
+        with self.assertRaisesRegex(RuntimeError, "render failed"):
+            app.run(FakeScreen())
+
+        self.assertEqual(
+            cleanup_order,
+            ["worker-finished", "playback-stopped", "session-closed"],
         )
 
 
