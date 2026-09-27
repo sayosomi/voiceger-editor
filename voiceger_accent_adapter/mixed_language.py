@@ -10,13 +10,25 @@ from .openjtalk_converter import text_to_pronunciation
 from .runtime_locks import LANGSEGMENT_LOCK
 from .pronunciation import Pronunciation
 from .voicevox_api_models import AudioQuery, VoicegerSegment
-from .voicevox_query import build_audio_query, pronunciation_to_accent_phrases
+from .voiceger_tokens import pronunciation_to_voiceger_tokens
+from .voicevox_query import (
+    accent_phrases_to_pronunciation,
+    build_audio_query,
+    pronunciation_to_accent_phrases,
+)
 
 
 @dataclass(frozen=True)
 class DetectedSegment:
     language: str
     text: str
+
+
+@dataclass(frozen=True)
+class MixedSynthesisPlan:
+    text: str
+    text_language: str
+    japanese_overrides: tuple[tuple[str, list[str]], ...]
 
 
 def _voiceger_segments(text: str) -> Sequence[dict[str, Any]]:
@@ -145,3 +157,65 @@ def voiceger_text_language(segments: Sequence[VoicegerSegment]) -> str:
     if languages <= {"ja", "en"}:
         return "Japanese-English Mixed"
     return "Multilingual Mixed"
+
+
+
+def build_mixed_synthesis_plan(query: AudioQuery) -> MixedSynthesisPlan:
+    """Resolve adapter mixed-query metadata into Voiceger synthesis inputs."""
+
+    if not query.voicegerSegments:
+        raise ValueError("voicegerSegments are required for mixed synthesis")
+
+    synthesis_text = "".join(
+        segment.text for segment in query.voicegerSegments
+    )
+    japanese_overrides: list[tuple[str, list[str]]] = []
+
+    for segment in query.voicegerSegments:
+        if segment.language != "ja":
+            continue
+
+        if (
+            segment.accentPhraseStart is None
+            or segment.accentPhraseCount is None
+        ):
+            raise ValueError(
+                "Japanese voicegerSegments require accent phrase references"
+            )
+
+        start = segment.accentPhraseStart
+        end = start + segment.accentPhraseCount
+        if start < 0 or end > len(query.accent_phrases):
+            raise ValueError(
+                "voicegerSegments accent phrase range is out of bounds"
+            )
+
+        segment_phrases = query.accent_phrases[start:end]
+        if not segment_phrases:
+            raise ValueError(
+                "Japanese voicegerSegments must reference accent phrases"
+            )
+
+        if segment.text.endswith(("？", "?")):
+            terminator = "？"
+        elif segment.text.endswith(("。", "！", "!")):
+            terminator = "。"
+        else:
+            terminator = None
+
+        pronunciation = accent_phrases_to_pronunciation(
+            segment_phrases,
+            terminator=terminator,
+        )
+        japanese_overrides.append(
+            (
+                segment.text,
+                pronunciation_to_voiceger_tokens(pronunciation),
+            )
+        )
+
+    return MixedSynthesisPlan(
+        text=synthesis_text,
+        text_language=voiceger_text_language(query.voicegerSegments),
+        japanese_overrides=tuple(japanese_overrides),
+    )
