@@ -1,0 +1,184 @@
+"""Load and save the adapter's reusable user settings."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+import json
+import math
+import os
+from pathlib import Path
+import sys
+from typing import Any
+
+
+_APP_DIRECTORY = "voiceger-accent-adapter"
+_CONFIG_FILENAME = "config.json"
+_SETTING_NAMES = {"output_dir", "take_count", "style_id", "speed", "save_text"}
+
+
+class SettingsError(ValueError):
+    """Raised when a settings file or settings value is invalid."""
+
+
+def _default_output_dir() -> Path:
+    # Keep the existing adapter output location as the reusable default.
+    return Path.home() / ".voiceger-accent-adapter" / "output"
+
+
+@dataclass(frozen=True)
+class Settings:
+    """UI-neutral settings shared by future command-line and TUI entry points."""
+
+    output_dir: Path = field(default_factory=_default_output_dir)
+    take_count: int = 4
+    style_id: int = 1
+    speed: float = 1.0
+    save_text: bool = False
+
+    def __post_init__(self) -> None:
+        try:
+            raw_output_dir = os.fspath(self.output_dir)
+        except TypeError as exc:
+            raise SettingsError("output_dir must be a filesystem path") from exc
+        if (
+            not isinstance(raw_output_dir, str)
+            or not raw_output_dir
+            or "\x00" in raw_output_dir
+        ):
+            raise SettingsError("output_dir must be a non-empty filesystem path")
+        try:
+            output_dir = Path(raw_output_dir).expanduser()
+        except (RuntimeError, ValueError) as exc:
+            raise SettingsError(f"invalid output_dir: {exc}") from exc
+        object.__setattr__(self, "output_dir", output_dir)
+
+        if (
+            isinstance(self.take_count, bool)
+            or not isinstance(self.take_count, int)
+            or not 1 <= self.take_count <= 8
+        ):
+            raise SettingsError("take_count must be an integer from 1 through 8")
+
+        if (
+            isinstance(self.style_id, bool)
+            or not isinstance(self.style_id, int)
+            or self.style_id <= 0
+        ):
+            raise SettingsError("style_id must be a positive integer")
+
+        if isinstance(self.speed, bool) or not isinstance(self.speed, (int, float)):
+            raise SettingsError("speed must be a positive finite number")
+        try:
+            speed = float(self.speed)
+        except OverflowError as exc:
+            raise SettingsError("speed must be a positive finite number") from exc
+        if not math.isfinite(speed) or speed <= 0:
+            raise SettingsError("speed must be a positive finite number")
+        object.__setattr__(self, "speed", speed)
+
+        if not isinstance(self.save_text, bool):
+            raise SettingsError("save_text must be a boolean")
+
+
+def default_config_path() -> Path:
+    """Return the platform-appropriate path for the user settings file."""
+
+    if sys.platform == "darwin":
+        config_home = Path.home() / "Library" / "Application Support"
+    else:
+        xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+        config_home = (
+            Path(xdg_config_home).expanduser()
+            if xdg_config_home
+            else Path.home() / ".config"
+        )
+    return config_home / _APP_DIRECTORY / _CONFIG_FILENAME
+
+
+def _resolve_config_path(config_path: str | os.PathLike[str] | None) -> Path:
+    if config_path is None:
+        return default_config_path()
+    try:
+        return Path(config_path).expanduser()
+    except (TypeError, RuntimeError, ValueError) as exc:
+        raise SettingsError(f"invalid config path: {exc}") from exc
+
+
+def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in values:
+            raise SettingsError(f"duplicate setting {key!r}")
+        values[key] = value
+    return values
+
+
+def load_settings(
+    config_path: str | os.PathLike[str] | None = None,
+) -> Settings:
+    """Load settings from ``config_path`` or the user's default config file.
+
+    An absent file returns defaults. Present files must contain a JSON object;
+    omitted known settings use their defaults, while unknown or invalid values
+    raise :class:`SettingsError` instead of being discarded.
+    """
+
+    path = _resolve_config_path(config_path)
+    try:
+        contents = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return Settings()
+    except UnicodeDecodeError as exc:
+        raise SettingsError(f"{path}: config is not valid UTF-8") from exc
+
+    try:
+        values = json.loads(contents, object_pairs_hook=_reject_duplicate_keys)
+    except json.JSONDecodeError as exc:
+        raise SettingsError(
+            f"{path}: malformed JSON at line {exc.lineno}, column {exc.colno}: "
+            f"{exc.msg}"
+        ) from exc
+    except SettingsError as exc:
+        raise SettingsError(f"{path}: {exc}") from exc
+
+    if not isinstance(values, dict):
+        raise SettingsError(f"{path}: config must be a JSON object")
+
+    unknown = sorted(set(values) - _SETTING_NAMES)
+    if unknown:
+        names = ", ".join(repr(name) for name in unknown)
+        raise SettingsError(f"{path}: unknown setting(s): {names}")
+
+    try:
+        return Settings(**values)
+    except SettingsError as exc:
+        raise SettingsError(f"{path}: {exc}") from exc
+
+
+def save_settings(
+    settings: Settings,
+    config_path: str | os.PathLike[str] | None = None,
+) -> Path:
+    """Write validated settings as stable, UTF-8 JSON and return the file path."""
+
+    if not isinstance(settings, Settings):
+        raise TypeError("settings must be a Settings instance")
+
+    path = _resolve_config_path(config_path)
+    payload = {
+        "output_dir": str(settings.output_dir),
+        "take_count": settings.take_count,
+        "style_id": settings.style_id,
+        "speed": settings.speed,
+        "save_text": settings.save_text,
+    }
+    serialized = json.dumps(
+        payload,
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+        allow_nan=False,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes((serialized + "\n").encode("utf-8"))
+    return path
