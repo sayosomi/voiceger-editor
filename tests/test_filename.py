@@ -1,25 +1,21 @@
-import tempfile
 import unittest
-from pathlib import Path
+from datetime import datetime
 
 from voiceger_accent_adapter.filename import (
     build_output_filename,
-    next_output_index,
     sanitize_filename_part,
     shorten_text_for_filename,
 )
 
 
 class FileNameTests(unittest.TestCase):
-    def test_voicevox_style_default_shape(self):
+    def test_timestamped_wav_filename_uses_supplied_local_time(self):
         self.assertEqual(
             build_output_filename(
-                index=1,
-                character_name="ずんだもん",
-                style_name="style_1",
                 text="今日は雨ですね。",
+                timestamp=datetime(2026, 9, 27, 17, 55, 6),
             ),
-            "001_ずんだもん（style_1）_今日は雨ですね。.wav",
+            "20260927_175506_今日は雨ですね。.wav",
         )
 
     def test_text_is_truncated_like_voicevox(self):
@@ -28,19 +24,20 @@ class FileNameTests(unittest.TestCase):
             "123456789…",
         )
 
+    def test_sanitization_and_truncation_are_applied_to_filename_text(self):
+        self.assertEqual(
+            build_output_filename(
+                text='a/b:c?"d*e|f123456',
+                timestamp=datetime(2026, 9, 27, 17, 55, 6),
+            ),
+            "20260927_175506_abcdef123….wav",
+        )
+
     def test_invalid_filename_characters_are_removed(self):
         self.assertEqual(
             sanitize_filename_part('a/b:c?"d*e|f'),
             "abcdef",
         )
-
-    def test_next_index_uses_highest_existing_prefix(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            (root / "001_a.wav").write_bytes(b"")
-            (root / "003_b.wav").write_bytes(b"")
-            (root / "not-indexed.wav").write_bytes(b"")
-            self.assertEqual(next_output_index(root), 4)
 
 
 if __name__ == "__main__":
