@@ -75,7 +75,8 @@ voiceger-accent-adapter "今日はhelloと言うよ。"
 
 The TUI edits Japanese `'` / `/` pronunciation notation and English ARPAbet
 phonemes. English stress digits are hidden; select an English segment and use
-the left/right arrows to move its primary stress. Generate takes with `F5` or
+`Shift+Tab` to cycle its primary-stress markers, then use the left/right arrows
+to move the selected marker. Generate takes with `F5` or
 `Ctrl+G` (terminal-safe equivalents for Command+Enter), then use the up/down
 arrows, `Space`, `Enter`, or `1`–`8` to audition and accept. Use `r` to
 regenerate the current take and `R` to regenerate the batch. Candidate WAVs are

@@ -166,6 +166,9 @@ class TuiApp:
         self._screen: Any = None
         self._events: queue.Queue[tuple[str, Any]] = queue.Queue()
         self._worker: Thread | None = None
+        self._worker_operation: str | None = None
+        self._worker_target: int | None = None
+        self._worker_error: BaseException | None = None
         self._busy = False
         self._exit_requested = False
         self._focus = "pronunciation"
@@ -252,6 +255,10 @@ class TuiApp:
             return
         if key == curses.KEY_F5 or key == "\x07":
             self._start_generation()
+            return
+        if key == curses.KEY_BTAB:
+            if self._focus == "pronunciation":
+                self._cycle_selected_primary()
             return
         if key == "\t":
             self._cycle_focus()
@@ -402,6 +409,7 @@ class TuiApp:
                     replacement,
                     segment_index=segment_index,
                 )
+                self._stop_playback()
                 self.session.replace_query(updated)
                 self._status = "Japanese pronunciation updated; old takes cleared."
             except Exception as exc:
@@ -427,11 +435,10 @@ class TuiApp:
                     segment_index=model_index,
                     base_phonemes=replacement.split(),
                 )
+                self._stop_playback()
                 self.session.replace_query(updated)
                 new_state = english_editor_state(updated, segment_index=model_index)
-                primary = new_state.primary_stress_vowel_positions
-                if primary:
-                    self._selected_primary[model_index] = primary[0]
+                self._refresh_selected_primary(model_index, new_state)
                 self._status = "English phonemes updated; stress was retained by vowel position."
             except Exception as exc:
                 self._status = f"English phonemes were not changed: {exc}"
@@ -465,6 +472,9 @@ class TuiApp:
         if not 0 <= target < len(state.vowel_stresses):
             self._status = "Primary stress is already at the edge of this segment."
             return
+        if target in primary:
+            self._status = "Target vowel already has primary stress."
+            return
         try:
             updated = move_english_primary_stress(
                 query,
@@ -472,11 +482,52 @@ class TuiApp:
                 source_vowel_position=source,
                 target_vowel_position=target,
             )
+            self._stop_playback()
             self.session.replace_query(updated)
             self._selected_primary[model_index] = target
             self._status = "Primary stress moved; other stress markers were preserved."
         except Exception as exc:
             self._status = f"Primary stress was not changed: {exc}"
+
+    def _cycle_selected_primary(self) -> None:
+        if self.session is None:
+            return
+        segments = self._segments()
+        if self._segment_index >= len(segments):
+            return
+        language, _, model_index = segments[self._segment_index]
+        if language != "en" or model_index is None:
+            return
+        try:
+            state = english_editor_state(
+                self.session.query,
+                segment_index=model_index,
+            )
+        except Exception as exc:
+            self._status = f"Cannot select English stress marker: {exc}"
+            return
+        positions = state.primary_stress_vowel_positions
+        if not positions:
+            self._status = "This English segment has no primary-stress marker."
+            return
+        selected = self._selected_primary.get(model_index, positions[0])
+        if selected not in positions:
+            selected = positions[0]
+        selected_index = positions.index(selected)
+        self._selected_primary[model_index] = positions[
+            (selected_index + 1) % len(positions)
+        ]
+        self._status = (
+            f"Selected primary-stress marker "
+            f"{self._selected_primary[model_index] + 1}/{len(positions)}."
+        )
+
+    def _refresh_selected_primary(self, segment_index: int, state: Any) -> None:
+        positions = state.primary_stress_vowel_positions
+        if positions:
+            self._selected_primary[segment_index] = positions[0]
+        else:
+            self._selected_primary.pop(segment_index, None)
 
     def _edit_source_text(self) -> None:
         if self.session is None:
@@ -494,6 +545,7 @@ class TuiApp:
         except Exception as exc:
             self._status = f"Source text was not changed: {exc}"
             return
+        self._stop_playback()
         self.session.close()
         self.session = replacement_session
         self._segment_index = 0
@@ -545,6 +597,7 @@ class TuiApp:
         try:
             updated = replace(self.settings, **changes)
             if self.session is not None:
+                self._stop_playback()
                 self.session.replace_settings(updated)
         except (SettingsError, ValueError) as exc:
             self._status = f"Settings were not changed: {exc}"
@@ -581,30 +634,50 @@ class TuiApp:
             return
         self._focus = "takes"
         self._current_take = None
-        self._run_in_worker(lambda: iterator, "Generating takes sequentially…")
+        self._run_in_worker(
+            lambda: iterator,
+            "Generating takes sequentially…",
+            operation="initial",
+        )
 
     def _start_regeneration(self, number: int) -> None:
         if self.session is None:
             return
         self._stop_playback()
+        self._current_take = number
         self._run_in_worker(
             lambda: (self.session.regenerate_take(number),),
             f"Regenerating take {number}…",
+            operation="regenerate_one",
+            target=number,
         )
 
     def _start_regenerate_all(self) -> None:
         if self.session is None:
             return
-        self._stop_playback()
         try:
             iterator = self.session.regenerate_all_takes()
         except Exception as exc:
             self._status = f"Could not regenerate all takes: {exc}"
             return
-        self._run_in_worker(lambda: iterator, "Regenerating takes sequentially…")
+        self._run_in_worker(
+            lambda: iterator,
+            "Regenerating takes sequentially…",
+            operation="regenerate_all",
+        )
 
-    def _run_in_worker(self, make_values: Any, status: str) -> None:
+    def _run_in_worker(
+        self,
+        make_values: Any,
+        status: str,
+        *,
+        operation: str,
+        target: int | None = None,
+    ) -> None:
         self._busy = True
+        self._worker_operation = operation
+        self._worker_target = target
+        self._worker_error = None
         self._status = status
 
         def work() -> None:
@@ -626,23 +699,46 @@ class TuiApp:
             except queue.Empty:
                 return
             if kind == "candidate":
-                self._current_take = value.number
+                operation = self._worker_operation
                 self._status = f"Take {value.number} ready. Use arrows or 1–8 to audition."
+                if operation == "initial":
+                    if self._current_take is None:
+                        self._current_take = value.number
+                        self._play_take(value.number)
+                elif operation == "regenerate_one":
+                    if value.number == self._worker_target:
+                        self._current_take = value.number
+                        self._play_take(value.number)
+                elif operation == "regenerate_all":
+                    if value.number == self._current_take:
+                        self._play_take(value.number)
             elif kind == "error":
+                self._worker_error = value
                 self._status = f"Generation failed: {value}"
-                if self.session is not None and not self.session.candidates:
-                    self.session.discard_takes()
+                if self._worker_operation == "initial":
+                    self._stop_playback()
+                    if self.session is not None:
+                        self.session.discard_takes()
+                    self._current_take = None
+                    self._focus = "pronunciation"
             elif kind == "done":
+                operation = self._worker_operation
                 self._busy = False
-                if self.session is not None and self.session.candidates:
+                if self._worker_error is not None:
+                    self._status = f"Generation failed: {self._worker_error}"
+                elif operation == "initial" and self.session is not None and self.session.candidates:
                     if self._current_take is None:
                         self._current_take = self.session.candidates[0].number
                     self._status = (
                         f"{len(self.session.candidates)} take(s) available. "
                         "Use arrows or 1–8 to audition."
                     )
+                elif operation in {"regenerate_one", "regenerate_all"}:
+                    self._status = "Take regeneration finished."
                 elif not self._exit_requested:
                     self._status = "No takes were generated. Press F5 to try again."
+                self._worker_operation = None
+                self._worker_target = None
 
     def _play_take(self, number: int) -> None:
         if self.session is None:
@@ -658,7 +754,15 @@ class TuiApp:
         try:
             if sys.platform == "darwin":
                 player = shutil.which("afplay")
-                command = [player, str(candidate.wav_path)] if player else None
+                if player:
+                    command = [player, str(candidate.wav_path)]
+                else:
+                    player = shutil.which("ffplay")
+                    command = (
+                        [player, "-nodisp", "-autoexit", "-loglevel", "error", str(candidate.wav_path)]
+                        if player
+                        else None
+                    )
             else:
                 player = shutil.which("ffplay")
                 command = (
@@ -683,8 +787,15 @@ class TuiApp:
     def _stop_playback(self) -> None:
         process = self._player
         self._player = None
-        if process is not None and process.poll() is None:
+        if process is None:
+            return
+        if process.poll() is None:
             process.terminate()
+        try:
+            process.wait(timeout=0.25)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
 
     def _accept_take(self, number: int) -> None:
         if self.session is None or self._busy:
@@ -864,13 +975,13 @@ class TuiApp:
         self._safe_add(
             height - 2,
             0,
-            "r current | Shift+R all | Enter edit | ←/→ EN stress | Esc pronunciation",
+            "r current | Shift+R all | Enter edit | Shift+Tab EN marker | ←/→ move",
             width,
         )
         self._safe_add(
             height - 1,
             0,
-            "t text | s style | v speed | n takes | o output | x .txt | Tab focus | q quit",
+            "Esc pronunciation | t text | s style | v speed | n takes | o dir | x .txt | Tab focus | q quit",
             width,
         )
         screen.refresh()
