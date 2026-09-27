@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, List, Optional
 
 from .openjtalk_converter import text_to_pronunciation
+from .runtime_locks import LANGSEGMENT_LOCK
 from .pronunciation import Pronunciation
 from .voicevox_api_models import AudioQuery, VoicegerSegment
 from .voicevox_query import build_audio_query, pronunciation_to_accent_phrases
@@ -27,12 +28,13 @@ def _voiceger_segments(text: str) -> Sequence[dict[str, Any]]:
             "run this from Voiceger's Python environment"
         ) from exc
 
-    previous = LangSegment.getfilters()
-    try:
-        LangSegment.setfilters(["zh", "ja", "en", "ko"])
-        return LangSegment.getTexts(text)
-    finally:
-        LangSegment.setfilters(previous)
+    with LANGSEGMENT_LOCK:
+        previous = list(LangSegment.getfilters())
+        try:
+            LangSegment.setfilters(["zh", "ja", "en", "ko"])
+            return LangSegment.getTexts(text)
+        finally:
+            LangSegment.setfilters(previous)
 
 
 def detect_language_segments(
