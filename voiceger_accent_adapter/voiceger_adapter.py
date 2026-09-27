@@ -1,8 +1,8 @@
 """Runtime integration with a locally installed Voiceger.
 
 The adapter does not modify Voiceger files. It imports the installed
-Voiceger/GPT-SoVITS runtime, temporarily replaces the Japanese G2P function
-for one target utterance, then restores the original function.
+Voiceger/GPT-SoVITS runtime, temporarily replaces the Japanese and English
+G2P functions for one target utterance, then restores the original functions.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import sys
 from threading import RLock
 from typing import Any, Optional
 
+from .english_stress import normalize_english_phonemes
 from .filename import build_output_filename, next_output_index
 from .openjtalk_converter import text_to_pronunciation
 from .pronunciation import Pronunciation, format_pronunciation, parse_pronunciation
@@ -150,6 +151,37 @@ class VoicegerAdapter:
                 "required Voiceger paths are missing: " + ", ".join(missing)
             )
 
+    def _require_text_paths(self) -> None:
+        required = [self.sovits_dir, self.gpt_sovits_dir]
+        missing = [str(path) for path in required if not path.exists()]
+        if missing:
+            raise VoicegerAdapterError(
+                "required Voiceger text paths are missing: " + ", ".join(missing)
+            )
+
+    def _ensure_import_paths(self) -> None:
+        for path in (self.sovits_dir, self.gpt_sovits_dir):
+            value = str(path)
+            if value not in sys.path:
+                sys.path.insert(0, value)
+
+    def english_phonemes(self, text: str) -> list[str]:
+        """Return Voiceger's editable English ARPAbet tokens for text."""
+
+        if not text or not text.strip():
+            raise ValueError("English segment text must not be empty")
+        if "\n" in text or "\r" in text:
+            raise ValueError("English segment text must not contain newlines")
+
+        with self._lock:
+            self._require_text_paths()
+            self._ensure_import_paths()
+            with _pushd(self.sovits_dir):
+                import text.english as english
+
+            normalized = english.text_normalize(text)
+            return normalize_english_phonemes(english.g2p(normalized))
+
     def _ensure_runtime(self) -> None:
         if self._loaded:
             return
@@ -168,28 +200,28 @@ class VoicegerAdapter:
             os.environ["gpt_path"] = str(self.gpt_model)
             os.environ["sovits_path"] = str(self.sovits_model)
 
-            for path in (self.sovits_dir, self.gpt_sovits_dir):
-                value = str(path)
-                if value not in sys.path:
-                    sys.path.insert(0, value)
+            self._ensure_import_paths()
 
             with _pushd(self.sovits_dir):
                 from AR.modules.activation import MhaPatched
+                import text.english as english
                 import text.japanese as japanese
-                from GPT_SoVITS.inference_webui import (
-                    change_gpt_weights,
-                    change_sovits_weights,
-                    get_tts_wav,
-                )
+                import GPT_SoVITS.inference_webui as inference_webui
 
                 with MhaPatched():
-                    change_gpt_weights(gpt_path=str(self.gpt_model))
-                    change_sovits_weights(sovits_path=str(self.sovits_model))
+                    inference_webui.change_gpt_weights(
+                        gpt_path=str(self.gpt_model)
+                    )
+                    inference_webui.change_sovits_weights(
+                        sovits_path=str(self.sovits_model)
+                    )
 
             self._runtime = {
                 "MhaPatched": MhaPatched,
+                "english": english,
                 "japanese": japanese,
-                "get_tts_wav": get_tts_wav,
+                "inference_webui": inference_webui,
+                "get_tts_wav": inference_webui.get_tts_wav,
             }
             self._loaded = True
 
@@ -287,6 +319,7 @@ class VoicegerAdapter:
         text: str,
         japanese_overrides: list[tuple[str, list[str]]],
         text_language: str,
+        english_overrides: Optional[list[tuple[str, list[str]]]] = None,
         ref_wav_path: Optional[str | Path] = None,
         prompt_text: Optional[str] = None,
         top_k: int = 20,
@@ -294,7 +327,7 @@ class VoicegerAdapter:
         temperature: float = 0.6,
         speed: float = 1.0,
     ) -> dict[str, Any]:
-        """Synthesize mixed-language text with Japanese G2P overrides."""
+        """Synthesize mixed-language text with Japanese/English G2P overrides."""
 
         synthesis_text = _ensure_single_utterance(text)
 
@@ -323,25 +356,65 @@ class VoicegerAdapter:
         self._ensure_runtime()
 
         with self._lock:
+            english = self._runtime["english"]
             japanese = self._runtime["japanese"]
+            inference_webui = self._runtime["inference_webui"]
             MhaPatched = self._runtime["MhaPatched"]
             get_tts_wav = self._runtime["get_tts_wav"]
-            original_g2p = japanese.g2p
+            original_clean_text_inf = inference_webui.clean_text_inf
+            original_japanese_g2p = japanese.g2p
 
-            override_queues = defaultdict(deque)
+            japanese_override_queues = defaultdict(deque)
             for segment_text, tokens in japanese_overrides:
                 normalized = japanese.text_normalize(segment_text)
-                override_queues[normalized].append(list(tokens))
+                japanese_override_queues[normalized].append(list(tokens))
 
-            def controlled_g2p(norm_text: str, with_prosody: bool = True):
+            def canonical_english_text(value: str) -> str:
+                normalized = english.text_normalize(value).strip()
+                return normalized.strip(" .,!?…")
+
+            english_override_entries = []
+            for segment_text, tokens in english_overrides or []:
+                english_override_entries.append(
+                    {
+                        "canonical": canonical_english_text(segment_text),
+                        "tokens": normalize_english_phonemes(tokens),
+                        "consumed": False,
+                    }
+                )
+
+            def controlled_japanese_g2p(
+                norm_text: str,
+                with_prosody: bool = True,
+            ):
                 if with_prosody:
-                    queue = override_queues.get(norm_text)
+                    queue = japanese_override_queues.get(norm_text)
                     if queue:
                         return queue.popleft()
-                return original_g2p(norm_text, with_prosody)
+                return original_japanese_g2p(norm_text, with_prosody)
+
+            def controlled_clean_text_inf(
+                value: str,
+                language: str,
+                version: str,
+            ):
+                if language == "en":
+                    actual = canonical_english_text(value)
+                    for entry in english_override_entries:
+                        if actual == entry["canonical"]:
+                            entry["consumed"] = True
+                            phones = list(entry["tokens"])
+                            phone_ids = inference_webui.cleaned_text_to_sequence(
+                                phones,
+                                version,
+                            )
+                            norm_text = english.text_normalize(value)
+                            return phone_ids, None, norm_text
+                return original_clean_text_inf(value, language, version)
 
             try:
-                japanese.g2p = controlled_g2p
+                inference_webui.clean_text_inf = controlled_clean_text_inf
+                japanese.g2p = controlled_japanese_g2p
                 with LANGSEGMENT_LOCK:
                     with _pushd(self.sovits_dir):
                         with MhaPatched():
@@ -359,16 +432,28 @@ class VoicegerAdapter:
                                 )
                             )
             finally:
-                japanese.g2p = original_g2p
+                inference_webui.clean_text_inf = original_clean_text_inf
+                japanese.g2p = original_japanese_g2p
 
-            remaining = sum(
+            remaining_japanese = sum(
                 len(queue)
-                for queue in override_queues.values()
+                for queue in japanese_override_queues.values()
             )
-            if remaining:
+            if remaining_japanese:
                 raise VoicegerAdapterError(
                     "Voiceger mixed-language segmentation did not consume "
-                    f"{remaining} Japanese pronunciation override(s)"
+                    f"{remaining_japanese} Japanese pronunciation override(s)"
+                )
+
+            remaining_english = sum(
+                1
+                for entry in english_override_entries
+                if not entry["consumed"]
+            )
+            if remaining_english:
+                raise VoicegerAdapterError(
+                    "Voiceger mixed-language segmentation did not consume "
+                    f"{remaining_english} English phoneme override(s)"
                 )
 
             if not results:

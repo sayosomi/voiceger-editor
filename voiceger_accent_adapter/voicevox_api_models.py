@@ -30,6 +30,14 @@ class VoicegerSegment(BaseModel):
     text: str
     accentPhraseStart: Optional[int] = None
     accentPhraseCount: Optional[int] = None
+    phonemes: Optional[List[str]] = None
+
+    @model_serializer(mode="wrap")
+    def _serialize_optional_fields(self, handler):
+        data = handler(self)
+        if self.phonemes is None:
+            data.pop("phonemes", None)
+        return data
 
 
 class AudioQuery(BaseModel):
