@@ -10,6 +10,10 @@ from typing import List
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from .mixed_language import (
+    build_mixed_audio_query,
+    voiceger_text_language,
+)
 from .openjtalk_converter import OpenJTalkConversionError
 from .pronunciation import (
     PronunciationSyntaxError,
@@ -17,6 +21,7 @@ from .pronunciation import (
     parse_pronunciation,
 )
 from .styles import available_styles, get_style
+from .voiceger_tokens import pronunciation_to_voiceger_tokens
 from .voiceger_adapter import (
     VoicegerAdapter,
     VoicegerAdapterError,
@@ -153,9 +158,8 @@ def audio_query(
     _resolve_style(speaker)
 
     try:
-        _, parsed, _ = resolve_pronunciation(text)
-        return build_audio_query(
-            pronunciation=parsed,
+        return build_mixed_audio_query(
+            text,
             output_sampling_rate=32000,
         )
     except (ValueError, OpenJTalkConversionError) as exc:
@@ -176,7 +180,7 @@ def accent_phrases(
         if is_kana:
             parsed = parse_pronunciation(text)
         else:
-            _, parsed, _ = resolve_pronunciation(text)
+            return build_mixed_audio_query(text).accent_phrases
 
         return pronunciation_to_accent_phrases(parsed)
     except (
@@ -214,20 +218,86 @@ def synthesis(
     _validate_supported_query_controls(query)
 
     try:
-        pronunciation = accent_phrases_to_pronunciation(
-            query.accent_phrases,
-            terminator=_query_terminator(query),
-        )
-        resolved_pronunciation = format_pronunciation(pronunciation)
-        synthesis_text = pronunciation_to_spoken_text(pronunciation)
+        if query.voicegerSegments:
+            synthesis_text = "".join(
+                segment.text for segment in query.voicegerSegments
+            )
+            japanese_overrides = []
 
-        result = get_adapter().synthesize_audio(
-            text=synthesis_text,
-            pronunciation=resolved_pronunciation,
-            ref_wav_path=style.reference_path(get_adapter().voiceger_root),
-            prompt_text=style.prompt_text,
-            speed=query.speedScale,
-        )
+            for segment in query.voicegerSegments:
+                if segment.language != "ja":
+                    continue
+
+                if (
+                    segment.accentPhraseStart is None
+                    or segment.accentPhraseCount is None
+                ):
+                    raise ValueError(
+                        "Japanese voicegerSegments require accent phrase references"
+                    )
+
+                start = segment.accentPhraseStart
+                end = start + segment.accentPhraseCount
+                if start < 0 or end > len(query.accent_phrases):
+                    raise ValueError(
+                        "voicegerSegments accent phrase range is out of bounds"
+                    )
+
+                segment_phrases = query.accent_phrases[start:end]
+                if not segment_phrases:
+                    raise ValueError(
+                        "Japanese voicegerSegments must reference accent phrases"
+                    )
+
+                if segment.text.endswith(("？", "?")):
+                    terminator = "？"
+                elif segment.text.endswith(("。", "！", "!")):
+                    terminator = "。"
+                else:
+                    terminator = None
+
+                segment_pronunciation = accent_phrases_to_pronunciation(
+                    segment_phrases,
+                    terminator=terminator,
+                )
+                japanese_overrides.append(
+                    (
+                        segment.text,
+                        pronunciation_to_voiceger_tokens(
+                            segment_pronunciation
+                        ),
+                    )
+                )
+
+            result = get_adapter().synthesize_mixed_audio(
+                text=synthesis_text,
+                japanese_overrides=japanese_overrides,
+                text_language=voiceger_text_language(
+                    query.voicegerSegments
+                ),
+                ref_wav_path=style.reference_path(
+                    get_adapter().voiceger_root
+                ),
+                prompt_text=style.prompt_text,
+                speed=query.speedScale,
+            )
+        else:
+            pronunciation = accent_phrases_to_pronunciation(
+                query.accent_phrases,
+                terminator=_query_terminator(query),
+            )
+            resolved_pronunciation = format_pronunciation(pronunciation)
+            synthesis_text = pronunciation_to_spoken_text(pronunciation)
+
+            result = get_adapter().synthesize_audio(
+                text=synthesis_text,
+                pronunciation=resolved_pronunciation,
+                ref_wav_path=style.reference_path(
+                    get_adapter().voiceger_root
+                ),
+                prompt_text=style.prompt_text,
+                speed=query.speedScale,
+            )
 
         try:
             import soundfile as sf
