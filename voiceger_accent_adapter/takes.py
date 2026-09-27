@@ -30,6 +30,7 @@ class TakeBatch:
         take_count: int,
         synthesize_one: Callable[[], Mapping[str, Any]],
         source_text: str,
+        style_name: str,
         output_dir: Path,
         save_text: bool = False,
         filename_text: Optional[str] = None,
@@ -44,6 +45,7 @@ class TakeBatch:
         self.take_count = take_count
         self.synthesize_one = synthesize_one
         self.source_text = source_text
+        self.style_name = style_name
         self.output_dir = Path(output_dir)
         self.save_text = save_text
         self.filename_text = filename_text
@@ -128,6 +130,7 @@ class TakeBatch:
             audio=candidate.audio,
             sampling_rate=candidate.sampling_rate,
             source_text=self.source_text,
+            style_name=self.style_name,
             output_dir=self.output_dir,
             save_text=self.save_text,
             filename_text=self.filename_text,

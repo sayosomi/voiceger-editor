@@ -73,38 +73,60 @@ with an utterance or enter the text after launch:
 voiceger-accent-adapter "今日はhelloと言うよ。"
 ```
 
-The TUI uses one continuous, non-wrapping vertical action list. Use `↑` / `↓`
-to move through Text, pronunciation segments in source order, Generate or
-Regenerate all, available candidates, Regenerate selected, Settings, Help, and
-Quit. `Enter` opens or performs the focused action; `Space` replays a focused
-candidate. `Tab` is an optional accelerator. Pronunciation segments are compact
-selectable `LANG | source | pronunciation` rows, with long content wrapped as
-needed. Normal Navigation has no persistent control footer. Help remains a
-visible Navigation action, and `?` is an optional shortcut. Candidate review
-keeps the candidate in the same list; `Esc` returns to the last selected
-pronunciation segment.
+The TUI uses one continuous, non-wrapping vertical action list. Its first
+selectable rows are the settings summary, `Output: <path>`, and one
+`Text : <full source>` row. Pronunciation segments follow in source order, then
+the explicit `[ Rebuild pronunciation ]` action, Generate, candidates, Help,
+and Quit. Long source and pronunciation rows wrap without truncating their content. The title
+row stays fixed, and focused top rows use the same focus marker as the rest of
+Navigation.
+
+Use `↑` / `↓` to move and `Enter` to open or activate a row. Enter on the
+settings summary opens Settings at Style; Enter on Output starts editing the
+directory path. `←` / `→` on Generate decreases or increases the persisted take
+count from 1 through 8. Candidates remain selectable and replayable while other
+takes generate. `Space` replays the focused candidate, `Enter` accepts it, `r`
+regenerates only the focused candidate, and `R` regenerates all takes. A
+candidate's focus marker is its only current-selection indicator. When there
+are no candidates, the list shows `Candidates   No candidates yet.`
+`Tab` moves down one row. `Esc` from candidate review returns to the last
+selected pronunciation segment, `?` opens Help, and `q` quits.
 
 Text and Japanese pronunciation each open as a single-field modal: Enter applies
-the input and Esc discards it directly back to Navigation. Text apply rebuilds
-pronunciation. If applying either field fails, the modal stays open with the
-input ready for correction. The Japanese editor shows the literal
-AquesTalk-style pronunciation; type `'` and `/` directly, with ordinary cursor
-movement and editing. Settings remain a multi-field draft: Enter finishes the
-active field, Apply commits the settings, and Esc discards the whole settings
-draft. English segments show selectable lexical word/token rows. Select a word
-to edit its stress-free phoneme tokens and each existing primary-stress marker
-in a dedicated word editor. Enter commits phonemes into the word draft while
-leaving stress editable; Done returns the word draft to its segment, and Esc
-cancels the current English editor layer. Stress digits are hidden; primary
+the input and Esc discards it directly back to Navigation. Text apply updates
+the existing session while preserving compatible pronunciation edits. If the
+language-segment structure changes, the TUI keeps the new Text and requires the
+explicit Rebuild action before generation; rebuild is also available whenever
+you want to replace manual pronunciation with fresh automatic analysis. If
+applying either field fails, its modal stays open with the input ready for
+correction. The Japanese editor shows the literal AquesTalk-style
+pronunciation; type `'` and `/` directly, with ordinary cursor movement and
+editing. English segments show selectable lexical word/token rows. Select a
+word to edit its stress-free phoneme tokens and each existing primary-stress
+marker in a dedicated word editor. Enter commits phonemes into the word draft
+while leaving stress editable; Done returns the word draft to its segment, and
+Esc cancels the current English editor layer. Stress digits are hidden; primary
 stress is shown with brackets. Voiceger's whole-segment English G2P supplies
 the transient word boundaries, and the editor fails closed if those groups do
-not reproduce Voiceger's canonical flat phoneme sequence. Settings are also
-reachable in the action list.
+not reproduce Voiceger's canonical flat phoneme sequence.
 
-`F5` / `Ctrl+G`, number keys `1`–`8`, `r`, `R`, `t`, `s`, `v`, `n`, `o`, `x`,
-and `?` remain accelerators to the corresponding visible actions. These
-settings persist in the platform user config; command-line options override
-them for one invocation. Candidate WAVs remain temporary until accepted.
+Settings remain a multi-field draft. `←` / `→` moves through available Styles
+without wrapping, changes Speed by `0.01` down to `0.01`, changes Take count by
+one within 1–8, and sets TXT sidecar OFF/ON. Output directory is edited with
+Enter. These changes affect live and persisted settings only after `Apply and
+save settings`; Esc discards the complete draft. Settings has no persistent
+navigation footer. `F5` / `Ctrl+G`, number keys `1`–`8`, `t`, `s`, `v`, `n`,
+`o`, `x`, and `?` remain shortcuts. Command-line options override persisted
+settings for one invocation.
+
+Accepted output uses the local-time basename
+`YYYYMMDDHHMMSS_StyleName_full-source-text`, including the resolved generation
+style and complete sanitized source text. For example:
+`20260928014532_Neutral_今日はhelloと言うよ。.wav`. The source text is never
+shortened automatically. If the filesystem cannot reserve the full name,
+saving reports an explicit filename-too-long error. When enabled, the matching
+`.txt` sidecar contains exactly the original source text. Candidate WAVs remain
+temporary until accepted.
 
 ## Styles / speaker IDs
 
