@@ -16,6 +16,7 @@ from .pronunciation import (
     format_pronunciation,
     parse_pronunciation,
 )
+from .mixed_language import resolve_japanese_segment_terminator
 from .synthesis import _query_terminator
 from .voicevox_api_models import AudioQuery, VoicegerSegment
 from .voicevox_query import (
@@ -82,37 +83,15 @@ def _validate_japanese_references(query: AudioQuery) -> None:
         raise ValueError("Japanese references must cover all accent phrases")
 
 
-def _pure_japanese_terminator(query: AudioQuery) -> str:
+def _pure_japanese_terminator(query: AudioQuery) -> str | None:
     # Keep notation edits aligned with the terminator rule used for synthesis.
     return _query_terminator(query)
 
 
-def _segment_japanese_terminator(segment_text: str) -> str | None:
-    if segment_text.endswith(("？", "?")):
-        return "？"
-    if segment_text.endswith(("。", "！", "!")):
-        return "。"
-    return None
-
-
-def _require_terminator(
-    pronunciation: Pronunciation,
-    expected: str | None,
-) -> None:
-    if pronunciation.terminator != expected:
-        raise ValueError("replacement pronunciation must preserve its terminator")
-
-
-def _parse_replacement(
-    pronunciation: str,
-    *,
-    expected_terminator: str | None,
-) -> Pronunciation:
+def _parse_replacement(pronunciation: str) -> Pronunciation:
     if not isinstance(pronunciation, str):
         raise ValueError("pronunciation must be a string")
-    parsed = parse_pronunciation(pronunciation)
-    _require_terminator(parsed, expected_terminator)
-    return parsed
+    return parse_pronunciation(pronunciation)
 
 
 def japanese_pronunciation(
@@ -136,7 +115,7 @@ def japanese_pronunciation(
     assert start is not None and count is not None
     pronunciation = accent_phrases_to_pronunciation(
         query.accent_phrases[start : start + count],
-        terminator=_segment_japanese_terminator(segment.text),
+        terminator=resolve_japanese_segment_terminator(segment),
     )
     return format_pronunciation(pronunciation)
 
@@ -152,21 +131,13 @@ def replace_japanese_pronunciation(
     _validate_query(query)
     segment = _japanese_mode_segment(query, segment_index)
     if segment is None:
-        expected_terminator = _pure_japanese_terminator(query)
-        parsed = _parse_replacement(
-            pronunciation,
-            expected_terminator=expected_terminator,
-        )
+        parsed = _parse_replacement(pronunciation)
         updated = query.model_copy(deep=True)
         updated.accent_phrases = pronunciation_to_accent_phrases(parsed)
         updated.kana = format_pronunciation(parsed)
         return updated
 
-    expected_terminator = _segment_japanese_terminator(segment.text)
-    parsed = _parse_replacement(
-        pronunciation,
-        expected_terminator=expected_terminator,
-    )
+    parsed = _parse_replacement(pronunciation)
     start = segment.accentPhraseStart
     count = segment.accentPhraseCount
     assert start is not None and count is not None
@@ -176,6 +147,10 @@ def replace_japanese_pronunciation(
         updated.accent_phrases[:start]
         + pronunciation_to_accent_phrases(parsed)
         + updated.accent_phrases[start + count :]
+    )
+    assert updated.voicegerSegments is not None
+    updated.voicegerSegments[segment_index].pronunciationTerminator = (
+        parsed.terminator or ""
     )
 
     next_offset = 0

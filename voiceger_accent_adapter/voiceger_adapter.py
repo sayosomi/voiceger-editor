@@ -26,8 +26,9 @@ from .voiceger_tokens import pronunciation_to_voiceger_tokens
 
 _SENTENCE_END = {
     "。": "。",
-    "！": "。",
-    "!": "。",
+    ".": "。",
+    "！": "！",
+    "!": "！",
     "？": "？",
     "?": "？",
 }

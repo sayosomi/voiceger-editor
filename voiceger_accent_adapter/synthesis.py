@@ -12,12 +12,15 @@ from .voicevox_api_models import AudioQuery
 from .voicevox_query import accent_phrases_to_pronunciation
 
 
-def _query_terminator(query: AudioQuery) -> str:
-    if query.kana:
-        if query.kana.endswith("？"):
-            return "？"
+def _query_terminator(query: AudioQuery) -> str | None:
+    if query.kana is not None:
         if query.kana.endswith("。"):
             return "。"
+        if query.kana.endswith("？"):
+            return "？"
+        if query.kana.endswith("！"):
+            return "！"
+        return None
 
     if query.accent_phrases and query.accent_phrases[-1].is_interrogative:
         return "？"
