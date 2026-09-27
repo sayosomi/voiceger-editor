@@ -71,6 +71,25 @@ class VoicegerIntegrationTests(unittest.TestCase):
             "キョ'ーワ/アメデスネ'。",
         )
 
+    def test_manual_japanese_exclamation_synthesizes_without_runaway(self):
+        query = build_audio_query(
+            pronunciation=parse_pronunciation("キョ'ーワ/アメデスネ'！"),
+        )
+        result = synthesize_audio_query(
+            adapter=self.adapter,
+            query=query,
+            style=self.style,
+        )
+
+        self.assertEqual(result["sampling_rate"], 32000)
+        duration = len(result["audio"]) / result["sampling_rate"]
+        self.assertGreater(duration, 0.5)
+        self.assertLess(duration, 10.0)
+        self.assertEqual(
+            result["resolved_pronunciation"],
+            "キョ'ーワ/アメデスネ'！",
+        )
+
     def test_japanese_english_mixed_synthesizes_without_runaway(self):
         query = build_mixed_audio_query(
             "今日はhelloと言うよ。",

@@ -35,6 +35,20 @@ class ResolvePronunciationTests(unittest.TestCase):
         self.assertEqual(text, "雨？")
         self.assertEqual(resolved, "ア'メ？")
 
+    def test_source_terminators_keep_period_question_and_exclamation_distinct(self):
+        for source, expected in (
+            ("雨。", "。"),
+            ("雨.", "。"),
+            ("雨？", "？"),
+            ("雨?", "？"),
+            ("雨！", "！"),
+            ("雨!", "！"),
+        ):
+            with self.subTest(source=source):
+                text, _, resolved = resolve_pronunciation(source, "ア'メ")
+                self.assertEqual(text, source)
+                self.assertEqual(resolved, "ア'メ" + expected)
+
     def test_text_without_terminator_gets_period(self):
         fake = Pronunciation(
             phrases=(AccentPhrase(("ア", "メ"), 1),),

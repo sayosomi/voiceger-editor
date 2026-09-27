@@ -116,5 +116,7 @@ def pronunciation_to_voiceger_tokens(
         tokens.append(".")
     elif value.terminator == "？":
         tokens.append("?")
+    elif value.terminator == "！":
+        tokens.append("!")
 
     return tokens
