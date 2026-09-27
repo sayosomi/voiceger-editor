@@ -1,5 +1,22 @@
 # AGENTS.md
 
+## Development routing
+
+Route all development work through this repository's `README.md` and the fixed [voiceger-accent-adapter project context](https://github.com/sayosomi/dev-context/blob/main/projects/voiceger-accent-adapter/README.md).
+
+Load the shared documents routed from that entrypoint when their topics apply. In particular:
+
+- use `shared/DEVELOPMENT.md` for the common development workflow and loading rules;
+- use `shared/GIT-WORKFLOW.md` for remote state, checkout, branch, commit, push, and review work;
+- use the project `CODING-AGENT.md` plus shared implementation-agent owners when generating implementation or blocking-fix prompts.
+
+Authority:
+
+- The latest remote `sayosomi/voiceger-accent-adapter` repository is authoritative for implemented repository facts.
+- GitHub Issues in this repository are the primary Work and current implementation-contract authority.
+- Reusable workflow mechanics belong in dev-context; repository-local environment, test, scratch-artifact, and hygiene rules remain owned here.
+- Do not import nuinuiCAD-specific Linear workflow, declared lanes, Astra policy, Manual E2E policy, or other nuinuiCAD product rules.
+
 ## Development environment
 
 - Voiceger is maintained separately from this repository.
