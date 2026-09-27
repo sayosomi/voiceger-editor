@@ -326,18 +326,11 @@ Early implementation. The core Japanese pronunciation path, VOICEVOX-style Audio
 
 ## Generated audio and Voiceger terms
 
-Audio generated through this adapter using the Voiceger Zundamon voice is subject to the official Voiceger Zundamon audio usage terms, independently of this repository's code license:
+Audio generated through this adapter using the Voiceger Zundamon voice is subject to the official Voiceger Zundamon audio usage terms.
+
+Please check the latest terms before using, publishing, or distributing generated audio:
 
 https://zunko.jp/con_ongen_kiyaku.html
-
-At the time of writing, the official terms state that:
-
-- both commercial and non-commercial use are permitted;
-- generated audio must follow the common audio-source terms on the same page;
-- credit must be provided near the generated audio as `Voiceger:Zundamon` (an equivalent credit in another language is also allowed), or on a supplementary web page when it cannot reasonably be placed nearby;
-- uses prohibited by the common audio-source terms remain prohibited.
-
-This repository does not grant additional rights to Voiceger voices, model weights, reference audio, characters, or generated audio. Before publishing or distributing generated audio, check the latest official terms at the link above and comply with them.
 
 ## License
 
