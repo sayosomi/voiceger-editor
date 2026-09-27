@@ -206,21 +206,22 @@ class VoicegerAdapter:
                 from AR.modules.activation import MhaPatched
                 import text.english as english
                 import text.japanese as japanese
-                from GPT_SoVITS.inference_webui import (
-                    change_gpt_weights,
-                    change_sovits_weights,
-                    get_tts_wav,
-                )
+                import GPT_SoVITS.inference_webui as inference_webui
 
                 with MhaPatched():
-                    change_gpt_weights(gpt_path=str(self.gpt_model))
-                    change_sovits_weights(sovits_path=str(self.sovits_model))
+                    inference_webui.change_gpt_weights(
+                        gpt_path=str(self.gpt_model)
+                    )
+                    inference_webui.change_sovits_weights(
+                        sovits_path=str(self.sovits_model)
+                    )
 
             self._runtime = {
                 "MhaPatched": MhaPatched,
                 "english": english,
                 "japanese": japanese,
-                "get_tts_wav": get_tts_wav,
+                "inference_webui": inference_webui,
+                "get_tts_wav": inference_webui.get_tts_wav,
             }
             self._loaded = True
 
@@ -357,9 +358,10 @@ class VoicegerAdapter:
         with self._lock:
             english = self._runtime["english"]
             japanese = self._runtime["japanese"]
+            inference_webui = self._runtime["inference_webui"]
             MhaPatched = self._runtime["MhaPatched"]
             get_tts_wav = self._runtime["get_tts_wav"]
-            original_english_g2p = english.g2p
+            original_clean_text_inf = inference_webui.clean_text_inf
             original_japanese_g2p = japanese.g2p
 
             japanese_override_queues = defaultdict(deque)
@@ -367,12 +369,15 @@ class VoicegerAdapter:
                 normalized = japanese.text_normalize(segment_text)
                 japanese_override_queues[normalized].append(list(tokens))
 
+            def canonical_english_text(value: str) -> str:
+                normalized = english.text_normalize(value).strip()
+                return normalized.strip(" .,!?…")
+
             english_override_entries = []
             for segment_text, tokens in english_overrides or []:
-                normalized = english.text_normalize(segment_text)
                 english_override_entries.append(
                     {
-                        "normalized": normalized,
+                        "canonical": canonical_english_text(segment_text),
                         "tokens": normalize_english_phonemes(tokens),
                         "consumed": False,
                     }
@@ -388,19 +393,27 @@ class VoicegerAdapter:
                         return queue.popleft()
                 return original_japanese_g2p(norm_text, with_prosody)
 
-            def controlled_english_g2p(norm_text: str):
-                # Voiceger retries short English input by prefixing "." and
-                # running G2P again. Keep the same override available for
-                # that retry instead of consuming it only once.
-                for entry in english_override_entries:
-                    expected = entry["normalized"]
-                    if norm_text == expected or norm_text == "." + expected:
-                        entry["consumed"] = True
-                        return list(entry["tokens"])
-                return original_english_g2p(norm_text)
+            def controlled_clean_text_inf(
+                value: str,
+                language: str,
+                version: str,
+            ):
+                if language == "en":
+                    actual = canonical_english_text(value)
+                    for entry in english_override_entries:
+                        if actual == entry["canonical"]:
+                            entry["consumed"] = True
+                            phones = list(entry["tokens"])
+                            phone_ids = inference_webui.cleaned_text_to_sequence(
+                                phones,
+                                version,
+                            )
+                            norm_text = english.text_normalize(value)
+                            return phone_ids, None, norm_text
+                return original_clean_text_inf(value, language, version)
 
             try:
-                english.g2p = controlled_english_g2p
+                inference_webui.clean_text_inf = controlled_clean_text_inf
                 japanese.g2p = controlled_japanese_g2p
                 with LANGSEGMENT_LOCK:
                     with _pushd(self.sovits_dir):
@@ -419,7 +432,7 @@ class VoicegerAdapter:
                                 )
                             )
             finally:
-                english.g2p = original_english_g2p
+                inference_webui.clean_text_inf = original_clean_text_inf
                 japanese.g2p = original_japanese_g2p
 
             remaining_japanese = sum(
