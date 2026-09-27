@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 import sys
 from threading import RLock
-from typing import Any
+from typing import Any, Optional
 
 from .filename import build_output_filename, next_output_index
 from .openjtalk_converter import text_to_pronunciation
@@ -28,6 +28,7 @@ _SENTENCE_END = {
     "？": "？",
     "?": "？",
 }
+
 
 class VoicegerAdapterError(RuntimeError):
     """Raised when the local Voiceger runtime cannot be used safely."""
@@ -47,17 +48,20 @@ def _text_terminator(text: str) -> str:
     return _SENTENCE_END.get(text[-1], "。")
 
 
+def pronunciation_to_spoken_text(value: Pronunciation) -> str:
+    """Build plain kana text from resolved pronunciation data."""
+
+    text = "".join(phrase.reading for phrase in value.phrases)
+    if value.terminator is not None:
+        text += value.terminator
+    return text
+
+
 def resolve_pronunciation(
     text: str,
-    pronunciation: str | None = None,
+    pronunciation: Optional[str] = None,
 ) -> tuple[str, Pronunciation, str]:
-    """Resolve target text and pronunciation without loading Voiceger.
-
-    Returns:
-        synthesis_text: text that will be passed to Voiceger
-        parsed pronunciation
-        canonical editable pronunciation string
-    """
+    """Resolve target text and pronunciation without loading Voiceger."""
 
     source = _ensure_single_utterance(text)
     terminator = _text_terminator(source)
@@ -92,8 +96,8 @@ class VoicegerAdapter:
 
     def __init__(
         self,
-        voiceger_root: str | Path | None = None,
-        output_dir: str | Path | None = None,
+        voiceger_root: Optional[str | Path] = None,
+        output_dir: Optional[str | Path] = None,
     ) -> None:
         self.voiceger_root = Path(
             voiceger_root
@@ -103,10 +107,18 @@ class VoicegerAdapter:
 
         self.sovits_dir = self.voiceger_root / "GPT-SoVITS"
         self.gpt_sovits_dir = self.sovits_dir / "GPT_SoVITS"
-        self.gpt_model = self.voiceger_root / "GPT_weights_v2" / "zudamon_style_1-e15.ckpt"
-        self.sovits_model = self.voiceger_root / "SoVITS_weights_v2" / "zudamon_style_1_e8_s96.pth"
-        self.ref_wav = self.voiceger_root / "reference" / "reference.wav"
-        self.ref_text = self.voiceger_root / "reference" / "ref_text.txt"
+        self.gpt_model = (
+            self.voiceger_root
+            / "GPT_weights_v2"
+            / "zudamon_style_1-e15.ckpt"
+        )
+        self.sovits_model = (
+            self.voiceger_root
+            / "SoVITS_weights_v2"
+            / "zudamon_style_1_e8_s96.pth"
+        )
+        self.default_ref_wav = self.voiceger_root / "reference" / "reference.wav"
+        self.default_ref_text = self.voiceger_root / "reference" / "ref_text.txt"
 
         self.output_dir = Path(
             output_dir
@@ -117,10 +129,6 @@ class VoicegerAdapter:
         self.character_name = os.environ.get(
             "VOICEGER_CHARACTER_NAME",
             "ずんだもん",
-        )
-        self.style_name = os.environ.get(
-            "VOICEGER_STYLE_NAME",
-            "style_1",
         )
 
         self._lock = RLock()
@@ -133,8 +141,6 @@ class VoicegerAdapter:
             self.gpt_sovits_dir,
             self.gpt_model,
             self.sovits_model,
-            self.ref_wav,
-            self.ref_text,
         ]
         missing = [str(path) for path in required if not path.exists()]
         if missing:
@@ -185,17 +191,19 @@ class VoicegerAdapter:
             }
             self._loaded = True
 
-    def synthesize(
+    def synthesize_audio(
         self,
         *,
         text: str,
-        pronunciation: str | None = None,
+        pronunciation: Optional[str] = None,
+        ref_wav_path: Optional[str | Path] = None,
+        prompt_text: Optional[str] = None,
         top_k: int = 20,
         top_p: float = 0.6,
         temperature: float = 0.6,
         speed: float = 1.0,
     ) -> dict[str, Any]:
-        """Synthesize one Japanese utterance with optional pronunciation override."""
+        """Synthesize one utterance and return audio in memory."""
 
         source_text = _ensure_single_utterance(text)
         synthesis_text, parsed, resolved = resolve_pronunciation(
@@ -203,6 +211,28 @@ class VoicegerAdapter:
             pronunciation,
         )
         tokens = pronunciation_to_voiceger_tokens(parsed)
+
+        selected_ref_wav = Path(
+            ref_wav_path or self.default_ref_wav
+        ).expanduser().resolve()
+        if not selected_ref_wav.is_file():
+            raise VoicegerAdapterError(
+                f"reference WAV not found: {selected_ref_wav}"
+            )
+
+        if prompt_text is None:
+            if not self.default_ref_text.is_file():
+                raise VoicegerAdapterError(
+                    f"reference text not found: {self.default_ref_text}"
+                )
+            selected_prompt_text = self.default_ref_text.read_text(
+                encoding="utf-8"
+            ).strip()
+        else:
+            selected_prompt_text = prompt_text.strip()
+
+        if not selected_prompt_text:
+            raise VoicegerAdapterError("reference prompt text must not be empty")
 
         self._ensure_runtime()
 
@@ -219,17 +249,14 @@ class VoicegerAdapter:
                     return list(tokens)
                 return original_g2p(norm_text, with_prosody)
 
-            prompt_text = self.ref_text.read_text(encoding="utf-8").strip()
-            self.output_dir.mkdir(parents=True, exist_ok=True)
-
             try:
                 japanese.g2p = controlled_g2p
                 with _pushd(self.sovits_dir):
                     with MhaPatched():
                         results = list(
                             get_tts_wav(
-                                ref_wav_path=str(self.ref_wav),
-                                prompt_text=prompt_text,
+                                ref_wav_path=str(selected_ref_wav),
+                                prompt_text=selected_prompt_text,
                                 prompt_language="Japanese",
                                 text=synthesis_text,
                                 text_language="Japanese",
@@ -246,27 +273,60 @@ class VoicegerAdapter:
                 raise VoicegerAdapterError("Voiceger returned no audio")
 
             sample_rate, audio = results[-1]
-
-            try:
-                import soundfile as sf
-            except ImportError as exc:
-                raise VoicegerAdapterError(
-                    "soundfile is required to write synthesized WAV files"
-                ) from exc
-
-            output_index = next_output_index(self.output_dir)
-            file_name = build_output_filename(
-                index=output_index,
-                character_name=self.character_name,
-                style_name=self.style_name,
-                text=source_text,
-            )
-            output_path = self.output_dir / file_name
-            sf.write(output_path, audio, sample_rate)
-
             return {
-                "file_name": file_name,
-                "file_path": str(output_path),
+                "audio": audio,
                 "sampling_rate": int(sample_rate),
                 "resolved_pronunciation": resolved,
             }
+
+    def synthesize(
+        self,
+        *,
+        text: str,
+        pronunciation: Optional[str] = None,
+        ref_wav_path: Optional[str | Path] = None,
+        prompt_text: Optional[str] = None,
+        style_name: str = "style_1",
+        top_k: int = 20,
+        top_p: float = 0.6,
+        temperature: float = 0.6,
+        speed: float = 1.0,
+    ) -> dict[str, Any]:
+        """Synthesize and persist a WAV for local helper/CLI use."""
+
+        source_text = _ensure_single_utterance(text)
+        result = self.synthesize_audio(
+            text=source_text,
+            pronunciation=pronunciation,
+            ref_wav_path=ref_wav_path,
+            prompt_text=prompt_text,
+            top_k=top_k,
+            top_p=top_p,
+            temperature=temperature,
+            speed=speed,
+        )
+
+        try:
+            import soundfile as sf
+        except ImportError as exc:
+            raise VoicegerAdapterError(
+                "soundfile is required to write synthesized WAV files"
+            ) from exc
+
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        output_index = next_output_index(self.output_dir)
+        file_name = build_output_filename(
+            index=output_index,
+            character_name=self.character_name,
+            style_name=style_name,
+            text=source_text,
+        )
+        output_path = self.output_dir / file_name
+        sf.write(output_path, result["audio"], result["sampling_rate"])
+
+        return {
+            "file_name": file_name,
+            "file_path": str(output_path),
+            "sampling_rate": result["sampling_rate"],
+            "resolved_pronunciation": result["resolved_pronunciation"],
+        }
