@@ -144,11 +144,11 @@ The response includes the canonical pronunciation actually used:
 }
 ```
 
-Generated WAV files use a readable local-date + source-text filename:
+Generated WAV files use a readable local timestamp + source-text filename:
 
 ```text
-20260927_今日は雨ですね。.wav
-20260927_今日は雨ですね。_2.wav
+20260927142800_今日は雨ですね。.wav
+20260927142800_今日は雨ですね。_2.wav
 ```
 
 Characters that are unsafe in common filesystems are replaced with `_`, and very long source text is truncated in the filename only.
