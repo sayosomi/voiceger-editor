@@ -260,6 +260,36 @@ Validated paths include:
 
 For representative Japanese phrases, adapter-generated G2P tokens matched Voiceger's built-in G2P tokens exactly, including accent-phrase boundaries.
 
+## Integration test
+
+The recorded Voiceger compatibility target for v1 is:
+
+```text
+f77c1172baf1f490bb962f2d2acd01c852ef3464
+```
+
+Real Voiceger synthesis tests are opt-in so the normal unit-test suite does not load the models.
+
+Run them with:
+
+```bash
+cd ~/Code/voiceger-accent-adapter
+
+VOICEGER_RUN_INTEGRATION=1 \
+VOICEGER_ROOT=~/voiceger_v2 \
+~/voiceger_v2/.venv/bin/python -m unittest discover \
+  -s tests/integration \
+  -p 'test_*.py' \
+  -v
+```
+
+The integration suite checks:
+
+- the local Voiceger checkout revision;
+- Japanese manual-accent synthesis;
+- Japanese-English mixed synthesis;
+- basic duration bounds to catch semantic-token runaway regressions.
+
 ## Upstream dependency
 
 Voiceger is developed separately at:
