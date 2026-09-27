@@ -39,5 +39,3 @@ class AudioQuery(BaseModel):
     outputStereo: bool = False
     kana: Optional[str] = None
 
-    # Adapter extension: original display text for readable output filenames.
-    text: str
