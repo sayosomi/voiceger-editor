@@ -81,16 +81,22 @@ candidate. `Tab` is an optional accelerator. Candidate review keeps the
 candidate in the same list; `Esc` returns to the last selected pronunciation
 segment. The candidate footer states that `Enter` accepts and saves the take.
 
-Editing opens a separate modal screen with an unsaved draft, selectable fields,
-and Apply/Cancel actions. The Japanese editor shows the literal AquesTalk-style
-pronunciation; type `'` and `/` directly, with ordinary cursor movement and
-editing. English segments show selectable lexical word/token rows. Select a
-word to edit its stress-free phoneme tokens and each existing primary-stress
-marker in a dedicated word editor. Stress digits are hidden; primary stress is
-shown with brackets. Voiceger's whole-segment English G2P supplies the transient
-word boundaries, and the editor fails closed if those groups do not reproduce
-Voiceger's canonical flat phoneme sequence. Settings are also reachable in the
-action list and use the same draft/apply/cancel flow.
+Text and Japanese pronunciation each open as a single-field modal: Enter applies
+the input and Esc discards it directly back to Navigation. Text apply rebuilds
+pronunciation. If applying either field fails, the modal stays open with the
+input ready for correction. The Japanese editor shows the literal
+AquesTalk-style pronunciation; type `'` and `/` directly, with ordinary cursor
+movement and editing. Settings remain a multi-field draft: Enter finishes the
+active field, Apply commits the settings, and Esc discards the whole settings
+draft. English segments show selectable lexical word/token rows. Select a word
+to edit its stress-free phoneme tokens and each existing primary-stress marker
+in a dedicated word editor. Enter commits phonemes into the word draft while
+leaving stress editable; Done returns the word draft to its segment, and Esc
+cancels the current English editor layer. Stress digits are hidden; primary
+stress is shown with brackets. Voiceger's whole-segment English G2P supplies
+the transient word boundaries, and the editor fails closed if those groups do
+not reproduce Voiceger's canonical flat phoneme sequence. Settings are also
+reachable in the action list.
 
 `F5` / `Ctrl+G`, number keys `1`–`8`, `r`, `R`, `t`, `s`, `v`, `n`, `o`, `x`,
 and `?` remain accelerators to the corresponding visible actions. These

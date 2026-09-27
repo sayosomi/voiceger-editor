@@ -725,7 +725,7 @@ class TuiApp:
         if editor is None:
             return []
         if editor.kind in {"text", "japanese"}:
-            return ["draft", "apply", "cancel"]
+            return ["draft"]
         if editor.kind == "settings":
             return [
                 "style_id", "speed", "take_count", "output_dir", "save_text",
@@ -771,10 +771,6 @@ class TuiApp:
         if editor.kind in {"text", "japanese"}:
             if selected == "draft":
                 self._begin_editor_field("draft", editor.payload["draft"])
-            elif selected == "apply":
-                self._apply_editor()
-            elif selected == "cancel":
-                self._cancel_editor()
         elif editor.kind == "settings":
             if selected == "save_text":
                 draft = editor.payload["draft_settings"]
@@ -818,13 +814,22 @@ class TuiApp:
             return
         if editor.active_field is not None:
             if key in _ENTER_KEYS:
-                self._finish_editor_field()
+                if editor.kind in {"text", "japanese"}:
+                    editor.payload["draft"] = editor.input_value
+                    self._apply_editor()
+                else:
+                    self._finish_editor_field()
             elif key == _ESCAPE:
-                editor.input_value = editor.input_original
-                editor.input_cursor = len(editor.input_original)
-                editor.active_field = None
-                editor.error = ""
-                self._status = "Field edit canceled; the editor draft is unchanged."
+                if editor.kind in {"text", "japanese", "settings"}:
+                    self._cancel_editor()
+                elif editor.kind == "english_word":
+                    self._cancel_word_editor()
+                else:
+                    editor.input_value = editor.input_original
+                    editor.input_cursor = len(editor.input_original)
+                    editor.active_field = None
+                    editor.error = ""
+                    self._status = "Field edit canceled; the editor draft is unchanged."
             elif key == curses.KEY_LEFT:
                 editor.input_cursor = max(0, editor.input_cursor - 1)
             elif key == curses.KEY_RIGHT:
@@ -950,7 +955,12 @@ class TuiApp:
         editor.input_original = value
         editor.input_cursor = len(value)
         editor.error = ""
-        self._status = "Draft field updated; Apply commits the editor."
+        if editor.kind == "settings":
+            self._status = "Settings field updated; Apply saves the settings draft."
+        elif editor.kind == "english_word":
+            self._status = "Phonemes updated in the word draft; Done returns it to the segment."
+        else:
+            self._status = "Draft field updated."
 
     def _open_word_editor(self, group_index: int | None) -> None:
         parent = self._editor
@@ -1130,7 +1140,16 @@ class TuiApp:
         self._status = status
 
     def _cancel_editor(self) -> None:
-        self._close_editor("Editor draft discarded.")
+        editor = self._editor
+        if editor is None:
+            return
+        status = {
+            "text": "Text draft discarded.",
+            "japanese": "Japanese pronunciation draft discarded.",
+            "settings": "Settings draft discarded.",
+            "english_segment": "English segment draft discarded.",
+        }.get(editor.kind, "Editor draft discarded.")
+        self._close_editor(status)
 
     def _change_settings(self, **changes: Any) -> None:
         try:
@@ -1593,7 +1612,14 @@ class TuiApp:
             cursor_column = prefix_width + cursor_cells
 
         plain(editor.title)
-        plain("Draft only until Apply or Done.")
+        if editor.kind in {"text", "japanese"}:
+            plain("Enter applies the draft; Esc cancels this editor.")
+        elif editor.kind == "settings":
+            plain("Changes stay in this draft until Apply; Esc cancels all settings.")
+        elif editor.kind == "english_word":
+            plain("Phoneme and stress changes stay here until Done.")
+        else:
+            plain("Changes stay in this draft until Apply.")
         if editor.kind == "text":
             plain("Context: replace the utterance and rebuild its pronunciation.")
             draft = editor.input_value if editor.active_field == "draft" else editor.payload["draft"]
@@ -1602,9 +1628,6 @@ class TuiApp:
                 input_field("draft")
             else:
                 selectable("draft", "Source text field  [Enter: Edit]")
-            plain()
-            selectable("apply", "Apply text and rebuild pronunciation")
-            selectable("cancel", "Cancel and discard text draft")
         elif editor.kind == "japanese":
             wrap("Source: ", editor.payload["source_text"])
             draft = editor.input_value if editor.active_field == "draft" else editor.payload["draft"]
@@ -1614,9 +1637,6 @@ class TuiApp:
             else:
                 selectable("draft", "Pronunciation field  [Enter: Edit]")
             plain("Type ' and / directly; the stored notation is literal.")
-            plain()
-            selectable("apply", "Apply pronunciation changes")
-            selectable("cancel", "Cancel and discard pronunciation draft")
         elif editor.kind == "settings":
             plain("Context: current run and persisted output settings.")
             draft = editor.payload["draft_settings"]
@@ -1733,16 +1753,24 @@ class TuiApp:
         if status.startswith("Error:"):
             status_attr |= self._attribute("A_REVERSE")
         self._safe_add(status_row, 0, status, width, status_attr)
-        if editor.active_field is not None:
-            footer = "Type / IME  ←/→ Cursor  ↑/↓ Wrapped line  Enter Finish field  Esc Discard field"
+        if editor.active_field is not None and editor.kind in {"text", "japanese"}:
+            footer = "Type / IME  ←/→ Cursor  ↑/↓ Wrapped line  Enter Apply  Esc Cancel"
+            if editor.kind == "japanese":
+                footer += "  ' and / direct"
+        elif editor.active_field is not None and editor.kind == "settings":
+            footer = "Type / IME  ←/→ Cursor  Enter Finish field  Esc Cancel Settings"
+        elif editor.active_field is not None and editor.kind == "english_word":
+            footer = "Type phonemes  ←/→ Cursor  Enter Commit phonemes  Esc Cancel word editor"
         elif editor.kind == "japanese":
-            footer = "↑/↓ Select  Enter Edit/Apply  ' and / direct  Esc Cancel draft"
+            footer = "Enter Edit  ' and / direct  Esc Cancel pronunciation"
         elif editor.kind == "english_word" and editor.payload.get("moving_primary"):
             footer = "←/→ Choose vowel  Enter Commit marker  Esc Cancel marker move"
         elif editor.kind == "english_word":
             footer = "↑/↓ Select  Enter Edit/Done  Esc Cancel word changes"
         elif editor.kind == "english_segment":
             footer = "↑/↓ Select word  Enter Edit/Apply  Esc Cancel segment draft"
+        elif editor.kind == "settings":
+            footer = "↑/↓ Select field/action  Enter Edit/Apply  Esc Cancel Settings"
         else:
             footer = "↑/↓ Select field/action  Enter Edit/Apply  Esc Cancel draft"
         self._safe_add(status_row + 1, 0, footer, width, self._attribute("A_BOLD"))
