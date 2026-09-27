@@ -143,10 +143,11 @@ class VoicegerAdapter:
 
             self._require_paths()
 
-            os.environ.setdefault(
-                "LOCALAPPDATA",
-                str(Path.home() / "Library" / "Application Support"),
-            )
+            if sys.platform == "darwin":
+                os.environ.setdefault(
+                    "LOCALAPPDATA",
+                    str(Path.home() / "Library" / "Application Support"),
+                )
             os.environ["gpt_path"] = str(self.gpt_model)
             os.environ["sovits_path"] = str(self.sovits_model)
 
