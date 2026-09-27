@@ -63,6 +63,27 @@ export VOICEGER_ROOT=/path/to/voiceger_v2
   --port 8001
 ```
 
+## Keyboard-first terminal interface
+
+Install the terminal interface in Voiceger's Python environment, then start it
+with an utterance or enter the text after launch:
+
+```bash
+"$VOICEGER_ROOT/.venv/bin/python" -m pip install -e '.[tui]'
+voiceger-accent-adapter "今日はhelloと言うよ。"
+```
+
+The TUI edits Japanese `'` / `/` pronunciation notation and English ARPAbet
+phonemes. English stress digits are hidden; select an English segment and use
+the left/right arrows to move its primary stress. Generate takes with `F5` or
+`Ctrl+G` (terminal-safe equivalents for Command+Enter), then use the up/down
+arrows, `Space`, `Enter`, or `1`–`8` to audition and accept. Use `r` to
+regenerate the current take and `R` to regenerate the batch. Candidate WAVs are
+temporary until accepted. Press `t`, `s`, `v`, `n`, `o`, or `x` to edit text,
+style, speed, take count, output directory, or paired `.txt` output. These
+defaults persist in the platform user config; command-line options override
+them for one invocation.
+
 ## Styles / speaker IDs
 
 The numbered WAV files under Voiceger's local `reference/` directory are exposed as VOICEVOX talk styles.
