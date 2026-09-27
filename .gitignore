@@ -1,0 +1,10 @@
+.DS_Store
+*.egg-info/
+/spike-output/
+/automatic.wav
+/sweet.wav
+/mixed.wav
+/hello-*.wav
+/query.json
+/mixed.json
+/hello-*.json
