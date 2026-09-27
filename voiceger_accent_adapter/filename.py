@@ -1,13 +1,13 @@
-"""VOICEVOX-style output filename helpers."""
+"""Helpers for user-facing synthesized audio filenames."""
 
 from __future__ import annotations
 
+from datetime import datetime
 import re
-from pathlib import Path
+from typing import Optional
 
 
 _INVALID_FILENAME_CHARS = re.compile(r'[\x00-\x1f"*/:<>?\\|\x7f]')
-_INDEX_PREFIX = re.compile(r"^(\d+)_")
 
 
 def sanitize_filename_part(value: str) -> str:
@@ -25,38 +25,13 @@ def shorten_text_for_filename(text: str) -> str:
     return cleaned
 
 
-def next_output_index(output_dir: Path) -> int:
-    """Return the next persistent 1-based index for an output directory."""
-
-    highest = 0
-    if output_dir.exists():
-        for path in output_dir.iterdir():
-            if not path.is_file():
-                continue
-            match = _INDEX_PREFIX.match(path.name)
-            if match is not None:
-                highest = max(highest, int(match.group(1)))
-    return highest + 1
-
-
 def build_output_filename(
     *,
-    index: int,
-    character_name: str,
-    style_name: str,
     text: str,
+    timestamp: Optional[datetime] = None,
 ) -> str:
-    """Build the default VOICEVOX-style WAV filename.
+    """Build a timestamped WAV filename using local time."""
 
-    Format:
-      001_キャラ（スタイル）_テキスト.wav
-    """
-
-    if index < 1:
-        raise ValueError("index must be 1 or greater")
-
-    character = sanitize_filename_part(character_name)
-    style = sanitize_filename_part(style_name)
+    local_time = timestamp if timestamp is not None else datetime.now()
     snippet = shorten_text_for_filename(text)
-
-    return f"{index:03d}_{character}（{style}）_{snippet}.wav"
+    return f"{local_time:%Y%m%d_%H%M%S}_{snippet}.wav"
