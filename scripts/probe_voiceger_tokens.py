@@ -14,6 +14,7 @@ GPT_SOVITS = VOICEGER_ROOT / "GPT-SoVITS" / "GPT_SoVITS"
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(GPT_SOVITS))
 
+from text.cleaner import clean_text  # noqa: E402
 from text.japanese import g2p as voiceger_g2p  # noqa: E402
 
 from voiceger_accent_adapter.openjtalk_converter import (  # noqa: E402
@@ -38,14 +39,11 @@ for text in CASES:
     pronunciation = text_to_pronunciation(text)
     adapter_tokens = pronunciation_to_voiceger_tokens(pronunciation)
     original_tokens = voiceger_g2p(text)
-
-    # Voiceger v2 turns "#" into UNK later, so the adapter intentionally does
-    # not emit "#". Compare against the built-in stream with only "#" removed.
-    expected = [token for token in original_tokens if token != "#"]
+    cleaned_tokens = clean_text(text, "ja", "v2")[0]
 
     print(f"\n=== {text} ===")
     print("pronunciation:", format_pronunciation(pronunciation))
-    print("voiceger:     ", original_tokens)
-    print("without #:    ", expected)
-    print("adapter:      ", adapter_tokens)
-    print("match:", adapter_tokens == expected)
+    print("voiceger g2p:  ", original_tokens)
+    print("adapter g2p:   ", adapter_tokens)
+    print("g2p match:", adapter_tokens == original_tokens)
+    print("cleaned v2:    ", cleaned_tokens)
