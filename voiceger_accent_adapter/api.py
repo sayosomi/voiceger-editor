@@ -7,9 +7,13 @@ from functools import lru_cache
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from .openjtalk_converter import OpenJTalkConversionError, text_to_pronunciation_string
+from .openjtalk_converter import OpenJTalkConversionError
 from .pronunciation import PronunciationSyntaxError
-from .voiceger_adapter import VoicegerAdapter, VoicegerAdapterError
+from .voiceger_adapter import (
+    VoicegerAdapter,
+    VoicegerAdapterError,
+    resolve_pronunciation,
+)
 
 
 app = FastAPI(
@@ -60,7 +64,7 @@ def root():
 @app.post("/pronunciation", response_model=PronunciationResponse)
 def pronunciation(req: PronunciationRequest):
     try:
-        value = text_to_pronunciation_string(req.text)
+        _, _, value = resolve_pronunciation(req.text)
     except (ValueError, OpenJTalkConversionError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return PronunciationResponse(
