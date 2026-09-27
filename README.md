@@ -74,14 +74,18 @@ voiceger-accent-adapter "今日はhelloと言うよ。"
 ```
 
 The TUI edits Japanese `'` / `/` pronunciation notation and English ARPAbet
-phonemes. English stress digits are hidden; select an English segment and use
-`Shift+Tab` to cycle its primary-stress markers, then use the left/right arrows
-to move the selected marker. Generate takes with `F5` or
-`Ctrl+G` (terminal-safe equivalents for Command+Enter), then use the up/down
-arrows, `Space`, `Enter`, or `1`–`8` to audition and accept. Use `r` to
-regenerate the current take and `R` to regenerate the batch. Candidate WAVs are
-temporary until accepted. Press `t`, `s`, `v`, `n`, `o`, or `x` to edit text,
-style, speed, take count, output directory, or paired `.txt` output. These
+phonemes. Tab moves focus through Text, Pronunciation, Generate, and available
+Takes areas; Enter edits or activates the focused area. In the Japanese
+pronunciation editor, type `'` and `/` directly or use `a` to toggle `'` and
+`p` to toggle `/` at the cursor. English stress digits are hidden; select an
+English segment and use `Shift+Tab` to cycle its primary-stress markers, then
+use the left/right arrows to move the selected marker. Generate takes with the
+visible Generate action, `F5`, or `Ctrl+G` (terminal-safe equivalents for
+Command+Enter), then use the up/down arrows, `Space`, `Enter`, or `1`–`8` to
+audition and accept. Use `r` to regenerate the current take and `R` to
+regenerate the batch. Candidate WAVs are temporary until accepted. Press `t`,
+`s`, `v`, `n`, `o`, or `x` to edit text, style, speed, take count, output
+directory, or paired `.txt` output. Press `?` for the full shortcut list. These
 defaults persist in the platform user config; command-line options override
 them for one invocation.
 
