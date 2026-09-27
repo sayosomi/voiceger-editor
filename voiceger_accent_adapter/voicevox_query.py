@@ -107,7 +107,6 @@ def accent_phrases_to_pronunciation(
 
 def build_audio_query(
     *,
-    text: str,
     pronunciation: Pronunciation,
     output_sampling_rate: int = 32000,
 ) -> AudioQuery:
@@ -124,5 +123,4 @@ def build_audio_query(
         outputSamplingRate=output_sampling_rate,
         outputStereo=False,
         kana=format_pronunciation(pronunciation),
-        text=text,
     )
