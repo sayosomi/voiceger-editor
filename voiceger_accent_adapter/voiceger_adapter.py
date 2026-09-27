@@ -193,6 +193,7 @@ class VoicegerAdapter:
         top_k: int = 20,
         top_p: float = 0.6,
         temperature: float = 0.6,
+        speed: float = 1.0,
     ) -> dict[str, Any]:
         """Synthesize one Japanese utterance with optional pronunciation override."""
 
@@ -235,6 +236,7 @@ class VoicegerAdapter:
                                 top_k=top_k,
                                 top_p=top_p,
                                 temperature=temperature,
+                                speed=speed,
                             )
                         )
             finally:
