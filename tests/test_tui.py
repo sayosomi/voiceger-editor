@@ -445,19 +445,103 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._current_take, 2)
 
     def test_acceptance_and_regeneration_are_unavailable_while_busy_but_replay_works(self):
-        app = self.make_app(candidates=(candidate(1),))
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
         app._play_take = Mock()
+        app._start_generation = Mock()
+        app._start_regenerate_all = Mock()
         app._start_regeneration = Mock()
         app._busy = True
+
+        for key in (
+            ("text", None),
+            ("segment", 0),
+            ("generate", None),
+            ("settings", None),
+        ):
+            app._set_focus_key(key)
+            app._handle_key("\n")
+            self.assertIsNone(app._editor)
+
         app._focus_candidate(1)
         app._handle_key("\n")
         self.assertEqual(app.session.accept_calls, [])
         app._set_focus_key(("regenerate_selected", 1))
         app._handle_key("\n")
+        app._start_generation.assert_not_called()
+        app._start_regenerate_all.assert_not_called()
         app._start_regeneration.assert_not_called()
         app._set_focus_key(("candidate", 1))
         app._handle_key(" ")
         app._play_take.assert_called_with(1)
+
+    def test_query_replacement_clears_stale_selected_take_and_r_cannot_regenerate_it(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        app._current_take = 1
+        app._set_focus_key(("candidate", 1))
+        replacement = app.session.query.model_copy(deep=True)
+        replacement.voicegerSegments[1].phonemes = ["HH", "EH1"]
+        app._apply_session_query(replacement)
+
+        self.assertEqual(app.session.candidates, ())
+        self.assertIsNone(app._current_take)
+        self.assertNotIn(("regenerate_selected", 1), app._navigation_items())
+        app._start_regeneration = Mock()
+        app._handle_key("r")
+        app._start_regeneration.assert_not_called()
+        self.assertEqual(app._status, "Select a candidate before regenerating it.")
+
+        app.session.candidates = (candidate(2),)
+        app._play_take = Mock()
+        app._focus_candidate(2)
+        self.assertIn(("regenerate_selected", 2), app._navigation_items())
+
+    def test_busy_navigation_marks_every_unavailable_action_without_reordering(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        app._current_take = 1
+        app._busy = True
+
+        items = app._navigation_items()
+        rows = app._navigation_document(80)
+        labels = {key: line for line, key in rows if key is not None}
+
+        self.assertEqual([key for _line, key in rows if key is not None], items)
+        self.assertIn("(unavailable while generating)", labels[("text", None)])
+        for index in (0, 1):
+            self.assertIn(
+                "(unavailable while generating)",
+                labels[("segment", index)],
+            )
+        self.assertIn("busy; unavailable while generating", labels[("generate", None)])
+        self.assertIn(
+            "Space replay; Enter unavailable while generating",
+            labels[("candidate", 1)],
+        )
+        self.assertIn(
+            "(unavailable while generating)",
+            labels[("regenerate_selected", 1)],
+        )
+        self.assertIn("(unavailable while generating)", labels[("settings", None)])
+
+    def test_busy_candidate_remains_playable_and_footer_does_not_claim_acceptance(self):
+        app = self.make_app(candidates=(candidate(1), candidate(2)))
+        app._play_take = Mock()
+        app._busy = True
+        app._focus_candidate(1)
+        app._handle_key(curses.KEY_DOWN)
+        self.assertEqual(app._focus_key, ("candidate", 2))
+        app._handle_key(" ")
+        self.assertEqual(app._play_take.call_args_list, [call(1), call(2), call(2)])
+
+        screen = FakeScreen()
+        app._screen = screen
+        app._render()
+        rendered = self.rendered(screen)
+        self.assertIn("Space replay; Enter unavailable while generating", rendered)
+        self.assertIn("Enter unavailable while generating", rendered)
+        self.assertNotIn("Enter accepts and saves", rendered)
+        footer = screen.drawn[-1][2]
+        self.assertTrue(footer.endswith("q Quit"))
+        self.assertLessEqual(len(footer), 79)
 
     def test_candidate_footer_says_enter_accepts_and_saves(self):
         app = self.make_app(candidates=(candidate(1),))
