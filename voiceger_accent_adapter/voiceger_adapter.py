@@ -9,15 +9,13 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import datetime
 import os
 from pathlib import Path
-import re
 import sys
 from threading import RLock
 from typing import Any
-import unicodedata
 
+from .filename import build_output_filename, next_output_index
 from .openjtalk_converter import text_to_pronunciation
 from .pronunciation import Pronunciation, format_pronunciation, parse_pronunciation
 from .voiceger_tokens import pronunciation_to_voiceger_tokens
@@ -30,64 +28,6 @@ _SENTENCE_END = {
     "？": "？",
     "?": "？",
 }
-
-_UNSAFE_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
-_WHITESPACE = re.compile(r"\s+")
-
-
-class VoicegerAdapterError(RuntimeError):
-    """Raised when the local Voiceger runtime cannot be used safely."""
-
-
-def _ensure_single_utterance(text: str) -> str:
-    if not text or not text.strip():
-        raise ValueError("text must not be empty")
-    if "\n" in text or "\r" in text:
-        raise ValueError("v1 supports one utterance per request; newlines are not supported")
-    return text.strip()
-
-
-def _text_terminator(text: str) -> str:
-    last = text[-1]
-    return _SENTENCE_END.get(last, "。")
-
-
-def _filename_text(text: str, max_length: int = 80) -> str:
-    """Return a readable cross-platform-safe filename fragment."""
-
-    value = unicodedata.normalize("NFC", text.strip())
-    value = _WHITESPACE.sub(" ", value)
-    value = _UNSAFE_FILENAME_CHARS.sub("_", value)
-    value = value.strip(" .")
-
-    if not value:
-        value = "voiceger"
-
-    if len(value) > max_length:
-        value = value[:max_length].rstrip(" .")
-
-    return value or "voiceger"
-
-
-def _next_output_path(
-    output_dir: Path,
-    text: str,
-    *,
-    now: datetime | None = None,
-) -> Path:
-    """Build YYYYMMDDhhmmss_text.wav, adding _2/_3 when needed."""
-
-    current = now or datetime.now().astimezone()
-    stem = f"{current.strftime('%Y%m%d%H%M%S')}_{_filename_text(text)}"
-
-    candidate = output_dir / f"{stem}.wav"
-    index = 2
-    while candidate.exists():
-        candidate = output_dir / f"{stem}_{index}.wav"
-        index += 1
-
-    return candidate
-
 
 def resolve_pronunciation(
     text: str,
@@ -155,6 +95,15 @@ class VoicegerAdapter:
             or os.environ.get("VOICEGER_ACCENT_OUTPUT_DIR")
             or (Path.home() / ".voiceger-accent-adapter" / "output")
         ).expanduser().resolve()
+
+        self.character_name = os.environ.get(
+            "VOICEGER_CHARACTER_NAME",
+            "ずんだもん",
+        )
+        self.style_name = os.environ.get(
+            "VOICEGER_STYLE_NAME",
+            "style_1",
+        )
 
         self._lock = RLock()
         self._loaded = False
@@ -285,10 +234,18 @@ class VoicegerAdapter:
                     "soundfile is required to write synthesized WAV files"
                 ) from exc
 
-            output_path = _next_output_path(self.output_dir, source_text)
+            output_index = next_output_index(self.output_dir)
+            file_name = build_output_filename(
+                index=output_index,
+                character_name=self.character_name,
+                style_name=self.style_name,
+                text=source_text,
+            )
+            output_path = self.output_dir / file_name
             sf.write(output_path, audio, sample_rate)
 
             return {
+                "file_name": file_name,
                 "file_path": str(output_path),
                 "sampling_rate": int(sample_rate),
                 "resolved_pronunciation": resolved,
