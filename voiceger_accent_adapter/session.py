@@ -236,6 +236,7 @@ class UtteranceSession:
             take_count=settings_snapshot.take_count,
             synthesize_one=synthesize_one,
             source_text=self._source_text,
+            style_name=style_snapshot.name,
             output_dir=settings_snapshot.output_dir,
             save_text=settings_snapshot.save_text,
             filename_text=self._source_text,
