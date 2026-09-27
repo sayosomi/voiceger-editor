@@ -244,6 +244,7 @@ class TuiApp:
         self._screen = screen
         try:
             screen.keypad(True)
+            curses.set_escdelay(25)
             screen.timeout(100)
             self._initialize_colors()
             try:
@@ -263,7 +264,7 @@ class TuiApp:
                         source_text=source_text,
                         settings=self.settings,
                     )
-                    self._status = "Query ready. Use Up/Down to choose an action."
+                    self._status = ""
                 except Exception as exc:
                     self._status = f"Error: Unable to prepare utterance: {exc}"
                     self._open_text_editor(source_text)
@@ -449,26 +450,6 @@ class TuiApp:
         if name == "candidate" and number is not None:
             self._current_take = number
             self._play_take(number)
-        else:
-            self._status = self._navigation_label(key)
-
-    def _navigation_label(self, key: tuple[str, int | None]) -> str:
-        name, number = key
-        if name == "text":
-            return "Text selected."
-        if name == "segment":
-            return f"Pronunciation segment {(number or 0) + 1} selected."
-        if name == "generate":
-            return "Generate / Regenerate all selected."
-        if name == "candidate":
-            return f"Take {number} selected."
-        if name == "regenerate_selected":
-            return f"Regenerate selected take {number}."
-        if name == "settings":
-            return "Settings selected."
-        if name == "help":
-            return "Help selected."
-        return "Quit selected."
 
     def _activate_focused_item(self) -> None:
         name, number = self._focus_key
@@ -1306,10 +1287,7 @@ class TuiApp:
                 if self._worker_error is not None:
                     self._status = f"Error: Generation failed: {self._worker_error}"
                 elif operation == "initial" and self.session is not None and self.session.candidates:
-                    self._status = (
-                        f"{len(self.session.candidates)} take(s) ready. "
-                        "Focus a candidate; Enter accepts and saves."
-                    )
+                    self._status = f"{len(self.session.candidates)} take(s) ready."
                 elif operation in {"regenerate_one", "regenerate_all"}:
                     self._status = "Take regeneration finished."
                 elif not self._exit_requested:
@@ -1447,7 +1425,7 @@ class TuiApp:
         self._safe_add(2, 0, f"Output: {settings.output_dir}", width)
 
         lines = self._navigation_document(width)
-        status_row = max(0, height - 3)
+        status_row = max(0, height - 2)
         viewport_height = max(1, status_row - 4)
         focused_index = next(
             (index for index, (_text, key) in enumerate(lines) if key == self._focus_key),
@@ -1468,17 +1446,6 @@ class TuiApp:
         if status.startswith("Error:"):
             status_attr |= self._attribute("A_REVERSE")
         self._safe_add(status_row, 0, status, width, status_attr)
-        if self._focus_key[0] == "candidate":
-            if self._busy:
-                footer = (
-                    "↑↓ Move/play | Space Replay | Enter unavailable while generating "
-                    "| Esc | q Quit"
-                )
-            else:
-                footer = "↑/↓ Move/play | Space Replay | Enter accepts and saves | Esc Back | q Quit"
-        else:
-            footer = "↑/↓ Move | Enter Action | Esc Back | ? Help | q Quit"
-        self._safe_add(status_row + 1, 0, footer, width, self._attribute("A_BOLD"))
 
     def _navigation_document(self, width: int) -> list[tuple[str, tuple[str, int | None] | None]]:
         lines: list[tuple[str, tuple[str, int | None] | None]] = []
@@ -1501,6 +1468,132 @@ class TuiApp:
             marker = "▶ " if key == self._focus_key else "  "
             lines.append((marker + label, key))
 
+        def segment_action(
+            key: tuple[str, int | None],
+            language: str,
+            source: str,
+            pronunciation: str,
+            *,
+            pronunciation_tokens: Sequence[str] | None = None,
+        ) -> None:
+            marker = "▶ " if key == self._focus_key else "  "
+            prefix = f"{marker}{language.upper()} | "
+            separator = " | "
+            busy_suffix = " (unavailable while generating)" if self._busy else ""
+            row_limit = max(1, width - 1)
+            compact = f"{prefix}{source}{separator}{pronunciation}{busy_suffix}"
+            if _display_width(compact) <= row_limit:
+                lines.append((compact, key))
+                return
+
+            minimum_token_width = max(
+                (_display_width(token) for token in (pronunciation_tokens or ())),
+                default=1,
+            )
+            field_width = (
+                row_limit
+                - _display_width(prefix)
+                - _display_width(separator)
+                - _display_width(busy_suffix)
+            )
+            if field_width < minimum_token_width + 1:
+                # Preserve the action and busy cue on narrow terminals, then
+                # show its content on display-only continuation rows.
+                continuation_prefix = " " * _display_width(prefix)
+                action_source_width = (
+                    row_limit - _display_width(prefix) - _display_width(busy_suffix)
+                )
+                if action_source_width >= 1:
+                    action_source_lines = _wrap_text(source, action_source_width) or [""]
+                    lines.append(
+                        (f"{prefix}{action_source_lines[0]}{busy_suffix}", key)
+                    )
+                    remaining_source = "".join(action_source_lines[1:])
+                else:
+                    source_width = max(
+                        1, row_limit - _display_width(continuation_prefix)
+                    )
+                    source_lines = _wrap_text(source, source_width) or [""]
+                    lines.append((f"{prefix}{source_lines[0]}", key))
+                    remaining_source = "".join(source_lines[1:])
+                    cue_lines = _wrap_text(
+                        busy_suffix.strip(), source_width
+                    )
+                    lines.extend(
+                        (continuation_prefix + piece, None) for piece in cue_lines
+                    )
+                source_width = max(
+                    1, row_limit - _display_width(continuation_prefix)
+                )
+                source_lines = _wrap_text(remaining_source, source_width)
+                lines.extend(
+                    (continuation_prefix + piece, None) for piece in source_lines
+                )
+                pronunciation_prefix = continuation_prefix + " | "
+                if pronunciation_tokens is not None:
+                    widest_token = max(
+                        (_display_width(token) for token in pronunciation_tokens),
+                        default=1,
+                    )
+                    if widest_token > row_limit - _display_width(pronunciation_prefix):
+                        pronunciation_prefix = "|"
+                pronunciation_width = max(
+                    1, row_limit - _display_width(pronunciation_prefix)
+                )
+                if pronunciation_tokens is None:
+                    pronunciation_lines = _wrap_text(
+                        pronunciation, pronunciation_width
+                    )
+                else:
+                    pronunciation_lines = _wrap_labeled_tokens(
+                        "", pronunciation_tokens, pronunciation_width
+                    )
+                lines.extend(
+                    (pronunciation_prefix + piece, None)
+                    for piece in pronunciation_lines
+                )
+                return
+
+            source_width = min(
+                max(1, _display_width(source)),
+                max(1, field_width // 2),
+                field_width - minimum_token_width,
+            )
+            pronunciation_width = field_width - source_width
+            source_lines = _wrap_text(source, source_width) or [""]
+            if pronunciation_tokens is None:
+                pronunciation_lines = _wrap_text(
+                    pronunciation, pronunciation_width
+                )
+            else:
+                pronunciation_lines = _wrap_labeled_tokens(
+                    "", pronunciation_tokens, pronunciation_width
+                )
+
+            continuation_prefix = " " * _display_width(prefix)
+            line_count = max(len(source_lines), len(pronunciation_lines), 1)
+            for index in range(line_count):
+                row_prefix = prefix if index == 0 else continuation_prefix
+                source_piece = source_lines[index] if index < len(source_lines) else ""
+                pronunciation_piece = (
+                    pronunciation_lines[index]
+                    if index < len(pronunciation_lines)
+                    else ""
+                )
+                padding = " " * max(
+                    0, source_width - _display_width(source_piece)
+                )
+                line = (
+                    row_prefix
+                    + source_piece
+                    + padding
+                    + separator
+                    + pronunciation_piece
+                )
+                if index == 0:
+                    line += busy_suffix
+                lines.append((line, key if index == 0 else None))
+
         unavailable = " (unavailable while generating)" if self._busy else ""
         action(("text", None), f"Text  [Enter: Edit]{unavailable}")
         if self.session is not None:
@@ -1508,11 +1601,6 @@ class TuiApp:
             plain()
             plain("Pronunciation")
             for index, (language, source, model_index) in enumerate(self._segments()):
-                action(
-                    ("segment", index),
-                    f"{language.upper()} segment {index + 1}  [Enter: Edit]{unavailable}",
-                )
-                wrapped("Source: ", source)
                 if language == "ja":
                     try:
                         query = self.session.query
@@ -1522,17 +1610,26 @@ class TuiApp:
                         )
                     except Exception as exc:
                         pronunciation = f"<{exc}>"
-                    wrapped("Pronunciation: ", pronunciation)
+                    segment_action(
+                        ("segment", index), language, source, pronunciation
+                    )
                 elif language == "en" and model_index is not None:
                     try:
                         segment = self.session.query.voicegerSegments[model_index]
                         tokens = _english_display_tokens(segment.phonemes or ())
                     except Exception as exc:
                         tokens = [f"<{exc}>"]
-                    for rendered in _wrap_labeled_tokens("Pronunciation: ", tokens, width - 1):
-                        plain(rendered)
+                    segment_action(
+                        ("segment", index),
+                        language,
+                        source,
+                        " ".join(tokens),
+                        pronunciation_tokens=tokens or ["(none)"],
+                    )
                 else:
-                    wrapped("Pronunciation: ", "Unavailable")
+                    segment_action(
+                        ("segment", index), language, source, "Unavailable"
+                    )
                 plain()
 
             has_batch = self.session.has_active_batch

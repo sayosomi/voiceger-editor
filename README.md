@@ -77,9 +77,12 @@ The TUI uses one continuous, non-wrapping vertical action list. Use `↑` / `↓
 to move through Text, pronunciation segments in source order, Generate or
 Regenerate all, available candidates, Regenerate selected, Settings, Help, and
 Quit. `Enter` opens or performs the focused action; `Space` replays a focused
-candidate. `Tab` is an optional accelerator. Candidate review keeps the
-candidate in the same list; `Esc` returns to the last selected pronunciation
-segment. The candidate footer states that `Enter` accepts and saves the take.
+candidate. `Tab` is an optional accelerator. Pronunciation segments are compact
+selectable `LANG | source | pronunciation` rows, with long content wrapped as
+needed. Normal Navigation has no persistent control footer. Help remains a
+visible Navigation action, and `?` is an optional shortcut. Candidate review
+keeps the candidate in the same list; `Esc` returns to the last selected
+pronunciation segment.
 
 Text and Japanese pronunciation each open as a single-field modal: Enter applies
 the input and Esc discards it directly back to Navigation. Text apply rebuilds
