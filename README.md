@@ -133,6 +133,56 @@ The engine API does **not** permanently save the WAV. It creates a temporary WAV
 
 This also means the `AudioQuery` returned by `/audio_query` can be sent directly to `/synthesis`, matching the VOICEVOX workflow.
 
+## Mixed-language text
+
+Pure Japanese requests keep the normal VOICEVOX-shaped `AudioQuery` with no adapter-only extension.
+
+When other languages are detected, `/audio_query` adds an optional `voicegerSegments` field. Japanese segments reference slices of the normal `accent_phrases` array; non-Japanese segments keep their original text and language.
+
+Example concept:
+
+```json
+{
+  "accent_phrases": [
+    "... Japanese accent phrases ..."
+  ],
+  "kana": null,
+  "voicegerSegments": [
+    {
+      "language": "ja",
+      "text": "今日は",
+      "accentPhraseStart": 0,
+      "accentPhraseCount": 1
+    },
+    {
+      "language": "en",
+      "text": "OpenAI"
+    },
+    {
+      "language": "ja",
+      "text": "を使うよ。",
+      "accentPhraseStart": 1,
+      "accentPhraseCount": 2
+    }
+  ]
+}
+```
+
+During synthesis:
+
+- Japanese segments use the edited `accent_phrases` and the adapter's Voiceger G2P hook.
+- English segments are handled by Voiceger's native `Japanese-English Mixed` path.
+- Other detected languages fall back to Voiceger's `Multilingual Mixed` path.
+- The original segment order is preserved.
+
+Current automatic segmentation uses Voiceger's bundled LangSegment. Japanese/English is the primary validated design target. Han-only Chinese vs Japanese can be inherently ambiguous and should not be treated as guaranteed automatic classification yet.
+
+Inspect local segmentation with:
+
+```bash
+~/voiceger_v2/.venv/bin/python scripts/probe_mixed_language.py
+```
+
 ## Pronunciation notation
 
 The editable kana notation follows the core VOICEVOX / AquesTalk-style rules:
@@ -194,7 +244,7 @@ This repository is not a fork and does not contain Voiceger source, model weight
 
 ## Status
 
-Early implementation. The pronunciation path, runtime hook, VOICEVOX-style AudioQuery flow, and local reference-audio style discovery are implemented and ready for local integration testing.
+Early implementation. The pronunciation path, runtime hook, VOICEVOX-style AudioQuery flow, local reference-audio style discovery, and mixed-language query extension are implemented and ready for local integration testing.
 
 ## License
 
