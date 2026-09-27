@@ -1,13 +1,21 @@
 """Parse the editable Japanese pronunciation notation.
 
-The initial notation intentionally implements only a small AquesTalk-inspired
-subset:
+The initial notation follows the core accent-position rules used by
+VOICEVOX's AquesTalk-style kana notation, with one deliberate convenience:
+both hiragana and katakana are accepted.
+
+Initial subset:
 
 - kana represent the spoken reading;
-- `'` follows the mora that carries the accent nucleus;
-- no `'` in an accent phrase means heiban (no lexical pitch fall);
+- `'` follows the mora selected as the accent position;
+- every accent phrase must contain exactly one `'`;
 - `/` separates accent phrases without an explicit pause;
 - an optional final `。` or `？` is preserved as the utterance terminator.
+
+Examples:
+
+- `あ'め` -> accent=1
+- `あめ'` -> accent=2
 
 This module is Voiceger-independent and has no third-party dependencies.
 """
@@ -31,17 +39,18 @@ class PronunciationSyntaxError(ValueError):
 class AccentPhrase:
     """One accent phrase.
 
-    nucleus is a 1-based mora index. None means heiban/no pitch fall.
+    accent is a 1-based mora index, matching the editable notation:
+    the apostrophe follows the mora at that index.
     """
 
     morae: tuple[str, ...]
-    nucleus: int | None = None
+    accent: int
 
     def __post_init__(self) -> None:
         if not self.morae:
             raise ValueError("accent phrase must contain at least one mora")
-        if self.nucleus is not None and not (1 <= self.nucleus <= len(self.morae)):
-            raise ValueError("nucleus must point to a mora in the phrase")
+        if not (1 <= self.accent <= len(self.morae)):
+            raise ValueError("accent must point to a mora in the phrase")
 
     @property
     def reading(self) -> str:
@@ -79,20 +88,20 @@ def _parse_phrase(source: str) -> AccentPhrase:
         raise PronunciationSyntaxError("empty accent phrase")
 
     morae: list[str] = []
-    nucleus: int | None = None
+    accent: int | None = None
     marker_just_seen = False
 
     for ch in source:
         if ch == "'":
-            if nucleus is not None:
+            if accent is not None:
                 raise PronunciationSyntaxError(
-                    "an accent phrase may contain at most one accent marker"
+                    "an accent phrase must contain exactly one accent marker"
                 )
             if not morae:
                 raise PronunciationSyntaxError(
                     "accent marker must follow a mora"
                 )
-            nucleus = len(morae)
+            accent = len(morae)
             marker_just_seen = True
             continue
 
@@ -117,7 +126,12 @@ def _parse_phrase(source: str) -> AccentPhrase:
 
         marker_just_seen = False
 
-    return AccentPhrase(tuple(morae), nucleus)
+    if accent is None:
+        raise PronunciationSyntaxError(
+            "every accent phrase must contain exactly one accent marker"
+        )
+
+    return AccentPhrase(tuple(morae), accent)
 
 
 def parse_pronunciation(source: str) -> Pronunciation:
@@ -163,7 +177,7 @@ def format_pronunciation(value: Pronunciation) -> str:
         parts: list[str] = []
         for index, mora in enumerate(phrase.morae, start=1):
             parts.append(mora)
-            if phrase.nucleus == index:
+            if phrase.accent == index:
                 parts.append("'")
         rendered.append("".join(parts))
 
