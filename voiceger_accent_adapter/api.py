@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -34,7 +35,7 @@ class PronunciationResponse(BaseModel):
 
 class TtsRequest(BaseModel):
     text: str
-    pronunciation: str | None = None
+    pronunciation: Optional[str] = None
     top_k: int = Field(default=20, ge=1)
     top_p: float = Field(default=0.6, gt=0, le=1)
     temperature: float = Field(default=0.6, gt=0)
