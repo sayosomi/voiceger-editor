@@ -65,9 +65,7 @@ The response contains:
 - `outputStereo`
 - `kana`
 
-The adapter also includes `text` as an extension so the original display text remains available for readable output filenames.
-
-`kana` is a readable representation. Synthesis is driven by `accent_phrases`, matching the VOICEVOX model.
+`kana` is a readable representation. Synthesis is driven by `accent_phrases`, matching the VOICEVOX model. The adapter does not add a private `text` field to `AudioQuery`; the query returned by `/audio_query` is sufficient input for `/synthesis`.
 
 ### POST /accent_phrases
 
@@ -94,15 +92,34 @@ Content-Type: application/json
 <AudioQuery JSON>
 ```
 
-The response is `audio/wav`, not JSON.
+The response is `audio/wav`, not JSON. As with VOICEVOX ENGINE, the API uses a temporary WAV for the HTTP response and does not permanently save it. The caller chooses the final filename and destination.
 
-The generated WAV is also stored locally with a VOICEVOX-style filename such as:
+## 4. Reference-audio styles
+
+The adapter exposes Voiceger's numbered WAV files under the local `reference/` directory as VOICEVOX talk styles:
+
+| speaker | style | reference WAV |
+| ---: | --- | --- |
+| 1 | Neutral | `01_ref_emoNormal026.wav` |
+| 2 | Sweet | `02_ref_emoAma026.wav` |
+| 3 | Snippy | `03_ref_emoTsun026.wav` |
+| 4 | Sexy | `04_ref_emoSexy026.wav` |
+| 5 | Whispering | `05_ref_emoSasa026.wav` |
+| 6 | Murmuring | `06_ref_emoMurmur026.wav` |
+| 7 | Exhausted | `07_ref_emoHero026.wav` |
+| 8 | Sobbing | `08_ref_emoSobbing026.wav` |
+
+Only locally existing WAVs are advertised by `GET /speakers`.
+
+These preset references share the upstream prompt text:
 
 ```text
-001_ずんだもん（style_1）_今日は雨ですね。.wav
+私はいつもミネラルウォーターを持ち歩いています。
 ```
 
-## 4. Automatic pronunciation generation
+The selected `speaker` determines the reference WAV used by GPT-SoVITS synthesis.
+
+## 5. Automatic pronunciation generation
 
 OpenJTalk / pyopenjtalk provides:
 
@@ -123,7 +140,7 @@ Validated examples:
 私は思う。         -> ワタシワ'/オモ'ウ。
 ```
 
-## 5. Internal architecture
+## 6. Internal architecture
 
 ```text
 text
@@ -158,7 +175,7 @@ voiceger_accent_adapter/
   api.py
 ```
 
-## 6. Voiceger integration
+## 7. Voiceger integration
 
 Voiceger ultimately calls GPT-SoVITS `get_tts_wav(...)`, which obtains Japanese phones through its internal `get_phones_and_bert()` → `clean_text()` → Japanese `g2p()` path.
 
@@ -181,7 +198,7 @@ Because the adapter hooks before `clean_text()`, public `/` maps to `#` at the h
 
 Dropping the boundary token entirely was tested and caused unstable synthesis.
 
-## 7. AudioQuery support
+## 8. AudioQuery support
 
 Currently applied:
 
@@ -202,19 +219,20 @@ Present for VOICEVOX-style API shape but not yet implemented:
 
 Changing an unsupported field returns an error rather than silently ignoring it.
 
-## 8. Compatibility scope
+## 9. Compatibility scope
 
 Initial scope:
 
 - Japanese talk synthesis only.
 - One utterance per request; embedded newlines are rejected.
-- `speaker` is accepted in the VOICEVOX-style query position; the current adapter has one configured Voiceger voice.
+- `speaker` is a VOICEVOX-style style ID selecting a local Voiceger reference WAV.
+- The known preset styles are Neutral, Sweet, Snippy, Sexy, Whispering, Murmuring, Exhausted, and Sobbing (IDs 1–8 when the corresponding WAV files exist).
 - Editable kana accepts hiragana and katakana.
 - Adapter integration should be tested against known Voiceger revisions because it relies on upstream runtime internals.
 
 This project aims for a VOICEVOX-like API workflow, not full drop-in VOICEVOX ENGINE compatibility.
 
-## 9. Non-goals for the first version
+## 10. Non-goals for the first version
 
 - Full reproduction of all AquesTalk symbols.
 - Full VOICEVOX ENGINE endpoint coverage.
@@ -223,7 +241,7 @@ This project aims for a VOICEVOX-like API workflow, not full drop-in VOICEVOX EN
 - Reimplementing GPT-SoVITS inference.
 - A graphical accent editor.
 
-## 10. Acceptance criteria
+## 11. Acceptance criteria
 
 - Plain Japanese text produces a usable `AudioQuery`.
 - Every generated accent phrase has a valid 1-based `accent`.
@@ -232,17 +250,18 @@ This project aims for a VOICEVOX-like API workflow, not full drop-in VOICEVOX EN
 - Editing `accent_phrases[n].accent` changes synthesized accent.
 - `/accent_phrases?is_kana=true` converts editable kana into structured accent phrases.
 - `/synthesis` returns a valid WAV.
-- Generated filenames use the VOICEVOX-style readable format.
+- The engine API does not persist synthesis output; callers can choose filenames appropriate to their workflow.
+- Selecting different supported `speaker` IDs uses the corresponding reference WAV.
 - Core parser/converter tests can run independently of Voiceger where practical.
 - Voiceger-dependent tests remain isolated.
 - No upstream Voiceger source or bundled assets are committed to this repository.
 
-## 11. Open questions
+## 12. Open questions
 
 - Add VOICEVOX-style `、` pause delimiters and `_` devoicing.
 - Improve interrogative handling.
 - Decide whether automatic `kana` output should always canonicalize to katakana.
 - Mixed Japanese/English handling.
 - Support more AudioQuery acoustic controls.
-- Add speaker/style metadata endpoints if needed.
+- Consider additional VOICEVOX metadata endpoints beyond `/version` and `/speakers`.
 - Version compatibility strategy for future Voiceger/GPT-SoVITS changes.
