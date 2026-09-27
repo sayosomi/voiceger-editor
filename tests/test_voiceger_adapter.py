@@ -103,12 +103,17 @@ class ResolvePronunciationTests(unittest.TestCase):
                     "voiceger_accent_adapter.voiceger_adapter.save_output",
                     return_value=SavedOutput(wav_path, text_path),
                 ) as save_output:
-                    result = adapter.synthesize(text=" 雨 ", save_text=True)
+                    result = adapter.synthesize(
+                        text=" 雨 ",
+                        style_name="Sweet",
+                        save_text=True,
+                    )
 
             save_output.assert_called_once_with(
                 audio=[0.0],
                 sampling_rate=32000,
                 source_text=" 雨 ",
+                style_name="Sweet",
                 output_dir=adapter.output_dir,
                 save_text=True,
                 filename_text="雨",

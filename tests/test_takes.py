@@ -29,6 +29,7 @@ class TakeBatchTests(unittest.TestCase):
             take_count=take_count,
             synthesize_one=synthesize_one,
             source_text="exact source text\n",
+            style_name=options.pop("style_name", "Neutral"),
             output_dir=Path(root) / "final-output",
             **options,
         )
@@ -284,6 +285,7 @@ class TakeBatchTests(unittest.TestCase):
             batch = self.make_batch(
                 directory,
                 synthesize_one=synthesize_one,
+                style_name="Sweet",
                 save_text=True,
                 filename_text="filename naming text",
             )
@@ -307,6 +309,7 @@ class TakeBatchTests(unittest.TestCase):
                 audio=audio_values[1],
                 sampling_rate=22050,
                 source_text="exact source text\n",
+                style_name="Sweet",
                 output_dir=Path(directory) / "final-output",
                 save_text=True,
                 filename_text="filename naming text",

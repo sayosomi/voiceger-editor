@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import errno
 from pathlib import Path
 from typing import Any, Optional
 
@@ -38,6 +39,7 @@ def save_output(
     audio: Any,
     sampling_rate: int,
     source_text: str,
+    style_name: str,
     output_dir: Path,
     save_text: bool = False,
     timestamp: Optional[datetime] = None,
@@ -56,6 +58,7 @@ def save_output(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     initial_name = build_output_filename(
+        style_name=style_name,
         text=filename_text if filename_text is not None else source_text,
         timestamp=timestamp,
     )
@@ -78,6 +81,15 @@ def save_output(
             _remove_reservations(reserved)
             collision_number += 1
             continue
+        except OSError as exc:
+            _remove_reservations(reserved)
+            if exc.errno == errno.ENAMETOOLONG:
+                raise OSError(
+                    errno.ENAMETOOLONG,
+                    "Output filename is too long; the source text was not truncated automatically.",
+                    str(exc.filename or wav_path),
+                ) from exc
+            raise
         except BaseException:
             _remove_reservations(reserved)
             raise

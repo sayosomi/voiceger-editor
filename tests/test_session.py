@@ -594,6 +594,7 @@ class UtteranceSessionTests(unittest.TestCase):
             self.assertEqual(kwargs["output_dir"], self.settings.output_dir)
             self.assertEqual(kwargs["save_text"], self.settings.save_text)
             self.assertEqual(kwargs["source_text"], session.source_text)
+            self.assertEqual(kwargs["style_name"], session.style.name)
             self.assertEqual(kwargs["filename_text"], session.source_text)
             self.assertIs(kwargs["synthesize_one"](), synthesize.return_value)
             self.assertIs(kwargs["synthesize_one"](), synthesize.return_value)

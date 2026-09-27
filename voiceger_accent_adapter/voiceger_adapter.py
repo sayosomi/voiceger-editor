@@ -576,6 +576,7 @@ class VoicegerAdapter:
                 audio=result["audio"],
                 sampling_rate=result["sampling_rate"],
                 source_text=text,
+                style_name=style_name,
                 output_dir=self.output_dir,
                 save_text=save_text,
                 filename_text=source_text,

@@ -4,33 +4,41 @@ from datetime import datetime
 from voiceger_accent_adapter.filename import (
     build_output_filename,
     sanitize_filename_part,
-    shorten_text_for_filename,
 )
 
 
 class FileNameTests(unittest.TestCase):
-    def test_timestamped_wav_filename_uses_supplied_local_time(self):
+    def test_filename_uses_local_timestamp_style_and_full_source(self):
         self.assertEqual(
             build_output_filename(
-                text="今日は雨ですね。",
-                timestamp=datetime(2026, 9, 27, 17, 55, 6),
+                style_name="Neutral",
+                text="今日はhelloと言うよ。",
+                timestamp=datetime(2026, 9, 28, 1, 45, 32),
             ),
-            "20260927_175506_今日は雨ですね。.wav",
+            "20260928014532_Neutral_今日はhelloと言うよ。.wav",
         )
 
-    def test_text_is_truncated_like_voicevox(self):
+    def test_filename_does_not_truncate_source_longer_than_old_limit(self):
+        source = "12345678901とても長い発話です。"
+        result = build_output_filename(
+            style_name="Murmuring",
+            text=source,
+            timestamp=datetime(2026, 9, 27, 17, 55, 6),
+        )
         self.assertEqual(
-            shorten_text_for_filename("12345678901"),
-            "123456789…",
+            result,
+            f"20260927175506_Murmuring_{source}.wav",
         )
+        self.assertNotIn("…", result)
 
-    def test_sanitization_and_truncation_are_applied_to_filename_text(self):
+    def test_style_and_source_filename_characters_are_sanitized(self):
         self.assertEqual(
             build_output_filename(
+                style_name='Ne/utr:al?',
                 text='a/b:c?"d*e|f123456',
                 timestamp=datetime(2026, 9, 27, 17, 55, 6),
             ),
-            "20260927_175506_abcdef123….wav",
+            "20260927175506_Neutral_abcdef123456.wav",
         )
 
     def test_invalid_filename_characters_are_removed(self):
