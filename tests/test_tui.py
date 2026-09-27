@@ -1,8 +1,10 @@
 import curses
+import io
 import json
 from argparse import Namespace
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 from threading import Event, Thread
 import unittest
@@ -72,6 +74,8 @@ class FakeScreen:
         self.keys = list(keys)
         self.rows = 24
         self.columns = 100
+        self.drawn = []
+        self.refresh_count = 0
 
     def getmaxyx(self):
         return self.rows, self.columns
@@ -82,16 +86,18 @@ class FakeScreen:
     def timeout(self, milliseconds):
         return None
 
-    def addnstr(self, *args):
-        return None
+    def addnstr(self, row, column, value, count, attr=0):
+        self.drawn.append((row, column, value[:count], attr))
 
     def move(self, *args):
         return None
 
     def refresh(self):
+        self.refresh_count += 1
         return None
 
     def erase(self):
+        self.drawn.clear()
         return None
 
     def get_wch(self):
@@ -233,6 +239,258 @@ class TuiTests(unittest.TestCase):
         value = app._read_line("Text", "ab")
 
         self.assertEqual(value, "ab!")
+
+    def test_japanese_editor_marker_helpers_toggle_at_the_cursor(self):
+        cases = (
+            ("アメ", ["a", "\n"], "アメ'"),
+            ("アメ'", ["a", "\n"], "アメ"),
+            ("アメ", ["p", "\n"], "アメ/"),
+            ("アメ/", ["p", "\n"], "アメ"),
+        )
+        for initial, keys, expected in cases:
+            with self.subTest(initial=initial, keys=keys):
+                app = self.make_app()
+                app._screen = FakeScreen(keys)
+                self.assertEqual(
+                    app._read_line("JA pronunciation", initial, editor_type="japanese"),
+                    expected,
+                )
+
+    def test_japanese_editor_accepts_literal_accent_and_phrase_markers(self):
+        app = self.make_app()
+        app._screen = FakeScreen(["'", "ア", "/", "メ", "\n"])
+
+        value = app._read_line("JA pronunciation", "", editor_type="japanese")
+
+        self.assertEqual(value, "'ア/メ")
+
+    def test_japanese_marker_helpers_are_only_active_in_japanese_editor(self):
+        for editor_type in ("text", "english"):
+            with self.subTest(editor_type=editor_type):
+                app = self.make_app()
+                app._screen = FakeScreen(["a", "p", "\n"])
+                self.assertEqual(
+                    app._read_line("Editor", "", editor_type=editor_type),
+                    "ap",
+                )
+
+    def test_japanese_editor_shows_a_separate_labeled_editor_region(self):
+        app = self.make_app()
+        screen = FakeScreen(["a", "\x1b"])
+        app._screen = screen
+
+        self.assertIsNone(
+            app._read_line("JA example pronunciation", "アメ", editor_type="japanese")
+        )
+
+        rows = {row: text for row, _column, text, _attr in screen.drawn}
+        self.assertIn("Editor: JA example pronunciation", rows[17])
+        self.assertIn("a Accent (')", rows[18])
+        self.assertIn("p Phrase (/)", rows[18])
+        self.assertIn("' / direct input", rows[19])
+        self.assertIn("Enter Save", rows[19])
+        self.assertIn("Esc Cancel", rows[19])
+        self.assertTrue(rows[20].startswith("> "))
+        self.assertTrue(rows[21].startswith("Status:"))
+        self.assertIn("cursor", rows[22])
+        self.assertEqual(rows[23], "? Help   q Quit")
+
+    def test_source_focus_enter_opens_source_editor(self):
+        app = self.make_app()
+        app._focus = "source"
+        app._edit_source_text = Mock()
+
+        app._handle_key("\n")
+
+        app._edit_source_text.assert_called_once_with()
+
+    def test_tab_focus_order_includes_generate_and_only_available_takes(self):
+        app = self.make_app()
+        app._focus = "source"
+        expected_without_candidates = ["pronunciation", "generate", "source"]
+        actual_without_candidates = []
+        for _ in expected_without_candidates:
+            app._handle_key("\t")
+            actual_without_candidates.append(app._focus)
+        self.assertEqual(actual_without_candidates, expected_without_candidates)
+
+        app = self.make_app(candidates=(candidate(1),))
+        app._focus = "source"
+        expected_with_candidates = ["pronunciation", "generate", "takes", "source"]
+        actual_with_candidates = []
+        for _ in expected_with_candidates:
+            app._handle_key("\t")
+            actual_with_candidates.append(app._focus)
+        self.assertEqual(actual_with_candidates, expected_with_candidates)
+
+    def test_generate_focus_enter_routes_to_initial_generation(self):
+        app = self.make_app()
+        app._focus = "generate"
+        app._start_generation = Mock()
+
+        app._handle_key("\n")
+
+        app._start_generation.assert_called_once_with()
+
+    def test_generate_focus_enter_routes_to_regenerate_all_for_an_active_batch(self):
+        app = self.make_app(candidates=(candidate(1),))
+        app._focus = "generate"
+        app._start_regenerate_all = Mock()
+
+        app._handle_key("\n")
+
+        app._start_regenerate_all.assert_called_once_with()
+
+    def test_question_mark_opens_help_overlay(self):
+        app = self.make_app()
+
+        app._handle_key("?")
+
+        self.assertTrue(app._help_open)
+
+    def test_help_overlay_contains_the_full_shortcut_reference(self):
+        app = self.make_app()
+        app._help_open = True
+        app._screen = FakeScreen()
+
+        app._render()
+
+        rendered = "\n".join(text for _row, _column, text, _attr in app._screen.drawn)
+        for expected in (
+            "Tab: next area",
+            "Enter: edit / activate / accept according to focus",
+            "Up/Down: pronunciation or take navigation according to focus",
+            "Left/Right: English primary stress movement",
+            "Shift+Tab: select another English primary-stress marker",
+            "F5 / Ctrl+G: generate",
+            "Space: replay take",
+            "1-8: select take",
+            "r: regenerate current take",
+            "R (Shift+R): regenerate all takes",
+            "t: edit text",
+            "s: style",
+            "v: speed",
+            "n: take count",
+            "o: output directory",
+            "x: toggle text sidecar",
+            "?: help",
+            "q: quit",
+        ):
+            self.assertIn(expected, rendered)
+
+    def test_help_overlay_closes_with_question_escape_or_enter(self):
+        for key in ("?", "\x1b", "\n"):
+            with self.subTest(key=key):
+                app = self.make_app()
+                app._handle_key("?")
+                app._handle_key(key)
+                self.assertFalse(app._help_open)
+
+    def test_q_still_quits_from_help_overlay(self):
+        app = self.make_app()
+        app._handle_key("?")
+
+        app._handle_key("q")
+
+        self.assertTrue(app._exit_requested)
+        self.assertTrue(app._help_open)
+
+    def test_help_ignores_navigation_and_editing_keys(self):
+        app = self.make_app()
+        app._focus = "generate"
+        app._handle_key("?")
+        app._start_generation = Mock()
+        original_save_text = app.settings.save_text
+
+        for key in ("\t", "x", "t", curses.KEY_F5, "\x07", curses.KEY_DOWN):
+            app._handle_key(key)
+
+        self.assertEqual(app._focus, "generate")
+        self.assertEqual(app.settings.save_text, original_save_text)
+        app._start_generation.assert_not_called()
+
+    def test_render_keeps_text_state_visible_separate_from_long_output_path(self):
+        app = self.make_app()
+        app.settings = Settings(save_text=True, output_dir=Path("/" + "long-directory/" * 30))
+        app._screen = FakeScreen()
+
+        app._render()
+
+        rows = {row: text for row, _column, text, _attr in app._screen.drawn}
+        self.assertIn("TXT ON", rows[1])
+        self.assertNotIn("long-directory", rows[1])
+        self.assertTrue(rows[2].startswith("Output:"))
+
+    def test_render_shows_discoverable_text_and_generate_actions(self):
+        app = self.make_app()
+        app._focus = "generate"
+        app._screen = FakeScreen()
+
+        app._render()
+
+        rows = {row: text for row, _column, text, _attr in app._screen.drawn}
+        self.assertIn("Text", rows[4])
+        self.assertIn("[Enter: Edit]", "".join(text for _row, _column, text, _attr in app._screen.drawn))
+        self.assertIn("[ Generate 4 takes ]", "".join(rows.values()))
+        self.assertIn("▶", rows[8])
+
+    def test_render_shows_regenerate_all_action_for_an_active_batch(self):
+        app = self.make_app(candidates=(candidate(1),))
+        app._screen = FakeScreen()
+
+        app._render()
+
+        self.assertIn(
+            "[ Regenerate all 4 takes ]",
+            "".join(text for _row, _column, text, _attr in app._screen.drawn),
+        )
+
+    def test_worker_discards_python_stdout_and_stderr_during_iteration(self):
+        app = self.make_app()
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        def values():
+            print("runtime stdout")
+            print("runtime stderr", file=sys.stderr)
+            yield candidate(1)
+            print("runtime stdout after yield")
+            print("runtime stderr after yield", file=sys.stderr)
+
+        with patch("sys.stdout", stdout), patch("sys.stderr", stderr):
+            app._run_in_worker(lambda: values(), "Generating", operation="initial")
+            app._worker.join(timeout=2)
+
+        self.assertFalse(app._worker.is_alive())
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(stderr.getvalue(), "")
+        self.assertEqual(app._events.get_nowait()[0], "candidate")
+
+    def test_worker_exception_reaches_error_event_and_remains_visible(self):
+        app = self.make_app()
+        error = RuntimeError("synthesis worker failed")
+
+        def failing_values():
+            print("discard this output")
+            raise error
+            yield candidate(1)
+
+        app._run_in_worker(
+            lambda: failing_values(),
+            "Generating",
+            operation="initial",
+        )
+        app._worker.join(timeout=2)
+        events = [app._events.get_nowait(), app._events.get_nowait()]
+
+        self.assertEqual([kind for kind, _value in events], ["error", "done"])
+        self.assertIs(events[0][1], error)
+        app._worker_operation = "initial"
+        for event in events:
+            app._events.put(event)
+        app._consume_events()
+        self.assertTrue(app._status.startswith("Error:"))
+        self.assertIn("synthesis worker failed", app._status)
 
     def test_move_toward_another_primary_marker_is_a_noop(self):
         query = english_query(["AA1", "IY1", "ER2"])
