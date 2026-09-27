@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_serializer
 
 
 class Mora(BaseModel):
@@ -48,4 +48,11 @@ class AudioQuery(BaseModel):
     outputStereo: bool = False
     kana: Optional[str] = None
     voicegerSegments: Optional[List[VoicegerSegment]] = None
+
+    @model_serializer(mode="wrap")
+    def _serialize_optional_adapter_extension(self, handler):
+        data = handler(self)
+        if self.voicegerSegments is None:
+            data.pop("voicegerSegments", None)
+        return data
 
