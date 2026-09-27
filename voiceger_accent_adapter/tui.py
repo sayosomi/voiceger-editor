@@ -44,13 +44,14 @@ _VOWELS = frozenset(
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
 _ESCAPE = "\x1b"
 _HELP_ITEMS = (
-    "Up/Down: move through every action in order",
+    "Up/Down: move one selectable Navigation item at a time",
     "Enter: edit, open, generate, regenerate, or accept the focused action",
     "Left/Right on Generate: decrease/increase take count",
     "Left/Right in Settings: adjust the selected value",
     "Space: replay a focused candidate",
     "Esc: return from candidate review; cancel editor draft",
-    "Tab: move down one action",
+    "Tab: move to the next major section/action",
+    "Shift+Tab: move to the previous major section/action",
     "F5 / Ctrl+G: activate Generate / Regenerate all",
     "1-8: focus and play an available candidate",
     "r: regenerate the focused candidate",
@@ -330,7 +331,11 @@ class TuiApp:
             self._activate_generate()
             return
         if key == "\t":
-            self._move_navigation(1)
+            self._move_navigation_section(1)
+            return
+        backtab = getattr(curses, "KEY_BTAB", None)
+        if backtab is not None and key == backtab:
+            self._move_navigation_section(-1)
             return
         if key == "t":
             self._open_text_editor()
@@ -386,8 +391,49 @@ class TuiApp:
                 ("candidate", candidate.number)
                 for candidate in self.session.candidates
             )
-        items.extend((("help", None), ("quit", None)))
+        items.extend((("settings", None), ("help", None), ("quit", None)))
         return items
+
+    def _major_navigation_stops(self) -> list[tuple[str, int | None]]:
+        """Collapse multi-row sections in the visible selectable order."""
+
+        stops: list[tuple[str, int | None]] = []
+        previous_section: str | None = None
+        for key in self._navigation_items():
+            name = key[0]
+            if name in {"segment", "candidate"}:
+                if name == previous_section:
+                    continue
+                previous_section = name
+            else:
+                previous_section = None
+            stops.append(key)
+        return stops
+
+    def _move_navigation_section(self, delta: int) -> None:
+        stops = self._major_navigation_stops()
+        if not stops:
+            return
+        try:
+            index = stops.index(self._focus_key)
+        except ValueError:
+            index = next(
+                (
+                    position
+                    for position, key in enumerate(stops)
+                    if key[0] == self._focus_key[0]
+                ),
+                0,
+            )
+        target = min(max(index + delta, 0), len(stops) - 1)
+        if target == index:
+            return
+        key = stops[target]
+        self._set_focus_key(key, moved=True)
+        name, number = key
+        if name == "candidate" and number is not None:
+            self._current_take = number
+            self._play_take(number)
 
     def _set_focus_key(
         self,
@@ -457,6 +503,8 @@ class TuiApp:
                 self._status = "Wait for generation to finish before accepting a take."
             else:
                 self._accept_take(number)
+        elif name == "settings":
+            self._open_settings_editor("style_id")
         elif name == "help":
             self._open_help()
         elif name == "quit":
@@ -1397,8 +1445,63 @@ class TuiApp:
     def _render_help(self, width: int) -> None:
         self._safe_add(0, 0, "HELP", width, self._attribute("A_BOLD"))
         self._safe_add(1, 0, "Navigation and action shortcuts", width)
-        for index, item in enumerate(_HELP_ITEMS):
-            self._safe_add(2 + index, 1, item, width)
+        height = self._screen.getmaxyx()[0]
+        footer_row = max(0, height - 2)
+        row = 2
+        column = 1
+        available = max(1, width - column - 1)
+        bold = self._attribute("A_BOLD")
+        for item in _HELP_ITEMS:
+            if row >= footer_row:
+                break
+            key, separator, explanation = item.partition(":")
+            if not separator:
+                pieces = _wrap_text(item, available) or [""]
+                for piece in pieces:
+                    if row >= footer_row:
+                        break
+                    self._safe_add(row, column, piece, width)
+                    row += 1
+                continue
+
+            key_span = f"{key}:"
+            key_width = _display_width(key_span)
+            if key_width >= available:
+                key_pieces = _wrap_text(key_span, available) or [""]
+                for piece in key_pieces:
+                    if row >= footer_row:
+                        break
+                    self._safe_add(row, column, piece, width, bold)
+                    row += 1
+                explanation_pieces = _wrap_text(explanation.strip(), available)
+                for piece in explanation_pieces:
+                    if row >= footer_row:
+                        break
+                    self._safe_add(row, column, piece, width)
+                    row += 1
+                continue
+
+            self._safe_add(row, column, key_span, width, bold)
+            explanation_width = available - key_width
+            if explanation_width < 1:
+                row += 1
+                explanation_pieces = _wrap_text(explanation.strip(), available)
+                for piece in explanation_pieces:
+                    if row >= footer_row:
+                        break
+                    self._safe_add(row, column, piece, width)
+                    row += 1
+                continue
+
+            explanation_pieces = _wrap_text(explanation, explanation_width)
+            if explanation_pieces:
+                self._safe_add(row, column + key_width, explanation_pieces[0], width)
+            row += 1
+            for piece in explanation_pieces[1:]:
+                if row >= footer_row:
+                    break
+                self._safe_add(row, column + key_width, piece, width)
+                row += 1
         self._safe_add(
             max(0, self._screen.getmaxyx()[0] - 2),
             0,
@@ -1696,8 +1799,9 @@ class TuiApp:
                 action(("candidate", candidate.number), f"Take {candidate.number}  {duration:.2f}s")
             plain()
 
-        action(("help", None), "Help")
-        action(("quit", None), "Quit")
+        action(("settings", None), "Settings  [s]")
+        action(("help", None), "Help      [?]")
+        action(("quit", None), "Quit      [q]")
         return lines
 
     def _editor_document(
