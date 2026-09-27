@@ -57,12 +57,12 @@ class OutputFilenameTests(unittest.TestCase):
                 "今日は雨ですね。",
                 now=datetime(2026, 9, 27, 12, 0, 0),
             )
-            self.assertEqual(path.name, "20260927_今日は雨ですね。.wav")
+            self.assertEqual(path.name, "20260927120000_今日は雨ですね。.wav")
 
     def test_duplicate_adds_numeric_suffix(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            existing = root / "20260927_今日は雨ですね。.wav"
+            existing = root / "20260927120000_今日は雨ですね。.wav"
             existing.touch()
 
             path = _next_output_path(
@@ -70,7 +70,7 @@ class OutputFilenameTests(unittest.TestCase):
                 "今日は雨ですね。",
                 now=datetime(2026, 9, 27, 12, 0, 0),
             )
-            self.assertEqual(path.name, "20260927_今日は雨ですね。_2.wav")
+            self.assertEqual(path.name, "20260927120000_今日は雨ですね。_2.wav")
 
     def test_unsafe_filename_characters_are_replaced(self):
         self.assertEqual(
