@@ -4,12 +4,12 @@ import subprocess
 import unittest
 
 from voiceger_accent_adapter.compatibility import SUPPORTED_VOICEGER_REVISION
-from voiceger_accent_adapter.mixed_language import (
-    build_mixed_audio_query,
-    build_mixed_synthesis_plan,
-)
+from voiceger_accent_adapter.mixed_language import build_mixed_audio_query
+from voiceger_accent_adapter.pronunciation import parse_pronunciation
 from voiceger_accent_adapter.styles import get_style
+from voiceger_accent_adapter.synthesis import synthesize_audio_query
 from voiceger_accent_adapter.voiceger_adapter import VoicegerAdapter
+from voiceger_accent_adapter.voicevox_query import build_audio_query
 
 
 RUN_INTEGRATION = os.environ.get("VOICEGER_RUN_INTEGRATION") == "1"
@@ -43,11 +43,13 @@ class VoicegerIntegrationTests(unittest.TestCase):
         self.assertEqual(revision, SUPPORTED_VOICEGER_REVISION)
 
     def test_manual_japanese_accent_synthesizes_without_runaway(self):
-        result = self.adapter.synthesize_audio(
-            text="今日は雨ですね。",
-            pronunciation="キョ'ーワ/アメデスネ'。",
-            ref_wav_path=self.style.reference_path(self.voiceger_root),
-            prompt_text=self.style.prompt_text,
+        query = build_audio_query(
+            pronunciation=parse_pronunciation("キョ'ーワ/アメデスネ'。"),
+        )
+        result = synthesize_audio_query(
+            adapter=self.adapter,
+            query=query,
+            style=self.style,
         )
 
         self.assertEqual(result["sampling_rate"], 32000)
@@ -82,16 +84,10 @@ class VoicegerIntegrationTests(unittest.TestCase):
         else:
             self.fail("English G2P returned no stress-bearing vowel")
 
-        plan = build_mixed_synthesis_plan(query)
-        self.assertEqual(plan.text_language, "Japanese-English Mixed")
-
-        result = self.adapter.synthesize_mixed_audio(
-            text=plan.text,
-            japanese_overrides=list(plan.japanese_overrides),
-            text_language=plan.text_language,
-            english_overrides=list(plan.english_overrides),
-            ref_wav_path=self.style.reference_path(self.voiceger_root),
-            prompt_text=self.style.prompt_text,
+        result = synthesize_audio_query(
+            adapter=self.adapter,
+            query=query,
+            style=self.style,
         )
 
         self.assertEqual(result["sampling_rate"], 32000)
