@@ -164,11 +164,13 @@ Voiceger-specific hooks must remain contained in `voiceger_adapter.py` (or equiv
 
 No Voiceger source files should need to be permanently modified for the preferred integration mode.
 
-### Known phrase-boundary issue
+### Phrase-boundary handling
 
-OpenJTalk emits `#` for an accent-phrase boundary. Voiceger v2 preserves `[` and `]`, but `#` is not in its v2 symbol vocabulary and is converted to `UNK` by `clean_text()`.
+OpenJTalk emits `#` for an accent-phrase boundary. Voiceger v2 preserves `[` and `]`, while its existing `clean_text()` converts `#` to `UNK`.
 
-Therefore public `/` notation must **not** simply be mapped to a literal `#` token. Phrase-boundary conversion remains a separate adapter design task.
+The adapter hooks at the Japanese `g2p()` stage, before `clean_text()`. Therefore public `/` notation maps to a literal `#` token at that hook point, and Voiceger's existing cleaner is allowed to perform the same `# -> UNK` conversion as the normal built-in path.
+
+A spike that removed the boundary token entirely produced unstable synthesis for the automatically generated pronunciation, while the earlier spike that preserved `#` produced natural audio. The adapter should therefore match the built-in G2P stream exactly rather than comparing against a `#`-stripped stream.
 
 ## 7. API sketch
 
@@ -264,7 +266,7 @@ Initial scope:
 ## 11. Open questions
 
 - Exact mapping from VOICEVOX-style `accent` values to Voiceger `[` / `]` tokens for all accent types.
-- How `/` phrase boundaries should be represented when Voiceger v2 does not support OpenJTalk's `#` token directly.
+- Verify phrase-boundary behavior across more Voiceger/GPT-SoVITS revisions; the current adapter emits `#` at the G2P hook and relies on Voiceger v2 `clean_text()` to convert it to `UNK`.
 - When to add VOICEVOX-style `、` pause delimiters and `_` devoicing.
 - How punctuation and interrogative endings should be serialized beyond the initial subset.
 - Whether automatic output should canonicalize to hiragana or katakana.
