@@ -219,6 +219,69 @@ def editor_state_to_english_phonemes(
     return normalize_english_phonemes(result)
 
 
+def replace_editor_base_phonemes(
+    state: EnglishPhonemeEditorState,
+    base_phonemes: Sequence[str],
+) -> EnglishPhonemeEditorState:
+    """Replace stress-free phonemes while keeping stress by vowel ordinal."""
+
+    # Validate hand-built states through the same canonical conversion used by
+    # all editor operations before carrying their stress into the new sequence.
+    validated_state = english_phonemes_to_editor_state(
+        editor_state_to_english_phonemes(state)
+    )
+
+    if isinstance(base_phonemes, (str, bytes)) or not isinstance(
+        base_phonemes, Sequence
+    ):
+        raise ValueError("English base phonemes must be a sequence")
+    if not base_phonemes:
+        raise ValueError("English phonemes must not be empty")
+
+    normalized: List[str] = []
+    new_vowels: List[str] = []
+    for raw in base_phonemes:
+        if not isinstance(raw, str):
+            raise ValueError("English base phonemes must be strings")
+
+        token = raw.strip()
+        if not token:
+            raise ValueError("English base phonemes must not contain empty tokens")
+        if token not in _PUNCTUATION:
+            token = token.upper()
+
+        unstressed_base = token.rstrip("012")
+        if token != unstressed_base and unstressed_base in _VOWELS:
+            raise ValueError("English base phonemes must not include stress digits")
+        if token in _VOWELS:
+            new_vowels.append(token)
+        elif token not in _CONSONANTS and token not in _PUNCTUATION:
+            raise ValueError(f"unsupported English phoneme: {raw!r}")
+        normalized.append(token)
+
+    vowel_stresses: List[Optional[int]] = []
+    old_stresses = validated_state.vowel_stresses
+    for position, vowel in enumerate(new_vowels):
+        if position >= len(old_stresses):
+            vowel_stresses.append(0)
+            continue
+
+        stress = old_stresses[position]
+        # Legacy unmarked ER/IH can keep their unspecified status only while
+        # the replacement ordinal is still one of those legacy vowels.
+        if stress is None and vowel not in {"ER", "IH"}:
+            stress = 0
+        vowel_stresses.append(stress)
+
+    replacement = EnglishPhonemeEditorState(
+        base_phonemes=tuple(normalized),
+        vowel_stresses=tuple(vowel_stresses),
+    )
+    return english_phonemes_to_editor_state(
+        editor_state_to_english_phonemes(replacement)
+    )
+
+
 def move_primary_stress(
     state: EnglishPhonemeEditorState,
     source_vowel_position: int,

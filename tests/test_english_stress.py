@@ -5,6 +5,7 @@ from voiceger_accent_adapter.english_stress import (
     english_phonemes_to_editor_state,
     move_primary_stress,
     normalize_english_phonemes,
+    replace_editor_base_phonemes,
 )
 from voiceger_accent_adapter.voicevox_api_models import VoicegerSegment
 
@@ -74,6 +75,76 @@ class EnglishStressTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "different vowel positions"):
             move_primary_stress(state, 0, 0)
+
+    def test_replace_base_phonemes_normalizes_tokens(self):
+        state = english_phonemes_to_editor_state(["AH1", "EH0"])
+
+        replaced = replace_editor_base_phonemes(
+            state,
+            [" b ", "ow", "?"],
+        )
+
+        self.assertEqual(replaced.base_phonemes, ("B", "OW", "?"))
+        self.assertEqual(replaced.vowel_stresses, (1,))
+        self.assertEqual(
+            editor_state_to_english_phonemes(replaced), ["B", "OW1", "?"]
+        )
+
+    def test_replace_base_phonemes_preserves_stress_for_same_vowel_count(self):
+        state = english_phonemes_to_editor_state(["AH1", "EH0", "UW2"])
+
+        replaced = replace_editor_base_phonemes(
+            state,
+            ["AA", "IH", "OW"],
+        )
+
+        self.assertEqual(replaced.base_phonemes, ("AA", "IH", "OW"))
+        self.assertEqual(replaced.vowel_stresses, (1, 0, 2))
+
+    def test_replace_base_phonemes_defaults_added_vowels_to_unstressed(self):
+        state = english_phonemes_to_editor_state(["AH1"])
+
+        replaced = replace_editor_base_phonemes(
+            state,
+            ["AH", "EH", "OW"],
+        )
+
+        self.assertEqual(replaced.vowel_stresses, (1, 0, 0))
+
+    def test_replace_base_phonemes_truncates_removed_vowel_stresses(self):
+        state = english_phonemes_to_editor_state(["AH1", "EH2", "OW0"])
+
+        replaced = replace_editor_base_phonemes(state, ["IH", "AA"])
+
+        self.assertEqual(replaced.base_phonemes, ("IH", "AA"))
+        self.assertEqual(replaced.vowel_stresses, (1, 2))
+
+    def test_replace_base_phonemes_preserves_secondary_stress_by_ordinal(self):
+        state = english_phonemes_to_editor_state(["AH0", "EH2", "OW1"])
+
+        replaced = replace_editor_base_phonemes(state, ["AA", "UW"])
+
+        self.assertEqual(replaced.vowel_stresses, (0, 2))
+        self.assertEqual(
+            editor_state_to_english_phonemes(replaced), ["AA0", "UW2"]
+        )
+
+    def test_replace_base_phonemes_rejects_stress_digits(self):
+        state = english_phonemes_to_editor_state(["AH1"])
+
+        for token in ("AH0", "eh1", "ER2"):
+            with self.subTest(token=token):
+                with self.assertRaisesRegex(ValueError, "stress digits"):
+                    replace_editor_base_phonemes(state, [token])
+
+    def test_replace_base_phonemes_rejects_unsupported_tokens(self):
+        state = english_phonemes_to_editor_state(["AH1"])
+
+        with self.assertRaisesRegex(ValueError, "unsupported English phoneme"):
+            replace_editor_base_phonemes(state, ["AH3"])
+
+        with self.assertRaisesRegex(ValueError, "unsupported English phoneme"):
+            replace_editor_base_phonemes(state, ["NOT_A_PHONEME"])
 
     def test_accepts_voiceger_arpabet_stress_tokens(self):
         self.assertEqual(
