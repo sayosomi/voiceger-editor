@@ -96,6 +96,13 @@ class TakeBatch:
         """Regenerate all configured slots progressively in take order."""
 
         self._ensure_open()
+        if any(
+            number not in self._candidates
+            for number in range(1, self.take_count + 1)
+        ):
+            raise RuntimeError(
+                "full take regeneration requires a complete generated batch"
+            )
 
         def regenerate() -> Iterator[TakeCandidate]:
             for number in range(1, self.take_count + 1):

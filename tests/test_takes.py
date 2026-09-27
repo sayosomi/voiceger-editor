@@ -151,6 +151,68 @@ class TakeBatchTests(unittest.TestCase):
             self.assertTrue(replacement.wav_path.is_file())
             batch.close()
 
+    def test_full_regeneration_requires_initial_generation(self):
+        calls = []
+
+        def synthesize_one():
+            calls.append(None)
+            return {"audio": object(), "sampling_rate": 32000}
+
+        with tempfile.TemporaryDirectory() as directory:
+            batch = self.make_batch(directory, synthesize_one=synthesize_one)
+            with self.assertRaises(RuntimeError):
+                batch.regenerate_all()
+
+            self.assertEqual(calls, [])
+            self.assertEqual(batch.candidates, ())
+            self.assertEqual(list(batch._temporary_path.iterdir()), [])
+
+            with patch.dict(
+                "sys.modules", {"soundfile": self.fake_soundfile_module()}
+            ):
+                candidates = list(batch.generate_all())
+
+            self.assertEqual(len(calls), batch.take_count)
+            self.assertEqual(
+                [candidate.number for candidate in candidates], [1, 2, 3]
+            )
+            batch.close()
+
+    def test_full_regeneration_rejects_partial_batch_without_changes(self):
+        calls = []
+
+        def synthesize_one():
+            calls.append(None)
+            return {"audio": object(), "sampling_rate": 32000}
+
+        with tempfile.TemporaryDirectory() as directory:
+            batch = self.make_batch(directory, synthesize_one=synthesize_one)
+            with patch.dict(
+                "sys.modules", {"soundfile": self.fake_soundfile_module()}
+            ):
+                first = next(batch.generate_all())
+                candidates_before = batch.candidates
+                files_before = {
+                    path: path.read_bytes()
+                    for path in batch._temporary_path.iterdir()
+                }
+
+                with self.assertRaises(RuntimeError):
+                    batch.regenerate_all()
+
+                self.assertEqual(calls, [None])
+                self.assertEqual(batch.candidates, candidates_before)
+                self.assertIs(batch.candidates[0], first)
+                self.assertEqual(
+                    {
+                        path: path.read_bytes()
+                        for path in batch._temporary_path.iterdir()
+                    },
+                    files_before,
+                )
+
+            batch.close()
+
     def test_failed_single_regeneration_preserves_previous_candidate(self):
         failure = RuntimeError("replacement synthesis failed")
         calls = []
