@@ -17,8 +17,8 @@ from threading import RLock
 from typing import Any, Optional
 
 from .english_stress import normalize_english_phonemes
-from .filename import build_output_filename, next_output_index
 from .openjtalk_converter import text_to_pronunciation
+from .output import save_output
 from .pronunciation import Pronunciation, format_pronunciation, parse_pronunciation
 from .runtime_locks import LANGSEGMENT_LOCK
 from .voiceger_tokens import pronunciation_to_voiceger_tokens
@@ -477,6 +477,7 @@ class VoicegerAdapter:
         top_p: float = 0.6,
         temperature: float = 0.6,
         speed: float = 1.0,
+        save_text: bool = False,
     ) -> dict[str, Any]:
         """Synthesize and persist a WAV for local helper/CLI use."""
 
@@ -493,26 +494,25 @@ class VoicegerAdapter:
         )
 
         try:
-            import soundfile as sf
+            saved = save_output(
+                audio=result["audio"],
+                sampling_rate=result["sampling_rate"],
+                source_text=text,
+                output_dir=self.output_dir,
+                save_text=save_text,
+                filename_text=source_text,
+            )
         except ImportError as exc:
             raise VoicegerAdapterError(
                 "soundfile is required to write synthesized WAV files"
             ) from exc
 
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        output_index = next_output_index(self.output_dir)
-        file_name = build_output_filename(
-            index=output_index,
-            character_name=self.character_name,
-            style_name=style_name,
-            text=source_text,
-        )
-        output_path = self.output_dir / file_name
-        sf.write(output_path, result["audio"], result["sampling_rate"])
-
         return {
-            "file_name": file_name,
-            "file_path": str(output_path),
+            "file_name": saved.wav_path.name,
+            "file_path": str(saved.wav_path),
+            "text_file_path": (
+                str(saved.text_path) if saved.text_path is not None else None
+            ),
             "sampling_rate": result["sampling_rate"],
             "resolved_pronunciation": result["resolved_pronunciation"],
         }
