@@ -71,7 +71,14 @@ v1 currently supports one Japanese utterance per request (no embedded newlines).
 
 ### Run with the existing Voiceger environment
 
-Assuming Voiceger is installed at `~/voiceger_v2`:
+Assuming Voiceger is installed at `~/voiceger_v2`, first install this adapter and its API-only dependencies into Voiceger's existing virtualenv:
+
+```bash
+cd ~/Code/voiceger-accent-adapter
+~/voiceger_v2/.venv/bin/python -m pip install -e '.[api]'
+```
+
+Then start the API:
 
 ```bash
 cd ~/Code/voiceger-accent-adapter
