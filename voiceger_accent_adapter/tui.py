@@ -180,56 +180,65 @@ class TuiApp:
 
     def run(self, screen: Any) -> None:
         self._screen = screen
-        screen.keypad(True)
-        screen.timeout(100)
         try:
-            curses.curs_set(0)
-        except curses.error:
-            pass
-
-        source_text = self._initial_text
-        if source_text is None:
-            source_text = self._read_line("Source text", "")
-            if source_text is None:
-                return
-        while self.session is None:
-            if not source_text.strip():
-                source_text = self._read_line("Source text (one utterance)", source_text)
-                if source_text is None:
-                    return
-                continue
+            screen.keypad(True)
+            screen.timeout(100)
             try:
-                self.session = UtteranceSession.from_text(
-                    adapter=self.adapter,
-                    source_text=source_text,
-                    settings=self.settings,
-                )
-                self._status = "Query ready. Edit pronunciation, then press F5 to generate."
-            except Exception as exc:
-                self._status = f"Unable to prepare utterance: {exc}"
-                self._render()
-                source_text = self._read_line("Source text", source_text)
+                curses.curs_set(0)
+            except curses.error:
+                pass
+
+            source_text = self._initial_text
+            if source_text is None:
+                source_text = self._read_line("Source text", "")
                 if source_text is None:
                     return
+            while self.session is None:
+                if not source_text.strip():
+                    source_text = self._read_line("Source text (one utterance)", source_text)
+                    if source_text is None:
+                        return
+                    continue
+                try:
+                    self.session = UtteranceSession.from_text(
+                        adapter=self.adapter,
+                        source_text=source_text,
+                        settings=self.settings,
+                    )
+                    self._status = "Query ready. Edit pronunciation, then press F5 to generate."
+                except Exception as exc:
+                    self._status = f"Unable to prepare utterance: {exc}"
+                    self._render()
+                    source_text = self._read_line("Source text", source_text)
+                    if source_text is None:
+                        return
 
-        while not self._exit_requested:
-            self._consume_events()
-            self._render()
-            key = self._read_key()
-            if key is not None:
-                self._handle_key(key)
+            while not self._exit_requested:
+                self._consume_events()
+                self._render()
+                key = self._read_key()
+                if key is not None:
+                    self._handle_key(key)
 
-        while self._busy:
-            self._consume_events()
-            self._render()
-            self._screen.get_wch()
-
-        if self._worker is not None:
-            self._worker.join()
-
-        self._stop_playback()
-        if self.session is not None:
-            self.session.close()
+            while self._busy:
+                self._consume_events()
+                if not self._busy:
+                    break
+                self._render()
+                self._read_key()
+        finally:
+            worker = self._worker
+            try:
+                if worker is not None and worker.ident is not None:
+                    worker.join()
+            finally:
+                try:
+                    self._stop_playback()
+                finally:
+                    if self.session is not None and (
+                        worker is None or not worker.is_alive()
+                    ):
+                        self.session.close()
 
     def _read_key(self) -> Any:
         try:
