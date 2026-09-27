@@ -160,6 +160,20 @@ class MixedLanguageTests(unittest.TestCase):
             (("OpenAI", ["OW1", "P", "AH0", "N", "EY1"]),),
         )
 
+    def test_mixed_synthesis_plan_rejects_invalid_english_stress(self):
+        query = build_mixed_audio_query(
+            "hello",
+            segments=[DetectedSegment("en", "hello")],
+            english_g2p=lambda _: ["HH", "AH0", "L", "OW1"],
+        )
+        query.voicegerSegments[0].phonemes = ["HH", "AH3", "L", "OW1"]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "unsupported English phoneme",
+        ):
+            build_mixed_synthesis_plan(query)
+
 
 if __name__ == "__main__":
     unittest.main()
