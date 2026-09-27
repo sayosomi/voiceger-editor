@@ -75,10 +75,10 @@ def _next_output_path(
     *,
     now: datetime | None = None,
 ) -> Path:
-    """Build YYYYMMDD_text.wav, adding _2/_3 when needed."""
+    """Build YYYYMMDDhhmmss_text.wav, adding _2/_3 when needed."""
 
     current = now or datetime.now().astimezone()
-    stem = f"{current.strftime('%Y%m%d')}_{_filename_text(text)}"
+    stem = f"{current.strftime('%Y%m%d%H%M%S')}_{_filename_text(text)}"
 
     candidate = output_dir / f"{stem}.wav"
     index = 2
