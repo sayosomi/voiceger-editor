@@ -73,6 +73,13 @@ class MixedLanguageTests(unittest.TestCase):
             query = build_mixed_audio_query(
                 "今日はOpenAI",
                 segments=segments,
+                english_g2p=lambda _: [
+                    "OW1",
+                    "P",
+                    "AH0",
+                    "N",
+                    "EY1",
+                ],
             )
 
         self.assertIsNone(query.kana)
@@ -87,6 +94,10 @@ class MixedLanguageTests(unittest.TestCase):
         )
         self.assertIsNone(
             query.voicegerSegments[1].accentPhraseStart
+        )
+        self.assertEqual(
+            query.voicegerSegments[1].phonemes,
+            ["OW1", "P", "AH0", "N", "EY1"],
         )
 
     def test_pure_japanese_serialization_omits_extension(self):
@@ -136,6 +147,10 @@ class MixedLanguageTests(unittest.TestCase):
         self.assertEqual(
             plan.japanese_overrides,
             (("今日は", ["dummy"]),),
+        )
+        self.assertEqual(
+            plan.english_overrides,
+            (("OpenAI", ["OW1", "P", "AH0", "N", "EY1"]),),
         )
 
 
