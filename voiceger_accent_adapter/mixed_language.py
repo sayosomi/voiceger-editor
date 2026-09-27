@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, List, Optional
 
+from .english_stress import normalize_english_phonemes
 from .openjtalk_converter import text_to_pronunciation
 from .runtime_locks import LANGSEGMENT_LOCK
 from .pronunciation import Pronunciation
@@ -191,7 +192,10 @@ def build_mixed_synthesis_plan(query: AudioQuery) -> MixedSynthesisPlan:
         if segment.language == "en":
             if segment.phonemes is not None:
                 english_overrides.append(
-                    (segment.text, list(segment.phonemes))
+                    (
+                        segment.text,
+                        normalize_english_phonemes(segment.phonemes),
+                    )
                 )
             continue
 
