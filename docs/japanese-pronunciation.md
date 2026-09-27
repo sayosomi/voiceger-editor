@@ -4,48 +4,29 @@ Status: draft
 
 ## 1. Purpose
 
-Voiceger currently accepts target text and performs Japanese text normalization, G2P, and prosody analysis internally. Its Japanese frontend uses OpenJTalk/pyopenjtalk and GPT-SoVITS consumes the resulting phoneme/prosody sequence.
+This project adds editable Japanese pronunciation and pitch-accent control in front of a locally installed Voiceger / GPT-SoVITS runtime without copying or modifying Voiceger source files.
 
-This project adds an editable pronunciation layer in front of that pipeline without copying Voiceger into this repository.
+The public API intentionally follows the VOICEVOX workflow:
 
-The main use case is:
+1. Send ordinary Japanese text to `POST /audio_query`.
+2. Receive an `AudioQuery` containing `accent_phrases` and readable `kana`.
+3. Edit `accent_phrases` when pronunciation or accent needs correction.
+4. Send the edited query to `POST /synthesis`.
+5. Receive `audio/wav`.
 
-1. Write normal Japanese text.
-2. Automatically obtain an editable pronunciation.
-3. Correct readings, accent positions, or accent-phrase boundaries only where needed.
-4. Synthesize using the corrected pronunciation.
-5. Preserve the corrected pronunciation as reproducible source data.
+The older experimental `/pronunciation` and `/tts` APIs are not retained.
 
-## 2. Public data model
+## 2. Pronunciation notation
 
-### 2.1 Display text
+The editable kana notation follows the core VOICEVOX / AquesTalk-style accent rules, with one convenience difference: this adapter accepts both hiragana and katakana.
 
-`text` is the original/display form.
+Rules in the initial subset:
 
-Example:
-
-```json
-{
-  "text": "明日の天気は晴れ。"
-}
-```
-
-It should remain suitable for scripts, subtitles, logs, and UI display.
-
-### 2.2 Pronunciation
-
-`pronunciation` is an optional spoken-form override.
-
-The initial notation follows the core accent-position rules used by VOICEVOX's AquesTalk-style kana notation, with one convenience difference: this project accepts both hiragana and katakana.
-
-Initial rules:
-
-- `'` — accent position; it follows the selected mora.
-- Every accent phrase must contain exactly one `'`.
-- `/` — accent-phrase boundary without an explicit pause.
-- Kana — spoken reading.
-- An optional final `。` or `？` is preserved in the initial subset.
-- `、` pause delimiters and `_` devoicing are not part of the first parser subset yet.
+- `'` follows the mora selected as the accent position.
+- Every accent phrase contains exactly one `'`.
+- `/` separates accent phrases without an explicit pause.
+- An optional final `。` or `？` is preserved.
+- `、` pause delimiters and `_` devoicing are not implemented yet.
 
 Examples:
 
@@ -59,90 +40,129 @@ Examples:
 
 The internal `accent` value is 1-based and matches the mora immediately before `'`.
 
-This notation is intentionally described as VOICEVOX-style / AquesTalk-style rather than full AquesTalk compatibility.
+## 3. Public API model
 
-## 3. Resolution rules
+### POST /audio_query
 
-For Japanese input:
+VOICEVOX-style query creation:
 
-1. If `pronunciation` is absent, derive it automatically from `text`.
-2. If `pronunciation` is present, treat it as authoritative for reading/prosody.
-3. Convert either path into one shared internal prosody representation.
-4. Convert that representation into the phoneme/prosody sequence expected by the installed Voiceger/GPT-SoVITS version.
-5. Return the resolved pronunciation used for synthesis.
+```http
+POST /audio_query?text=今日は雨ですね。&speaker=1
+```
 
-The automatic and manual paths must converge before Voiceger-specific conversion. There should not be two independent synthesis implementations.
+The response contains:
+
+- `accent_phrases`
+- `speedScale`
+- `pitchScale`
+- `intonationScale`
+- `volumeScale`
+- `prePhonemeLength`
+- `postPhonemeLength`
+- `pauseLength`
+- `pauseLengthScale`
+- `outputSamplingRate`
+- `outputStereo`
+- `kana`
+
+The adapter also includes `text` as an extension so the original display text remains available for readable output filenames.
+
+`kana` is a readable representation. Synthesis is driven by `accent_phrases`, matching the VOICEVOX model.
+
+### POST /accent_phrases
+
+Ordinary text:
+
+```http
+POST /accent_phrases?text=今日は雨ですね。&speaker=1
+```
+
+Editable kana:
+
+```http
+POST /accent_phrases?text=キョ'ーワ/アメデスネ'。&speaker=1&is_kana=true
+```
+
+This provides the VOICEVOX-style path for converting AquesTalk-style notation back into structured accent phrases.
+
+### POST /synthesis
+
+```http
+POST /synthesis?speaker=1
+Content-Type: application/json
+
+<AudioQuery JSON>
+```
+
+The response is `audio/wav`, not JSON.
+
+The generated WAV is also stored locally with a VOICEVOX-style filename such as:
+
+```text
+001_ずんだもん（style_1）_今日は雨ですね。.wav
+```
 
 ## 4. Automatic pronunciation generation
 
-OpenJTalk/pyopenjtalk is the initial source of:
+OpenJTalk / pyopenjtalk provides:
 
-- kana reading
-- accent phrase segmentation
-- accent information
-- mora-related information needed to reconstruct editable notation
+- kana reading;
+- accent phrase segmentation;
+- accent information;
+- mora-related information.
 
-The converter should produce a deterministic editable pronunciation for a given frontend/version where practical.
+The converter reads `pyopenjtalk.run_frontend()` output and produces the core `Pronunciation` model and VOICEVOX-like `AccentPhrase` data.
 
-Unknown words and proper nouns should remain correctable by either:
+Validated examples:
 
-- OpenJTalk user dictionaries, or
-- a per-utterance `pronunciation` override.
+```text
+雨                 -> ア'メ
+飴                 -> アメ'
+今日は雨ですね。   -> キョ'ーワ/ア'メデスネ。
+明日の天気は晴れ。 -> アシタ'ノ/テ'ンキワ/ハレ'。
+私は思う。         -> ワタシワ'/オモ'ウ。
+```
 
 ## 5. Internal architecture
-
-Target layering:
 
 ```text
 text
   ↓
 OpenJTalk analyzer
   ↓
-InternalProsody
+Pronunciation
   ↓
-pronunciation formatter
-  ↕
-pronunciation parser
+VOICEVOX-like AccentPhrase / AudioQuery
   ↓
-InternalProsody
+editable accent values
   ↓
-VoicegerAdapter
+Pronunciation
+  ↓
+Voiceger frontend tokens
+  ↓
+runtime G2P hook
   ↓
 Voiceger / GPT-SoVITS
 ```
 
-Suggested modules:
+Core modules:
 
 ```text
 voiceger_accent_adapter/
-  prosody.py
-  openjtalk_converter.py
   pronunciation.py
+  openjtalk_converter.py
+  voicevox_api_models.py
+  voicevox_query.py
+  voiceger_tokens.py
   voiceger_adapter.py
   api.py
 ```
 
-### InternalProsody
-
-The first core representation uses a VOICEVOX-like accent-phrase model:
-
-```text
-AccentPhrase
-  morae: ordered mora sequence
-  accent: 1-based mora index, required
-```
-
-The model must remain Voiceger-independent.
-
-Future extensions may add pause/devoicing/interrogative metadata without changing the meaning of `accent`.
-
 ## 6. Voiceger integration
 
-Current upstream Voiceger ultimately calls GPT-SoVITS `get_tts_wav(...)`, which obtains Japanese phones through its internal `get_phones_and_bert()` → `clean_text()` → Japanese `g2p()` path.
+Voiceger ultimately calls GPT-SoVITS `get_tts_wav(...)`, which obtains Japanese phones through its internal `get_phones_and_bert()` → `clean_text()` → Japanese `g2p()` path.
 
-The current public-style TTS entry point does not expose a parameter for precomputed Japanese phones/prosody.
-
-A local runtime spike has validated that the installed Voiceger can be imported without modifying its files and its Japanese G2P output can be replaced for one synthesis call.
+The adapter imports the installed Voiceger runtime and temporarily replaces the Japanese `g2p()` function only during synthesis. The original function is restored afterward.
 
 Validated minimal pair:
 
@@ -151,125 +171,78 @@ Validated minimal pair:
 飴 -> ['a', '[', 'm', 'e']
 ```
 
-Using the same visible sentence `今日は雨ですね。`, changing only the injected `]` / `[` marker produced two natural WAV files with an audible accent difference.
-
-Therefore the first adapter may:
-
-1. import the installed Voiceger/GPT-SoVITS modules at runtime;
-2. intercept or wrap the Japanese text-cleaning/G2P stage;
-3. provide the phoneme/prosody sequence generated from `InternalProsody`;
-4. call the existing Voiceger/GPT-SoVITS inference path.
-
-Voiceger-specific hooks must remain contained in `voiceger_adapter.py` (or equivalent) so upstream changes do not leak into the core notation/parser.
-
-No Voiceger source files should need to be permanently modified for the preferred integration mode.
+For representative real text, adapter-generated G2P tokens matched Voiceger's built-in G2P tokens exactly.
 
 ### Phrase-boundary handling
 
-OpenJTalk emits `#` for an accent-phrase boundary. Voiceger v2 preserves `[` and `]`, while its existing `clean_text()` converts `#` to `UNK`.
+OpenJTalk emits `#` for an accent-phrase boundary. Voiceger v2's existing `clean_text()` converts `#` to `UNK`.
 
-The adapter hooks at the Japanese `g2p()` stage, before `clean_text()`. Therefore public `/` notation maps to a literal `#` token at that hook point, and Voiceger's existing cleaner is allowed to perform the same `# -> UNK` conversion as the normal built-in path.
+Because the adapter hooks before `clean_text()`, public `/` maps to `#` at the hook point. This reproduces Voiceger's normal frontend path.
 
-A spike that removed the boundary token entirely produced unstable synthesis for the automatically generated pronunciation, while the earlier spike that preserved `#` produced natural audio. The adapter should therefore match the built-in G2P stream exactly rather than comparing against a `#`-stripped stream.
+Dropping the boundary token entirely was tested and caused unstable synthesis.
 
-## 7. API sketch
+## 7. AudioQuery support
 
-### POST /pronunciation
+Currently applied:
 
-Request:
+- `accent_phrases`
+- `speedScale`
 
-```json
-{
-  "text": "明日の天気は晴れ。",
-  "text_language": "Japanese"
-}
-```
+Present for VOICEVOX-style API shape but not yet implemented:
 
-Response:
+- `pitchScale`
+- `intonationScale`
+- `volumeScale`
+- `prePhonemeLength`
+- `postPhonemeLength`
+- `pauseLength`
+- `pauseLengthScale`
+- arbitrary `outputSamplingRate`
+- stereo output
 
-```json
-{
-  "text": "明日の天気は晴れ。",
-  "pronunciation": "<generated editable pronunciation>",
-  "source": "openjtalk"
-}
-```
+Changing an unsupported field returns an error rather than silently ignoring it.
 
-### POST /tts
-
-Automatic pronunciation:
-
-```json
-{
-  "text": "明日の天気は晴れ。",
-  "text_language": "Japanese"
-}
-```
-
-Manual pronunciation:
-
-```json
-{
-  "text": "明日の天気は晴れ。",
-  "pronunciation": "<manually edited pronunciation>",
-  "text_language": "Japanese"
-}
-```
-
-Response should include at least:
-
-```json
-{
-  "message": "success",
-  "resolved_pronunciation": "<pronunciation actually used>",
-  "file_path": "...",
-  "sampling_rate": 32000
-}
-```
-
-Exact output transport (path vs streamed audio) is not yet fixed.
-
-## 8. Compatibility
+## 8. Compatibility scope
 
 Initial scope:
 
-- Japanese only for pronunciation editing.
-- Existing Voiceger behavior remains the fallback for unsupported languages.
-- `pronunciation` is optional and therefore does not replace ordinary `text` input.
-- Adapter compatibility should be versioned/tested against known Voiceger revisions because the integration relies on upstream internals.
-- Editable pronunciation accepts hiragana and katakana even though VOICEVOX's kana parser itself requires katakana.
+- Japanese talk synthesis only.
+- One utterance per request; embedded newlines are rejected.
+- `speaker` is accepted in the VOICEVOX-style query position; the current adapter has one configured Voiceger voice.
+- Editable kana accepts hiragana and katakana.
+- Adapter integration should be tested against known Voiceger revisions because it relies on upstream runtime internals.
+
+This project aims for a VOICEVOX-like API workflow, not full drop-in VOICEVOX ENGINE compatibility.
 
 ## 9. Non-goals for the first version
 
-- Full reproduction of every AquesTalk voice-symbol feature.
-- Full VOICEVOX kana-parser compatibility.
+- Full reproduction of all AquesTalk symbols.
+- Full VOICEVOX ENGINE endpoint coverage.
 - Bundling Voiceger.
-- Bundling Voiceger/GPT-SoVITS model weights or reference audio.
+- Bundling Voiceger/GPT-SoVITS models or reference audio.
 - Reimplementing GPT-SoVITS inference.
-- Building a graphical accent editor before the notation/API is stable.
+- A graphical accent editor.
 
-## 10. Initial acceptance criteria
+## 10. Acceptance criteria
 
-- Plain Japanese text can be converted to an editable pronunciation.
-- Every generated accent phrase contains exactly one `'`.
+- Plain Japanese text produces a usable `AudioQuery`.
+- Every generated accent phrase has a valid 1-based `accent`.
 - `あ'め` parses as `accent=1`.
 - `あめ'` parses as `accent=2`.
-- Generated pronunciation can be parsed back into the same internal prosody semantics for supported cases.
-- A user can change the accent position and hear a corresponding synthesis difference.
-- A user can change an accent-phrase boundary and have that change reach synthesis.
-- `/tts` works with and without an explicit `pronunciation`.
-- `/tts` reports `resolved_pronunciation`.
-- Core parser/converter tests can run without Voiceger installed.
-- Voiceger-dependent tests are isolated as integration tests.
+- Editing `accent_phrases[n].accent` changes synthesized accent.
+- `/accent_phrases?is_kana=true` converts editable kana into structured accent phrases.
+- `/synthesis` returns a valid WAV.
+- Generated filenames use the VOICEVOX-style readable format.
+- Core parser/converter tests can run independently of Voiceger where practical.
+- Voiceger-dependent tests remain isolated.
 - No upstream Voiceger source or bundled assets are committed to this repository.
 
 ## 11. Open questions
 
-- Exact mapping from VOICEVOX-style `accent` values to Voiceger `[` / `]` tokens for all accent types.
-- Verify phrase-boundary behavior across more Voiceger/GPT-SoVITS revisions; the current adapter emits `#` at the G2P hook and relies on Voiceger v2 `clean_text()` to convert it to `UNK`.
-- When to add VOICEVOX-style `、` pause delimiters and `_` devoicing.
-- How punctuation and interrogative endings should be serialized beyond the initial subset.
-- Whether automatic output should canonicalize to hiragana or katakana.
-- How to represent mixed Japanese/English input.
-- The most stable hook point for the current Voiceger revision.
-- Whether audio should be returned as a file path, bytes/stream, or both.
+- Add VOICEVOX-style `、` pause delimiters and `_` devoicing.
+- Improve interrogative handling.
+- Decide whether automatic `kana` output should always canonicalize to katakana.
+- Mixed Japanese/English handling.
+- Support more AudioQuery acoustic controls.
+- Add speaker/style metadata endpoints if needed.
+- Version compatibility strategy for future Voiceger/GPT-SoVITS changes.
