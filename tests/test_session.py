@@ -545,6 +545,79 @@ class UtteranceSessionTests(unittest.TestCase):
             self.assertEqual(call.kwargs["top_p"], 0.42)
             self.assertEqual(call.kwargs["temperature"], 0.83)
 
+    def test_preview_synthesis_success_preserves_session_and_candidates(self):
+        session = self.make_session(caption="Caption")
+        session.replace_query(_query(mora_text="手動"))
+        batch = self.activate_batch(session)
+        candidate = TakeCandidate(
+            1,
+            Path("/tmp/current-take.wav"),
+            object(),
+            32000,
+        )
+        batch._candidates.append(candidate)
+        canonical_before = session.query.model_dump()
+        candidates_before = session.candidates
+        preview = _query(speed_scale=0.4, mora_text="Preview")
+        preview_before = preview.model_dump()
+
+        with patch(
+            "voiceger_accent_adapter.session.synthesize_audio_query",
+            return_value={"audio": "preview-audio", "sampling_rate": 22050},
+        ) as synthesize:
+            result = session.preview_synthesis(preview)
+
+        self.assertEqual(
+            result,
+            {"audio": "preview-audio", "sampling_rate": 22050},
+        )
+        call = synthesize.call_args.kwargs
+        self.assertEqual(call["query"].speedScale, self.settings.speed)
+        self.assertEqual(call["query"].accent_phrases[0].moras[0].text, "Preview")
+        self.assertIsNot(call["query"], preview)
+        self.assertEqual(call["style"], self.style)
+        self.assertEqual(call["top_k"], 20)
+        self.assertEqual(call["top_p"], 0.6)
+        self.assertEqual(call["temperature"], 0.6)
+        self.assertEqual(preview.model_dump(), preview_before)
+        self.assertEqual(session.query.model_dump(), canonical_before)
+        self.assertEqual(session.caption, "Caption")
+        self.assertTrue(session.utterance_manually_edited)
+        self.assertTrue(session.has_active_batch)
+        self.assertFalse(batch.closed)
+        self.assertEqual(session.candidates, candidates_before)
+
+    def test_preview_synthesis_failure_preserves_session_and_candidates(self):
+        session = self.make_session(caption="Caption")
+        session.replace_query(_query(mora_text="手動"))
+        batch = self.activate_batch(session)
+        candidate = TakeCandidate(
+            1,
+            Path("/tmp/current-take.wav"),
+            object(),
+            32000,
+        )
+        batch._candidates.append(candidate)
+        canonical_before = session.query.model_dump()
+        candidates_before = session.candidates
+        preview = _query(speed_scale=0.4, mora_text="Preview")
+        preview_before = preview.model_dump()
+
+        with patch(
+            "voiceger_accent_adapter.session.synthesize_audio_query",
+            side_effect=RuntimeError("preview synthesis failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "preview synthesis failed"):
+                session.preview_synthesis(preview)
+
+        self.assertEqual(preview.model_dump(), preview_before)
+        self.assertEqual(session.query.model_dump(), canonical_before)
+        self.assertEqual(session.caption, "Caption")
+        self.assertTrue(session.utterance_manually_edited)
+        self.assertTrue(session.has_active_batch)
+        self.assertFalse(batch.closed)
+        self.assertEqual(session.candidates, candidates_before)
+
     def test_generate_takes_rejects_second_active_batch(self):
         session = self.make_session()
         batch = self.activate_batch(session)

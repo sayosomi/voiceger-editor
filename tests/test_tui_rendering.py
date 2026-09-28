@@ -433,7 +433,7 @@ class TuiRenderingTests(unittest.TestCase):
 
     def test_japanese_editor_shows_wrapped_source_and_active_direct_notation(self):
         editor = SimpleNamespace(
-            kind="japanese", title="EDIT JAPANESE PRONUNCIATION",
+            kind="japanese", title="EDIT PRONUNCIATION",
             selection="pronunciation",
             payload={"source_text": "今日は明日なのだ。"},
             active_field="pronunciation", input_value="ナ' ノダ'。",
@@ -443,7 +443,7 @@ class TuiRenderingTests(unittest.TestCase):
             render_state(editor=editor), 80
         )
         visible = "\n".join(line for line, _key in document)
-        self.assertEqual(document[0][0], "EDIT JAPANESE PRONUNCIATION")
+        self.assertEqual(document[0][0], "EDIT PRONUNCIATION")
         self.assertIn("\nSource\n", f"\n{visible}\n")
         self.assertIn("  今日は明日なのだ。", visible)
         self.assertIn("▶ ナ' ノダ'。", visible)
@@ -453,10 +453,20 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertNotIn("/", visible)
         self.assertIn("'", visible)
         self.assertNotIn("[Enter: Edit]", visible)
+        self.assertEqual(
+            [line for line, _key in document[-5:]],
+            [
+                "  [ Preview ]",
+                "  [ Apply ]",
+                "  [ Clear ]",
+                "  [ Reset ]",
+                "  [ Back ]",
+            ],
+        )
 
     def test_english_word_editor_opens_on_full_stressed_phoneme_input(self):
         editor = SimpleNamespace(
-            kind="english_word", title="EDIT WORD PRONUNCIATION",
+            kind="english_word", title="EDIT PRONUNCIATION",
             selection="phonemes",
             payload={"label": "hello"},
             active_field="phonemes", input_value="HH AH1 L OW2",
@@ -466,7 +476,7 @@ class TuiRenderingTests(unittest.TestCase):
             render_state(editor=editor), 80
         )
         visible = "\n".join(line for line, _key in document)
-        self.assertIn("EDIT WORD PRONUNCIATION", visible)
+        self.assertIn("EDIT PRONUNCIATION", visible)
         self.assertIn("Word", visible)
         self.assertIn("hello", visible)
         self.assertIn("▶ HH AH1 L OW2", visible)
@@ -474,6 +484,16 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertNotIn("Phonemes", visible)
         self.assertNotIn("Primary stress", visible)
         self.assertNotIn("Done", visible)
+        self.assertEqual(
+            [line for line, _key in document[-5:]],
+            [
+                "  [ Preview ]",
+                "  [ Apply ]",
+                "  [ Clear ]",
+                "  [ Reset ]",
+                "  [ Back ]",
+            ],
+        )
 
     def test_settings_use_compact_rows_and_edit_the_current_field_in_place(self):
         editor = SimpleNamespace(

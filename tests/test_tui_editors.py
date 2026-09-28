@@ -13,6 +13,7 @@ from voiceger_accent_adapter.tui_editors import (
     CloseEditorIntent,
     EnglishWordGroup,
     EnglishGroupingCache,
+    PreviewIntent,
     PronunciationRow,
     QueryApplicationResult,
     ReplaceQueryIntent,
@@ -330,11 +331,12 @@ class TuiEditorControllerTests(unittest.TestCase):
         )
         editor = controller.editor
         self.assertEqual(editor.kind, "japanese")
-        self.assertEqual(editor.title, "EDIT JAPANESE PRONUNCIATION")
+        self.assertEqual(editor.title, "EDIT PRONUNCIATION")
         self.assertEqual(editor.selection, "pronunciation")
         self.assertEqual(editor.active_field, "pronunciation")
         self.assertEqual(editor.payload["source_text"], "なのだ。")
         self.assertEqual(editor.payload["canonical_pronunciation"], "ナ'/ノダ'。")
+        self.assertEqual(editor.payload["opening_draft"], "ナ' ノダ'。")
         self.assertEqual(editor.input_value, "ナ' ノダ'。")
         self.assertEqual(editor.input_original, "ナ' ノダ'。")
         self.assertNotIn("/", editor.input_value)
@@ -383,7 +385,21 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.open_pronunciation_item(
             query, rows, 0, origin=("pronunciation", 0), busy=False
         )
+        editor = controller.editor
 
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="source"
+        )
+
+        self.assertEqual(intents, (UpdateStatusIntent(""),))
+        self.assertIs(controller.editor, editor)
+        self.assertIsNone(editor.active_field)
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
         intents = controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="source"
         )
@@ -435,6 +451,15 @@ class TuiEditorControllerTests(unittest.TestCase):
 
         self.assertEqual(editor.input_value, "ナ'　ノダ'。")
         self.assertEqual(editor.error, "")
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
         intents = controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="source"
         )
@@ -484,6 +509,266 @@ class TuiEditorControllerTests(unittest.TestCase):
                     "！",
                 )
 
+    def test_pronunciation_menu_order_and_enter_finishes_both_input_fields(self):
+        cases = (
+            (
+                "japanese",
+                direct_japanese_query(),
+                (("hello", ("HH", "AH1")),),
+                0,
+                ["pronunciation", "preview", "apply", "clear", "reset", "back"],
+                "ナ' ノダ'！",
+                "pronunciation",
+            ),
+            (
+                "english_word",
+                mixed_query(),
+                {
+                    "hello everyone": (
+                        ("hello", ("HH", "AH1", "L", "OW2")),
+                        ("everyone", ("EH1", "V", "R", "IY0")),
+                    )
+                },
+                2,
+                ["phonemes", "preview", "apply", "clear", "reset", "back"],
+                "HH AE1 L OW0",
+                "phonemes",
+            ),
+        )
+        for kind, query, groups, row_index, expected_keys, draft, field in cases:
+            with self.subTest(kind=kind):
+                controller, _provider = self.make_controller(groups)
+                rows = controller.pronunciation_rows(query, segments(query))
+                controller.open_pronunciation_item(
+                    query,
+                    rows,
+                    row_index,
+                    origin=("pronunciation", row_index),
+                    busy=False,
+                )
+                editor = controller.editor
+                self.assertEqual(editor.kind, kind)
+                self.assertEqual(editor.title, "EDIT PRONUNCIATION")
+                self.assertEqual(controller.selection_keys(), expected_keys)
+                editor.input_value = draft
+                original_query = query.model_dump()
+
+                intents = controller.handle_key(
+                    "\n",
+                    settings=self.settings(),
+                    query=query,
+                    current_caption="source",
+                )
+
+                self.assertEqual(intents, (UpdateStatusIntent(""),))
+                self.assertIs(controller.editor, editor)
+                self.assertIsNone(editor.active_field)
+                self.assertEqual(editor.selection, field)
+                self.assertEqual(query.model_dump(), original_query)
+
+    def test_preview_intents_are_transient_and_invalid_drafts_do_not_request_synthesis(self):
+        japanese = direct_japanese_query()
+        controller, _provider = self.make_controller(
+            {"hello": (("hello", ("HH", "AH1")),)}
+        )
+        rows = controller.pronunciation_rows(japanese, segments(japanese))
+        controller.open_pronunciation_item(
+            japanese, rows, 0, origin=("pronunciation", 0), busy=False
+        )
+        editor = controller.editor
+        original = japanese.model_dump()
+        editor.input_value = "ミ' ノダ'？"
+        controller.handle_key(
+            "\n", settings=self.settings(), query=japanese, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN,
+            settings=self.settings(),
+            query=japanese,
+            current_caption="source",
+        )
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=japanese, current_caption="source"
+        )
+        preview = next(intent for intent in intents if isinstance(intent, PreviewIntent))
+        self.assertIs(controller.editor, editor)
+        self.assertFalse(any(isinstance(item, ReplaceQueryIntent) for item in intents))
+        self.assertIsNone(preview.query.voicegerSegments)
+        self.assertEqual(japanese_pronunciation(preview.query), "ミ'/ノダ'？")
+        self.assertEqual(japanese.model_dump(), original)
+
+        editor.input_value = "bad pronunciation"
+        intents = controller.preview(japanese)
+        self.assertFalse(any(isinstance(item, PreviewIntent) for item in intents))
+        self.assertIn("Error: Preview failed:", editor.error)
+        self.assertEqual(japanese.model_dump(), original)
+
+    def test_english_preview_intent_uses_transient_grouping_and_rejects_invalid_draft(self):
+        query = mixed_query()
+        groups = {
+            "hello everyone": (
+                ("hello", ("HH", "AH1", "L", "OW2")),
+                ("everyone", ("EH1", "V", "R", "IY0")),
+            )
+        }
+        controller, _provider = self.make_controller(groups)
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 2, origin=("pronunciation", 2), busy=False
+        )
+        editor = controller.editor
+        original = query.model_dump()
+        editor.input_value = "HH AE1 L OW0"
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN,
+            settings=self.settings(),
+            query=query,
+            current_caption="source",
+        )
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="source"
+        )
+        preview = next(intent for intent in intents if isinstance(intent, PreviewIntent))
+
+        self.assertIs(controller.editor, editor)
+        self.assertFalse(any(isinstance(item, ReplaceQueryIntent) for item in intents))
+        self.assertEqual(len(preview.query.voicegerSegments), 1)
+        self.assertEqual(preview.query.voicegerSegments[0].text, "hello everyone")
+        self.assertEqual(
+            preview.query.voicegerSegments[0].phonemes,
+            ["HH", "AE1", "L", "OW0", "EH1", "V", "R", "IY0"],
+        )
+        self.assertEqual(query.model_dump(), original)
+
+        editor.input_value = "HH AH3"
+        intents = controller.preview(query)
+        self.assertFalse(any(isinstance(item, PreviewIntent) for item in intents))
+        self.assertIn("Error: Preview failed:", editor.error)
+        self.assertEqual(query.model_dump(), original)
+
+    def test_clear_reset_back_preserve_the_opening_draft_for_both_kinds(self):
+        cases = (
+            (
+                "japanese",
+                direct_japanese_query(),
+                (("hello", ("HH", "AH1")),),
+                0,
+                "ナ' ノダ'！",
+                "Japanese pronunciation draft cleared.",
+                "Japanese pronunciation draft reset.",
+                "pronunciation",
+            ),
+            (
+                "english_word",
+                mixed_query(),
+                {
+                    "hello everyone": (
+                        ("hello", ("HH", "AH1", "L", "OW2")),
+                        ("everyone", ("EH1", "V", "R", "IY0")),
+                    )
+                },
+                2,
+                "HH AE1 L OW0",
+                "English phoneme draft cleared.",
+                "English phoneme draft reset.",
+                "phonemes",
+            ),
+        )
+        for kind, query, groups, row_index, changed, clear_status, reset_status, field in cases:
+            with self.subTest(kind=kind):
+                controller, _provider = self.make_controller(groups)
+                rows = controller.pronunciation_rows(query, segments(query))
+                origin = ("pronunciation", row_index)
+                controller.open_pronunciation_item(
+                    query, rows, row_index, origin=origin, busy=False
+                )
+                editor = controller.editor
+                opening = editor.payload["opening_draft"]
+                canonical_before = query.model_dump()
+                editor.input_value = changed
+                controller.handle_key(
+                    "\n",
+                    settings=self.settings(),
+                    query=query,
+                    current_caption="source",
+                )
+
+                controller.move_selection(3)
+                cleared = controller.handle_key(
+                    "\n",
+                    settings=self.settings(),
+                    query=query,
+                    current_caption="source",
+                )
+                self.assertEqual(cleared, (UpdateStatusIntent(clear_status),))
+                self.assertEqual(editor.input_value, "")
+                self.assertEqual(editor.payload["opening_draft"], opening)
+                self.assertIs(controller.editor, editor)
+                self.assertEqual(query.model_dump(), canonical_before)
+
+                controller.move_selection(1)
+                reset = controller.handle_key(
+                    "\n",
+                    settings=self.settings(),
+                    query=query,
+                    current_caption="source",
+                )
+                self.assertEqual(reset, (UpdateStatusIntent(reset_status),))
+                self.assertEqual(editor.input_value, opening)
+                self.assertEqual(editor.payload["opening_draft"], opening)
+                self.assertEqual(query.model_dump(), canonical_before)
+
+                controller.move_selection(1)
+                backed = controller.handle_key(
+                    "\n",
+                    settings=self.settings(),
+                    query=query,
+                    current_caption="source",
+                )
+                self.assertIsNone(controller.editor)
+                discard_status = (
+                    "Japanese pronunciation draft discarded."
+                    if kind == "japanese"
+                    else "English word draft discarded."
+                )
+                self.assertIn(CloseEditorIntent(origin, discard_status), backed)
+                self.assertFalse(any(isinstance(item, ReplaceQueryIntent) for item in backed))
+                self.assertEqual(query.model_dump(), canonical_before)
+
+    def test_preview_busy_keeps_pronunciation_editor_and_draft_locked(self):
+        query = mixed_query()
+        controller, _provider = self.make_controller(
+            {
+                "hello everyone": (
+                    ("hello", ("HH", "AH1", "L", "OW2")),
+                    ("everyone", ("EH1", "V", "R", "IY0")),
+                )
+            }
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 2, origin=("pronunciation", 2), busy=False
+        )
+        editor = controller.editor
+        before = editor.input_value
+        intents = controller.handle_key(
+            curses.KEY_DOWN,
+            settings=self.settings(),
+            query=query,
+            current_caption="source",
+            preview_busy=True,
+        )
+        self.assertEqual(
+            intents,
+            (UpdateStatusIntent("Wait for Preview to finish before editing pronunciation."),),
+        )
+        self.assertIs(controller.editor, editor)
+        self.assertEqual(editor.input_value, before)
+        self.assertEqual(editor.selection, "phonemes")
+
     def test_english_word_opens_directly_and_phoneme_edit_commits_to_query(self):
         query = mixed_query()
         groups = {
@@ -503,10 +788,13 @@ class TuiEditorControllerTests(unittest.TestCase):
         )
         editor = controller.editor
         self.assertEqual(editor.kind, "english_word")
-        self.assertEqual(editor.title, "EDIT WORD PRONUNCIATION")
+        self.assertEqual(editor.title, "EDIT PRONUNCIATION")
         self.assertNotIn("english_segment", editor.kind)
         self.assertEqual(editor.payload["label"], "hello")
-        self.assertEqual(controller.selection_keys(), ["phonemes"])
+        self.assertEqual(
+            controller.selection_keys(),
+            ["phonemes", "preview", "apply", "clear", "reset", "back"],
+        )
         self.assertEqual(editor.active_field, "phonemes")
         self.assertEqual(editor.input_value, "HH AH1 L OW2")
         controller.handle_key(
@@ -520,6 +808,16 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(editor.input_value, "HH AH1 L OW2")
         editor.input_value = "HH AE1 L OW0"
         editor.input_cursor = len(editor.input_value)
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="source"
+        )
+        self.assertEqual(intents, (UpdateStatusIntent(""),))
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
         intents = controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="source"
         )
@@ -555,6 +853,16 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(editor.input_value, " ".join(original))
         editor.input_value = "Z UW1 N D AA0 M OW0 N"
 
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
+
         intents = controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="source"
         )
@@ -583,6 +891,15 @@ class TuiEditorControllerTests(unittest.TestCase):
         editor.input_cursor = 6
         original_query = query.model_dump()
 
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
         intents = controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="source"
         )
@@ -592,13 +909,26 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(editor.input_value, "hh ah3 l ow2")
         self.assertTrue(editor.error.startswith("Error: English phonemes were not changed:"))
         controller.handle_key(
-            curses.KEY_BACKSPACE,
-            settings=self.settings(), query=query, current_caption="source",
+            curses.KEY_UP, settings=self.settings(), query=query, current_caption="source"
         )
         controller.handle_key(
-            "0", settings=self.settings(), query=query, current_caption="source"
+            curses.KEY_UP, settings=self.settings(), query=query, current_caption="source"
         )
-        self.assertEqual(editor.input_value, "hh ah0 l ow2")
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="source"
+        )
+        editor.input_value = "HH AH0 L OW2"
+        editor.input_cursor = len(editor.input_value)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
+        self.assertEqual(editor.input_value, "HH AH0 L OW2")
         self.assertEqual(editor.error, "")
 
         intents = controller.handle_key(
@@ -677,6 +1007,15 @@ class TuiEditorControllerTests(unittest.TestCase):
         editor.input_cursor = 0
         original_query = query.model_dump()
 
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
         self.assertEqual(
             controller.handle_key(
                 "\n", settings=self.settings(), query=query, current_caption="source"
@@ -702,7 +1041,15 @@ class TuiEditorControllerTests(unittest.TestCase):
             query, rows, 2, origin=("pronunciation", 2), busy=False
         )
         controller.editor.input_value = "hh ah1 l ow2"
-
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
+        controller.handle_key(
+            curses.KEY_DOWN, settings=self.settings(), query=query, current_caption="source"
+        )
         intents = controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="source"
         )

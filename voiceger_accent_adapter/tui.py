@@ -33,6 +33,7 @@ from .tui_editors import (
     ClearAdjustmentFeedbackIntent,
     CloseEditorIntent,
     EditorIntent,
+    PreviewIntent,
     QueryApplicationResult,
     PronunciationRow,
     ReplaceQueryIntent,
@@ -44,6 +45,7 @@ from .tui_operations import (
     DiscardInitialBatchEffect,
     FocusEffect,
     OperationEffect,
+    PlayPreviewEffect,
     PlayTakeEffect,
     StopPlaybackEffect,
     TuiOperations,
@@ -231,6 +233,10 @@ class TuiApp:
                 ),
                 screen_width=(
                     self._screen.getmaxyx()[1] if self._screen is not None else 80
+                ),
+                preview_busy=(
+                    self._operations.busy
+                    and self._operations.worker_operation == "preview"
                 ),
             )
             self._dispatch_editor_intents(intents)
@@ -610,6 +616,10 @@ class TuiApp:
                 pending[0:0] = self._editor_controller.complete_query_application(
                     intent, result
                 )
+            elif isinstance(intent, PreviewIntent):
+                self._dispatch_operation_effects(
+                    self._operations.start_preview(self.session, intent.query)
+                )
             elif isinstance(intent, ApplyCaptionIntent):
                 result = self._apply_caption(intent.caption)
                 pending[0:0] = self._editor_controller.complete_caption_application(
@@ -679,6 +689,13 @@ class TuiApp:
             elif isinstance(effect, PlayTakeEffect):
                 self._dispatch_operation_effects(
                     self._operations.play_take(self.session, effect.number)
+                )
+            elif isinstance(effect, PlayPreviewEffect):
+                self._dispatch_operation_effects(
+                    self._operations.play_preview(
+                        effect.audio,
+                        effect.sampling_rate,
+                    )
                 )
             elif isinstance(effect, StopPlaybackEffect):
                 self._operations.stop_playback()
