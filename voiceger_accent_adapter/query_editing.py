@@ -168,6 +168,115 @@ def replace_japanese_pronunciation(
     return updated
 
 
+def _japanese_phrase_range(
+    query: AudioQuery,
+    *,
+    segment_index: int | None,
+) -> tuple[int, int]:
+    segment = _japanese_mode_segment(query, segment_index)
+    if segment is None:
+        return 0, len(query.accent_phrases)
+    start = segment.accentPhraseStart
+    count = segment.accentPhraseCount
+    assert start is not None and count is not None
+    return start, count
+
+
+def _refresh_pure_japanese_kana(query: AudioQuery) -> None:
+    if query.voicegerSegments is not None:
+        query.kana = None
+        return
+    pronunciation = accent_phrases_to_pronunciation(
+        query.accent_phrases,
+        terminator=_pure_japanese_terminator(query),
+    )
+    query.kana = format_pronunciation(pronunciation)
+
+
+def move_japanese_accent(
+    query: AudioQuery,
+    *,
+    accent_phrase_index: int,
+    direction: int,
+    segment_index: int | None = None,
+) -> AudioQuery:
+    """Move one Japanese phrase accent by one mora in a copied query.
+
+    At a phrase boundary this returns the original query unchanged. For mixed
+    queries, ``accent_phrase_index`` is still the global AudioQuery phrase
+    index, while ``segment_index`` proves that the phrase belongs to the
+    selected Japanese segment.
+    """
+
+    _validate_query(query)
+    if type(direction) is not int or direction not in {-1, 1}:
+        raise ValueError("direction must be -1 or 1")
+    start, count = _japanese_phrase_range(query, segment_index=segment_index)
+    if type(accent_phrase_index) is not int:
+        raise ValueError("accent_phrase_index must be an integer")
+    if not start <= accent_phrase_index < start + count:
+        raise ValueError("accent phrase is outside the selected Japanese segment")
+
+    phrase = query.accent_phrases[accent_phrase_index]
+    updated_accent = phrase.accent + direction
+    if not 1 <= updated_accent <= len(phrase.moras):
+        return query
+
+    updated = query.model_copy(deep=True)
+    updated.accent_phrases[accent_phrase_index].accent = updated_accent
+    _refresh_pure_japanese_kana(updated)
+    return updated
+
+
+def replace_japanese_accent_phrase(
+    query: AudioQuery,
+    *,
+    accent_phrase_index: int,
+    morae: Sequence[str],
+    accent: int,
+    segment_index: int | None = None,
+) -> AudioQuery:
+    """Replace one phrase's reading while preserving phrase and segment structure."""
+
+    _validate_query(query)
+    start, count = _japanese_phrase_range(query, segment_index=segment_index)
+    if type(accent_phrase_index) is not int:
+        raise ValueError("accent_phrase_index must be an integer")
+    if not start <= accent_phrase_index < start + count:
+        raise ValueError("accent phrase is outside the selected Japanese segment")
+    if isinstance(morae, (str, bytes)) or not isinstance(morae, Sequence):
+        raise ValueError("morae must be a sequence of complete mora tokens")
+    tokens = tuple(morae)
+    if not tokens or any(not isinstance(token, str) or not token for token in tokens):
+        raise ValueError("morae must contain non-empty complete mora tokens")
+    if type(accent) is not int or not 1 <= accent <= len(tokens):
+        raise ValueError("accent must point to a mora in the phrase")
+
+    # Validate that the caller supplied complete morae (so キョ is one token,
+    # and キ / ョ cannot accidentally become separate editable units).
+    notation = "".join(
+        token + ("'" if index == accent else "")
+        for index, token in enumerate(tokens, start=1)
+    )
+    parsed = _parse_replacement(notation)
+    if len(parsed.phrases) != 1 or parsed.phrases[0].morae != tokens:
+        raise ValueError("morae must contain complete mora tokens")
+
+    replacement = pronunciation_to_accent_phrases(parsed)[0]
+    old_phrase = query.accent_phrases[accent_phrase_index]
+    replacement.pause_mora = (
+        old_phrase.pause_mora.model_copy(deep=True)
+        if old_phrase.pause_mora
+        else None
+    )
+    replacement.is_interrogative = old_phrase.is_interrogative
+
+    updated = query.model_copy(deep=True)
+    updated.accent_phrases[accent_phrase_index] = replacement
+    _refresh_pure_japanese_kana(updated)
+    return updated
+
+
 def english_editor_state(
     query: AudioQuery,
     *,

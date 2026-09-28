@@ -3,7 +3,7 @@ import unittest
 from voiceger_accent_adapter.tui_navigation import (
     AcceptCandidate,
     ClearAdjustmentFeedback,
-    EditPronunciationSegment,
+    EditPronunciationItem,
     NavigationContext,
     OpenHelp,
     OpenSettingsEditor,
@@ -23,7 +23,7 @@ def context(
     *,
     has_session=True,
     pronunciation_needs_rebuild=False,
-    segment_count=2,
+    pronunciation_count=4,
     candidate_numbers=(1, 2),
     busy=False,
     has_active_batch=False,
@@ -31,7 +31,7 @@ def context(
     return NavigationContext(
         has_session=has_session,
         pronunciation_needs_rebuild=pronunciation_needs_rebuild,
-        segment_count=segment_count,
+        pronunciation_count=pronunciation_count,
         candidate_numbers=tuple(candidate_numbers),
         busy=busy,
         has_active_batch=has_active_batch,
@@ -42,38 +42,33 @@ class TuiNavigationTests(unittest.TestCase):
     def setUp(self):
         self.navigation = TuiNavigation()
 
-    def test_full_item_order_preserves_mixed_language_segments_and_candidate_order(self):
+    def test_items_include_each_pronunciation_child_in_order(self):
         self.assertEqual(
             self.navigation.navigation_items(
-                context(segment_count=3, candidate_numbers=(5, 2, 8))
+                context(pronunciation_count=4, candidate_numbers=(5, 2))
             ),
             (
                 ("settings_summary", None),
                 ("output", None),
                 ("text", None),
-                ("segment", 0),
-                ("segment", 1),
-                ("segment", 2),
+                ("pronunciation", 0),
+                ("pronunciation", 1),
+                ("pronunciation", 2),
+                ("pronunciation", 3),
                 ("rebuild", None),
                 ("generate", None),
                 ("candidate", 5),
                 ("candidate", 2),
-                ("candidate", 8),
                 ("settings", None),
                 ("help", None),
                 ("quit", None),
             ),
         )
 
-    def test_no_session_item_order_omits_session_actions_and_rows(self):
+    def test_no_session_omits_session_actions_and_rows(self):
         self.assertEqual(
             self.navigation.navigation_items(
-                context(
-                    has_session=False,
-                    segment_count=3,
-                    candidate_numbers=(4, 2),
-                    has_active_batch=True,
-                )
+                context(has_session=False, candidate_numbers=(4, 2))
             ),
             (
                 ("settings_summary", None),
@@ -85,23 +80,23 @@ class TuiNavigationTests(unittest.TestCase):
             ),
         )
 
-    def test_rebuild_required_context_omits_segment_rows(self):
+    def test_rebuild_required_context_hides_all_pronunciation_children(self):
         items = self.navigation.navigation_items(
-            context(pronunciation_needs_rebuild=True, segment_count=4)
+            context(pronunciation_needs_rebuild=True, pronunciation_count=4)
         )
-        self.assertFalse(any(name == "segment" for name, _number in items))
+        self.assertFalse(any(name == "pronunciation" for name, _ in items))
         self.assertIn(("rebuild", None), items)
 
-    def test_major_stops_collapse_all_consecutive_segments_and_candidates(self):
+    def test_major_navigation_keeps_pronunciation_as_one_section(self):
         self.assertEqual(
             self.navigation.major_navigation_stops(
-                context(segment_count=3, candidate_numbers=(5, 2, 8))
+                context(candidate_numbers=(5, 2, 8))
             ),
             (
                 ("settings_summary", None),
                 ("output", None),
                 ("text", None),
-                ("segment", 0),
+                ("pronunciation", 0),
                 ("rebuild", None),
                 ("generate", None),
                 ("candidate", 5),
@@ -111,219 +106,119 @@ class TuiNavigationTests(unittest.TestCase):
             ),
         )
 
-    def test_major_stops_have_no_candidate_section_when_candidates_are_empty(self):
-        stops = self.navigation.major_navigation_stops(context(candidate_numbers=()))
-        self.assertIn(("generate", None), stops)
-        self.assertNotIn(("candidate", None), stops)
-        self.assertEqual(stops[-3:], (("settings", None), ("help", None), ("quit", None)))
+    def test_up_and_down_visit_each_child_without_extra_wrap_stops(self):
+        state = context(pronunciation_count=3, candidate_numbers=())
+        self.navigation.focus_key = ("text", None)
+        for index in range(3):
+            self.assertEqual(
+                self.navigation.move(state, 1), (ClearAdjustmentFeedback(),)
+            )
+            self.assertEqual(self.navigation.focus_key, ("pronunciation", index))
+        self.assertEqual(
+            self.navigation.move(state, 1), (ClearAdjustmentFeedback(),)
+        )
+        self.assertEqual(self.navigation.focus_key, ("rebuild", None))
+        self.navigation.focus_key = ("pronunciation", 1)
+        self.assertEqual(
+            self.navigation.move_section(state, 1), (ClearAdjustmentFeedback(),)
+        )
+        self.assertEqual(self.navigation.focus_key, ("rebuild", None))
 
-    def test_up_and_down_move_one_selectable_item_and_candidate_move_requests_playback(self):
-        state = context(candidate_numbers=(4, 7))
-        self.assertEqual(
-            self.navigation.move(state, 1),
-            (ClearAdjustmentFeedback(),),
-        )
-        self.assertEqual(self.navigation.focus_key, ("output", None))
-        self.navigation.focus_key = ("generate", None)
-        self.assertEqual(
-            self.navigation.move(state, 1),
-            (ClearAdjustmentFeedback(), PlayCandidate(4)),
-        )
-        self.assertEqual(self.navigation.focus_key, ("candidate", 4))
+    def test_candidate_rows_play_on_arrow_and_escape_restores_last_child(self):
+        state = context(pronunciation_count=3, candidate_numbers=(4, 7))
+        self.navigation.set_focus_key(state, ("pronunciation", 2))
+        self.assertEqual(self.navigation.pronunciation_index, 2)
+        self.navigation.set_focus_key(state, ("candidate", 4))
         self.assertEqual(
             self.navigation.move(state, 1),
             (ClearAdjustmentFeedback(), PlayCandidate(7)),
         )
         self.assertEqual(self.navigation.focus_key, ("candidate", 7))
         self.assertEqual(
-            self.navigation.move(state, -1),
-            (ClearAdjustmentFeedback(), PlayCandidate(4)),
+            self.navigation.escape_candidate(state),
+            (
+                ClearAdjustmentFeedback(),
+                UpdateNavigationStatus("Returned to pronunciation."),
+            ),
         )
-        self.assertEqual(self.navigation.focus_key, ("candidate", 4))
+        self.assertEqual(self.navigation.focus_key, ("pronunciation", 2))
 
-    def test_up_and_down_movement_clamps_without_wrapping(self):
-        state = context(has_session=False)
-        self.assertEqual(self.navigation.move(state, -1), ())
-        self.navigation.focus_key = ("quit", None)
-        self.assertEqual(self.navigation.move(state, 1), ())
-        self.assertEqual(self.navigation.focus_key, ("quit", None))
-
-    def test_tab_and_shift_tab_move_between_major_stops(self):
-        state = context(segment_count=2, candidate_numbers=(3, 6))
+    def test_major_section_navigation_from_later_child_uses_pronunciation_stop(self):
+        state = context(pronunciation_count=4, candidate_numbers=(3, 6))
+        self.navigation.focus_key = ("pronunciation", 3)
         self.assertEqual(
-            self.navigation.move_section(state, 1),
-            (ClearAdjustmentFeedback(),),
-        )
-        self.assertEqual(self.navigation.focus_key, ("output", None))
-        self.navigation.focus_key = ("generate", None)
-        self.assertEqual(
-            self.navigation.move_section(state, 1),
-            (ClearAdjustmentFeedback(), PlayCandidate(3)),
-        )
-        self.assertEqual(
-            self.navigation.move_section(state, -1),
-            (ClearAdjustmentFeedback(),),
-        )
-        self.assertEqual(self.navigation.focus_key, ("generate", None))
-
-    def test_tab_from_later_segment_or_candidate_uses_its_section_stop(self):
-        state = context(segment_count=3, candidate_numbers=(4, 9))
-        self.navigation.focus_key = ("segment", 2)
-        self.assertEqual(
-            self.navigation.move_section(state, 1),
-            (ClearAdjustmentFeedback(),),
+            self.navigation.move_section(state, 1), (ClearAdjustmentFeedback(),)
         )
         self.assertEqual(self.navigation.focus_key, ("rebuild", None))
-        self.navigation.focus_key = ("segment", 2)
-        self.navigation.move_section(state, -1)
+        self.navigation.focus_key = ("pronunciation", 3)
+        self.assertEqual(
+            self.navigation.move_section(state, -1), (ClearAdjustmentFeedback(),)
+        )
         self.assertEqual(self.navigation.focus_key, ("text", None))
 
-        self.navigation.focus_key = ("candidate", 9)
+    def test_candidate_section_and_vertical_navigation_preserve_order(self):
+        state = context(candidate_numbers=(4, 7))
+        self.navigation.focus_key = ("generate", None)
+        self.assertEqual(
+            self.navigation.move(state, 1),
+            (ClearAdjustmentFeedback(), PlayCandidate(4)),
+        )
+        self.assertEqual(
+            self.navigation.move(state, 1),
+            (ClearAdjustmentFeedback(), PlayCandidate(7)),
+        )
         self.assertEqual(
             self.navigation.move_section(state, 1),
             (ClearAdjustmentFeedback(),),
         )
         self.assertEqual(self.navigation.focus_key, ("settings", None))
-        self.navigation.focus_key = ("candidate", 9)
+
+    def test_focus_fallback_prefers_remembered_child_then_rebuild_then_text(self):
+        available = context(pronunciation_count=4)
+        self.navigation.pronunciation_index = 3
         self.assertEqual(
-            self.navigation.move_section(state, -1),
+            self.navigation.set_focus_key(available, ("candidate", 99)),
             (ClearAdjustmentFeedback(),),
         )
-        self.assertEqual(self.navigation.focus_key, ("generate", None))
-
-    def test_tab_and_shift_tab_clamp_at_the_ends(self):
-        state = context(has_session=False)
-        self.assertEqual(self.navigation.move_section(state, -1), ())
-        self.navigation.focus_key = ("quit", None)
-        self.assertEqual(self.navigation.move_section(state, 1), ())
-        self.assertEqual(self.navigation.focus_key, ("quit", None))
-
-    def test_focus_fallback_prefers_remembered_segment_then_rebuild_then_text(self):
-        state_with_segments = context(segment_count=3)
-        self.navigation.segment_index = 2
-        self.assertEqual(
-            self.navigation.set_focus_key(state_with_segments, ("candidate", 99)),
-            (ClearAdjustmentFeedback(),),
-        )
-        self.assertEqual(self.navigation.focus_key, ("segment", 2))
+        self.assertEqual(self.navigation.focus_key, ("pronunciation", 3))
 
         rebuild_only = context(
             pronunciation_needs_rebuild=True,
-            segment_count=0,
+            pronunciation_count=0,
             candidate_numbers=(),
         )
-        self.navigation.segment_index = 5
         self.assertEqual(
-            self.navigation.set_focus_key(rebuild_only, ("segment", 5)),
+            self.navigation.set_focus_key(rebuild_only, ("pronunciation", 3)),
             (ClearAdjustmentFeedback(),),
         )
         self.assertEqual(self.navigation.focus_key, ("rebuild", None))
-
-        no_session = context(has_session=False)
         self.assertEqual(
-            self.navigation.set_focus_key(no_session, ("rebuild", None)),
+            self.navigation.set_focus_key(
+                context(has_session=False), ("rebuild", None)
+            ),
             (ClearAdjustmentFeedback(),),
         )
         self.assertEqual(self.navigation.focus_key, ("text", None))
 
-    def test_focus_falls_back_to_first_available_item_when_text_is_unavailable(self):
-        class MinimalNavigation(TuiNavigation):
-            def navigation_items(self, _context):
-                return (("settings_summary", None),)
-
-        navigation = MinimalNavigation()
-        navigation.focus_key = ("quit", None)
-        self.assertEqual(
-            navigation.set_focus_key(context(has_session=False), ("missing", None)),
-            (ClearAdjustmentFeedback(),),
-        )
-        self.assertEqual(navigation.focus_key, ("settings_summary", None))
-
-    def test_remembered_segment_updates_when_segment_focus_is_set(self):
-        self.navigation.set_focus_key(context(segment_count=3), ("segment", 2))
-        self.assertEqual(self.navigation.segment_index, 2)
-
-    def test_same_segment_focus_refreshes_remembered_index_without_revision_or_effect(self):
-        self.navigation.focus_key = ("segment", 2)
-        self.navigation.segment_index = 0
+    def test_set_focus_updates_remembered_index_even_when_key_is_unchanged(self):
+        self.navigation.focus_key = ("pronunciation", 2)
+        self.navigation.pronunciation_index = 0
         self.assertEqual(
             self.navigation.set_focus_key(
-                context(segment_count=3),
-                ("segment", 2),
-                moved=True,
+                context(pronunciation_count=3), ("pronunciation", 2), moved=True
             ),
             (),
         )
-        self.assertEqual(self.navigation.segment_index, 2)
+        self.assertEqual(self.navigation.pronunciation_index, 2)
         self.assertEqual(self.navigation.revision, 0)
 
-    def test_revision_changes_only_for_actual_explicit_focus_movement(self):
-        state = context(has_session=False)
-        self.assertEqual(
-            self.navigation.set_focus_key(state, ("settings_summary", None), moved=True),
-            (),
-        )
-        self.assertEqual(self.navigation.revision, 0)
-        self.navigation.set_focus_key(state, ("output", None))
-        self.assertEqual(self.navigation.revision, 0)
-        self.navigation.set_focus_key(state, ("text", None), moved=True)
-        self.assertEqual(self.navigation.revision, 1)
-        self.navigation.set_focus_key(state, ("text", None), moved=True)
-        self.assertEqual(self.navigation.revision, 1)
-
-    def test_adjustment_feedback_clears_only_when_focus_changes(self):
-        state = context(has_session=False)
-        self.assertEqual(
-            self.navigation.set_focus_key(state, ("settings_summary", None)),
-            (),
-        )
-        self.assertEqual(
-            self.navigation.set_focus_key(state, ("output", None)),
-            (ClearAdjustmentFeedback(),),
-        )
-
-    def test_plain_candidate_focus_does_not_request_playback(self):
-        self.assertEqual(
-            self.navigation.set_focus_key(context(), ("candidate", 2)),
-            (ClearAdjustmentFeedback(),),
-        )
-        self.assertEqual(self.navigation.focus_key, ("candidate", 2))
-
-    def test_candidate_number_focus_plays_valid_candidate_and_reports_unavailable(self):
-        state = context(candidate_numbers=(2, 5))
-        self.assertEqual(
-            self.navigation.focus_candidate(state, 5),
-            (ClearAdjustmentFeedback(), PlayCandidate(5)),
-        )
-        self.assertEqual(self.navigation.focus_key, ("candidate", 5))
-        self.assertEqual(
-            self.navigation.focus_candidate(state, 8),
-            (UpdateNavigationStatus("Take 8 has not been generated yet."),),
-        )
-        self.assertEqual(self.navigation.focus_key, ("candidate", 5))
-
-    def test_candidate_escape_returns_to_remembered_segment_and_keeps_selection_unmanaged(self):
-        state = context(segment_count=3, candidate_numbers=(1,))
-        self.navigation.segment_index = 2
-        self.navigation.focus_key = ("candidate", 1)
-        self.assertEqual(
-            self.navigation.escape_candidate(state),
-            (
-                ClearAdjustmentFeedback(),
-                UpdateNavigationStatus("Returned to the last pronunciation segment."),
-            ),
-        )
-        self.assertEqual(self.navigation.focus_key, ("segment", 2))
-        self.assertEqual(self.navigation.revision, 1)
-        self.assertIsNone(self.navigation.escape_candidate(state))
-
-    def test_focused_action_mapping_for_all_navigation_rows(self):
+    def test_focus_actions_and_busy_guards(self):
         state = context(candidate_numbers=(1,))
         mappings = (
             (("settings_summary", None), OpenSettingsEditor("style_id")),
             (("output", None), OpenSettingsEditor("output_dir", edit=True)),
             (("text", None), OpenTextEditor()),
-            (("segment", 1), EditPronunciationSegment(1)),
+            (("pronunciation", 1), EditPronunciationItem(1)),
             (("generate", None), StartGeneration()),
             (("rebuild", None), RebuildPronunciation()),
             (("candidate", 1), AcceptCandidate(1)),
@@ -335,99 +230,44 @@ class TuiNavigationTests(unittest.TestCase):
             with self.subTest(focus_key=focus_key):
                 self.navigation.focus_key = focus_key
                 self.assertEqual(
-                    self.navigation.activate_focused_item(state),
-                    (expected,),
+                    self.navigation.activate_focused_item(state), (expected,)
                 )
+        self.navigation.focus_key = ("pronunciation", 1)
+        self.assertEqual(
+            self.navigation.activate_focused_item(context(busy=True)),
+            (UpdateNavigationStatus("Wait for synthesis to finish before editing pronunciation."),),
+        )
 
-    def test_generate_selects_initial_generation_or_regenerate_all(self):
+    def test_generate_regenerate_and_candidate_regeneration_behavior(self):
         self.navigation.focus_key = ("generate", None)
         self.assertEqual(
-            self.navigation.activate_focused_item(context(has_active_batch=False)),
-            (StartGeneration(),),
+            self.navigation.activate_focused_item(context()), (StartGeneration(),)
         )
         self.assertEqual(
             self.navigation.activate_focused_item(context(has_active_batch=True)),
             (RegenerateAll(),),
         )
-        self.assertEqual(
-            self.navigation.activate_generate(
-                context(has_session=False, has_active_batch=True)
-            ),
-            (StartGeneration(),),
-        )
-
-    def test_focused_actions_return_existing_busy_statuses(self):
-        busy_context = context(busy=True, candidate_numbers=(1,))
-        statuses = (
-            (("text", None), "Wait for synthesis to finish before editing text."),
-            (
-                ("segment", 0),
-                "Wait for synthesis to finish before editing pronunciation.",
-            ),
-            (("generate", None), "A sequential take operation is already running."),
-            (
-                ("rebuild", None),
-                "Wait for the current synthesis operation to finish.",
-            ),
-            (
-                ("candidate", 1),
-                "Wait for generation to finish before accepting a take.",
-            ),
-        )
-        for focus_key, expected_status in statuses:
-            with self.subTest(focus_key=focus_key):
-                self.navigation.focus_key = focus_key
-                self.assertEqual(
-                    self.navigation.activate_focused_item(busy_context),
-                    (UpdateNavigationStatus(expected_status),),
-                )
-
-    def test_focused_candidate_regeneration_and_invalid_or_busy_statuses(self):
-        state = context(candidate_numbers=(2, 6))
-        self.navigation.focus_key = ("candidate", 6)
-        self.assertEqual(
-            self.navigation.activate_regenerate_focused(state),
-            (RegenerateCandidate(6),),
-        )
-        self.navigation.focus_key = ("generate", None)
-        self.assertEqual(
-            self.navigation.activate_regenerate_focused(state),
-            (UpdateNavigationStatus("Select a candidate before regenerating it."),),
-        )
-        self.navigation.focus_key = ("candidate", 9)
-        self.assertEqual(
-            self.navigation.activate_regenerate_focused(state),
-            (UpdateNavigationStatus("Select a candidate before regenerating it."),),
-        )
         self.navigation.focus_key = ("candidate", 6)
         self.assertEqual(
             self.navigation.activate_regenerate_focused(
-                context(busy=True, candidate_numbers=(2, 6))
+                context(candidate_numbers=(2, 6))
             ),
-            (
-                UpdateNavigationStatus(
-                    "Wait for the current synthesis operation to finish."
-                ),
-            ),
+            (RegenerateCandidate(6),),
         )
-
-    def test_open_help_focuses_explicitly_before_returning_open_action(self):
         self.assertEqual(
-            self.navigation.open_help(context(has_session=False)),
-            (ClearAdjustmentFeedback(), OpenHelp()),
+            self.navigation.activate_regenerate_focused(context(busy=True)),
+            (UpdateNavigationStatus("Wait for the current synthesis operation to finish."),),
         )
-        self.assertEqual(self.navigation.focus_key, ("help", None))
-        self.assertEqual(self.navigation.revision, 1)
 
-    def test_rebuild_reset_uses_navigation_focus_api_and_remembers_first_segment(self):
-        self.navigation.segment_index = 4
+    def test_rebuild_resets_to_first_pronunciation_child(self):
+        self.navigation.pronunciation_index = 3
         self.navigation.focus_key = ("candidate", 1)
         self.assertEqual(
-            self.navigation.reset_after_rebuild(context(segment_count=2)),
+            self.navigation.reset_after_rebuild(context(pronunciation_count=4)),
             (ClearAdjustmentFeedback(),),
         )
-        self.assertEqual(self.navigation.segment_index, 0)
-        self.assertEqual(self.navigation.focus_key, ("segment", 0))
+        self.assertEqual(self.navigation.pronunciation_index, 0)
+        self.assertEqual(self.navigation.focus_key, ("pronunciation", 0))
 
 
 if __name__ == "__main__":

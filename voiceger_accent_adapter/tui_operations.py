@@ -196,7 +196,7 @@ class TuiOperations:
         session: UtteranceSession | None,
         *,
         navigation_revision: int,
-        segment_index: int,
+        pronunciation_index: int,
         exit_requested: bool,
     ) -> tuple[OperationEffect, ...]:
         effects: list[OperationEffect] = []
@@ -248,7 +248,7 @@ class TuiOperations:
                     effects.append(StopPlaybackEffect())
                     effects.append(DiscardInitialBatchEffect())
                     self.current_take = None
-                    effects.append(FocusEffect(("segment", segment_index)))
+                    effects.append(FocusEffect(("pronunciation", pronunciation_index)))
 
             elif kind == "done":
                 operation = self.worker_operation
@@ -359,7 +359,7 @@ class TuiOperations:
         number: int,
         *,
         busy: bool,
-        segment_index: int,
+        pronunciation_index: int,
     ) -> tuple[OperationEffect, ...]:
         if session is None or busy:
             return ()
@@ -373,7 +373,7 @@ class TuiOperations:
         self.current_take = None
         sidecar = f" and {saved.text_path.name}" if saved.text_path else ""
         return (
-            FocusEffect(("segment", segment_index)),
+            FocusEffect(("pronunciation", pronunciation_index)),
             UpdateStatusEffect(f"Saved {saved.wav_path.name}{sidecar}."),
         )
 
