@@ -54,6 +54,50 @@ def mixed_query(english_phonemes=("HH", "AH1")):
     )
 
 
+def japanese_query(*phrase_specs, source_text="なのだ。", terminator="。"):
+    phrases = [
+        AccentPhrase(
+            moras=[
+                Mora(text=mora, vowel="a", vowel_length=0.1, pitch=0.0)
+                for mora in moras
+            ],
+            accent=accent,
+        )
+        for moras, accent in phrase_specs
+    ]
+    phrases.append(
+        AccentPhrase(
+            moras=[
+                Mora(text=mora, vowel="a", vowel_length=0.1, pitch=0.0)
+                for mora in ("ア", "メ")
+            ],
+            accent=2,
+        )
+    )
+    return AudioQuery(
+        accent_phrases=phrases,
+        voicegerSegments=[
+            VoicegerSegment(
+                language="ja",
+                text=source_text,
+                accentPhraseStart=0,
+                accentPhraseCount=len(phrase_specs),
+                pronunciationTerminator=terminator,
+            ),
+            VoicegerSegment(
+                language="en", text="hello", phonemes=["HH", "AH1"]
+            ),
+            VoicegerSegment(
+                language="ja",
+                text="雨",
+                accentPhraseStart=len(phrase_specs),
+                accentPhraseCount=1,
+                pronunciationTerminator="？",
+            ),
+        ],
+    )
+
+
 def candidate(number):
     return SimpleNamespace(
         number=number,
@@ -827,39 +871,175 @@ class TuiTests(unittest.TestCase):
         app._handle_key("!")
         self.assertEqual(editor.input_value, "bad draft!")
 
-    def test_japanese_editor_edits_complete_mora_tokens_and_preserves_phrase_structure(self):
-        app = self.make_app(query=mixed_query())
-        app._edit_selected_pronunciation(0)
-        editor = app._editor_controller.editor
-        self.assertEqual(editor.kind, "japanese")
-        self.assertEqual(editor.selection, ("phrase", 0))
-        app._handle_key("\n")
-        app._handle_key("キ")
-        app._handle_key("ョ")
-        self.assertEqual(editor.payload["editing_morae"], ["ア", "キョ"])
-        self.assertIn("キョ", editor.input_value)
-        self.assertNotIn("キ ョ", editor.input_value)
-        self.assertNotIn("/", editor.input_value)
-        self.assertNotIn("'", editor.input_value)
-        app._handle_key("\n")
-        self.assertIsNone(app._editor_controller.editor)
-        self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
-        self.assertEqual(len(app.session.replace_query_calls), 1)
-        self.assertEqual(len(app.session.query.accent_phrases), 1)
-        self.assertEqual(
-            [mora.text for mora in app.session.query.accent_phrases[0].moras],
-            ["ア", "キョ"],
+    def test_japanese_editor_opens_whole_segment_direct_field_from_any_child_row(self):
+        app = self.make_app(
+            query=japanese_query((("ナ",), 1), (("ノ", "ダ"), 2))
         )
-
-    def test_japanese_editor_opens_on_main_selected_phrase(self):
-        app = self.make_app(query=mixed_query())
-        set_navigation_focus(app, ("pronunciation", 0))
+        set_navigation_focus(app, ("pronunciation", 1))
         app._handle_key("\n")
+
         editor = app._editor_controller.editor
         self.assertEqual(editor.kind, "japanese")
         self.assertEqual(editor.title, "EDIT JAPANESE PRONUNCIATION")
-        self.assertEqual(editor.selection, ("phrase", 0))
-        self.assertEqual(editor.payload["phrases"], ((('ア',), 1),))
+        self.assertEqual(editor.selection, "pronunciation")
+        self.assertEqual(editor.active_field, "pronunciation")
+        self.assertEqual(editor.payload["source_text"], "なのだ。")
+        self.assertEqual(editor.payload["canonical_pronunciation"], "ナ'/ノダ'。")
+        self.assertEqual(editor.input_value, "ナ' ノダ'。")
+        self.assertNotIn("/", editor.input_value)
+        self.assertNotIn("phrases", editor.payload)
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 1))
+
+    def test_japanese_invalid_join_stays_unapplied_then_correction_replaces_segment(self):
+        app = self.make_app(
+            query=japanese_query((("ナ",), 1), (("ノ", "ダ"), 2)),
+            candidates=(candidate(1),),
+        )
+        original_query = app.session.query.model_copy(deep=True)
+        app._edit_selected_pronunciation(1)
+        editor = app._editor_controller.editor
+
+        app._handle_key(curses.KEY_HOME)
+        app._handle_key(curses.KEY_RIGHT)
+        app._handle_key(curses.KEY_RIGHT)
+        app._handle_key(curses.KEY_DC)
+        self.assertEqual(editor.input_value, "ナ'ノダ'。")
+        app._handle_key("\n")
+
+        self.assertIs(app._editor_controller.editor, editor)
+        self.assertEqual(editor.input_value, "ナ'ノダ'。")
+        self.assertIn("exactly one accent marker", editor.error)
+        self.assertEqual(app.session.query.model_dump(), original_query.model_dump())
+        self.assertEqual(app.session.replace_query_calls, [])
+
+        app._handle_key(curses.KEY_HOME)
+        app._handle_key(curses.KEY_RIGHT)
+        app._handle_key(curses.KEY_DC)
+        self.assertEqual(editor.input_value, "ナノダ'。")
+        self.assertEqual(editor.error, "")
+        app._handle_key("\n")
+
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 1))
+        self.assertEqual(len(app.session.replace_query_calls), 1)
+        self.assertEqual(app.session.candidates, ())
+        updated = app.session.query
+        self.assertEqual(updated.voicegerSegments[0].text, "なのだ。")
+        self.assertEqual(updated.voicegerSegments[0].accentPhraseCount, 1)
+        self.assertEqual(updated.voicegerSegments[2].accentPhraseStart, 1)
+        self.assertEqual(updated.voicegerSegments[2].accentPhraseCount, 1)
+        self.assertEqual(len(updated.accent_phrases), 2)
+        self.assertEqual(
+            [mora.text for mora in updated.accent_phrases[0].moras],
+            ["ナ", "ノ", "ダ"],
+        )
+
+    def test_japanese_direct_space_and_accent_split_uses_shared_replacement(self):
+        app = self.make_app(query=japanese_query((("ナ", "ノ", "ダ"), 3)))
+        app._edit_selected_pronunciation(0)
+        editor = app._editor_controller.editor
+        self.assertEqual(editor.input_value, "ナノダ'。")
+
+        app._handle_key(curses.KEY_HOME)
+        app._handle_key(curses.KEY_RIGHT)
+        app._handle_key("'")
+        app._handle_key(" ")
+        self.assertEqual(editor.input_value, "ナ' ノダ'。")
+        app._handle_key("\n")
+
+        updated = app.session.query
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(len(app.session.replace_query_calls), 1)
+        self.assertEqual(updated.voicegerSegments[0].text, "なのだ。")
+        self.assertEqual(updated.voicegerSegments[0].accentPhraseCount, 2)
+        self.assertEqual(updated.voicegerSegments[2].accentPhraseStart, 2)
+        self.assertEqual(len(updated.accent_phrases), 3)
+        self.assertEqual(
+            [[mora.text for mora in phrase.moras] for phrase in updated.accent_phrases[:2]],
+            [["ナ"], ["ノ", "ダ"]],
+        )
+
+    def test_japanese_direct_field_edits_all_supported_terminators_without_source_change(self):
+        for previous, desired in (("？", "。"), ("。", "？"), ("。", "！"), ("。", "")):
+            with self.subTest(previous=previous, desired=desired):
+                app = self.make_app(
+                    query=japanese_query(
+                        (("ナ", "ノ", "ダ"), 3), terminator=previous
+                    )
+                )
+                app._edit_selected_pronunciation(0)
+                editor = app._editor_controller.editor
+                source_text = editor.payload["source_text"]
+                app._handle_key(curses.KEY_END)
+                if previous:
+                    app._handle_key(curses.KEY_BACKSPACE)
+                if desired:
+                    app._handle_key(desired)
+                app._handle_key("\n")
+
+                segment = app.session.query.voicegerSegments[0]
+                self.assertIsNone(app._editor_controller.editor)
+                self.assertEqual(segment.text, source_text)
+                self.assertEqual(segment.pronunciationTerminator, desired)
+                self.assertEqual(
+                    app.session.query.kana,
+                    None,
+                )
+
+    def test_japanese_escape_discards_entire_draft_without_query_mutation(self):
+        app = self.make_app(query=japanese_query((("ナ", "ノ", "ダ"), 3)))
+        original_query = app.session.query.model_copy(deep=True)
+        app._edit_selected_pronunciation(0)
+        editor = app._editor_controller.editor
+        app._handle_key("X")
+        app._handle_key("\x1b")
+
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app.session.query.model_dump(), original_query.model_dump())
+        self.assertEqual(app.session.replace_query_calls, [])
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
+        self.assertIn("draft discarded", app._status)
+
+    def test_japanese_query_application_failure_keeps_draft_editable_for_retry(self):
+        app = self.make_app(query=japanese_query((("ナ", "ノ", "ダ"), 3)))
+        original_query = app.session.query.model_copy(deep=True)
+        actual_replace = app.session.replace_query
+        attempts = 0
+
+        def fail_once(replacement):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise ValueError("query replacement failed")
+            actual_replace(replacement)
+
+        app.session.replace_query = fail_once
+        app._edit_selected_pronunciation(0)
+        editor = app._editor_controller.editor
+        app._handle_key(curses.KEY_HOME)
+        app._handle_key(curses.KEY_RIGHT)
+        app._handle_key("'")
+        app._handle_key(curses.KEY_END)
+        app._handle_key(curses.KEY_LEFT)
+        app._handle_key(curses.KEY_LEFT)
+        app._handle_key(curses.KEY_DC)
+        self.assertEqual(editor.input_value, "ナ'ノダ。")
+        app._handle_key("\n")
+
+        self.assertIs(app._editor_controller.editor, editor)
+        self.assertEqual(editor.active_field, "pronunciation")
+        self.assertEqual(editor.input_value, "ナ'ノダ。")
+        self.assertIn("query replacement failed", editor.error)
+        self.assertEqual(app.session.query.model_dump(), original_query.model_dump())
+
+        app._handle_key("ア")
+        self.assertEqual(editor.input_value, "ナ'ノダア。")
+        self.assertEqual(editor.error, "")
+        app._handle_key("\n")
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(attempts, 2)
+        self.assertEqual(app.session.query.voicegerSegments[0].text, "なのだ。")
+        self.assertEqual(len(app.session.replace_query_calls), 1)
 
     def test_settings_are_reachable_and_editable_without_shortcuts(self):
         with tempfile.TemporaryDirectory() as directory:
