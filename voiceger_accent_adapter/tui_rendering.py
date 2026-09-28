@@ -8,29 +8,34 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol, Sequence
 
 from .english_stress import EnglishPhonemeEditorState
-from .query_editing import japanese_pronunciation
 from .session import UtteranceSession
 from .settings import Settings
 from .styles import available_styles
 from .tui_display import (
-    _VOWELS,
     _adjustable_value,
     _display_width,
     _english_display_tokens,
-    _phoneme_state_tokens,
-    _phonemes_as_ui_tokens,
+    _japanese_mora_tokens,
     _truncate_display,
     _wrap_active_input,
-    _wrap_labeled_tokens,
+    _wrap_tokens_with_prefixes,
     _wrap_text,
 )
+from .tui_editors import PronunciationRow
 
 
 _HELP_ITEMS = (
-    ("Up/Down", ": move one selectable Navigation item at a time"),
-    ("Enter", ": edit, open, generate, regenerate, or accept the focused action"),
-    ("Left/Right", " on Generate: decrease/increase take count"),
-    ("Left/Right", " in Settings: adjust the selected value"),
+    ("Up/Down", ": move one selectable item"),
+    (
+        "Left/Right",
+        ": on JA: accent by one mora; on EN: primary stress by one vowel; "
+        "Generate/Settings: adjust",
+    ),
+    (
+        "Enter",
+        ": on JA: edit reading; on EN: edit word phonemes; "
+        "otherwise activate the focused action",
+    ),
     ("Space", ": replay a focused candidate"),
     ("Esc", ": return from candidate review; cancel editor draft"),
     ("Tab", ": move to the next major section/action"),
@@ -62,12 +67,6 @@ class EditorRenderState(Protocol):
     error: str
 
 
-class EnglishWordGroupRenderState(Protocol):
-    label: str
-    phonemes: Sequence[str]
-    editable: bool
-
-
 @dataclass(frozen=True)
 class TuiRenderState:
     """Read-only snapshot of the application values needed to render a frame."""
@@ -78,6 +77,7 @@ class TuiRenderState:
     focus_key: tuple[str, int | None]
     status: str
     segments: Sequence[tuple[str, str, int | None]]
+    pronunciation_rows: Sequence[PronunciationRow]
     busy: bool
     worker_operation: str | None
     worker_target: int | None
@@ -87,22 +87,31 @@ class TuiRenderState:
     editor: EditorRenderState | None
 
 
+@dataclass(frozen=True)
+class NavigationLine:
+    text: str
+    key: tuple[str, int | None] | None
+    focus_owner: tuple[str, int | None] | None = None
+    bold_spans: tuple[tuple[int, int], ...] = ()
+
+
 def _active_input_prefix(editor: EditorRenderState) -> str:
     if editor.kind == "text":
-        return "▶ Input: "
+        return "▶ "
     if editor.kind == "japanese":
-        return "▶ Pronunciation input: "
+        return "▶ "
     if editor.kind == "english_word":
-        return "▶ Phonemes input: "
+        return "▶ Phonemes  "
     if editor.kind == "settings":
         labels = {
             "style_id": "Style",
             "speed": "Speed",
-            "take_count": "Take count",
-            "output_dir": "Output directory",
+            "take_count": "Takes",
+            "output_dir": "Output",
+            "save_text": "TXT",
         }
         label = labels.get(editor.active_field or "", "Setting")
-        return f"▶ {label} input: "
+        return f"▶ {label:<12}"
     return "▶ Input: "
 
 
@@ -138,11 +147,7 @@ class TuiRenderer:
         return int(getattr(curses, name, 0))
 
     def _focus_attribute(self) -> int:
-        return (
-            self._attribute("A_REVERSE")
-            | self._attribute("A_BOLD")
-            | self._color_attr
-        )
+        return self._attribute("A_REVERSE") | self._color_attr
 
     @staticmethod
     def _adjustment_press_direction(
@@ -180,18 +185,17 @@ class TuiRenderer:
         safe_add(screen, 0, 0, "HELP", width, self._attribute("A_BOLD"))
         safe_add(screen, 1, 0, "Navigation and action shortcuts", width)
         height = screen.getmaxyx()[0]
-        footer_row = max(0, height - 1)
         row = 2
         column = 1
         available = max(1, width - column - 1)
         bold = self._attribute("A_BOLD")
         for shortcut, suffix in _HELP_ITEMS:
-            if row >= footer_row:
+            if row >= height:
                 break
             if shortcut is None:
                 pieces = _wrap_text(suffix, available) or [""]
                 for piece in pieces:
-                    if row >= footer_row:
+                    if row >= height:
                         break
                     safe_add(screen, row, column, piece, width)
                     row += 1
@@ -201,13 +205,13 @@ class TuiRenderer:
             if key_width >= available:
                 key_pieces = _wrap_text(shortcut, available) or [""]
                 for piece in key_pieces:
-                    if row >= footer_row:
+                    if row >= height:
                         break
                     safe_add(screen, row, column, piece, width, bold)
                     row += 1
                 explanation_pieces = _wrap_text(suffix, available)
                 for piece in explanation_pieces:
-                    if row >= footer_row:
+                    if row >= height:
                         break
                     safe_add(screen, row, column, piece, width)
                     row += 1
@@ -222,18 +226,10 @@ class TuiRenderer:
                 )
             row += 1
             for piece in explanation_pieces[1:]:
-                if row >= footer_row:
+                if row >= height:
                     break
                 safe_add(screen, row, column + key_width, piece, width)
                 row += 1
-        safe_add(
-            screen,
-            max(0, screen.getmaxyx()[0] - 1),
-            0,
-            "Esc / Enter / ? Return to Navigation  |  q Quit",
-            width,
-            self._attribute("A_BOLD"),
-        )
 
     def render_navigation(
         self,
@@ -247,7 +243,7 @@ class TuiRenderer:
             screen,
             0,
             0,
-            "NAVIGATION  Voiceger Accent Adapter",
+            "Voiceger Accent Adapter",
             width,
             self._attribute("A_BOLD"),
         )
@@ -292,164 +288,155 @@ class TuiRenderer:
         )
 
         lines = self.navigation_document(state, width)
-        status_row = max(0, height - 2)
+        status_row = max(0, height - 1)
         viewport_height = max(1, status_row - 4)
         focused_index = next(
             (
                 index
-                for index, (_text, key) in enumerate(lines)
-                if key == state.focus_key
+                for index, line in enumerate(lines)
+                if line.focus_owner == state.focus_key
             ),
             0,
         )
         start = max(0, focused_index - viewport_height // 3)
         if start + viewport_height > len(lines):
             start = max(0, len(lines) - viewport_height)
-        for offset, (line, key) in enumerate(lines[start : start + viewport_height]):
+        for offset, line in enumerate(lines[start : start + viewport_height]):
             row = 4 + offset
-            attr = self._focus_attribute() if key == state.focus_key else 0
-            safe_add(screen, row, 0, line, width, attr)
+            focused = line.focus_owner == state.focus_key
+            attr = self._focus_attribute() if focused else 0
+            safe_add(screen, row, 0, line.text, width, attr)
+            for column, span_width in line.bold_spans:
+                word_attr = self._attribute("A_BOLD")
+                if focused:
+                    word_attr |= self._attribute("A_REVERSE")
+                safe_add(
+                    screen,
+                    row,
+                    column,
+                    line.text[column : column + span_width],
+                    width,
+                    word_attr,
+                )
 
         status = state.status
         if status and not status.startswith("Error:"):
             status = f"Status: {status}"
-        status_attr = self._attribute("A_BOLD")
-        if status.startswith("Error:"):
-            status_attr |= self._attribute("A_REVERSE")
-        safe_add(screen, status_row, 0, status, width, status_attr)
+        if status:
+            status_attr = self._attribute("A_BOLD")
+            if status.startswith("Error:"):
+                status_attr |= self._attribute("A_REVERSE")
+            safe_add(screen, status_row, 0, status, width, status_attr)
 
     def navigation_document(
         self,
         state: TuiRenderState,
         width: int,
-    ) -> list[tuple[str, tuple[str, int | None] | None]]:
-        lines: list[tuple[str, tuple[str, int | None] | None]] = []
+    ) -> list[NavigationLine]:
+        lines: list[NavigationLine] = []
+        row_limit = max(1, width - 1)
 
         def plain(value: str = "") -> None:
-            lines.append((value, None))
+            lines.append(NavigationLine(value, None))
 
         def action(key: tuple[str, int | None], label: str) -> None:
             marker = "▶ " if key == state.focus_key else "  "
-            lines.append((marker + label, key))
+            lines.append(NavigationLine(marker + label, key, key))
 
         def text_action(key: tuple[str, int | None], value: str) -> None:
             marker = "▶ " if key == state.focus_key else "  "
             prefix = f"{marker}Text : "
             available = max(1, width - 1 - _display_width(prefix))
             pieces = _wrap_text(value, available) or [""]
-            lines.append((prefix + pieces[0], key))
+            lines.append(NavigationLine(prefix + pieces[0], key, key))
             continuation = " " * _display_width(prefix)
-            lines.extend((continuation + piece, None) for piece in pieces[1:])
+            lines.extend(
+                NavigationLine(continuation + piece, None, key)
+                for piece in pieces[1:]
+            )
 
-        def segment_action(
-            key: tuple[str, int | None],
-            language: str,
-            source: str,
-            pronunciation: str,
-            *,
-            pronunciation_tokens: Sequence[str] | None = None,
-        ) -> None:
+        def pronunciation_action(index: int, item: PronunciationRow) -> None:
+            key = ("pronunciation", index)
             marker = "▶ " if key == state.focus_key else "  "
-            prefix = f"{marker}{language.upper()} | "
-            separator = " | "
-            row_limit = max(1, width - 1)
-            compact = f"{prefix}{source}{separator}{pronunciation}"
-            if _display_width(compact) <= row_limit:
-                lines.append((compact, key))
+            language_prefix = (
+                f"{item.language.upper()} | "
+                if item.first_in_segment
+                else "   | "
+            )
+            first_prefix = marker + language_prefix
+            continuation_prefix = "     | "
+
+            if item.language == "ja":
+                tokens = _japanese_mora_tokens(item.moras, item.accent or 1)
+                physical, _cursor = _wrap_tokens_with_prefixes(
+                    first_prefix,
+                    continuation_prefix,
+                    tokens,
+                    row_limit,
+                )
+                for physical_index, value in enumerate(physical):
+                    lines.append(
+                        NavigationLine(
+                            value,
+                            key if physical_index == 0 else None,
+                            key,
+                        )
+                    )
                 return
 
-            minimum_token_width = max(
-                (_display_width(token) for token in (pronunciation_tokens or ())),
-                default=1,
-            )
-            field_width = (
-                row_limit
-                - _display_width(prefix)
-                - _display_width(separator)
-            )
-            if field_width < minimum_token_width + 1:
-                continuation_prefix = " " * _display_width(prefix)
-                action_source_width = row_limit - _display_width(prefix)
-                if action_source_width >= 1:
-                    action_source_lines = _wrap_text(source, action_source_width) or [""]
-                    lines.append((f"{prefix}{action_source_lines[0]}", key))
-                    remaining_source = "".join(action_source_lines[1:])
+            if item.language == "en" and item.word is not None:
+                word_width = item.word_column_width or _display_width(item.word)
+                word_field = item.word + " " * max(
+                    3, word_width - _display_width(item.word) + 3
+                )
+                tokens = _english_display_tokens(item.phonemes) or ["(none)"]
+                widest_phone = max((_display_width(token) for token in tokens), default=1)
+                source_column = _display_width(first_prefix)
+                source_span = _display_width(item.word)
+                if source_column + _display_width(word_field) + widest_phone > row_limit:
+                    physical = [first_prefix + item.word]
+                    wrapped, _cursor = _wrap_tokens_with_prefixes(
+                        continuation_prefix,
+                        continuation_prefix,
+                        tokens,
+                        row_limit,
+                    )
+                    physical.extend(wrapped)
+                    bold_spans = ((source_column, source_span),)
                 else:
-                    source_width = max(
-                        1, row_limit - _display_width(continuation_prefix)
+                    phone_prefix = first_prefix + word_field
+                    wrapped, _cursor = _wrap_tokens_with_prefixes(
+                        phone_prefix,
+                        continuation_prefix + " " * (word_width + 3),
+                        tokens,
+                        row_limit,
                     )
-                    source_lines = _wrap_text(source, source_width) or [""]
-                    lines.append((f"{prefix}{source_lines[0]}", key))
-                    remaining_source = "".join(source_lines[1:])
-                source_width = max(
-                    1, row_limit - _display_width(continuation_prefix)
-                )
-                source_lines = _wrap_text(remaining_source, source_width)
-                lines.extend(
-                    (continuation_prefix + piece, None) for piece in source_lines
-                )
-                pronunciation_prefix = continuation_prefix + " | "
-                if pronunciation_tokens is not None:
-                    widest_token = max(
-                        (_display_width(token) for token in pronunciation_tokens),
-                        default=1,
+                    physical = wrapped
+                    bold_spans = ((source_column, source_span),)
+                for physical_index, value in enumerate(physical):
+                    lines.append(
+                        NavigationLine(
+                            value,
+                            key if physical_index == 0 else None,
+                            key,
+                            bold_spans if physical_index == 0 else (),
+                        )
                     )
-                    if widest_token > row_limit - _display_width(pronunciation_prefix):
-                        pronunciation_prefix = "|"
-                pronunciation_width = max(
-                    1, row_limit - _display_width(pronunciation_prefix)
-                )
-                if pronunciation_tokens is None:
-                    pronunciation_lines = _wrap_text(
-                        pronunciation, pronunciation_width
-                    )
-                else:
-                    pronunciation_lines = _wrap_labeled_tokens(
-                        "", pronunciation_tokens, pronunciation_width
-                    )
-                lines.extend(
-                    (pronunciation_prefix + piece, None)
-                    for piece in pronunciation_lines
-                )
                 return
 
-            source_width = min(
-                max(1, _display_width(source)),
-                max(1, field_width // 2),
-                field_width - minimum_token_width,
-            )
-            pronunciation_width = field_width - source_width
-            source_lines = _wrap_text(source, source_width) or [""]
-            if pronunciation_tokens is None:
-                pronunciation_lines = _wrap_text(
-                    pronunciation, pronunciation_width
+            label = item.source_text or "Unavailable"
+            value_prefix = first_prefix
+            pieces = _wrap_text(label, max(1, row_limit - _display_width(value_prefix)))
+            physical = [value_prefix + (pieces[0] if pieces else "Unavailable")]
+            physical.extend(continuation_prefix + piece for piece in pieces[1:])
+            for physical_index, value in enumerate(physical):
+                lines.append(
+                    NavigationLine(
+                        value,
+                        key if physical_index == 0 else None,
+                        key,
+                    )
                 )
-            else:
-                pronunciation_lines = _wrap_labeled_tokens(
-                    "", pronunciation_tokens, pronunciation_width
-                )
-
-            continuation_prefix = " " * _display_width(prefix)
-            line_count = max(len(source_lines), len(pronunciation_lines), 1)
-            for index in range(line_count):
-                row_prefix = prefix if index == 0 else continuation_prefix
-                source_piece = source_lines[index] if index < len(source_lines) else ""
-                pronunciation_piece = (
-                    pronunciation_lines[index]
-                    if index < len(pronunciation_lines)
-                    else ""
-                )
-                padding = " " * max(
-                    0, source_width - _display_width(source_piece)
-                )
-                line = (
-                    row_prefix
-                    + source_piece
-                    + padding
-                    + separator
-                    + pronunciation_piece
-                )
-                lines.append((line, key if index == 0 else None))
 
         session = state.session
         text_action(("text", None), session.source_text if session else "")
@@ -459,38 +446,8 @@ class TuiRenderer:
                 plain("Pronunciation   Rebuild required")
             else:
                 plain("Pronunciation")
-                for index, (language, source, model_index) in enumerate(state.segments):
-                    if language == "ja":
-                        try:
-                            query = session.query
-                            pronunciation = japanese_pronunciation(
-                                query,
-                                segment_index=(
-                                    model_index if query.voicegerSegments is not None else None
-                                ),
-                            )
-                        except Exception as exc:
-                            pronunciation = f"<{exc}>"
-                        segment_action(
-                            ("segment", index), language, source, pronunciation
-                        )
-                    elif language == "en" and model_index is not None:
-                        try:
-                            segment = session.query.voicegerSegments[model_index]
-                            tokens = _english_display_tokens(segment.phonemes or ())
-                        except Exception as exc:
-                            tokens = [f"<{exc}>"]
-                        segment_action(
-                            ("segment", index),
-                            language,
-                            source,
-                            " ".join(tokens),
-                            pronunciation_tokens=tokens or ["(none)"],
-                        )
-                    else:
-                        segment_action(
-                            ("segment", index), language, source, "Unavailable"
-                        )
+                for index, item in enumerate(state.pronunciation_rows):
+                    pronunciation_action(index, item)
             action(("rebuild", None), "[ Rebuild pronunciation ]")
             plain()
             has_batch = session.has_active_batch
@@ -555,25 +512,20 @@ class TuiRenderer:
         def plain(value: str = "") -> None:
             lines.append((value, None))
 
-        def wrap(label: str, value: str) -> None:
-            prefix = f"{label}"
+        def wrap(prefix: str, value: str, key=None) -> None:
             available = max(1, width - 1 - _display_width(prefix))
             pieces = _wrap_text(value, available)
-            plain(prefix + (pieces[0] if pieces else ""))
+            lines.append((prefix + (pieces[0] if pieces else ""), key))
             for piece in pieces[1:]:
-                plain(" " * _display_width(prefix) + piece)
+                lines.append((" " * _display_width(prefix) + piece, key))
 
         def selectable(key: str | tuple[str, int | None], label: str) -> None:
             marker = "▶ " if editor.selection == key else "  "
             lines.append((marker + label, key))
 
-        def token_lines(label: str, tokens: Sequence[str]) -> None:
-            for line in _wrap_labeled_tokens(label, tokens, width - 1):
-                plain(line)
-
-        def input_field(name: str) -> None:
+        def input_field(name: str, prefix: str | None = None) -> None:
             nonlocal cursor_line, cursor_column
-            prefix = _active_input_prefix(editor)
+            prefix = prefix if prefix is not None else _active_input_prefix(editor)
             prefix_width = _display_width(prefix)
             input_width = max(1, width - 1 - prefix_width)
             wrapped, cursor_row, cursor_cells = _wrap_active_input(
@@ -589,42 +541,44 @@ class TuiRenderer:
             cursor_column = prefix_width + cursor_cells
 
         plain(editor.title)
-        if editor.kind in {"text", "japanese"}:
-            plain("Enter applies the draft; Esc cancels this editor.")
-        elif editor.kind == "settings":
-            plain("Changes stay in this draft until Apply; Esc cancels all settings.")
-        elif editor.kind == "english_word":
-            plain("Phoneme and stress changes stay here until Done.")
-        else:
-            plain("Changes stay in this draft until Apply.")
         if editor.kind == "text":
-            plain("Context: edit Text; compatible pronunciation is preserved.")
-            plain("Rebuild pronunciation is an explicit Navigation action.")
-            draft = (
-                editor.input_value
-                if editor.active_field == "draft"
-                else editor.payload["draft"]
-            )
-            wrap("Draft source: ", draft)
             if editor.active_field == "draft":
-                input_field("draft")
+                input_field("draft", "▶ ")
             else:
-                selectable("draft", "Source text field  [Enter: Edit]")
+                selectable("draft", editor.payload["draft"])
         elif editor.kind == "japanese":
-            wrap("Source: ", editor.payload["source_text"])
-            draft = (
-                editor.input_value
-                if editor.active_field == "draft"
-                else editor.payload["draft"]
-            )
-            wrap("Draft pronunciation: ", draft)
-            if editor.active_field == "draft":
-                input_field("draft")
-            else:
-                selectable("draft", "Pronunciation field  [Enter: Edit]")
-            plain("Type ' and / directly; the stored notation is literal.")
+            plain()
+            plain("Source")
+            wrap("  ", editor.payload["source_text"])
+            plain()
+            plain("Pronunciation")
+            selected_phrase = editor.selection
+            editing = editor.active_field == "reading"
+            for index, (morae, accent) in enumerate(editor.payload["phrases"]):
+                key = ("phrase", index)
+                if editing and selected_phrase == key:
+                    tokens = _japanese_mora_tokens(
+                        editor.payload["editing_morae"],
+                        editor.payload["editing_accent"],
+                    )
+                    physical, cursor = _wrap_tokens_with_prefixes(
+                        "▶ ", "  ", tokens, width - 1,
+                        cursor_index=editor.payload["mora_cursor"],
+                    )
+                    first_line = len(lines)
+                    lines.extend((line, key) for line in physical)
+                    if cursor is not None:
+                        cursor_line = first_line + cursor[0]
+                        cursor_column = cursor[1]
+                else:
+                    marker = "▶ " if editor.selection == key else "  "
+                    tokens = _japanese_mora_tokens(morae, accent)
+                    physical, _cursor = _wrap_tokens_with_prefixes(
+                        marker, "  ", tokens, width - 1
+                    )
+                    lines.append((physical[0], key))
+                    lines.extend((line, key) for line in physical[1:])
         elif editor.kind == "settings":
-            plain("Context: current run and persisted output settings.")
             draft = editor.payload["draft_settings"]
             values = (
                 (
@@ -637,77 +591,34 @@ class TuiRenderer:
                     "Speed",
                     self.setting_display("speed", draft["speed"], state.voiceger_root),
                 ),
-                ("take_count", "Take count", str(draft["take_count"])),
-                ("output_dir", "Output directory", str(draft["output_dir"])),
-                ("save_text", "TXT sidecar", "ON" if draft["save_text"] else "OFF"),
+                ("take_count", "Takes", str(draft["take_count"])),
+                ("output_dir", "Output", str(draft["output_dir"])),
+                ("save_text", "TXT", "ON" if draft["save_text"] else "OFF"),
             )
             for key, label, value in values:
                 if editor.active_field == key:
-                    input_field(key)
+                    input_field(key, f"▶ {label:<12}")
                 else:
                     if key in {"style_id", "speed", "take_count", "save_text"}:
                         value = _adjustable_value(
                             value,
                             self._adjustment_press_direction(state, "settings", key),
                         )
-                    selectable(key, f"{label}: {value}")
+                    marker = "▶ " if editor.selection == key else "  "
+                    lines.append((f"{marker}{label:<12}{value}", key))
             plain()
-            selectable("apply", "Apply and save settings")
-        elif editor.kind == "english_segment":
-            wrap("Source: ", editor.payload["source_text"])
-            plain("Draft word pronunciations:")
-            groups: tuple[EnglishWordGroupRenderState, ...] = editor.payload["groups"]
-            for index, group in enumerate(groups):
-                if not group.editable:
-                    tokens = list(group.phonemes) or ["(no phonemes)"]
-                    for line in _wrap_labeled_tokens(
-                        f"  Fixed context {group.label!r}: ", tokens, width - 1
-                    ):
-                        plain(line)
-                    continue
-                key = ("word", index)
-                selectable(key, f"Word {group.label!r}  [Enter: Edit]")
-                token_lines("    Pronunciation: ", _phonemes_as_ui_tokens(group.phonemes))
-            plain()
-            selectable("apply", "Apply changes to English segment")
-            selectable("cancel", "Cancel and discard segment draft")
+            selectable("apply", "[ Apply and save ]")
         elif editor.kind == "english_word":
-            wrap("Source: ", editor.payload["source_text"])
-            wrap("Token: ", editor.payload["label"])
+            plain()
+            plain("Word")
+            plain(f"  {editor.payload['label']}")
+            plain()
             phoneme_state: EnglishPhonemeEditorState = editor.payload["draft_state"]
-            token_lines("Draft pronunciation: ", _phoneme_state_tokens(phoneme_state))
             if editor.active_field == "phonemes":
-                input_field("phonemes")
+                input_field("phonemes", "▶ Phonemes  ")
             else:
-                selectable("phonemes", "Phonemes  [Enter: Edit]")
-            positions = phoneme_state.primary_stress_vowel_positions
-            vowels = [
-                token for token in phoneme_state.base_phonemes if token in _VOWELS
-            ]
-            moving = bool(editor.payload.get("moving_primary"))
-            for ordinal, position in enumerate(positions):
-                key = ("primary", ordinal)
-                label = (
-                    f"Primary marker {ordinal + 1}: vowel {position + 1} "
-                    f"[{vowels[position]}]"
-                )
-                if moving and editor.selection == key:
-                    destination = editor.payload["stress_destination"]
-                    label += (
-                        f" → proposed vowel {destination + 1} "
-                        f"[{vowels[destination]}]"
-                    )
-                selectable(key, label)
-            if not positions:
-                plain("  No primary-stress markers in this word.")
-            plain("Secondary stress is retained where the vowel position permits.")
-            plain()
-            selectable("done", "Done with word changes")
-            selectable("cancel", "Cancel word changes")
-
-        if editor.error:
-            plain()
-            plain(editor.error)
+                tokens = " ".join(phoneme_state.base_phonemes)
+                selectable("phonemes", f"Phonemes  {tokens}")
         return lines, cursor_line, cursor_column
 
     @staticmethod
@@ -751,7 +662,7 @@ class TuiRenderer:
         document = document[1:]
         if cursor_line is not None:
             cursor_line -= 1
-        status_row = max(0, height - 3)
+        status_row = max(0, height - 1)
         viewport_height = max(1, status_row - 1)
         focused_line = next(
             (
@@ -770,41 +681,11 @@ class TuiRenderer:
             attr = self._focus_attribute() if key == editor.selection else 0
             safe_add(screen, offset + 1, 0, line, width, attr)
         status = editor.error or state.status
-        if status and not status.startswith("Error:"):
-            status = f"Draft: {status}"
-        status_attr = self._attribute("A_BOLD")
-        if status.startswith("Error:"):
-            status_attr |= self._attribute("A_REVERSE")
-        safe_add(screen, status_row, 0, status, width, status_attr)
-        if editor.active_field is not None and editor.kind in {"text", "japanese"}:
-            footer = "Type / IME  ←/→ Cursor  ↑/↓ Wrapped line  Enter Apply  Esc Cancel"
-            if editor.kind == "japanese":
-                footer += "  ' and / direct"
-        elif editor.active_field is not None and editor.kind == "settings":
-            footer = "Type / IME  ←/→ Cursor  Enter Finish field  Esc Cancel Settings"
-        elif editor.active_field is not None and editor.kind == "english_word":
-            footer = "Type phonemes  ←/→ Cursor  Enter Commit phonemes  Esc Cancel word editor"
-        elif editor.kind == "japanese":
-            footer = "Enter Edit  ' and / direct  Esc Cancel pronunciation"
-        elif editor.kind == "english_word" and editor.payload.get("moving_primary"):
-            footer = "←/→ Choose vowel  Enter Commit marker  Esc Cancel marker move"
-        elif editor.kind == "english_word":
-            footer = "↑/↓ Select  Enter Edit/Done  Esc Cancel word changes"
-        elif editor.kind == "english_segment":
-            footer = "↑/↓ Select word  Enter Edit/Apply  Esc Cancel segment draft"
-        elif editor.kind == "settings":
-            footer = ""
-        else:
-            footer = "↑/↓ Select field/action  Enter Edit/Apply  Esc Cancel draft"
-        if not (editor.kind == "settings" and editor.active_field is None):
-            safe_add(
-                screen,
-                status_row + 1,
-                0,
-                footer,
-                width,
-                self._attribute("A_BOLD"),
-            )
+        if status:
+            status_attr = self._attribute("A_BOLD")
+            if status.startswith("Error:"):
+                status_attr |= self._attribute("A_REVERSE")
+            safe_add(screen, status_row, 0, status, width, status_attr)
         if cursor_line is not None and start <= cursor_line < start + viewport_height:
             try:
                 screen.move(

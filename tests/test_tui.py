@@ -168,7 +168,10 @@ class FakeScreen:
 
 
 def navigation_document(app, width):
-    return app._renderer.navigation_document(app._render_state(), width)
+    return [
+        (line.text, line.key)
+        for line in app._renderer.navigation_document(app._render_state(), width)
+    ]
 
 
 def set_navigation_focus(app, key, *, moved=False):
@@ -294,19 +297,22 @@ class TuiTests(unittest.TestCase):
 
     def test_enter_on_pronunciation_rows_opens_language_specific_editors(self):
         app = self.make_app(query=mixed_query(["HH", "AH1"]))
-        set_navigation_focus(app, ("segment", 0))
+        set_navigation_focus(app, ("pronunciation", 0))
         app._handle_key("\n")
         self.assertEqual(app._editor_controller.editor.kind, "japanese")
+        self.assertEqual(app._editor_controller.editor.title, "EDIT JAPANESE PRONUNCIATION")
 
         app._editor_controller.editor = None
-        set_navigation_focus(app, ("segment", 1))
+        set_navigation_focus(app, ("pronunciation", 1))
         app._handle_key("\n")
-        self.assertEqual(app._editor_controller.editor.kind, "english_segment")
+        self.assertEqual(app._editor_controller.editor.kind, "english_word")
+        self.assertEqual(app._editor_controller.editor.title, "EDIT WORD PRONUNCIATION")
+        self.assertNotIn("english_segment", app._editor_controller.editor.kind)
 
     def test_rebuild_required_state_skips_editable_pronunciation_tab_stop(self):
         app = self.make_app(query=mixed_query())
         app.session.pronunciation_needs_rebuild = True
-        self.assertNotIn(("segment", 0), navigation_items(app))
+        self.assertNotIn(("pronunciation", 0), navigation_items(app))
         set_navigation_focus(app, ("text", None))
         app._handle_key("\t")
         self.assertEqual(app._navigation.focus_key, ("rebuild", None))
@@ -442,7 +448,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "style_id"
             )
-            self.assertIn("Style: < 1 Neutral >", style_left)
+            self.assertIn("Style       < 1 Neutral >", style_left)
             value_column = style_left.index("1 Neutral")
 
             editor.selection = "style_id"
@@ -453,7 +459,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "style_id"
             )
-            self.assertIn("Style: < 2 Sweet>>", style_right)
+            self.assertIn("Style       < 2 Sweet>>", style_right)
             self.assertEqual(style_right.index("2 Sweet"), value_column)
 
             app._handle_key(curses.KEY_LEFT)
@@ -462,7 +468,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "style_id"
             )
-            self.assertIn("Style: <<1 Neutral >", style_left_moved)
+            self.assertIn("Style       <<1 Neutral >", style_left_moved)
 
             app._handle_key(curses.KEY_RIGHT)
             self.assertEqual(editor.payload["draft_settings"]["style_id"], "2")
@@ -475,7 +481,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "style_id"
             )
-            self.assertIn("Style: < 2 Sweet >", style_right)
+            self.assertIn("Style       < 2 Sweet >", style_right)
 
             editor.selection = "speed"
             editor.payload["draft_settings"]["speed"] = "0.01"
@@ -487,7 +493,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "speed"
             )
-            self.assertIn("Speed: < 0.01 >", speed_left)
+            self.assertIn("Speed       < 0.01 >", speed_left)
 
             editor.payload["draft_settings"]["speed"] = "0.50"
             app._handle_key(curses.KEY_LEFT)
@@ -496,7 +502,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "speed"
             )
-            self.assertIn("Speed: <<0.49 >", speed_moved_left)
+            self.assertIn("Speed       <<0.49 >", speed_moved_left)
 
             editor.payload["draft_settings"]["speed"] = "0.50"
             app._handle_key(curses.KEY_RIGHT)
@@ -506,14 +512,14 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "speed"
             )
-            self.assertIn("Speed: < 0.51>>", speed_right)
+            self.assertIn("Speed       < 0.51>>", speed_right)
             speed_screen = FakeScreen(columns=100)
             app._screen = speed_screen
             app._render()
-            self.assertTrue(any("Speed: < 0.51>>" in text for _row, _column, text, _attr in speed_screen.drawn))
+            self.assertTrue(any("Speed       < 0.51>>" in text for _row, _column, text, _attr in speed_screen.drawn))
             self.assertIsNone(app._pressed_adjustment)
             app._render()
-            self.assertTrue(any("Speed: < 0.51 >" in text for _row, _column, text, _attr in speed_screen.drawn))
+            self.assertTrue(any("Speed       < 0.51 >" in text for _row, _column, text, _attr in speed_screen.drawn))
 
             editor.selection = "take_count"
             editor.payload["draft_settings"]["take_count"] = "1"
@@ -525,7 +531,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "take_count"
             )
-            self.assertIn("Take count: < 1 >", take_left)
+            self.assertIn("Takes       < 1 >", take_left)
 
             editor.selection = "take_count"
             editor.payload["draft_settings"]["take_count"] = "8"
@@ -537,7 +543,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "take_count"
             )
-            self.assertIn("Take count: < 8 >", take_right)
+            self.assertIn("Takes       < 8 >", take_right)
 
             editor.payload["draft_settings"]["take_count"] = "4"
             app._handle_key(curses.KEY_RIGHT)
@@ -547,14 +553,14 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "take_count"
             )
-            self.assertIn("Take count: < 5>>", take_moved)
+            self.assertIn("Takes       < 5>>", take_moved)
             app._handle_key(curses.KEY_LEFT)
             self.assertEqual(editor.payload["draft_settings"]["take_count"], "4")
             take_moved_left = next(
                 line for line, key in editor_document(app, 100)[0]
                 if key == "take_count"
             )
-            self.assertIn("Take count: <<4 >", take_moved_left)
+            self.assertIn("Takes       <<4 >", take_moved_left)
 
             editor.selection = "save_text"
             editor.payload["draft_settings"]["save_text"] = False
@@ -566,7 +572,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "save_text"
             )
-            self.assertIn("TXT sidecar: < OFF >", txt_left)
+            self.assertIn("TXT         < OFF >", txt_left)
             editor.selection = "save_text"
             editor.payload["draft_settings"]["save_text"] = True
             app._pressed_adjustment = ("settings", "save_text", -1)
@@ -577,7 +583,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "save_text"
             )
-            self.assertIn("TXT sidecar: < ON >", txt_right)
+            self.assertIn("TXT         < ON >", txt_right)
 
             editor.payload["draft_settings"]["save_text"] = False
             app._handle_key(curses.KEY_RIGHT)
@@ -587,14 +593,14 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "save_text"
             )
-            self.assertIn("TXT sidecar: < ON>>", txt_moved)
+            self.assertIn("TXT         < ON>>", txt_moved)
             app._handle_key(curses.KEY_LEFT)
             self.assertFalse(editor.payload["draft_settings"]["save_text"])
             txt_moved_left = next(
                 line for line, key in editor_document(app, 100)[0]
                 if key == "save_text"
             )
-            self.assertIn("TXT sidecar: <<OFF >", txt_moved_left)
+            self.assertIn("TXT         <<OFF >", txt_moved_left)
 
             editor.selection = "style_id"
             app._handle_key(curses.KEY_RIGHT)
@@ -602,7 +608,7 @@ class TuiTests(unittest.TestCase):
             self.assertEqual(editor.selection, "speed")
             document, _cursor_line, _cursor_column = editor_document(app, 100)
             speed = next(line for line, key in document if key == "speed")
-            self.assertIn("Speed: < 0.51 >", speed)
+            self.assertIn("Speed       < 0.51 >", speed)
 
             screen = FakeScreen(columns=100)
             app._screen = screen
@@ -611,7 +617,7 @@ class TuiTests(unittest.TestCase):
             self.assertIsNone(app._pressed_adjustment)
             app._render()
             rendered = self.rendered(screen)
-            self.assertIn("Speed: < 0.51 >", rendered)
+            self.assertIn("Speed       < 0.51 >", rendered)
             self.assertNotIn("<<", rendered)
             self.assertNotIn(">>", rendered)
 
@@ -639,14 +645,44 @@ class TuiTests(unittest.TestCase):
 
         self.assertNotIn("selected", app._status.lower())
 
-    def test_left_right_in_navigation_never_change_pronunciation(self):
-        app = self.make_app(query=mixed_query(["AA1", "IY0", "ER2"]))
+    def test_left_right_on_main_moves_japanese_accent_and_english_primary_stress(self):
+        query = AudioQuery(
+            accent_phrases=[
+                AccentPhrase(
+                    moras=[
+                        Mora(text="ア", vowel="a", vowel_length=0.1, pitch=0.0),
+                        Mora(text="メ", vowel="e", vowel_length=0.1, pitch=0.0),
+                    ],
+                    accent=1,
+                )
+            ],
+            voicegerSegments=[
+                VoicegerSegment(
+                    language="ja", text="雨", accentPhraseStart=0, accentPhraseCount=1
+                ),
+                VoicegerSegment(
+                    language="en", text="hello", phonemes=["HH", "AH1", "IY0"]
+                ),
+            ],
+        )
+        app = self.make_app(query=query, groups=(("hello", ("HH", "AH1", "IY0")),))
+        set_navigation_focus(app, ("pronunciation", 0))
         before = app.session.query.model_dump()
         app._handle_key(curses.KEY_LEFT)
-        app._handle_key(curses.KEY_RIGHT)
         self.assertEqual(app.session.query.model_dump(), before)
+        self.assertEqual(app.session.replace_query_calls, [])
+        app._handle_key(curses.KEY_RIGHT)
+        self.assertEqual(app.session.query.accent_phrases[0].accent, 2)
+        self.assertEqual(len(app.session.replace_query_calls), 1)
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
 
-    def test_modal_text_editor_replaces_navigation_and_its_footer(self):
+        set_navigation_focus(app, ("pronunciation", 1))
+        app._handle_key(curses.KEY_RIGHT)
+        self.assertEqual(app.session.query.voicegerSegments[1].phonemes, ["HH", "AH0", "IY1"])
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 1))
+        self.assertIsNone(app._editor_controller.editor)
+
+    def test_modal_text_editor_is_concise_and_opens_on_the_input_row(self):
         app = self.make_app(query=mixed_query())
         set_navigation_focus(app, ("text", None))
         app._handle_key("\n")
@@ -656,14 +692,9 @@ class TuiTests(unittest.TestCase):
         rendered = self.rendered(screen)
         self.assertIn("EDIT TEXT", rendered)
         self.assertNotIn("NAVIGATION", rendered)
-        self.assertNotIn("? Help   q Quit", rendered)
-        self.assertIn("Enter Apply", rendered)
-        self.assertIn("Esc Cancel", rendered)
-        self.assertIn("compatible pronunciation is preserved", rendered)
-        self.assertIn("Rebuild pronunciation is an explicit Navigation action", rendered)
-        self.assertNotIn("rebuild its pronunciation", rendered)
-        self.assertNotIn("Apply text and rebuild pronunciation", rendered)
-        self.assertNotIn("Cancel and discard text draft", rendered)
+        self.assertIn("▶ ", rendered)
+        for removed in ("Draft source", "Input:", "[Enter: Edit]", "Enter applies", "Enter Apply", "Esc Cancel"):
+            self.assertNotIn(removed, rendered)
 
     def test_text_editor_applies_existing_session_source_without_reconstruction(self):
         app = self.make_app(query=mixed_query())
@@ -685,24 +716,24 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(session.replace_source_text_calls, ["new source"])
         self.assertEqual(session.replace_query_calls, [])
         self.assertEqual(session.query.model_dump(), query)
-        self.assertEqual(app._editor_controller.grouping_cache, {})
+        self.assertIn(1, app._editor_controller.grouping_cache)
         self.assertIsNone(app._operations.current_take)
 
     def test_text_editor_close_restores_remembered_segment_after_source_reset(self):
         app = self.make_app(query=mixed_query())
-        set_navigation_focus(app, ("segment", 1))
+        set_navigation_focus(app, ("pronunciation", 1))
         app._open_text_editor("updated source")
         app._handle_key("\n")
 
         self.assertIsNone(app._editor_controller.editor)
-        self.assertEqual(app._navigation.focus_key, ("segment", 1))
-        self.assertEqual(app._navigation.segment_index, 1)
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 1))
+        self.assertEqual(app._navigation.pronunciation_index, 1)
 
         app.session.candidates = (candidate(3),)
         app._operations.play_take = Mock(return_value=())
         focus_candidate(app, 3)
         app._handle_key("\x1b")
-        self.assertEqual(app._navigation.focus_key, ("segment", 1))
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 1))
 
     def test_same_signature_text_change_displays_updated_source_with_preserved_pronunciation(self):
         app = self.make_app(query=mixed_query())
@@ -715,7 +746,8 @@ class TuiTests(unittest.TestCase):
         rendered = "\n".join(line for line, _key in rows)
         self.assertIn("新しい日本語", rendered)
         self.assertIn("new English", rendered)
-        self.assertIn("ア'", rendered)
+        self.assertIn("[ア]", rendered)
+        self.assertNotIn("ア'", rendered)
         self.assertEqual(app.session.query.voicegerSegments[1].phonemes, original_phones)
         self.assertFalse(app.session.pronunciation_needs_rebuild)
 
@@ -728,8 +760,8 @@ class TuiTests(unittest.TestCase):
         items = navigation_items(app)
         rows = navigation_document(app, 80)
         rendered = "\n".join(line for line, _key in rows)
-        self.assertNotIn(("segment", 0), items)
-        self.assertNotIn(("segment", 1), items)
+        self.assertNotIn(("pronunciation", 0), items)
+        self.assertNotIn(("pronunciation", 1), items)
         self.assertIn(("rebuild", None), items)
         self.assertIn(("generate", None), items)
         self.assertIn("Pronunciation   Rebuild required", rendered)
@@ -759,10 +791,10 @@ class TuiTests(unittest.TestCase):
         app._handle_key("\n")
 
         self.assertEqual(events, ["stop", "rebuild"])
-        self.assertEqual(app._editor_controller.grouping_cache, {})
+        self.assertIn(1, app._editor_controller.grouping_cache)
         self.assertIsNone(app._operations.current_take)
-        self.assertEqual(app._navigation.segment_index, 0)
-        self.assertEqual(app._navigation.focus_key, ("segment", 0))
+        self.assertEqual(app._navigation.pronunciation_index, 0)
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
         self.assertIn("Pronunciation rebuilt", app._status)
 
     def test_failed_explicit_rebuild_preserves_query_and_required_state(self):
@@ -795,32 +827,39 @@ class TuiTests(unittest.TestCase):
         app._handle_key("!")
         self.assertEqual(editor.input_value, "bad draft!")
 
-    def test_japanese_modal_accepts_literal_markers_and_ordinary_cursor_motion(self):
+    def test_japanese_editor_edits_complete_mora_tokens_and_preserves_phrase_structure(self):
         app = self.make_app(query=mixed_query())
-        app._edit_selected_segment(0)
+        app._edit_selected_pronunciation(0)
         editor = app._editor_controller.editor
         self.assertEqual(editor.kind, "japanese")
-        editor.input_value = "ア'メ。"
-        editor.input_cursor = len(editor.input_value)
-        app._handle_key(curses.KEY_LEFT)
-        self.assertEqual(editor.input_cursor, len("ア'メ"))
-        app._handle_key("/")
-        self.assertEqual(editor.input_value, "ア'メ/。")
-        app._handle_key(curses.KEY_LEFT)
-        app._handle_key("'")
-        self.assertEqual(editor.input_value, "ア'メ'/。")
-        self.assertEqual(editor.active_field, "draft")
-
-    def test_japanese_editor_applies_on_single_enter_from_active_input(self):
-        app = self.make_app(query=mixed_query())
-        app._edit_selected_segment(0)
-        editor = app._editor_controller.editor
-        self.assertEqual(editor.kind, "japanese")
-        editor.input_value = editor.payload["draft"]
+        self.assertEqual(editor.selection, ("phrase", 0))
+        app._handle_key("\n")
+        app._handle_key("キ")
+        app._handle_key("ョ")
+        self.assertEqual(editor.payload["editing_morae"], ["ア", "キョ"])
+        self.assertIn("キョ", editor.input_value)
+        self.assertNotIn("キ ョ", editor.input_value)
+        self.assertNotIn("/", editor.input_value)
+        self.assertNotIn("'", editor.input_value)
         app._handle_key("\n")
         self.assertIsNone(app._editor_controller.editor)
-        self.assertEqual(app._navigation.focus_key, ("segment", 0))
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
         self.assertEqual(len(app.session.replace_query_calls), 1)
+        self.assertEqual(len(app.session.query.accent_phrases), 1)
+        self.assertEqual(
+            [mora.text for mora in app.session.query.accent_phrases[0].moras],
+            ["ア", "キョ"],
+        )
+
+    def test_japanese_editor_opens_on_main_selected_phrase(self):
+        app = self.make_app(query=mixed_query())
+        set_navigation_focus(app, ("pronunciation", 0))
+        app._handle_key("\n")
+        editor = app._editor_controller.editor
+        self.assertEqual(editor.kind, "japanese")
+        self.assertEqual(editor.title, "EDIT JAPANESE PRONUNCIATION")
+        self.assertEqual(editor.selection, ("phrase", 0))
+        self.assertEqual(editor.payload["phrases"], ((('ア',), 1),))
 
     def test_settings_are_reachable_and_editable_without_shortcuts(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -884,14 +923,12 @@ class TuiTests(unittest.TestCase):
             app._screen = screen
             app._render()
             rendered = self.rendered(screen)
-            for label in ("Style:", "Speed:", "Take count:", "Output directory:", "TXT sidecar:"):
+            for label in ("Style       <", "Speed       <", "Takes       <", "Output      ", "TXT         <"):
                 self.assertIn(label, rendered)
-            self.assertIn("Apply and save settings", rendered)
+            self.assertIn("[ Apply and save ]", rendered)
+            self.assertNotIn("input:", rendered)
             self.assertNotIn("[Enter: Edit]", rendered)
-            self.assertNotIn("[Enter: Toggle]", rendered)
-            self.assertNotIn("Cancel and discard settings", rendered)
-            self.assertNotIn("↑/↓ Select field/action", rendered)
-            self.assertNotIn(22, [row for row, _column, _text, _attr in screen.drawn])
+            self.assertNotIn("Cancel", rendered)
 
     def test_settings_style_arrows_follow_available_order_without_wrapping(self):
         styles = (
@@ -961,7 +998,7 @@ class TuiTests(unittest.TestCase):
 
     def test_candidate_focus_arrows_play_and_escape_returns_to_last_segment(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
-        app._navigation.segment_index = 1
+        app._navigation.pronunciation_index = 1
         app._operations.play_take = Mock(return_value=())
         focus_candidate(app, 1)
         app._handle_key(curses.KEY_DOWN)
@@ -972,7 +1009,7 @@ class TuiTests(unittest.TestCase):
             [call(app.session, 1), call(app.session, 2), call(app.session, 2)]
         )
         app._handle_key("\x1b")
-        self.assertEqual(app._navigation.focus_key, ("segment", 1))
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 1))
         self.assertEqual(app._operations.current_take, 2)
 
     def test_acceptance_and_regeneration_are_unavailable_while_busy_but_replay_works(self):
@@ -985,7 +1022,7 @@ class TuiTests(unittest.TestCase):
 
         for key in (
             ("text", None),
-            ("segment", 0),
+            ("pronunciation", 0),
             ("generate", None),
             ("settings_summary", None),
             ("output", None),
@@ -1058,117 +1095,73 @@ class TuiTests(unittest.TestCase):
         focus_candidate(app, 1)
         app._handle_key("\n")
         self.assertEqual(app.session.accept_calls, [1])
-        self.assertEqual(app._navigation.focus_key, ("segment", 0))
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
 
-    def test_word_phoneme_edit_rebuilds_marker_rows_and_keeps_punctuation(self):
+    def test_english_word_phoneme_edit_commits_directly_to_flat_query(self):
         phones = ["HH", "AY1", "!", "DH", "EH1", "R"]
         groups = (("Hi", ("HH", "AY1")), ("!", ("!",)), ("There", ("DH", "EH1", "R")))
         app = self.make_app(query=english_query(phones, text="Hi! There"), groups=groups)
-        app._edit_selected_segment(0)
+        set_navigation_focus(app, ("pronunciation", 0))
         app._handle_key("\n")
-        word_editor = app._editor_controller.editor
-        self.assertEqual(word_editor.kind, "english_word")
-        self.assertEqual(word_editor.payload["draft_state"].primary_stress_vowel_positions, (0,))
+        editor = app._editor_controller.editor
+        self.assertEqual(editor.kind, "english_word")
+        self.assertEqual(editor.payload["label"], "Hi")
+        self.assertNotIn("english_segment", editor.kind)
         app._handle_key("\n")
-        app._editor_controller.editor.input_value = "HH AA M"
-        app._editor_controller.editor.input_cursor = len(app._editor_controller.editor.input_value)
+        editor.input_value = "HH AA K"
+        editor.input_cursor = len(editor.input_value)
         app._handle_key("\n")
-        state = app._editor_controller.editor.payload["draft_state"]
-        self.assertEqual(state.base_phonemes, ("HH", "AA", "M"))
-        self.assertEqual(state.primary_stress_vowel_positions, (0,))
-        # A new vowel ordinal keeps the existing secondary marker where possible.
-        app._editor_controller.editor.payload["draft_state"] = self.english_phoneme_state(["AA1", "IH2"])
-        app._editor_controller.editor.selection = "phonemes"
-        app._handle_key("\n")
-        app._editor_controller.editor.input_value = "AA K IH"
-        app._handle_key("\n")
-        self.assertEqual(app._editor_controller.editor.payload["draft_state"].secondary_stress_vowel_positions, (1,))
-        app._editor_controller.editor.selection = "done"
-        app._handle_key("\n")
-        parent = app._editor_controller.editor
-        self.assertEqual(parent.payload["groups"][0].phonemes, ("AA1", "K", "IH2"))
-        self.assertEqual(parent.payload["groups"][1].phonemes, ("!",))
-        # Segment-level Apply writes only the flat canonical sequence.
-        parent.selection = "apply"
-        app._handle_key("\n")
-        self.assertEqual(
-            app.session.query.voicegerSegments[0].phonemes,
-            ["AA1", "K", "IH2", "!", "DH", "EH1", "R"],
-        )
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
+        self.assertEqual(app.session.query.voicegerSegments[0].phonemes, ["HH", "AA1", "K", "!", "DH", "EH1", "R"])
+        self.assertEqual(app.session.replace_query_calls[-1].voicegerSegments[0].phonemes, app.session.query.voicegerSegments[0].phonemes)
 
-    def test_enter_finishes_phonemes_into_word_draft_and_keeps_stress_editable(self):
+    def test_english_phoneme_edit_returns_directly_to_originating_main_word(self):
         app = self.make_app(
             query=english_query(["HH", "AY1"], text="Hi"),
             groups=(("Hi", ("HH", "AY1")),),
         )
-        original_query = app.session.query.model_dump()
-        app._edit_selected_segment(0)
-        parent = app._editor_controller.editor
+        set_navigation_focus(app, ("pronunciation", 0))
         app._handle_key("\n")
         word_editor = app._editor_controller.editor
+        self.assertEqual(word_editor.kind, "english_word")
+        original_query = app.session.query.model_dump()
         app._handle_key("\n")
         word_editor.input_value = "HH AA K IY"
         word_editor.input_cursor = len(word_editor.input_value)
         app._handle_key("\n")
 
-        self.assertIs(app._editor_controller.editor, word_editor)
-        self.assertIsNone(word_editor.active_field)
-        self.assertEqual(
-            word_editor.payload["draft_state"].base_phonemes,
-            ("HH", "AA", "K", "IY"),
-        )
-        self.assertEqual(parent.payload["groups"][0].phonemes, ("HH", "AY1"))
-        word_editor.selection = ("primary", 0)
-        app._handle_key("\n")
-        app._handle_key(curses.KEY_RIGHT)
-        app._handle_key("\n")
-        self.assertEqual(
-            word_editor.payload["draft_state"].primary_stress_vowel_positions,
-            (1,),
-        )
-        self.assertIs(app._editor_controller.editor, word_editor)
-        self.assertEqual(app.session.query.model_dump(), original_query)
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
+        self.assertNotEqual(app.session.query.model_dump(), original_query)
+        self.assertEqual(app.session.query.voicegerSegments[0].phonemes, ["HH", "AA1", "K", "IY0"])
 
-    def test_escape_from_active_phoneme_input_cancels_the_word_editor_in_one_press(self):
+    def test_escape_from_active_phoneme_input_cancels_to_main_without_mutation(self):
         app = self.make_app(
             query=english_query(["HH", "AY1"], text="Hi"),
             groups=(("Hi", ("HH", "AY1")),),
         )
-        app._edit_selected_segment(0)
-        parent = app._editor_controller.editor
-        original_groups = parent.payload["groups"]
         original_query = app.session.query.model_dump()
-        app._handle_key("\n")
-        word_editor = app._editor_controller.editor
-        app._handle_key("\n")
-        word_editor.input_value = "HH AA M"
-        app._handle_key("\x1b")
-        self.assertIs(app._editor_controller.editor, parent)
-        self.assertEqual(parent.payload["groups"], original_groups)
-        self.assertEqual(app.session.query.model_dump(), original_query)
-
-    def test_escape_from_english_segment_discards_word_draft_to_navigation(self):
-        app = self.make_app(
-            query=english_query(["HH", "AY1"], text="Hi"),
-            groups=(("Hi", ("HH", "AY1")),),
-        )
-        set_navigation_focus(app, ("segment", 0))
-        original_query = app.session.query.model_dump()
-        app._edit_selected_segment(0)
-        parent = app._editor_controller.editor
+        set_navigation_focus(app, ("pronunciation", 0))
         app._handle_key("\n")
         app._handle_key("\n")
-        word_editor = app._editor_controller.editor
-        word_editor.input_value = "HH AA"
-        app._handle_key("\n")
-        word_editor.selection = "done"
-        app._handle_key("\n")
-        self.assertIs(app._editor_controller.editor, parent)
-        self.assertNotEqual(parent.payload["groups"][0].phonemes, ("HH", "AY1"))
+        app._editor_controller.editor.input_value = "HH AA M"
         app._handle_key("\x1b")
         self.assertIsNone(app._editor_controller.editor)
-        self.assertEqual(app._navigation.focus_key, ("segment", 0))
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
         self.assertEqual(app.session.query.model_dump(), original_query)
+
+    def test_english_segment_editor_is_not_a_reachable_workflow_state(self):
+        app = self.make_app(
+            query=english_query(["HH", "AY1"], text="Hi"),
+            groups=(("Hi", ("HH", "AY1")),),
+        )
+        set_navigation_focus(app, ("pronunciation", 0))
+        app._handle_key("\n")
+        editor = app._editor_controller.editor
+        self.assertEqual(editor.kind, "english_word")
+        self.assertNotIn("english_segment", app._editor_controller.selection_keys())
+        self.assertEqual(app._editor_controller.selection_keys(), ["phonemes"])
 
     @staticmethod
     def english_phoneme_state(phonemes):
@@ -1176,44 +1169,31 @@ class TuiTests(unittest.TestCase):
 
         return english_phonemes_to_editor_state(phonemes)
 
-    def test_primary_markers_are_independent_and_occupied_destination_fails_closed(self):
-        groups = (("word", ("AA1", "K", "IY1", "ER2")),)
-        app = self.make_app(query=english_query(groups[0][1]), groups=groups)
-        app._edit_selected_segment(0)
-        app._handle_key("\n")
-        editor = app._editor_controller.editor
-        editor.selection = ("primary", 1)
-        app._handle_key("\n")
-        app._handle_key(curses.KEY_LEFT)
-        app._handle_key("\n")
-        self.assertIn("already has primary stress", editor.error)
-        self.assertEqual(editor.payload["draft_state"].primary_stress_vowel_positions, (0, 1))
+    def test_main_english_stress_move_preserves_secondary_stress(self):
+        phones = ["AA1", "K", "IY0", "ER2"]
+        app = self.make_app(
+            query=english_query(phones, text="word"),
+            groups=(("word", tuple(phones)),),
+        )
+        set_navigation_focus(app, ("pronunciation", 0))
         app._handle_key(curses.KEY_RIGHT)
-        app._handle_key(curses.KEY_RIGHT)
-        app._handle_key("\n")
-        self.assertEqual(editor.payload["draft_state"].primary_stress_vowel_positions, (0, 2))
-        editor.selection = ("primary", 0)
-        app._handle_key("\n")
-        app._handle_key(curses.KEY_RIGHT)
-        app._handle_key("\n")
-        self.assertEqual(editor.payload["draft_state"].primary_stress_vowel_positions, (1, 2))
+        self.assertEqual(
+            app.session.query.voicegerSegments[0].phonemes,
+            ["AA0", "K", "IY1", "ER2"],
+        )
 
-    def test_group_cache_tracks_token_count_changes_without_realigning(self):
+    def test_group_cache_tracks_phoneme_edits_without_realigning(self):
         app = self.make_app(
             query=english_query(["HH", "AY1"], text="Hi"),
             groups=(("Hi", ("HH", "AY1")),),
         )
-        app._edit_selected_segment(0)
+        set_navigation_focus(app, ("pronunciation", 0))
         app._handle_key("\n")
         app._handle_key("\n")
         editor = app._editor_controller.editor
         editor.input_value = "HH AA M"
         app._handle_key("\n")
-        editor.selection = "done"
-        app._handle_key("\n")
-        parent = app._editor_controller.editor
-        parent.selection = "apply"
-        app._handle_key("\n")
+        self.assertIsNone(app._editor_controller.editor)
         calls = app.adapter.english_word_phoneme_groups.call_count
         cached = english_grouping(app, 0)
         self.assertEqual(cached.groups[0].phonemes, ("HH", "AA1", "M"))
@@ -1346,7 +1326,7 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app.session.discard_calls, 1)
         self.assertEqual(app.session.candidates, ())
         self.assertIsNone(app._operations.current_take)
-        self.assertEqual(app._navigation.focus_key, ("segment", 0))
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
         self.assertIn("second synthesis failed", app._status)
         app._operations.stop_playback.assert_called_once_with()
 
@@ -1389,7 +1369,7 @@ class TuiTests(unittest.TestCase):
         )
         self.assertEqual(events, ["stop", "replace"])
         self.assertIs(app.session, session)
-        self.assertEqual(app._editor_controller.grouping_cache, {})
+        self.assertIn(1, app._editor_controller.grouping_cache)
 
     def test_busy_shutdown_drains_worker_before_playback_and_session_cleanup(self):
         app = self.make_app()

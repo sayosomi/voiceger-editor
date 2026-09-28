@@ -1,8 +1,10 @@
 import curses
 from pathlib import Path
-from types import SimpleNamespace
 import unittest
 
+from voiceger_accent_adapter.english_stress import (
+    english_phonemes_to_editor_state,
+)
 from voiceger_accent_adapter.settings import Settings
 from voiceger_accent_adapter.tui_editors import (
     AdjustmentPressedIntent,
@@ -10,12 +12,12 @@ from voiceger_accent_adapter.tui_editors import (
     ClearAdjustmentFeedbackIntent,
     CloseEditorIntent,
     EnglishWordGroup,
+    EnglishGroupingCache,
+    PronunciationRow,
     QueryApplicationResult,
     ReplaceQueryIntent,
     ReplaceSourceTextIntent,
     SettingsApplicationResult,
-    SettingsChanges,
-    SourceTextApplicationResult,
     TuiEditorController,
     UpdateStatusIntent,
 )
@@ -28,67 +30,59 @@ from voiceger_accent_adapter.voicevox_api_models import (
 )
 
 
-def japanese_and_english_query(
-    english_phonemes=("HH", "AY1"),
-    *,
-    english_text="Hi!",
-):
+def _phrase(morae, accent):
+    return AccentPhrase(
+        moras=[
+            Mora(text=mora, vowel="a", vowel_length=0.1, pitch=0.0)
+            for mora in morae
+        ],
+        accent=accent,
+    )
+
+
+def mixed_query():
     return AudioQuery(
         accent_phrases=[
-            AccentPhrase(
-                moras=[Mora(text="ア", vowel="a", vowel_length=0.1, pitch=0.0)],
-                accent=1,
-            )
+            _phrase(("ア", "シ", "タ", "ワ"), 4),
+            _phrase(("キョ", "ウ"), 1),
         ],
         voicegerSegments=[
             VoicegerSegment(
                 language="ja",
-                text="雨",
+                text="明日は今日",
                 accentPhraseStart=0,
-                accentPhraseCount=1,
+                accentPhraseCount=2,
+                pronunciationTerminator="？",
             ),
             VoicegerSegment(
                 language="en",
-                text=english_text,
-                phonemes=list(english_phonemes),
+                text="hello everyone",
+                phonemes=["HH", "AH1", "L", "OW2", "EH1", "V", "R", "IY0"],
             ),
         ],
     )
 
 
-def english_query(phonemes=("HH", "AY1"), *, text="Hi!"):
-    return AudioQuery(
-        accent_phrases=[],
-        voicegerSegments=[
-            VoicegerSegment(
-                language="en",
-                text=text,
-                phonemes=list(phonemes),
-            )
-        ],
-    )
-
-
-def segment_tuples(query):
+def segments(query):
     return [
-        (segment.language, segment.text, index)
-        for index, segment in enumerate(query.voicegerSegments or [])
+        (item.language, item.text, index)
+        for index, item in enumerate(query.voicegerSegments or [])
     ]
 
 
 class GroupProvider:
-    def __init__(self, groups=None):
-        self.groups = groups or {}
+    def __init__(self, groups):
+        self.groups = groups
         self.calls = []
 
-    def __call__(self, text):
-        self.calls.append(text)
-        return self.groups.get(text, ())
+    def __call__(self, source):
+        self.calls.append(source)
+        return self.groups[source]
 
 
 class TuiEditorControllerTests(unittest.TestCase):
     def make_controller(self, groups=None, styles=()):
-        provider = GroupProvider(groups)
+        provider = GroupProvider(groups or {})
         controller = TuiEditorController(
             english_word_groups=provider,
             available_styles=lambda: styles,
@@ -100,756 +94,310 @@ class TuiEditorControllerTests(unittest.TestCase):
     def settings():
         return Settings(output_dir=Path("/tmp/voiceger-editor-tests"))
 
-    def test_open_text_starts_with_draft_field_active(self):
-        controller, _provider = self.make_controller()
-        intents = controller.open_text(
-            "hello",
-            current_source="old",
-            origin=("text", None),
-            busy=False,
-        )
-        self.assertEqual(controller.editor.kind, "text")
-        self.assertEqual(controller.editor.active_field, "draft")
-        self.assertEqual(controller.editor.input_value, "hello")
-        self.assertEqual(controller.editor.input_cursor, 5)
-        self.assertTrue(any(isinstance(intent, UpdateStatusIntent) for intent in intents))
-
-    def test_text_editing_supports_cursor_insert_delete_and_backspace(self):
+    def test_text_editor_opens_on_input_and_returns_a_source_intent(self):
         controller, _provider = self.make_controller()
         controller.open_text(
-            "abcd",
-            current_source="abcd",
-            origin=("text", None),
+            "hello", current_source="old", origin=("text", None), busy=False
+        )
+        editor = controller.editor
+        self.assertEqual(editor.active_field, "draft")
+        self.assertEqual(editor.input_value, "hello")
+        self.assertEqual(
+            controller.handle_key(
+                "\n", settings=self.settings(), query=None, current_source="old"
+            ),
+            (ReplaceSourceTextIntent("hello"),),
+        )
+
+    def test_pronunciation_rows_are_one_per_phrase_and_english_word(self):
+        groups = {
+            "hello everyone": (
+                ("hello", ("HH", "AH1", "L", "OW2")),
+                ("everyone", ("EH1", "V", "R", "IY0")),
+            )
+        }
+        controller, provider = self.make_controller(groups)
+        rows = controller.pronunciation_rows(mixed_query(), segments(mixed_query()))
+
+        self.assertEqual(len(rows), 4)
+        self.assertEqual(
+            [(row.language, row.phrase_index, row.word) for row in rows],
+            [("ja", 0, None), ("ja", 1, None), ("en", None, "hello"), ("en", None, "everyone")],
+        )
+        self.assertEqual([row.first_in_segment for row in rows], [True, False, True, False])
+        self.assertEqual(rows[0].moras, ("ア", "シ", "タ", "ワ"))
+        self.assertEqual(rows[1].moras, ("キョ", "ウ"))
+        self.assertEqual(rows[2].phonemes, ("HH", "AH1", "L", "OW2"))
+        self.assertEqual(provider.calls, ["hello everyone"])
+
+    def test_english_grouping_must_flatten_to_the_canonical_segment(self):
+        query = mixed_query()
+        controller, _provider = self.make_controller(
+            {"hello everyone": (("hello", ("HH", "AH1")),)}
+        )
+
+        rows = controller.pronunciation_rows(query, segments(query))
+
+        self.assertEqual(len(rows), 2)
+        self.assertIn("exactly match", controller.grouping_error)
+
+    def test_main_japanese_accent_moves_one_mora_and_boundary_is_a_noop(self):
+        query = mixed_query()
+        controller, _provider = self.make_controller(
+            {"hello everyone": (("hello", ("HH", "AH1", "L", "OW2", "EH1", "V", "R", "IY0")),)}
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+
+        blocked = controller.adjust_pronunciation(query, rows[0], 1)
+        self.assertEqual(blocked, (ClearAdjustmentFeedbackIntent(),))
+
+        moved = controller.adjust_pronunciation(query, rows[1], 1)
+        intent = next(item for item in moved if isinstance(item, ReplaceQueryIntent))
+        self.assertEqual(intent.query.accent_phrases[1].accent, 2)
+
+    def test_main_english_stress_moves_only_selected_word_and_keeps_other_markers(self):
+        query = AudioQuery(
+            accent_phrases=[],
+            voicegerSegments=[
+                VoicegerSegment(
+                    language="en",
+                    text="hello world",
+                    phonemes=["HH", "AH1", "L", "OW2", "W", "ER1", "L", "D"],
+                )
+            ],
+        )
+        controller, _provider = self.make_controller(
+            {
+                "hello world": (
+                    ("hello", ("HH", "AH1", "L", "OW2")),
+                    ("world", ("W", "ER1", "L", "D")),
+                )
+            }
+        )
+        rows = controller.pronunciation_rows(query, (("en", "hello world", 0),))
+
+        intents = controller.adjust_pronunciation(query, rows[0], 1)
+        intent = next(item for item in intents if isinstance(item, ReplaceQueryIntent))
+
+        self.assertEqual(
+            intent.query.voicegerSegments[0].phonemes,
+            ["HH", "AH0", "L", "OW1", "W", "ER1", "L", "D"],
+        )
+        self.assertEqual(
+            intent.accepted_grouping.groups[1].phonemes,
+            ("W", "ER1", "L", "D"),
+        )
+        self.assertEqual(query.voicegerSegments[0].phonemes[1], "AH1")
+
+    def test_japanese_editor_opens_at_source_phrase_and_commits_only_its_reading(self):
+        query = mixed_query()
+        controller, _provider = self.make_controller(
+            {"hello everyone": (("hello", ("HH", "AH1", "L", "OW2", "EH1", "V", "R", "IY0")),)}
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query,
+            rows,
+            1,
+            origin=("pronunciation", 1),
             busy=False,
         )
         editor = controller.editor
+        self.assertEqual(editor.kind, "japanese")
+        self.assertEqual(editor.selection, ("phrase", 1))
+        self.assertEqual(editor.payload["accent_phrase_index"], 1)
+        self.assertEqual(editor.payload["phrases"][1], (("キョ", "ウ"), 1))
+
         controller.handle_key(
-            curses.KEY_LEFT,
-            settings=self.settings(),
-            query=None,
-            current_source="abcd",
+            "\n", settings=self.settings(), query=query, current_source="text"
         )
-        controller.handle_key(
-            "X",
-            settings=self.settings(),
-            query=None,
-            current_source="abcd",
-        )
-        self.assertEqual(editor.input_value, "abcXd")
-        controller.handle_key(
-            curses.KEY_HOME,
-            settings=self.settings(),
-            query=None,
-            current_source="abcd",
-        )
-        controller.handle_key(
-            curses.KEY_DC,
-            settings=self.settings(),
-            query=None,
-            current_source="abcd",
-        )
-        self.assertEqual(editor.input_value, "bcXd")
-        controller.handle_key(
-            curses.KEY_END,
-            settings=self.settings(),
-            query=None,
-            current_source="abcd",
-        )
+        self.assertEqual(editor.active_field, "reading")
+        self.assertEqual(editor.payload["mora_cursor"], 2)
         controller.handle_key(
             curses.KEY_BACKSPACE,
             settings=self.settings(),
-            query=None,
-            current_source="abcd",
-        )
-        self.assertEqual(editor.input_value, "bcX")
-
-    def test_text_cursor_moves_vertically_across_wrapped_lines(self):
-        controller, _provider = self.make_controller()
-        controller.open_text(
-            "abcdefghijklmnopqrstuvw",
-            current_source=None,
-            origin=("text", None),
-            busy=False,
-        )
-        editor = controller.editor
-        editor.input_cursor = 5
-        controller.handle_key(
-            curses.KEY_DOWN,
-            settings=self.settings(),
-            query=None,
-            current_source=None,
-            screen_width=12,
-        )
-        self.assertEqual(editor.input_cursor, 7)
-        controller.handle_key(
-            curses.KEY_UP,
-            settings=self.settings(),
-            query=None,
-            current_source=None,
-            screen_width=12,
-        )
-        self.assertEqual(editor.input_cursor, 5)
-
-    def test_active_text_field_keeps_shortcut_characters_as_text(self):
-        controller, _provider = self.make_controller()
-        controller.open_text(
-            "draft",
-            current_source="draft",
-            origin=("text", None),
-            busy=False,
-        )
-        editor = controller.editor
-        for key in ("q", "?", "s", "x"):
-            intents = controller.handle_key(
-                key,
-                settings=self.settings(),
-                query=None,
-                current_source="draft",
-            )
-            self.assertEqual(intents, ())
-        self.assertEqual(editor.input_value, "draftq?sx")
-        self.assertIs(controller.editor, editor)
-
-    def test_text_cancel_closes_with_origin_and_apply_returns_source_intent(self):
-        controller, _provider = self.make_controller()
-        controller.open_text(
-            "discard",
-            current_source="old",
-            origin=("text", None),
-            busy=False,
-        )
-        canceled = controller.cancel()
-        self.assertIsNone(controller.editor)
-        self.assertIn(CloseEditorIntent(("text", None), "Text draft discarded."), canceled)
-
-        controller.open_text(
-            "new",
-            current_source="old",
-            origin=("text", None),
-            busy=False,
-        )
-        intents = controller.apply(self.settings(), None, "old")
-        self.assertEqual(intents, (ReplaceSourceTextIntent("new"),))
-        self.assertIsNotNone(controller.editor)
-
-    def test_unchanged_source_closes_and_success_or_failure_results_keep_exact_status(self):
-        controller, _provider = self.make_controller()
-        controller.open_text(
-            "same",
-            current_source="same",
-            origin=("text", None),
-            busy=False,
-        )
-        unchanged = controller.apply(self.settings(), None, "same")
-        self.assertIn(
-            CloseEditorIntent(("text", None), "Source text unchanged."),
-            unchanged,
-        )
-        # Reopen to exercise application result handling.
-        controller.open_text(
-            "new",
-            current_source="old",
-            origin=("text", None),
-            busy=False,
-        )
-        failed = controller.complete_source_text_application(
-            SourceTextApplicationResult(error="source replacement failed")
-        )
-        self.assertEqual(controller.editor.error, "Error: Source text was not changed: source replacement failed")
-        self.assertEqual(failed, ())
-        success = controller.complete_source_text_application(
-            SourceTextApplicationResult(needs_rebuild=True)
-        )
-        self.assertIn(
-            CloseEditorIntent(
-                ("text", None),
-                "Source text updated; rebuild pronunciation before generating.",
-            ),
-            success,
-        )
-
-    def test_japanese_editor_open_cancel_and_valid_apply_intent(self):
-        controller, _provider = self.make_controller()
-        query = japanese_and_english_query()
-        controller.open_segment(
-            query,
-            segment_tuples(query),
-            0,
-            origin=("segment", 0),
-            busy=False,
-        )
-        self.assertEqual(controller.editor.kind, "japanese")
-        self.assertEqual(controller.editor.active_field, "draft")
-        canceled = controller.cancel()
-        self.assertIn(
-            CloseEditorIntent(
-                ("segment", 0),
-                "Japanese pronunciation draft discarded.",
-            ),
-            canceled,
-        )
-
-        controller.open_segment(
-            query,
-            segment_tuples(query),
-            0,
-            origin=("segment", 0),
-            busy=False,
-        )
-        controller.editor.payload["draft"] = "アメ'？"
-        intents = controller.apply(self.settings(), query, "雨 Hi!")
-        self.assertIsInstance(intents[0], ReplaceQueryIntent)
-        self.assertEqual(intents[0].editor_kind, "japanese")
-        completed = controller.complete_query_application(
-            intents[0],
-            QueryApplicationResult(),
-        )
-        self.assertIn(
-            CloseEditorIntent(
-                ("segment", 0),
-                "Japanese pronunciation updated; old takes cleared.",
-            ),
-            completed,
-        )
-
-    def test_japanese_invalid_notation_keeps_editor_open_with_original_error(self):
-        controller, _provider = self.make_controller()
-        query = japanese_and_english_query()
-        controller.open_segment(
-            query,
-            segment_tuples(query),
-            0,
-            origin=("segment", 0),
-            busy=False,
-        )
-        editor = controller.editor
-        editor.payload["draft"] = "not a pronunciation"
-        intents = controller.apply(self.settings(), query, "雨 Hi!")
-        self.assertEqual(intents, ())
-        self.assertIs(controller.editor, editor)
-        self.assertTrue(editor.error.startswith("Error: Pronunciation was not changed:"))
-
-    def test_japanese_application_failure_preserves_existing_error_format(self):
-        controller, _provider = self.make_controller()
-        query = japanese_and_english_query()
-        controller.open_segment(
-            query,
-            segment_tuples(query),
-            0,
-            origin=("segment", 0),
-            busy=False,
-        )
-        intent = controller.apply(self.settings(), query, "雨 Hi!")[0]
-        controller.complete_query_application(
-            intent,
-            QueryApplicationResult(error="session replacement failed"),
-        )
-        self.assertEqual(
-            controller.editor.error,
-            "Error: Pronunciation was not changed: session replacement failed",
-        )
-
-    def test_english_grouping_cache_reuses_and_invalidates_only_on_mismatch(self):
-        groups = {"Hi!": (("Hi", ("HH", "AY1")), ("!", ("!",)))}
-        controller, provider = self.make_controller(groups)
-        query = english_query(("HH", "AY1", "!"))
-        first = controller.english_grouping(query, 0)
-        second = controller.english_grouping(query, 0)
-        self.assertIs(first, second)
-        self.assertEqual(provider.calls, ["Hi!"])
-        query.voicegerSegments[0].phonemes = ["HH", "IH1", "!"]
-        with self.assertRaisesRegex(ValueError, "do not exactly match"):
-            controller.english_grouping(query, 0)
-        self.assertNotIn(0, controller.grouping_cache)
-        groups["Hi!"] = (("Hi", ("HH", "IH1")), ("!", ("!",)))
-        replacement = controller.english_grouping(query, 0)
-        self.assertEqual(replacement.flattened, ("HH", "IH1", "!"))
-        self.assertEqual(provider.calls, ["Hi!", "Hi!", "Hi!"])
-
-    def test_english_grouping_requires_exact_canonical_phoneme_match(self):
-        controller, _provider = self.make_controller(
-            {"Hi!": (("Hi", ("HH", "AY0")), ("!", ("!",)))}
-        )
-        with self.assertRaisesRegex(ValueError, "Voiceger word groups do not exactly match"):
-            controller.english_grouping(english_query(("HH", "AY1", "!")), 0)
-
-    def test_english_segment_opens_word_editor_and_done_commits_group_draft(self):
-        controller, _provider = self.make_controller(
-            {"Hi!": (("Hi", ("HH", "AY1")), ("!", ("!",)))}
-        )
-        query = english_query(("HH", "AY1", "!"))
-        controller.open_segment(
-            query,
-            segment_tuples(query),
-            0,
-            origin=("segment", 0),
-            busy=False,
-        )
-        parent = controller.editor
-        self.assertEqual(parent.kind, "english_segment")
-        self.assertEqual(parent.selection, ("word", 0))
-        controller.handle_key(
-            "\n",
-            settings=self.settings(),
             query=query,
-            current_source="Hi!",
+            current_source="text",
         )
-        word = controller.editor
-        self.assertEqual(word.kind, "english_word")
-        controller.handle_key(
-            "\n",
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
-        )
-        word.input_value = "HH AA K"
+        self.assertEqual(editor.payload["editing_morae"], ["キョ"])
+        self.assertEqual(editor.payload["editing_accent"], 1)
+        self.assertIn("[キョ]", editor.input_value)
+        self.assertNotIn("/", editor.input_value)
+        self.assertNotIn("'", editor.input_value)
+
         intents = controller.handle_key(
-            "\n",
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
+            "\n", settings=self.settings(), query=query, current_source="text"
         )
-        self.assertEqual(intents, (UpdateStatusIntent(
-            "Phonemes updated in the word draft; Done returns it to the segment."
-        ),))
-        word.selection = "done"
-        controller.handle_key(
-            "\n",
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
-        )
-        self.assertIs(controller.editor, parent)
-        self.assertEqual(parent.payload["groups"][0].phonemes, ("HH", "AA1", "K"))
-
-    def test_english_word_cancel_discards_uncommitted_word_changes(self):
-        controller, _provider = self.make_controller(
-            {"Hi!": (("Hi", ("HH", "AY1")), ("!", ("!",)))}
-        )
-        query = english_query(("HH", "AY1", "!"))
-        controller.open_segment(
-            query,
-            segment_tuples(query),
-            0,
-            origin=("segment", 0),
-            busy=False,
-        )
-        parent = controller.editor
-        original = parent.payload["groups"]
-        controller.handle_key(
-            "\n",
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
-        )
-        word = controller.editor
-        controller.handle_key(
-            "\x1b",
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
-        )
-        self.assertIs(controller.editor, parent)
-        self.assertEqual(parent.payload["groups"], original)
-
-    def test_invalid_phoneme_replacement_keeps_word_editor_open(self):
-        controller, _provider = self.make_controller(
-            {"Hi!": (("Hi", ("HH", "AY1")), ("!", ("!",)))}
-        )
-        query = english_query(("HH", "AY1", "!"))
-        controller.open_segment(
-            query,
-            segment_tuples(query),
-            0,
-            origin=("segment", 0),
-            busy=False,
-        )
-        controller.handle_key(
-            "\n",
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
-        )
-        controller.handle_key(
-            "\n",
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
-        )
-        editor = controller.editor
-        editor.input_value = "HH NOTAPHONEME"
-        controller.handle_key(
-            "\n",
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
-        )
-        self.assertIs(controller.editor, editor)
-        self.assertTrue(editor.error.startswith("Error: unsupported English phoneme:"))
-
-    def test_primary_stress_movement_preserves_secondary_stress(self):
-        controller, _provider = self.make_controller(
-            {"Hi!": (("Hi", ("AA1", "K", "IH2", "K", "EH0")), ("!", ("!",)))}
-        )
-        query = english_query(("AA1", "K", "IH2", "K", "EH0", "!"))
-        controller.open_segment(
-            query,
-            segment_tuples(query),
-            0,
-            origin=("segment", 0),
-            busy=False,
-        )
-        controller.handle_key(
-            "\n",
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
-        )
-        editor = controller.editor
-        editor.selection = ("primary", 0)
-        controller.handle_key(
-            "\n",
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
-        )
-        controller.handle_key(
-            curses.KEY_RIGHT,
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
-        )
-        controller.handle_key(
-            curses.KEY_RIGHT,
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
-        )
-        controller.handle_key(
-            "\n",
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
+        replacement = next(item for item in intents if isinstance(item, ReplaceQueryIntent))
+        self.assertEqual(len(replacement.query.accent_phrases), 2)
+        self.assertEqual(
+            [mora.text for mora in replacement.query.accent_phrases[0].moras],
+            ["ア", "シ", "タ", "ワ"],
         )
         self.assertEqual(
-            editor.payload["draft_state"].primary_stress_vowel_positions,
-            (2,),
-        )
-        self.assertEqual(
-            editor.payload["draft_state"].secondary_stress_vowel_positions,
-            (1,),
-        )
-
-    def test_primary_stress_collision_keeps_move_active_and_reports_error(self):
-        controller, _provider = self.make_controller(
-            {"Hi!": (("Hi", ("AA1", "IH1")), ("!", ("!",)))}
-        )
-        query = english_query(("AA1", "IH1", "!"))
-        controller.open_segment(
-            query,
-            segment_tuples(query),
-            0,
-            origin=("segment", 0),
-            busy=False,
-        )
-        controller.handle_key(
-            "\n",
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
-        )
-        editor = controller.editor
-        editor.selection = ("primary", 0)
-        controller.handle_key(
-            "\n",
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
-        )
-        controller.handle_key(
-            curses.KEY_RIGHT,
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
-        )
-        controller.handle_key(
-            "\n",
-            settings=self.settings(),
-            query=query,
-            current_source="Hi!",
-        )
-        self.assertEqual(
-            editor.error,
-            "Error: That vowel already has primary stress. Choose another vowel.",
-        )
-        self.assertTrue(editor.payload["moving_primary"])
-
-    def test_english_apply_intent_accepts_grouping_only_after_success(self):
-        controller, _provider = self.make_controller(
-            {"Hi!": (("Hi", ("HH", "AY1")), ("!", ("!",)))}
-        )
-        query = english_query(("HH", "AY1", "!"))
-        controller.open_segment(
-            query,
-            segment_tuples(query),
-            0,
-            origin=("segment", 0),
-            busy=False,
-        )
-        controller.editor.payload["groups"] = (
-            EnglishWordGroup("Hi", ("HH", "AA1"), True),
-            EnglishWordGroup("!", ("!",), False),
-        )
-        intent = controller.apply(self.settings(), query, "Hi!")[0]
-        self.assertIsInstance(intent, ReplaceQueryIntent)
-        self.assertEqual(
-            controller.grouping_cache[0].flattened,
-            ("HH", "AY1", "!"),
-        )
-        failed = controller.complete_query_application(
-            intent,
-            QueryApplicationResult(error="query replacement failed"),
-        )
-        self.assertEqual(failed, ())
-        self.assertIsNotNone(controller.editor)
-        self.assertEqual(
-            controller.grouping_cache[0].flattened,
-            ("HH", "AY1", "!"),
+            [mora.text for mora in replacement.query.accent_phrases[1].moras],
+            ["キョ"],
         )
         completed = controller.complete_query_application(
-            intent,
-            QueryApplicationResult(),
+            replacement, QueryApplicationResult()
         )
-        self.assertIn(
-            CloseEditorIntent(
-                ("segment", 0),
-                "English pronunciation updated; old takes cleared.",
-            ),
-            completed,
+        self.assertEqual(completed[-1], CloseEditorIntent(("pronunciation", 1), replacement.success_status))
+        self.assertIsNone(controller.editor)
+
+    def test_japanese_input_moves_and_deletes_by_complete_mora(self):
+        query = AudioQuery(
+            accent_phrases=[_phrase(("ア", "キョ", "ウ"), 2)],
+            voicegerSegments=[
+                VoicegerSegment(
+                    language="ja",
+                    text="今日",
+                    accentPhraseStart=0,
+                    accentPhraseCount=1,
+                )
+            ],
         )
-        self.assertEqual(
-            controller.grouping_cache[0].flattened,
-            ("HH", "AA1", "!"),
+        controller, _provider = self.make_controller()
+        rows = controller.pronunciation_rows(query, (("ja", "今日", 0),))
+        controller.open_pronunciation_item(
+            query, rows, 0, origin=("pronunciation", 0), busy=False
+        )
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_source="今日"
+        )
+        editor = controller.editor
+        controller.handle_key(
+            curses.KEY_BACKSPACE,
+            settings=self.settings(),
+            query=query,
+            current_source="今日",
         )
 
-    def test_settings_selection_editing_and_left_right_feedback(self):
+        self.assertEqual(editor.payload["editing_morae"], ["ア", "キョ"])
+        self.assertEqual(editor.payload["mora_cursor"], 2)
+        self.assertNotIn("キ ョ", editor.input_value)
+
+    def test_english_word_opens_directly_and_phoneme_edit_commits_to_query(self):
+        query = mixed_query()
+        groups = {
+            "hello everyone": (
+                ("hello", ("HH", "AH1", "L", "OW2")),
+                ("everyone", ("EH1", "V", "R", "IY0")),
+            )
+        }
+        controller, _provider = self.make_controller(groups)
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query,
+            rows,
+            2,
+            origin=("pronunciation", 2),
+            busy=False,
+        )
+        editor = controller.editor
+        self.assertEqual(editor.kind, "english_word")
+        self.assertEqual(editor.title, "EDIT WORD PRONUNCIATION")
+        self.assertNotIn("english_segment", editor.kind)
+        self.assertEqual(editor.payload["label"], "hello")
+        self.assertEqual(controller.selection_keys(), ["phonemes"])
+
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_source="source"
+        )
+        editor.input_value = "HH AE L OW"
+        editor.input_cursor = len(editor.input_value)
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_source="source"
+        )
+        replacement = next(item for item in intents if isinstance(item, ReplaceQueryIntent))
+        self.assertEqual(
+            replacement.query.voicegerSegments[1].phonemes[:4],
+            ["HH", "AE1", "L", "OW2"],
+        )
+        completed = controller.complete_query_application(
+            replacement, QueryApplicationResult()
+        )
+        self.assertEqual(completed[-1], CloseEditorIntent(("pronunciation", 2), replacement.success_status))
+        self.assertEqual(controller.grouping_cache[1].groups[0].phonemes, ("HH", "AE1", "L", "OW2"))
+        self.assertIsNone(controller.editor)
+
+    def test_english_main_adjustment_preserves_cache_only_after_application(self):
+        query = AudioQuery(
+            accent_phrases=[],
+            voicegerSegments=[
+                VoicegerSegment(
+                    language="en",
+                    text="hello world",
+                    phonemes=["HH", "AH1", "L", "OW0", "W", "ER1", "L", "D"],
+                )
+            ],
+        )
+        groups = {
+            "hello world": (
+                ("hello", ("HH", "AH1", "L", "OW0")),
+                ("world", ("W", "ER1", "L", "D")),
+            )
+        }
+        controller, _provider = self.make_controller(groups)
+        rows = controller.pronunciation_rows(query, (("en", "hello world", 0),))
+        intent = next(
+            item
+            for item in controller.adjust_pronunciation(query, rows[0], 1)
+            if isinstance(item, ReplaceQueryIntent)
+        )
+        self.assertEqual(controller.grouping_cache[0].groups[0].phonemes, groups["hello world"][0][1])
+        controller.complete_query_application(intent, QueryApplicationResult())
+        self.assertEqual(
+            controller.grouping_cache[0].groups[0].phonemes,
+            ("HH", "AH0", "L", "OW1"),
+        )
+        self.assertEqual(controller.grouping_cache[0].groups[1].phonemes, ("W", "ER1", "L", "D"))
+
+    def test_settings_keep_draft_apply_semantics_and_emit_movement_feedback(self):
         styles = (
-            SimpleNamespace(id=1),
-            SimpleNamespace(id=4),
-            SimpleNamespace(id=7),
+            type("Style", (), {"id": 1, "name": "Neutral"})(),
+            type("Style", (), {"id": 2, "name": "Sweet"})(),
         )
         controller, _provider = self.make_controller(styles=styles)
         controller.open_settings(
-            self.settings(),
-            origin=("settings_summary", None),
-            busy=False,
+            self.settings(), origin=("settings", None), busy=False
         )
-        editor = controller.editor
-        controller.handle_key(
-            curses.KEY_DOWN,
-            settings=self.settings(),
-            query=None,
-            current_source=None,
-        )
-        self.assertEqual(editor.selection, "speed")
-        controller.handle_key(
-            "\n",
-            settings=self.settings(),
-            query=None,
-            current_source=None,
-        )
-        self.assertEqual(editor.active_field, "speed")
-        controller.handle_key(
-            curses.KEY_END,
-            settings=self.settings(),
-            query=None,
-            current_source=None,
-        )
-        controller.handle_key(
-            "5",
-            settings=self.settings(),
-            query=None,
-            current_source=None,
-        )
-        controller.handle_key(
-            "\n",
-            settings=self.settings(),
-            query=None,
-            current_source=None,
-        )
-        self.assertEqual(editor.payload["draft_settings"]["speed"], "1.05")
-        self.assertEqual(editor.active_field, None)
-
-        for selected, key, expected in (
-            ("style_id", curses.KEY_RIGHT, "4"),
-            ("speed", curses.KEY_RIGHT, "1.06"),
-            ("take_count", curses.KEY_RIGHT, "5"),
-            ("save_text", curses.KEY_RIGHT, True),
-        ):
-            editor.selection = selected
-            intents = controller.handle_key(
-                key,
-                settings=self.settings(),
-                query=None,
-                current_source=None,
-            )
-            self.assertEqual(editor.payload["draft_settings"][selected], expected)
-            self.assertIn(
-                AdjustmentPressedIntent("settings", selected, 1),
-                intents,
-            )
-
-    def test_settings_no_op_adjustments_clear_feedback_without_pressed_intent(self):
-        styles = (
-            SimpleNamespace(id=1),
-            SimpleNamespace(id=4),
-            SimpleNamespace(id=7),
-        )
-        controller, _provider = self.make_controller(styles=styles)
-        controller.open_settings(
-            self.settings(),
-            origin=("settings_summary", None),
-            busy=False,
-        )
-        editor = controller.editor
-
-        for selected, value, key, unchanged in (
-            ("style_id", "1", curses.KEY_LEFT, "1"),
-            ("style_id", "7", curses.KEY_RIGHT, "7"),
-            ("speed", "0.01", curses.KEY_LEFT, "0.01"),
-            ("take_count", "1", curses.KEY_LEFT, "1"),
-            ("take_count", "8", curses.KEY_RIGHT, "8"),
-            ("save_text", False, curses.KEY_LEFT, False),
-            ("save_text", True, curses.KEY_RIGHT, True),
-        ):
-            with self.subTest(selected=selected, value=value, key=key):
-                editor.selection = selected
-                editor.payload["draft_settings"][selected] = value
-                intents = controller.handle_key(
-                    key,
-                    settings=self.settings(),
-                    query=None,
-                    current_source=None,
-                )
-                self.assertEqual(editor.payload["draft_settings"][selected], unchanged)
-                self.assertNotIn(
-                    AdjustmentPressedIntent(
-                        "settings",
-                        selected,
-                        -1 if key == curses.KEY_LEFT else 1,
-                    ),
-                    intents,
-                )
-                self.assertEqual(intents, (ClearAdjustmentFeedbackIntent(),))
-
-    def test_settings_left_right_adjustment_reports_validation_errors_without_feedback(self):
-        controller, _provider = self.make_controller(
-            styles=(SimpleNamespace(id=1),)
-        )
-        controller.open_settings(
-            self.settings(),
-            origin=("settings_summary", None),
-            busy=False,
-        )
-        editor = controller.editor
-        for selected, invalid, expected_error in (
-            ("style_id", "invalid", "Error: Style ID must be a positive integer."),
-            ("speed", "nan", "Error: Speed must be a positive finite number."),
-            (
-                "take_count",
-                "invalid",
-                "Error: Take count must be an integer from 1 through 8.",
-            ),
-        ):
-            with self.subTest(selected=selected):
-                editor.selection = selected
-                editor.payload["draft_settings"][selected] = invalid
-                intents = controller.handle_key(
-                    curses.KEY_RIGHT,
-                    settings=self.settings(),
-                    query=None,
-                    current_source=None,
-                )
-                self.assertEqual(editor.error, expected_error)
-                self.assertEqual(
-                    editor.payload["draft_settings"][selected], invalid
-                )
-                self.assertEqual(intents, (ClearAdjustmentFeedbackIntent(),))
-
-    def test_settings_apply_validation_errors_keep_draft_open(self):
-        for field, invalid in (
-            ("style_id", "0"),
-            ("speed", "nan"),
-            ("take_count", "0"),
-            ("output_dir", "\x00"),
-        ):
-            with self.subTest(field=field):
-                controller, _provider = self.make_controller()
-                controller.open_settings(
-                    self.settings(),
-                    origin=("settings_summary", None),
-                    busy=False,
-                )
-                editor = controller.editor
-                editor.payload["draft_settings"][field] = invalid
-                self.assertEqual(
-                    controller.apply(self.settings(), None, None),
-                    (),
-                )
-                self.assertIs(controller.editor, editor)
-                self.assertTrue(editor.error.startswith("Error: Settings were not changed:"))
-
-    def test_settings_unchanged_closes_and_changed_values_return_typed_intent(self):
-        controller, _provider = self.make_controller()
-        settings = self.settings()
-        controller.open_settings(
-            settings,
-            origin=("settings_summary", None),
-            busy=False,
-        )
-        unchanged = controller.apply(settings, None, None)
-        self.assertIn(CloseEditorIntent(
-            ("settings_summary", None),
-            "Settings unchanged.",
-        ), unchanged)
-
-        controller.open_settings(
-            settings,
-            origin=("settings_summary", None),
-            busy=False,
-        )
-        controller.editor.payload["draft_settings"]["speed"] = "1.25"
-        changed = controller.apply(settings, None, None)
-        self.assertEqual(
-            changed,
-            (ApplySettingsIntent(SettingsChanges(speed=1.25)),),
-        )
-
-    def test_settings_application_error_keeps_editor_and_success_closes(self):
-        controller, _provider = self.make_controller()
-        controller.open_settings(
-            self.settings(),
-            origin=("settings_summary", None),
-            busy=False,
-        )
-        controller.editor.payload["draft_settings"]["take_count"] = "5"
-        intent = controller.apply(self.settings(), None, None)[0]
+        self.assertEqual(controller.editor.selection, "style_id")
+        self.assertEqual(controller.adjust_settings(-1), (ClearAdjustmentFeedbackIntent(),))
+        self.assertEqual(controller.adjust_settings(1), (AdjustmentPressedIntent("settings", "style_id", 1),))
+        self.assertEqual(controller.editor.payload["draft_settings"]["style_id"], "2")
+        controller.editor.selection = "apply"
+        intent = controller._activate_selection(self.settings(), None, None)[0]
         self.assertIsInstance(intent, ApplySettingsIntent)
-        controller.complete_settings_application(
-            SettingsApplicationResult(error_status="Error: Settings were not changed: bad")
+        self.assertEqual(intent.changes.style_id, 2)
+
+    def test_settings_field_edits_remain_on_the_same_selection_row(self):
+        controller, _provider = self.make_controller()
+        controller.open_settings(
+            self.settings(), origin=("settings", None), busy=False,
+            selected_field="output_dir", edit=True,
         )
+        self.assertEqual(controller.editor.selection, "output_dir")
+        self.assertEqual(controller.editor.active_field, "output_dir")
         self.assertEqual(
-            controller.editor.error,
-            "Error: Settings were not changed: bad",
-        )
-        closed = controller.complete_settings_application(SettingsApplicationResult())
-        self.assertIn(
-            CloseEditorIntent(
-                ("settings_summary", None),
-                "Settings saved. Existing temporary takes were cleared.",
+            controller.handle_key(
+                "\n", settings=self.settings(), query=None, current_source=None
             ),
-            closed,
+            (UpdateStatusIntent(""),),
         )
+        self.assertEqual(controller.editor.selection, "output_dir")
+        self.assertIsNone(controller.editor.active_field)
+
+    def test_cancel_and_success_close_restore_the_exact_origin(self):
+        controller, _provider = self.make_controller()
+        controller.open_text(
+            "draft", current_source="old", origin=("pronunciation", 3), busy=False
+        )
+        close = controller.cancel()[1]
+        self.assertEqual(close, CloseEditorIntent(("pronunciation", 3), "Text draft discarded."))
+
+        controller.open_settings(self.settings(), origin=("settings", None), busy=False)
+        result = controller.complete_settings_application(SettingsApplicationResult())
+        self.assertEqual(result[-1].origin, ("settings", None))
 
 
 if __name__ == "__main__":

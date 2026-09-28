@@ -5,12 +5,14 @@ from voiceger_accent_adapter.tui_display import (
     _adjustable_value,
     _display_width,
     _english_display_tokens,
+    _japanese_mora_tokens,
     _move_wrapped_cursor,
     _phoneme_state_tokens,
     _phonemes_as_ui_tokens,
     _truncate_display,
     _wrap_active_input,
     _wrap_labeled_tokens,
+    _wrap_tokens_with_prefixes,
     _wrap_text,
     _wrapped_ranges,
     format_english_phonemes,
@@ -18,6 +20,27 @@ from voiceger_accent_adapter.tui_display import (
 
 
 class TuiDisplayTests(unittest.TestCase):
+    def test_japanese_phrase_display_brackets_one_complete_mora(self):
+        self.assertEqual(
+            _japanese_mora_tokens(("ア", "シ", "タ", "ワ"), 4),
+            ["ア", "シ", "タ", "[ワ]"],
+        )
+        self.assertEqual(
+            _japanese_mora_tokens(("キョ", "ウ"), 1),
+            ["[キョ]", "ウ"],
+        )
+
+    def test_japanese_token_wrapping_keeps_compound_mora_and_fixed_separator(self):
+        lines, cursor = _wrap_tokens_with_prefixes(
+            "▶ JA | ", "     | ", ["ア", "[キョ]", "ウ"], 13,
+            cursor_index=2,
+        )
+        self.assertGreaterEqual(len(lines), 2)
+        self.assertTrue(all(line.startswith("     | ") for line in lines[1:]))
+        self.assertTrue(any("[キョ]" in line for line in lines))
+        self.assertEqual(cursor[0], 2)
+        self.assertFalse(any("キ ョ" in line for line in lines))
+
     def test_english_phoneme_formatting_marks_primary_stress_without_digits(self):
         self.assertEqual(
             format_english_phonemes(

@@ -15,7 +15,7 @@ class NavigationContext:
 
     has_session: bool
     pronunciation_needs_rebuild: bool
-    segment_count: int
+    pronunciation_count: int
     candidate_numbers: tuple[int, ...]
     busy: bool
     has_active_batch: bool
@@ -43,7 +43,7 @@ class OpenTextEditor:
 
 
 @dataclass(frozen=True)
-class EditPronunciationSegment:
+class EditPronunciationItem:
     index: int
 
 
@@ -92,7 +92,7 @@ NavigationAction = Union[
     UpdateNavigationStatus,
     OpenSettingsEditor,
     OpenTextEditor,
-    EditPronunciationSegment,
+    EditPronunciationItem,
     StartGeneration,
     RegenerateAll,
     RebuildPronunciation,
@@ -109,7 +109,7 @@ class TuiNavigation:
 
     def __init__(self) -> None:
         self.focus_key: FocusKey = ("settings_summary", None)
-        self.segment_index = 0
+        self.pronunciation_index = 0
         self.revision = 0
 
     def navigation_items(self, context: NavigationContext) -> tuple[FocusKey, ...]:
@@ -121,8 +121,8 @@ class TuiNavigation:
         if context.has_session:
             if not context.pronunciation_needs_rebuild:
                 items.extend(
-                    ("segment", index)
-                    for index in range(context.segment_count)
+                    ("pronunciation", index)
+                    for index in range(context.pronunciation_count)
                 )
             items.extend((("rebuild", None), ("generate", None)))
             items.extend(
@@ -141,7 +141,7 @@ class TuiNavigation:
         previous_section: str | None = None
         for key in self.navigation_items(context):
             name = key[0]
-            if name in {"segment", "candidate"}:
+            if name in {"pronunciation", "candidate"}:
                 if name == previous_section:
                     continue
                 previous_section = name
@@ -159,9 +159,9 @@ class TuiNavigation:
     ) -> tuple[NavigationAction, ...]:
         items = self.navigation_items(context)
         if key not in items:
-            remembered_segment = ("segment", self.segment_index)
-            if remembered_segment in items:
-                key = remembered_segment
+            remembered_item = ("pronunciation", self.pronunciation_index)
+            if remembered_item in items:
+                key = remembered_item
             elif ("rebuild", None) in items:
                 key = ("rebuild", None)
             else:
@@ -171,8 +171,8 @@ class TuiNavigation:
 
         changed = key != self.focus_key
         self.focus_key = key
-        if key[0] == "segment" and key[1] is not None:
-            self.segment_index = key[1]
+        if key[0] == "pronunciation" and key[1] is not None:
+            self.pronunciation_index = key[1]
         if not changed:
             return ()
         if moved:
@@ -240,16 +240,21 @@ class TuiNavigation:
     ) -> tuple[NavigationAction, ...] | None:
         if self.focus_key[0] != "candidate":
             return None
+        return_key = ("pronunciation", self.pronunciation_index)
+        if return_key not in self.navigation_items(context):
+            return_key = (
+                ("pronunciation", 0)
+                if ("pronunciation", 0) in self.navigation_items(context)
+                else ("rebuild", None)
+            )
         actions = list(
             self.set_focus_key(
                 context,
-                ("segment", self.segment_index),
+                return_key,
                 moved=True,
             )
         )
-        actions.append(
-            UpdateNavigationStatus("Returned to the last pronunciation segment.")
-        )
+        actions.append(UpdateNavigationStatus("Returned to pronunciation."))
         return tuple(actions)
 
     def activate_focused_item(
@@ -269,14 +274,14 @@ class TuiNavigation:
                     ),
                 )
             return (OpenTextEditor(),)
-        if name == "segment" and number is not None:
+        if name == "pronunciation" and number is not None:
             if context.busy:
                 return (
                     UpdateNavigationStatus(
                         "Wait for synthesis to finish before editing pronunciation."
                     ),
                 )
-            return (EditPronunciationSegment(number),)
+            return (EditPronunciationItem(number),)
         if name == "generate":
             return self.activate_generate(context)
         if name == "rebuild":
@@ -350,19 +355,16 @@ class TuiNavigation:
         self,
         context: NavigationContext,
     ) -> tuple[NavigationAction, ...]:
-        self.segment_index = 0
+        self.pronunciation_index = 0
         focus_key = (
-            ("segment", 0)
-            if context.has_session and context.segment_count > 0
+            ("pronunciation", 0)
+            if context.has_session and context.pronunciation_count > 0
             else ("generate", None)
         )
         return self.set_focus_key(context, focus_key, moved=True)
 
-    def reset_segment_index(self) -> None:
-        self.segment_index = 0
-
-    def set_segment_index(self, index: int) -> None:
-        self.segment_index = index
+    def reset_pronunciation_index(self) -> None:
+        self.pronunciation_index = 0
 
     @staticmethod
     def _candidate_playback_action(key: FocusKey) -> tuple[NavigationAction, ...]:

@@ -30,6 +30,7 @@ from .tui_editors import (
     CloseEditorIntent,
     EditorIntent,
     QueryApplicationResult,
+    PronunciationRow,
     ReplaceQueryIntent,
     ReplaceSourceTextIntent,
     SettingsApplicationResult,
@@ -49,7 +50,7 @@ from .tui_operations import (
 from .tui_navigation import (
     AcceptCandidate,
     ClearAdjustmentFeedback,
-    EditPronunciationSegment,
+    EditPronunciationItem,
     NavigationAction,
     NavigationContext,
     OpenHelp,
@@ -135,7 +136,7 @@ class TuiApp:
         self._operations = TuiOperations()
         self._navigation = TuiNavigation()
         self._exit_requested = False
-        self._status = "Enter text, edit pronunciation, then press F5 to generate."
+        self._status = ""
         self._help_open = False
         self._editor_controller = TuiEditorController(
             english_word_groups=self.adapter.english_word_phoneme_groups,
@@ -288,8 +289,25 @@ class TuiApp:
             self._open_settings_editor(setting_shortcuts[key])
             return
         if key in (curses.KEY_LEFT, curses.KEY_RIGHT):
+            direction = -1 if key == curses.KEY_LEFT else 1
             if self._navigation.focus_key[0] == "generate":
-                self._adjust_take_count(-1 if key == curses.KEY_LEFT else 1)
+                self._adjust_take_count(direction)
+            elif (
+                self._navigation.focus_key[0] == "pronunciation"
+                and self._navigation.focus_key[1] is not None
+                and self.session is not None
+                and not self._operations.busy
+            ):
+                rows = self._pronunciation_rows()
+                index = self._navigation.focus_key[1]
+                if 0 <= index < len(rows):
+                    self._dispatch_editor_intents(
+                        self._editor_controller.adjust_pronunciation(
+                            self.session.query,
+                            rows[index],
+                            direction,
+                        )
+                    )
             return
         if isinstance(key, str) and len(key) == 1 and key in "12345678":
             self._dispatch_navigation_actions(
@@ -337,7 +355,11 @@ class TuiApp:
             pronunciation_needs_rebuild=(
                 session.pronunciation_needs_rebuild if session is not None else False
             ),
-            segment_count=len(self._segments()) if session is not None else 0,
+            pronunciation_count=(
+                len(self._pronunciation_rows())
+                if session is not None and not session.pronunciation_needs_rebuild
+                else 0
+            ),
             candidate_numbers=(
                 tuple(candidate.number for candidate in session.candidates)
                 if session is not None
@@ -362,8 +384,8 @@ class TuiApp:
                 self._open_settings_editor(action.selected_field, edit=action.edit)
             elif isinstance(action, OpenTextEditor):
                 self._open_text_editor()
-            elif isinstance(action, EditPronunciationSegment):
-                self._edit_selected_segment(action.index)
+            elif isinstance(action, EditPronunciationItem):
+                self._edit_selected_pronunciation(action.index)
             elif isinstance(action, StartGeneration):
                 self._dispatch_operation_effects(
                     self._operations.start_generation(
@@ -388,7 +410,7 @@ class TuiApp:
                         self.session,
                         action.number,
                         busy=self._operations.busy,
-                        segment_index=self._navigation.segment_index,
+                        pronunciation_index=self._navigation.pronunciation_index,
                     )
                 )
             elif isinstance(action, RegenerateCandidate):
@@ -460,6 +482,19 @@ class TuiApp:
             for index, segment in enumerate(query.voicegerSegments)
         ]
 
+    def _pronunciation_rows(self) -> tuple[PronunciationRow, ...]:
+        if self.session is None or self.session.pronunciation_needs_rebuild:
+            return ()
+        rows = self._editor_controller.pronunciation_rows(
+            self.session.query,
+            self._segments(),
+        )
+        if self._editor_controller.grouping_error:
+            self._status = self._editor_controller.grouping_error
+        elif self._status.startswith("Error: Cannot align English word pronunciation:"):
+            self._status = ""
+        return rows
+
     def _open_text_editor(self, initial: str | None = None) -> None:
         intents = self._editor_controller.open_text(
             initial,
@@ -486,24 +521,18 @@ class TuiApp:
         )
         self._dispatch_editor_intents(intents)
 
-    def _edit_selected_segment(self, segment_index: int | None = None) -> None:
+    def _edit_selected_pronunciation(self, pronunciation_index: int) -> None:
         if self.session is None or self._operations.busy:
             return
-        index = (
-            self._navigation.segment_index
-            if segment_index is None
-            else segment_index
-        )
-        segments = self._segments()
-        if not 0 <= index < len(segments):
+        rows = self._pronunciation_rows()
+        if not 0 <= pronunciation_index < len(rows):
             return
-        self._navigation.set_segment_index(index)
         self._dispatch_editor_intents(
-            self._editor_controller.open_segment(
+            self._editor_controller.open_pronunciation_item(
                 self.session.query,
-                segments,
-                index,
-                origin=("segment", index),
+                rows,
+                pronunciation_index,
+                origin=("pronunciation", pronunciation_index),
                 busy=self._operations.busy,
             )
         )
@@ -526,6 +555,7 @@ class TuiApp:
             except Exception as exc:
                 return SourceTextApplicationResult(error=str(exc))
             needs_rebuild = self.session.pronunciation_needs_rebuild
+            self._editor_controller.clear_groupings()
         else:
             try:
                 self.session = UtteranceSession.from_text(
@@ -536,7 +566,7 @@ class TuiApp:
             except Exception as exc:
                 return SourceTextApplicationResult(error=str(exc))
             needs_rebuild = False
-        self._navigation.reset_segment_index()
+        self._navigation.reset_pronunciation_index()
         self._operations.clear_current_take()
         return SourceTextApplicationResult(needs_rebuild=needs_rebuild)
 
@@ -613,7 +643,7 @@ class TuiApp:
         effects = self._operations.consume_pending_events(
             self.session,
             navigation_revision=self._navigation.revision,
-            segment_index=self._navigation.segment_index,
+            pronunciation_index=self._navigation.pronunciation_index,
             exit_requested=self._exit_requested,
         )
         self._dispatch_operation_effects(effects)
@@ -648,6 +678,12 @@ class TuiApp:
     ) -> TuiRenderState:
         if segments is None:
             segments = self._segments() if self.session is not None else ()
+        pronunciation_rows = (
+            self._pronunciation_rows()
+            if self.session is not None
+            and not self.session.pronunciation_needs_rebuild
+            else ()
+        )
         return TuiRenderState(
             voiceger_root=self.adapter.voiceger_root,
             settings=self.settings,
@@ -655,6 +691,7 @@ class TuiApp:
             focus_key=self._navigation.focus_key,
             status=self._status,
             segments=segments,
+            pronunciation_rows=pronunciation_rows,
             busy=self._operations.busy,
             worker_operation=self._operations.worker_operation,
             worker_target=self._operations.worker_target,
