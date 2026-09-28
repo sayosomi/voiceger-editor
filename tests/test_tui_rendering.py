@@ -134,58 +134,57 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertTrue(all(not (item[3] & curses.A_BOLD) for item in explanation_draws))
         self.assertTrue(any(suffix.lstrip()[:5] in item[2] for item in explanation_draws))
         footer = next(item for item in screen.drawn if "Return to Navigation" in item[2])
-        self.assertEqual(footer[0], screen.rows - 2)
+        self.assertEqual(footer[0], screen.rows - 1)
         self.assertTrue(footer[3] & curses.A_BOLD)
 
-    def test_help_settings_and_rebuild_entries_have_separate_80x24_rows(self):
+    def test_help_settings_shortcuts_are_independent_80x24_rows(self):
         screen = FakeScreen(rows=24, columns=80)
         self.renderer.render_help(screen, screen.columns)
 
-        settings_shortcut, settings_suffix = next(
-            item for item in _HELP_ITEMS if item[0] == "s / v / n / o / x"
+        expected_settings = (
+            ("s", ": open Settings at style"),
+            ("v", ": open Settings at speed"),
+            ("n", ": open Settings at takes"),
+            ("o", ": open Settings at output"),
+            ("x", ": open Settings at TXT"),
         )
-        settings_draw = next(
-            item
-            for item in screen.drawn
-            if item[2] == settings_shortcut and item[3] & curses.A_BOLD
+
+        settings_rows = []
+        for shortcut, suffix in expected_settings:
+            shortcut_draw = next(
+                item
+                for item in screen.drawn
+                if item[2] == shortcut and item[3] & curses.A_BOLD
+            )
+            suffix_draw = next(
+                item
+                for item in screen.drawn
+                if item[0] == shortcut_draw[0]
+                and item[1] == 1 + _display_width(shortcut)
+                and item[2] == suffix
+            )
+            self.assertFalse(suffix_draw[3] & curses.A_BOLD)
+            settings_rows.append(shortcut_draw[0])
+
+        self.assertEqual(
+            settings_rows,
+            list(range(settings_rows[0], settings_rows[0] + 5)),
         )
-        settings_row = settings_draw[0]
-        settings_explanation = [
-            item
-            for item in screen.drawn
-            if settings_row <= item[0] < settings_row + 3
-            and item[2]
-            and item[1] > settings_draw[1]
-        ]
+
         rebuild_draw = next(
             item
             for item in screen.drawn
             if "Rebuild pronunciation: rerun automatic pronunciation from current Text"
             in item[2]
         )
+        self.assertEqual(rebuild_draw[0], settings_rows[-1] + 1)
+        self.assertFalse(rebuild_draw[3] & curses.A_BOLD)
+
         footer = next(
             item for item in screen.drawn if "Return to Navigation" in item[2]
         )
-
-        self.assertTrue(settings_draw[3] & curses.A_BOLD)
-        self.assertTrue(settings_explanation)
-        self.assertTrue(
-            all(not (item[3] & curses.A_BOLD) for item in settings_explanation)
-        )
-        self.assertGreater(rebuild_draw[0], settings_row)
-        self.assertFalse(rebuild_draw[3] & curses.A_BOLD)
+        self.assertEqual(footer[0], screen.rows - 1)
         self.assertLess(rebuild_draw[0], footer[0])
-        settings_text_rows = {settings_draw[0], *(item[0] for item in settings_explanation)}
-        self.assertGreater(rebuild_draw[0], max(settings_text_rows) + 1)
-        for shortcut, _suffix in _HELP_ITEMS:
-            if shortcut is None:
-                continue
-            shortcut_draw = next(
-                item
-                for item in screen.drawn
-                if item[2] == shortcut and item[3] & curses.A_BOLD
-            )
-            self.assertLess(shortcut_draw[0], footer[0])
 
     def test_navigation_document_formats_mixed_language_state_and_narrow_rows(self):
         session = FakeSession()
@@ -402,7 +401,7 @@ class TuiRenderingTests(unittest.TestCase):
             for row, _column, text, attr in screen.drawn
             if "Return to Navigation" in text
         )
-        self.assertEqual(footer[0], screen.rows - 2)
+        self.assertEqual(footer[0], screen.rows - 1)
         self.assertEqual(
             footer[1], "Esc / Enter / ? Return to Navigation  |  q Quit"
         )
@@ -432,7 +431,7 @@ class TuiRenderingTests(unittest.TestCase):
         )
         self.assertTrue(
             all(
-                row < screen.rows - 2
+                row < screen.rows - 1
                 for row, _column, text, _attr in screen.drawn
                 if row >= 2 and "Return to Navigation" not in text
             )
