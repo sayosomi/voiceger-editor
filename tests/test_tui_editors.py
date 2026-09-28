@@ -22,6 +22,7 @@ from voiceger_accent_adapter.tui_editors import (
     UpdateStatusIntent,
 )
 from voiceger_accent_adapter.tui_rendering import _active_input_prefix
+from voiceger_accent_adapter.query_editing import japanese_pronunciation
 from voiceger_accent_adapter.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
@@ -301,9 +302,80 @@ class TuiEditorControllerTests(unittest.TestCase):
         )
 
         self.assertEqual(editor.input_value, original)
-        self.assertIn("ASCII spaces", editor.error)
+        self.assertIn("Use spaces for phrase boundaries", editor.error)
+        self.assertIn("not used in this editor", editor.error)
+        self.assertNotIn("ASCII", editor.error)
         self.assertIn("phrase boundaries", editor.error)
         self.assertNotIn("/", editor.input_value)
+
+    def test_full_width_space_is_ordinary_input_and_boundary_only_change_is_unchanged(self):
+        query = direct_japanese_query()
+        controller, _provider = self.make_controller(
+            {"hello": (("hello", ("HH", "AH1")),)}
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 0, origin=("pronunciation", 0), busy=False
+        )
+        editor = controller.editor
+        editor.input_cursor = 2
+        controller.handle_key(
+            curses.KEY_DC, settings=self.settings(), query=query, current_source="source"
+        )
+        controller.handle_key(
+            "　", settings=self.settings(), query=query, current_source="source"
+        )
+
+        self.assertEqual(editor.input_value, "ナ'　ノダ'。")
+        self.assertEqual(editor.error, "")
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_source="source"
+        )
+        self.assertEqual(
+            intents,
+            (
+                ClearAdjustmentFeedbackIntent(),
+                CloseEditorIntent(
+                    ("pronunciation", 0), "Japanese pronunciation unchanged."
+                ),
+            ),
+        )
+
+    def test_ascii_full_width_and_mixed_spaces_share_canonical_phrase_boundaries(self):
+        expected = "ナ'/ノダ'/カ'！"
+        notations = ("ナ' ノダ' カ'！", "ナ'　ノダ'　カ'！", "ナ'　ノダ' カ'！")
+        for notation in notations:
+            with self.subTest(notation=notation):
+                query = direct_japanese_query()
+                query.accent_phrases.append(_phrase(("カ",), 1))
+                query.voicegerSegments[0].accentPhraseCount = 3
+                controller, _provider = self.make_controller(
+                    {"hello": (("hello", ("HH", "AH1")),)}
+                )
+                rows = controller.pronunciation_rows(query, segments(query))
+                controller.open_pronunciation_item(
+                    query, rows, 0, origin=("pronunciation", 0), busy=False
+                )
+                controller.editor.input_value = notation
+
+                intents = controller.apply(
+                    self.settings(), query=query, current_source="source"
+                )
+
+                replacement = next(
+                    intent for intent in intents if isinstance(intent, ReplaceQueryIntent)
+                )
+                self.assertEqual(
+                    japanese_pronunciation(replacement.query, segment_index=0),
+                    expected,
+                )
+                self.assertEqual(
+                    replacement.query.voicegerSegments[0].accentPhraseCount, 3
+                )
+                self.assertEqual(
+                    replacement.query.voicegerSegments[0].pronunciationTerminator,
+                    "！",
+                )
 
     def test_english_word_opens_directly_and_phoneme_edit_commits_to_query(self):
         query = mixed_query()

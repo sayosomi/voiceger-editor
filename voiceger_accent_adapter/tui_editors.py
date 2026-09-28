@@ -686,7 +686,7 @@ class TuiEditorController:
                 return (UpdateStatusIntent(""),)
             if editor.kind == "japanese" and isinstance(key, str) and "/" in key:
                 editor.error = (
-                    "Error: Use ASCII spaces for phrase boundaries; '/' is not used here."
+                    "Error: Use spaces for phrase boundaries; '/' is not used in this editor."
                 )
                 return ()
             input_changed = False
@@ -722,7 +722,9 @@ class TuiEditorController:
                         + editor.input_value[editor.input_cursor + 1 :]
                     )
                     input_changed = True
-            elif isinstance(key, str) and key and all(char.isprintable() for char in key):
+            elif isinstance(key, str) and key and all(
+                char.isprintable() or char == "　" for char in key
+            ):
                 editor.input_value = (
                     editor.input_value[: editor.input_cursor]
                     + key
@@ -827,9 +829,9 @@ class TuiEditorController:
                 draft = editor.input_value
                 if "/" in draft:
                     raise ValueError(
-                        "Use ASCII spaces for phrase boundaries; '/' is not used here."
+                        "Use spaces for phrase boundaries; '/' is not used in this editor."
                     )
-                canonical = draft.replace(" ", "/")
+                canonical = draft.replace("　", "/").replace(" ", "/")
                 if canonical == editor.payload["canonical_pronunciation"]:
                     return self._close_editor("Japanese pronunciation unchanged.")
                 updated = replace_japanese_pronunciation(
