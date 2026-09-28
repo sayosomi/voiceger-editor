@@ -51,11 +51,11 @@ class TuiNavigationTests(unittest.TestCase):
                 ("settings_summary", None),
                 ("output", None),
                 ("text", None),
+                ("rebuild", None),
                 ("pronunciation", 0),
                 ("pronunciation", 1),
                 ("pronunciation", 2),
                 ("pronunciation", 3),
-                ("rebuild", None),
                 ("generate", None),
                 ("candidate", 5),
                 ("candidate", 2),
@@ -96,8 +96,8 @@ class TuiNavigationTests(unittest.TestCase):
                 ("settings_summary", None),
                 ("output", None),
                 ("text", None),
-                ("pronunciation", 0),
                 ("rebuild", None),
+                ("pronunciation", 0),
                 ("generate", None),
                 ("candidate", 5),
                 ("settings", None),
@@ -109,6 +109,10 @@ class TuiNavigationTests(unittest.TestCase):
     def test_up_and_down_visit_each_child_without_extra_wrap_stops(self):
         state = context(pronunciation_count=3, candidate_numbers=())
         self.navigation.focus_key = ("text", None)
+        self.assertEqual(
+            self.navigation.move(state, 1), (ClearAdjustmentFeedback(),)
+        )
+        self.assertEqual(self.navigation.focus_key, ("rebuild", None))
         for index in range(3):
             self.assertEqual(
                 self.navigation.move(state, 1), (ClearAdjustmentFeedback(),)
@@ -117,12 +121,12 @@ class TuiNavigationTests(unittest.TestCase):
         self.assertEqual(
             self.navigation.move(state, 1), (ClearAdjustmentFeedback(),)
         )
-        self.assertEqual(self.navigation.focus_key, ("rebuild", None))
+        self.assertEqual(self.navigation.focus_key, ("generate", None))
         self.navigation.focus_key = ("pronunciation", 1)
         self.assertEqual(
             self.navigation.move_section(state, 1), (ClearAdjustmentFeedback(),)
         )
-        self.assertEqual(self.navigation.focus_key, ("rebuild", None))
+        self.assertEqual(self.navigation.focus_key, ("generate", None))
 
     def test_candidate_rows_play_on_arrow_and_escape_restores_last_child(self):
         state = context(pronunciation_count=3, candidate_numbers=(4, 7))
@@ -149,12 +153,12 @@ class TuiNavigationTests(unittest.TestCase):
         self.assertEqual(
             self.navigation.move_section(state, 1), (ClearAdjustmentFeedback(),)
         )
-        self.assertEqual(self.navigation.focus_key, ("rebuild", None))
+        self.assertEqual(self.navigation.focus_key, ("generate", None))
         self.navigation.focus_key = ("pronunciation", 3)
         self.assertEqual(
             self.navigation.move_section(state, -1), (ClearAdjustmentFeedback(),)
         )
-        self.assertEqual(self.navigation.focus_key, ("text", None))
+        self.assertEqual(self.navigation.focus_key, ("rebuild", None))
 
     def test_candidate_section_and_vertical_navigation_preserve_order(self):
         state = context(candidate_numbers=(4, 7))

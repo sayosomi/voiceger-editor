@@ -202,7 +202,16 @@ class TuiRenderingTests(unittest.TestCase):
         lines = self.renderer.navigation_document(state, 80)
         selectable = [line for line in lines if line.key and line.key[0] == "pronunciation"]
 
-        self.assertIn("Pronunciation", [line.text for line in lines])
+        labels = [line.text for line in lines]
+        text_index = next(index for index, value in enumerate(labels) if "Text :" in value)
+        rebuild_index = labels.index("  [ Rebuild pronunciation ]")
+        pronunciation_index = next(
+            index for index, line in enumerate(lines)
+            if line.key and line.key[0] == "pronunciation"
+        )
+        self.assertEqual(rebuild_index, text_index + 1)
+        self.assertLess(rebuild_index, pronunciation_index)
+        self.assertNotIn("Pronunciation", labels)
         self.assertEqual(selectable[0].text, "▶ JA | ア シ タ [ワ]")
         self.assertEqual(selectable[1].text, "     | イ イ [テ] ン キ")
         self.assertNotIn("キ ョ", "\n".join(self.labels(lines)))

@@ -441,14 +441,13 @@ class TuiRenderer:
         session = state.session
         text_action(("text", None), session.source_text if session else "")
         if session is not None:
+            action(("rebuild", None), "[ Rebuild pronunciation ]")
             plain()
             if session.pronunciation_needs_rebuild:
                 plain("Pronunciation   Rebuild required")
             else:
-                plain("Pronunciation")
                 for index, item in enumerate(state.pronunciation_rows):
                     pronunciation_action(index, item)
-            action(("rebuild", None), "[ Rebuild pronunciation ]")
             plain()
             has_batch = session.has_active_batch
             if state.busy:
