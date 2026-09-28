@@ -119,12 +119,13 @@ class TuiNavigation:
             ("text", None),
         ]
         if context.has_session:
+            items.append(("rebuild", None))
             if not context.pronunciation_needs_rebuild:
                 items.extend(
                     ("pronunciation", index)
                     for index in range(context.pronunciation_count)
                 )
-            items.extend((("rebuild", None), ("generate", None)))
+            items.append(("generate", None))
             items.extend(
                 ("candidate", number) for number in context.candidate_numbers
             )
