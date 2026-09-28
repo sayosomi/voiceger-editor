@@ -243,7 +243,7 @@ class TuiRenderer:
             screen,
             0,
             0,
-            "NAVIGATION  Voiceger Accent Adapter",
+            "Voiceger Accent Adapter",
             width,
             self._attribute("A_BOLD"),
         )

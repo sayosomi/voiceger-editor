@@ -188,6 +188,15 @@ class TuiRenderingTests(unittest.TestCase):
     def labels(rows):
         return [line.text for line in rows]
 
+    def test_main_header_shows_product_title_without_navigation_label(self):
+        screen = FakeScreen()
+        with patch("voiceger_accent_adapter.tui_rendering.available_styles", return_value=()):
+            self.renderer.render_navigation(screen, render_state(), screen.rows, screen.columns)
+
+        header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
+        self.assertEqual(header, "Voiceger Accent Adapter")
+        self.assertNotIn("NAVIGATION", header)
+
     def test_main_japanese_phrases_use_fixed_separator_and_compound_mora_tokens(self):
         state = render_state(session=FakeSession(), focus_key=("pronunciation", 0))
         lines = self.renderer.navigation_document(state, 80)
