@@ -73,6 +73,24 @@ from .tui_operations import (
     TuiOperations,
     UpdateStatusEffect,
 )
+from .tui_navigation import (
+    AcceptCandidate,
+    ClearAdjustmentFeedback,
+    EditPronunciationSegment,
+    NavigationAction,
+    NavigationContext,
+    OpenHelp,
+    OpenSettingsEditor,
+    OpenTextEditor,
+    PlayCandidate,
+    Quit,
+    RebuildPronunciation,
+    RegenerateAll,
+    RegenerateCandidate,
+    StartGeneration,
+    TuiNavigation,
+    UpdateNavigationStatus,
+)
 from .voiceger_adapter import VoicegerAdapter
 
 
@@ -146,11 +164,8 @@ class TuiApp:
             which=lambda name: shutil.which(name),
             popen=lambda *args, **kwargs: subprocess.Popen(*args, **kwargs),
         )
+        self._navigation = TuiNavigation()
         self._exit_requested = False
-        self._focus = "settings_summary"
-        self._focus_key: tuple[str, int | None] = ("settings_summary", None)
-        self._navigation_revision = 0
-        self._segment_index = 0
         self._status = "Enter text, edit pronunciation, then press F5 to generate."
         self._help_open = False
         self._editor_controller = TuiEditorController(
@@ -172,6 +187,30 @@ class TuiApp:
     @property
     def _english_groupings(self) -> dict[int, _EnglishGroupingCache]:
         return self._editor_controller.grouping_cache
+
+    @property
+    def _focus_key(self) -> tuple[str, int | None]:
+        return self._navigation.focus_key
+
+    @_focus_key.setter
+    def _focus_key(self, key: tuple[str, int | None]) -> None:
+        self._set_focus_key(key)
+
+    @property
+    def _segment_index(self) -> int:
+        return self._navigation.segment_index
+
+    @_segment_index.setter
+    def _segment_index(self, index: int) -> None:
+        self._navigation.set_segment_index(index)
+
+    @property
+    def _navigation_revision(self) -> int:
+        return self._navigation.revision
+
+    @_navigation_revision.setter
+    def _navigation_revision(self, revision: int) -> None:
+        self._navigation.revision = revision
 
     @property
     def _events(self) -> Any:
@@ -347,12 +386,12 @@ class TuiApp:
             return
 
         if key == _ESCAPE:
-            if self._focus_key[0] == "candidate":
-                self._set_focus_key(("segment", self._segment_index), moved=True)
-                self._status = "Returned to the last pronunciation segment."
-            else:
+            actions = self._navigation.escape_candidate(self._navigation_context())
+            if actions is None:
                 self._stop_playback()
                 self._status = "Playback stopped." if self._player is None else self._status
+            else:
+                self._dispatch_navigation_actions(actions)
             return
         if key in ("q", "Q", "\x03"):
             self._activate_quit()
@@ -406,67 +445,37 @@ class TuiApp:
         elif key in _ENTER_KEYS:
             self._activate_focused_item()
 
+    def _navigation_context(self) -> NavigationContext:
+        session = self.session
+        return NavigationContext(
+            has_session=session is not None,
+            pronunciation_needs_rebuild=(
+                session.pronunciation_needs_rebuild if session is not None else False
+            ),
+            segment_count=len(self._segments()) if session is not None else 0,
+            candidate_numbers=(
+                tuple(candidate.number for candidate in session.candidates)
+                if session is not None
+                else ()
+            ),
+            busy=self._busy,
+            has_active_batch=(
+                session.has_active_batch if session is not None else False
+            ),
+        )
+
     def _navigation_items(self) -> list[tuple[str, int | None]]:
-        items: list[tuple[str, int | None]] = [
-            ("settings_summary", None),
-            ("output", None),
-            ("text", None),
-        ]
-        if self.session is not None:
-            if not self.session.pronunciation_needs_rebuild:
-                items.extend(
-                    ("segment", index)
-                    for index, _item in enumerate(self._segments())
-                )
-            items.append(("rebuild", None))
-            items.append(("generate", None))
-            items.extend(
-                ("candidate", candidate.number)
-                for candidate in self.session.candidates
-            )
-        items.extend((("settings", None), ("help", None), ("quit", None)))
-        return items
+        return list(self._navigation.navigation_items(self._navigation_context()))
 
     def _major_navigation_stops(self) -> list[tuple[str, int | None]]:
-        """Collapse multi-row sections in the visible selectable order."""
-
-        stops: list[tuple[str, int | None]] = []
-        previous_section: str | None = None
-        for key in self._navigation_items():
-            name = key[0]
-            if name in {"segment", "candidate"}:
-                if name == previous_section:
-                    continue
-                previous_section = name
-            else:
-                previous_section = None
-            stops.append(key)
-        return stops
+        return list(
+            self._navigation.major_navigation_stops(self._navigation_context())
+        )
 
     def _move_navigation_section(self, delta: int) -> None:
-        stops = self._major_navigation_stops()
-        if not stops:
-            return
-        try:
-            index = stops.index(self._focus_key)
-        except ValueError:
-            index = next(
-                (
-                    position
-                    for position, key in enumerate(stops)
-                    if key[0] == self._focus_key[0]
-                ),
-                0,
-            )
-        target = min(max(index + delta, 0), len(stops) - 1)
-        if target == index:
-            return
-        key = stops[target]
-        self._set_focus_key(key, moved=True)
-        name, number = key
-        if name == "candidate" and number is not None:
-            self._current_take = number
-            self._play_take(number)
+        self._dispatch_navigation_actions(
+            self._navigation.move_section(self._navigation_context(), delta)
+        )
 
     def _set_focus_key(
         self,
@@ -474,98 +483,68 @@ class TuiApp:
         *,
         moved: bool = False,
     ) -> None:
-        items = self._navigation_items()
-        if key not in items:
-            segment_key = ("segment", self._segment_index)
-            if segment_key in items:
-                key = segment_key
-            elif ("rebuild", None) in items:
-                key = ("rebuild", None)
-            else:
-                key = ("text", None)
-        if key not in items:
-            key = items[0]
-        changed = key != self._focus_key
-        if changed:
-            self._pressed_adjustment = None
-        self._focus_key = key
-        self._focus = key[0]
-        if key[0] == "segment" and key[1] is not None:
-            self._segment_index = key[1]
-        if moved and changed:
-            self._navigation_revision += 1
+        self._dispatch_navigation_actions(
+            self._navigation.set_focus_key(
+                self._navigation_context(),
+                key,
+                moved=moved,
+            )
+        )
 
     def _move_navigation(self, delta: int) -> None:
-        items = self._navigation_items()
-        if not items:
-            return
-        try:
-            index = items.index(self._focus_key)
-        except ValueError:
-            index = 0
-        target = min(max(index + delta, 0), len(items) - 1)
-        if target == index:
-            return
-        key = items[target]
-        self._set_focus_key(key, moved=True)
-        name, number = key
-        if name == "candidate" and number is not None:
-            self._current_take = number
-            self._play_take(number)
+        self._dispatch_navigation_actions(
+            self._navigation.move(self._navigation_context(), delta)
+        )
 
     def _activate_focused_item(self) -> None:
-        name, number = self._focus_key
-        if name == "settings_summary":
-            self._open_settings_editor("style_id")
-        elif name == "output":
-            self._open_settings_editor("output_dir", edit=True)
-        elif name == "text":
-            if self._busy:
-                self._status = "Wait for synthesis to finish before editing text."
-            else:
-                self._open_text_editor()
-        elif name == "segment" and number is not None:
-            if self._busy:
-                self._status = "Wait for synthesis to finish before editing pronunciation."
-            else:
-                self._edit_selected_segment(number)
-        elif name == "generate":
-            self._activate_generate()
-        elif name == "rebuild":
-            self._activate_rebuild_pronunciation()
-        elif name == "candidate" and number is not None:
-            if self._busy:
-                self._status = "Wait for generation to finish before accepting a take."
-            else:
-                self._accept_take(number)
-        elif name == "settings":
-            self._open_settings_editor("style_id")
-        elif name == "help":
-            self._open_help()
-        elif name == "quit":
-            self._activate_quit()
+        self._dispatch_navigation_actions(
+            self._navigation.activate_focused_item(self._navigation_context())
+        )
 
     def _activate_generate(self) -> None:
-        if self._busy:
-            self._status = "A sequential take operation is already running."
-        elif self.session is not None and self.session.has_active_batch:
-            self._start_regenerate_all()
-        else:
-            self._start_generation()
+        self._dispatch_navigation_actions(
+            self._navigation.activate_generate(self._navigation_context())
+        )
 
     def _activate_regenerate_focused(self) -> None:
-        if self._busy:
-            self._status = "Wait for the current synthesis operation to finish."
-        elif self._focus_key[0] != "candidate" or self._focus_key not in self._navigation_items():
-            self._status = "Select a candidate before regenerating it."
-        else:
-            assert self._focus_key[1] is not None
-            self._start_regeneration(self._focus_key[1])
+        self._dispatch_navigation_actions(
+            self._navigation.activate_regenerate_focused(self._navigation_context())
+        )
+
+    def _dispatch_navigation_actions(
+        self,
+        actions: Sequence[NavigationAction],
+    ) -> None:
+        for action in actions:
+            if isinstance(action, ClearAdjustmentFeedback):
+                self._pressed_adjustment = None
+            elif isinstance(action, UpdateNavigationStatus):
+                self._status = action.status
+            elif isinstance(action, OpenSettingsEditor):
+                self._open_settings_editor(action.selected_field, edit=action.edit)
+            elif isinstance(action, OpenTextEditor):
+                self._open_text_editor()
+            elif isinstance(action, EditPronunciationSegment):
+                self._edit_selected_segment(action.index)
+            elif isinstance(action, StartGeneration):
+                self._start_generation()
+            elif isinstance(action, RegenerateAll):
+                self._start_regenerate_all()
+            elif isinstance(action, RebuildPronunciation):
+                self._activate_rebuild_pronunciation()
+            elif isinstance(action, AcceptCandidate):
+                self._accept_take(action.number)
+            elif isinstance(action, RegenerateCandidate):
+                self._start_regeneration(action.number)
+            elif isinstance(action, PlayCandidate):
+                self._current_take = action.number
+                self._play_take(action.number)
+            elif isinstance(action, OpenHelp):
+                self._help_open = True
+            elif isinstance(action, Quit):
+                self._activate_quit()
 
     def _activate_rebuild_pronunciation(self) -> None:
-        if self._busy:
-            self._status = "Wait for the current synthesis operation to finish."
-            return
         if self.session is None:
             return
         self._stop_playback()
@@ -575,12 +554,10 @@ class TuiApp:
             self._status = f"Error: Pronunciation was not rebuilt: {exc}"
             return
         self._editor_controller.clear_groupings()
-        self._current_take = None
-        self._segment_index = 0
-        if self._segments():
-            self._set_focus_key(("segment", 0), moved=True)
-        else:
-            self._set_focus_key(("generate", None), moved=True)
+        self._operations.clear_current_take()
+        self._dispatch_navigation_actions(
+            self._navigation.reset_after_rebuild(self._navigation_context())
+        )
         self._status = "Pronunciation rebuilt from the current Text."
 
     def _adjust_take_count(self, direction: int) -> None:
@@ -602,17 +579,14 @@ class TuiApp:
             self._status = "Finishing the current sequential synthesis before cleanup…"
 
     def _open_help(self) -> None:
-        self._set_focus_key(("help", None), moved=True)
-        self._help_open = True
+        self._dispatch_navigation_actions(
+            self._navigation.open_help(self._navigation_context())
+        )
 
     def _focus_candidate(self, number: int) -> None:
-        key = ("candidate", number)
-        if key not in self._navigation_items():
-            self._status = f"Take {number} has not been generated yet."
-            return
-        self._set_focus_key(key, moved=True)
-        self._current_take = number
-        self._play_take(number)
+        self._dispatch_navigation_actions(
+            self._navigation.focus_candidate(self._navigation_context(), number)
+        )
 
     def _segments(self) -> list[tuple[str, str, int | None]]:
         if self.session is None or self.session.pronunciation_needs_rebuild:
@@ -658,7 +632,7 @@ class TuiApp:
         segments = self._segments()
         if not 0 <= index < len(segments):
             return
-        self._segment_index = index
+        self._navigation.set_segment_index(index)
         self._dispatch_editor_intents(
             self._editor_controller.open_segment(
                 self.session.query,
@@ -736,7 +710,7 @@ class TuiApp:
             except Exception as exc:
                 return SourceTextApplicationResult(error=str(exc))
             needs_rebuild = False
-        self._segment_index = 0
+        self._navigation.reset_segment_index()
         self._current_take = None
         return SourceTextApplicationResult(needs_rebuild=needs_rebuild)
 
