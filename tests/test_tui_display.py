@@ -36,6 +36,25 @@ class TuiDisplayTests(unittest.TestCase):
         self.assertEqual(_adjustable_value("1", 1), "< 1>>")
         self.assertEqual(_adjustable_value("1", 0), "< 1 >")
 
+    def test_adjustable_feedback_forms_are_fixed_width_ascii_with_stable_value_column(self):
+        for value in ("6", "1.00", "1 Neutral"):
+            idle = _adjustable_value(value)
+            left = _adjustable_value(value, -1)
+            right = _adjustable_value(value, 1)
+            self.assertEqual(
+                (idle, left, right),
+                (f"< {value} >", f"<<{value} >", f"< {value}>>"),
+            )
+            self.assertEqual(len(idle), len(left))
+            self.assertEqual(len(idle), len(right))
+            self.assertEqual(
+                (idle.index(value), left.index(value), right.index(value)),
+                (2, 2, 2),
+            )
+            self.assertTrue(idle.isascii() and left.isascii() and right.isascii())
+            self.assertEqual((idle[0], left[0], right[0]), ("<", "<", "<"))
+            self.assertEqual((idle[-1], left[-1], right[-1]), (">", ">", ">"))
+
     def test_character_wrapping_and_truncation_preserve_whole_characters(self):
         self.assertEqual(_wrap_text("A界BC", 3), ["A界", "BC"])
         self.assertEqual(_wrap_text("界", 1), ["界"])

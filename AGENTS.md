@@ -42,6 +42,16 @@ VOICEGER_ROOT=~/voiceger_v2 \
   tests.integration.test_voiceger_runtime -v
 ```
 
+## TUI architecture
+
+- `voiceger_accent_adapter/tui.py` is the TUI composition root, not the default location for new feature logic.
+- Put new TUI behavior in the subsystem that owns the responsibility. Give substantial new TUI state or policy that does not fit an existing subsystem a focused owner rather than enlarging `TuiApp`.
+- Extracted `tui_*` modules must not import `tui.py` or `TuiApp`.
+- Logic reusable by the API, Web UI, or other frontends belongs in shared application/core modules, not TUI-specific modules.
+- Normally test subsystem behavior in its corresponding focused test module; use `tests/test_tui.py` for composition and genuinely cross-subsystem behavior.
+- Keep TUI architecture regression tests green, including the 900-line ceiling for `tui.py`.
+- See [`docs/tui-architecture.md`](docs/tui-architecture.md) for the subsystem ownership map and placement guidance.
+
 ## Manual testing and generated files
 
 - Do not create temporary JSON, WAV, logs, or other test artifacts in the repository root.
