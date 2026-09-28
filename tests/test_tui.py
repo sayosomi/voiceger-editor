@@ -173,6 +173,14 @@ class FakeScreen:
         return self.keys.pop(0)
 
 
+def navigation_document(app, width):
+    return app._renderer.navigation_document(app._render_state(), width)
+
+
+def editor_document(app, width):
+    return app._renderer.editor_document(app._render_state(), width)
+
+
 class TuiTests(unittest.TestCase):
     @staticmethod
     def make_app(*, query=None, candidates=(), groups=None):
@@ -441,7 +449,7 @@ class TuiTests(unittest.TestCase):
     def test_help_and_quit_actions_activate_from_the_continuous_list(self):
         app = self.make_app(query=mixed_query())
         help_action = next(
-            line for line, key in app._navigation_document(80)
+            line for line, key in navigation_document(app, 80)
             if key == ("help", None)
         )
         self.assertIn("Help", help_action)
@@ -463,7 +471,7 @@ class TuiTests(unittest.TestCase):
         app = self.make_app(query=mixed_query())
         labels = {
             key: line
-            for line, key in app._navigation_document(80)
+            for line, key in navigation_document(app, 80)
             if key is not None
         }
         self.assertIn("[s]", labels[("settings", None)])
@@ -492,14 +500,14 @@ class TuiTests(unittest.TestCase):
         app.settings = Settings(take_count=6)
         app._set_focus_key(("generate", None))
         generate = next(
-            line for line, key in app._navigation_document(100)
+            line for line, key in navigation_document(app, 100)
             if key == ("generate", None)
         )
         self.assertIn("[ Generate < 6 > takes ]", generate)
 
         app.session.candidates = (candidate(1),)
         regenerate = next(
-            line for line, key in app._navigation_document(100)
+            line for line, key in navigation_document(app, 100)
             if key == ("generate", None)
         )
         self.assertIn("[ Regenerate all < 6 > takes ]", regenerate)
@@ -509,7 +517,7 @@ class TuiTests(unittest.TestCase):
         app._operation_total = 6
         app._operation_completed = 1
         busy_generate = next(
-            line for line, key in app._navigation_document(100)
+            line for line, key in navigation_document(app, 100)
             if key == ("generate", None)
         )
         self.assertIn("[ Generating 2/6 ]", busy_generate)
@@ -518,7 +526,7 @@ class TuiTests(unittest.TestCase):
 
         app._worker_operation = "regenerate_all"
         busy_regenerate = next(
-            line for line, key in app._navigation_document(100)
+            line for line, key in navigation_document(app, 100)
             if key == ("generate", None)
         )
         self.assertIn("[ Regenerating 2/6 ]", busy_regenerate)
@@ -535,8 +543,8 @@ class TuiTests(unittest.TestCase):
         )
         settings._open_settings_editor()
         styles = (SimpleNamespace(id=1, name="Neutral"),)
-        with patch("voiceger_accent_adapter.tui.available_styles", return_value=styles):
-            document, _cursor_line, _cursor_column = settings._editor_document(100)
+        with patch("voiceger_accent_adapter.tui_rendering.available_styles", return_value=styles):
+            document, _cursor_line, _cursor_column = editor_document(settings, 100)
         rows = {key: line for line, key in document if isinstance(key, str)}
         self.assertIn("Style: < 1 Neutral >", rows["style_id"])
         self.assertIn("Speed: < 1.00 >", rows["speed"])
@@ -550,7 +558,7 @@ class TuiTests(unittest.TestCase):
         settings._set_focus_key(("settings_summary", None))
         screen = FakeScreen(columns=100)
         settings._screen = screen
-        with patch("voiceger_accent_adapter.tui.available_styles", return_value=styles):
+        with patch("voiceger_accent_adapter.tui_rendering.available_styles", return_value=styles):
             settings._render()
         summary = next(text for row, _column, text, _attr in screen.drawn if row == 1)
         output = next(text for row, _column, text, _attr in screen.drawn if row == 2)
@@ -569,7 +577,7 @@ class TuiTests(unittest.TestCase):
             app._handle_key(curses.KEY_LEFT)
             self.assertEqual(app.settings.take_count, 1)
             left_label = next(
-                line for line, key in app._navigation_document(100)
+                line for line, key in navigation_document(app, 100)
                 if key == ("generate", None)
             )
             self.assertIn("[ Generate <<1 > takes ]", left_label)
@@ -587,7 +595,7 @@ class TuiTests(unittest.TestCase):
             app._handle_key(curses.KEY_RIGHT)
             self.assertEqual(app.settings.take_count, 8)
             right_label = next(
-                line for line, key in app._navigation_document(100)
+                line for line, key in navigation_document(app, 100)
                 if key == ("generate", None)
             )
             self.assertIn("[ Generate < 8>> takes ]", right_label)
@@ -596,7 +604,7 @@ class TuiTests(unittest.TestCase):
             app._handle_key(curses.KEY_DOWN)
             self.assertEqual(app._focus_key, ("generate", None))
             idle_label = next(
-                line for line, key in app._navigation_document(100)
+                line for line, key in navigation_document(app, 100)
                 if key == ("generate", None)
             )
             self.assertIn("[ Generate < 8 > takes ]", idle_label)
@@ -611,12 +619,15 @@ class TuiTests(unittest.TestCase):
         app._open_settings_editor()
         editor = app._editor
 
-        with patch("voiceger_accent_adapter.tui.available_styles", return_value=styles):
+        with patch("voiceger_accent_adapter.tui.available_styles", return_value=styles), patch(
+            "voiceger_accent_adapter.tui_rendering.available_styles",
+            return_value=styles,
+        ):
             editor.selection = "style_id"
             app._handle_editor_key(curses.KEY_LEFT)
             self.assertEqual(editor.payload["draft_settings"]["style_id"], "1")
             style_left = next(
-                line for line, key in app._editor_document(100)[0]
+                line for line, key in editor_document(app, 100)[0]
                 if key == "style_id"
             )
             self.assertIn("Style: <<1 Neutral >", style_left)
@@ -627,7 +638,7 @@ class TuiTests(unittest.TestCase):
             app._handle_editor_key(curses.KEY_RIGHT)
             self.assertEqual(editor.payload["draft_settings"]["style_id"], "2")
             style_right = next(
-                line for line, key in app._editor_document(100)[0]
+                line for line, key in editor_document(app, 100)[0]
                 if key == "style_id"
             )
             self.assertIn("Style: < 2 Sweet>>", style_right)
@@ -638,7 +649,7 @@ class TuiTests(unittest.TestCase):
             app._handle_editor_key(curses.KEY_LEFT)
             self.assertEqual(editor.payload["draft_settings"]["speed"], "0.01")
             speed_left = next(
-                line for line, key in app._editor_document(100)[0]
+                line for line, key in editor_document(app, 100)[0]
                 if key == "speed"
             )
             self.assertIn("Speed: <<0.01 >", speed_left)
@@ -655,7 +666,7 @@ class TuiTests(unittest.TestCase):
             app._handle_editor_key(curses.KEY_LEFT)
             self.assertEqual(editor.payload["draft_settings"]["take_count"], "1")
             take_left = next(
-                line for line, key in app._editor_document(100)[0]
+                line for line, key in editor_document(app, 100)[0]
                 if key == "take_count"
             )
             self.assertIn("Take count: <<1 >", take_left)
@@ -665,7 +676,7 @@ class TuiTests(unittest.TestCase):
             app._handle_editor_key(curses.KEY_RIGHT)
             self.assertEqual(editor.payload["draft_settings"]["take_count"], "8")
             take_right = next(
-                line for line, key in app._editor_document(100)[0]
+                line for line, key in editor_document(app, 100)[0]
                 if key == "take_count"
             )
             self.assertIn("Take count: < 8>>", take_right)
@@ -675,7 +686,7 @@ class TuiTests(unittest.TestCase):
             app._handle_editor_key(curses.KEY_LEFT)
             self.assertFalse(editor.payload["draft_settings"]["save_text"])
             txt_left = next(
-                line for line, key in app._editor_document(100)[0]
+                line for line, key in editor_document(app, 100)[0]
                 if key == "save_text"
             )
             self.assertIn("TXT sidecar: <<OFF >", txt_left)
@@ -684,7 +695,7 @@ class TuiTests(unittest.TestCase):
             app._handle_editor_key(curses.KEY_RIGHT)
             self.assertTrue(editor.payload["draft_settings"]["save_text"])
             txt_right = next(
-                line for line, key in app._editor_document(100)[0]
+                line for line, key in editor_document(app, 100)[0]
                 if key == "save_text"
             )
             self.assertIn("TXT sidecar: < ON>>", txt_right)
@@ -693,13 +704,13 @@ class TuiTests(unittest.TestCase):
             app._handle_editor_key(curses.KEY_RIGHT)
             app._handle_editor_key(curses.KEY_DOWN)
             self.assertEqual(editor.selection, "speed")
-            document, _cursor_line, _cursor_column = app._editor_document(100)
+            document, _cursor_line, _cursor_column = editor_document(app, 100)
             speed = next(line for line, key in document if key == "speed")
             self.assertIn("Speed: < 0.01 >", speed)
 
             screen = FakeScreen(columns=100)
             app._screen = screen
-            with patch("voiceger_accent_adapter.tui.available_styles", return_value=styles):
+            with patch("voiceger_accent_adapter.tui_rendering.available_styles", return_value=styles):
                 app._render()
             self.assertIsNone(app._pressed_adjustment)
             app._render()
@@ -808,7 +819,7 @@ class TuiTests(unittest.TestCase):
     def test_pronunciation_rows_are_compact_selectable_actions(self):
         app = self.make_app(query=mixed_query(["HH", "AH1"]))
         app._set_focus_key(("segment", 0))
-        rows = app._navigation_document(80)
+        rows = navigation_document(app, 80)
         labels = {key: line for line, key in rows if key is not None}
 
         self.assertEqual(labels[("segment", 0)], "▶ JA | 雨 | ア'")
@@ -830,7 +841,7 @@ class TuiTests(unittest.TestCase):
         app = self.make_app(query=mixed_query())
         app.session.source_text = source
         app._set_focus_key(("text", None))
-        rows = app._navigation_document(24)
+        rows = navigation_document(app, 24)
         text_rows = [(line, key) for line, key in rows if key == ("text", None)]
         text_index = next(i for i, (_line, key) in enumerate(rows) if key == ("text", None))
         continuations = []
@@ -851,7 +862,7 @@ class TuiTests(unittest.TestCase):
 
     def test_no_candidates_are_rendered_on_one_compact_line(self):
         app = self.make_app(query=mixed_query())
-        rows = app._navigation_document(80)
+        rows = navigation_document(app, 80)
         self.assertIn(("Candidates   No candidates yet.", None), rows)
         self.assertEqual(sum("No candidates yet." in line for line, _ in rows), 1)
 
@@ -1004,7 +1015,7 @@ class TuiTests(unittest.TestCase):
         app._open_text_editor("新しい日本語 new English")
         app._handle_editor_key("\n")
 
-        rows = app._navigation_document(100)
+        rows = navigation_document(app, 100)
         rendered = "\n".join(line for line, _key in rows)
         self.assertIn("新しい日本語", rendered)
         self.assertIn("new English", rendered)
@@ -1019,7 +1030,7 @@ class TuiTests(unittest.TestCase):
         app._handle_editor_key("\n")
 
         items = app._navigation_items()
-        rows = app._navigation_document(80)
+        rows = navigation_document(app, 80)
         rendered = "\n".join(line for line, _key in rows)
         self.assertNotIn(("segment", 0), items)
         self.assertNotIn(("segment", 1), items)
@@ -1391,7 +1402,7 @@ class TuiTests(unittest.TestCase):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
         app._current_take = 2
         app._set_focus_key(("candidate", 2))
-        rows = app._navigation_document(80)
+        rows = navigation_document(app, 80)
         labels = [line for line, _key in rows]
         self.assertIn("  Take 1  0.01s", labels)
         self.assertIn("▶ Take 2  0.01s", labels)
@@ -1408,7 +1419,7 @@ class TuiTests(unittest.TestCase):
         app._operation_total = 4
 
         items = app._navigation_items()
-        rows = app._navigation_document(80)
+        rows = navigation_document(app, 80)
         labels = {key: line for line, key in rows if key is not None}
 
         self.assertNotIn("regenerate_selected", [key[0] for key in items])
@@ -1471,7 +1482,7 @@ class TuiTests(unittest.TestCase):
         app._screen = screen
         app._render()
         rendered = self.rendered(screen)
-        document = app._navigation_document(80)
+        document = navigation_document(app, 80)
         segment_position = next(
             index for index, (_text, key) in enumerate(document)
             if key == ("segment", 0)
