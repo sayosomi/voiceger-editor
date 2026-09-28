@@ -13,6 +13,7 @@ from unittest.mock import Mock, call, patch
 from voiceger_accent_adapter.settings import Settings
 from voiceger_accent_adapter.tui import (
     _HELP_ITEMS,
+    _adjustable_value,
     TuiApp,
     build_argument_parser,
     format_english_phonemes,
@@ -469,6 +470,244 @@ class TuiTests(unittest.TestCase):
         self.assertIn("[?]", labels[("help", None)])
         self.assertIn("[q]", labels[("quit", None)])
 
+    def test_adjustable_feedback_forms_are_fixed_width_ascii_with_stable_value_column(self):
+        for value in ("6", "1.00", "1 Neutral"):
+            idle = _adjustable_value(value)
+            left = _adjustable_value(value, -1)
+            right = _adjustable_value(value, 1)
+            self.assertEqual((idle, left, right), (
+                f"< {value} >",
+                f"<<{value} >",
+                f"< {value}>>",
+            ))
+            self.assertEqual(len(idle), len(left))
+            self.assertEqual(len(idle), len(right))
+            self.assertEqual((idle.index(value), left.index(value), right.index(value)), (2, 2, 2))
+            self.assertTrue(idle.isascii() and left.isascii() and right.isascii())
+            self.assertEqual((idle[0], left[0], right[0]), ("<", "<", "<"))
+            self.assertEqual((idle[-1], left[-1], right[-1]), (">", ">", ">"))
+
+    def test_idle_generate_and_settings_rows_advertise_adjustable_values(self):
+        app = self.make_app(query=mixed_query())
+        app.settings = Settings(take_count=6)
+        app._set_focus_key(("generate", None))
+        generate = next(
+            line for line, key in app._navigation_document(100)
+            if key == ("generate", None)
+        )
+        self.assertIn("[ Generate < 6 > takes ]", generate)
+
+        app.session.candidates = (candidate(1),)
+        regenerate = next(
+            line for line, key in app._navigation_document(100)
+            if key == ("generate", None)
+        )
+        self.assertIn("[ Regenerate all < 6 > takes ]", regenerate)
+
+        app._busy = True
+        app._worker_operation = "initial"
+        app._operation_total = 6
+        app._operation_completed = 1
+        busy_generate = next(
+            line for line, key in app._navigation_document(100)
+            if key == ("generate", None)
+        )
+        self.assertIn("[ Generating 2/6 ]", busy_generate)
+        self.assertNotIn("<", busy_generate)
+        self.assertNotIn(">", busy_generate)
+
+        app._worker_operation = "regenerate_all"
+        busy_regenerate = next(
+            line for line, key in app._navigation_document(100)
+            if key == ("generate", None)
+        )
+        self.assertIn("[ Regenerating 2/6 ]", busy_regenerate)
+        self.assertNotIn("<", busy_regenerate)
+        self.assertNotIn(">", busy_regenerate)
+
+        settings = self.make_app(query=mixed_query())
+        settings.settings = Settings(
+            style_id=1,
+            speed=1.0,
+            take_count=4,
+            output_dir=Path("/tmp/voiceger-output"),
+            save_text=True,
+        )
+        settings._open_settings_editor()
+        styles = (SimpleNamespace(id=1, name="Neutral"),)
+        with patch("voiceger_accent_adapter.tui.available_styles", return_value=styles):
+            document, _cursor_line, _cursor_column = settings._editor_document(100)
+        rows = {key: line for line, key in document if isinstance(key, str)}
+        self.assertIn("Style: < 1 Neutral >", rows["style_id"])
+        self.assertIn("Speed: < 1.00 >", rows["speed"])
+        self.assertIn("Take count: < 4 >", rows["take_count"])
+        self.assertIn("TXT sidecar: < ON >", rows["save_text"])
+        self.assertIn("Output directory: /tmp/voiceger-output", rows["output_dir"])
+        self.assertNotIn("<", rows["output_dir"])
+        self.assertNotIn(">", rows["output_dir"])
+
+        settings._editor = None
+        settings._set_focus_key(("settings_summary", None))
+        screen = FakeScreen(columns=100)
+        settings._screen = screen
+        with patch("voiceger_accent_adapter.tui.available_styles", return_value=styles):
+            settings._render()
+        summary = next(text for row, _column, text, _attr in screen.drawn if row == 1)
+        output = next(text for row, _column, text, _attr in screen.drawn if row == 2)
+        self.assertNotIn("<", summary)
+        self.assertNotIn(">", summary)
+        self.assertNotIn("<", output)
+        self.assertNotIn(">", output)
+
+    def test_pressed_generate_feedback_clears_after_render_and_at_boundaries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(query=mixed_query())
+            app.config_path = Path(directory) / "settings.json"
+            app.settings = Settings(take_count=1)
+            app._persisted_settings = app.settings
+            app._set_focus_key(("generate", None))
+            app._handle_key(curses.KEY_LEFT)
+            self.assertEqual(app.settings.take_count, 1)
+            left_label = next(
+                line for line, key in app._navigation_document(100)
+                if key == ("generate", None)
+            )
+            self.assertIn("[ Generate <<1 > takes ]", left_label)
+
+            screen = FakeScreen(columns=100)
+            app._screen = screen
+            app._render()
+            self.assertTrue(any("[ Generate <<1 > takes ]" in text for _row, _column, text, _attr in screen.drawn))
+            self.assertIsNone(app._pressed_adjustment)
+            app._render()
+            self.assertTrue(any("[ Generate < 1 > takes ]" in text for _row, _column, text, _attr in screen.drawn))
+
+            app.settings = Settings(take_count=8)
+            app._persisted_settings = app.settings
+            app._handle_key(curses.KEY_RIGHT)
+            self.assertEqual(app.settings.take_count, 8)
+            right_label = next(
+                line for line, key in app._navigation_document(100)
+                if key == ("generate", None)
+            )
+            self.assertIn("[ Generate < 8>> takes ]", right_label)
+
+            app._handle_key(curses.KEY_UP)
+            app._handle_key(curses.KEY_DOWN)
+            self.assertEqual(app._focus_key, ("generate", None))
+            idle_label = next(
+                line for line, key in app._navigation_document(100)
+                if key == ("generate", None)
+            )
+            self.assertIn("[ Generate < 8 > takes ]", idle_label)
+
+    def test_settings_boundary_feedback_and_movement_do_not_leak_between_rows(self):
+        app = self.make_app(query=mixed_query())
+        app.settings = Settings(style_id=1, speed=0.01, take_count=1, save_text=False)
+        styles = (
+            SimpleNamespace(id=1, name="Neutral"),
+            SimpleNamespace(id=2, name="Sweet"),
+        )
+        app._open_settings_editor()
+        editor = app._editor
+
+        with patch("voiceger_accent_adapter.tui.available_styles", return_value=styles):
+            editor.selection = "style_id"
+            app._handle_editor_key(curses.KEY_LEFT)
+            self.assertEqual(editor.payload["draft_settings"]["style_id"], "1")
+            style_left = next(
+                line for line, key in app._editor_document(100)[0]
+                if key == "style_id"
+            )
+            self.assertIn("Style: <<1 Neutral >", style_left)
+            value_column = style_left.index("1 Neutral")
+
+            editor.selection = "style_id"
+            editor.payload["draft_settings"]["style_id"] = "2"
+            app._handle_editor_key(curses.KEY_RIGHT)
+            self.assertEqual(editor.payload["draft_settings"]["style_id"], "2")
+            style_right = next(
+                line for line, key in app._editor_document(100)[0]
+                if key == "style_id"
+            )
+            self.assertIn("Style: < 2 Sweet>>", style_right)
+            self.assertEqual(style_right.index("2 Sweet"), value_column)
+
+            editor.selection = "speed"
+            editor.payload["draft_settings"]["speed"] = "0.01"
+            app._handle_editor_key(curses.KEY_LEFT)
+            self.assertEqual(editor.payload["draft_settings"]["speed"], "0.01")
+            speed_left = next(
+                line for line, key in app._editor_document(100)[0]
+                if key == "speed"
+            )
+            self.assertIn("Speed: <<0.01 >", speed_left)
+            speed_screen = FakeScreen(columns=100)
+            app._screen = speed_screen
+            app._render()
+            self.assertTrue(any("Speed: <<0.01 >" in text for _row, _column, text, _attr in speed_screen.drawn))
+            self.assertIsNone(app._pressed_adjustment)
+            app._render()
+            self.assertTrue(any("Speed: < 0.01 >" in text for _row, _column, text, _attr in speed_screen.drawn))
+
+            editor.selection = "take_count"
+            editor.payload["draft_settings"]["take_count"] = "1"
+            app._handle_editor_key(curses.KEY_LEFT)
+            self.assertEqual(editor.payload["draft_settings"]["take_count"], "1")
+            take_left = next(
+                line for line, key in app._editor_document(100)[0]
+                if key == "take_count"
+            )
+            self.assertIn("Take count: <<1 >", take_left)
+
+            editor.selection = "take_count"
+            editor.payload["draft_settings"]["take_count"] = "8"
+            app._handle_editor_key(curses.KEY_RIGHT)
+            self.assertEqual(editor.payload["draft_settings"]["take_count"], "8")
+            take_right = next(
+                line for line, key in app._editor_document(100)[0]
+                if key == "take_count"
+            )
+            self.assertIn("Take count: < 8>>", take_right)
+
+            editor.selection = "save_text"
+            editor.payload["draft_settings"]["save_text"] = False
+            app._handle_editor_key(curses.KEY_LEFT)
+            self.assertFalse(editor.payload["draft_settings"]["save_text"])
+            txt_left = next(
+                line for line, key in app._editor_document(100)[0]
+                if key == "save_text"
+            )
+            self.assertIn("TXT sidecar: <<OFF >", txt_left)
+            editor.selection = "save_text"
+            editor.payload["draft_settings"]["save_text"] = True
+            app._handle_editor_key(curses.KEY_RIGHT)
+            self.assertTrue(editor.payload["draft_settings"]["save_text"])
+            txt_right = next(
+                line for line, key in app._editor_document(100)[0]
+                if key == "save_text"
+            )
+            self.assertIn("TXT sidecar: < ON>>", txt_right)
+
+            editor.selection = "style_id"
+            app._handle_editor_key(curses.KEY_RIGHT)
+            app._handle_editor_key(curses.KEY_DOWN)
+            self.assertEqual(editor.selection, "speed")
+            document, _cursor_line, _cursor_column = app._editor_document(100)
+            speed = next(line for line, key in document if key == "speed")
+            self.assertIn("Speed: < 0.01 >", speed)
+
+            screen = FakeScreen(columns=100)
+            app._screen = screen
+            with patch("voiceger_accent_adapter.tui.available_styles", return_value=styles):
+                app._render()
+            self.assertIsNone(app._pressed_adjustment)
+            app._render()
+            rendered = self.rendered(screen)
+            self.assertIn("Speed: < 0.01 >", rendered)
+            self.assertNotIn("<<", rendered)
+            self.assertNotIn(">>", rendered)
+
     def test_help_updates_tab_guidance_and_bolds_only_key_spans(self):
         app = self.make_app(query=mixed_query())
         app._help_open = True
@@ -477,16 +716,17 @@ class TuiTests(unittest.TestCase):
         app._render()
 
         drawn = {(row, column, text): attr for row, column, text, attr in screen.drawn}
-        for item in _HELP_ITEMS:
-            key, separator, explanation = item.partition(":")
-            self.assertTrue(separator)
-            key_span = f"{key}:"
-            key_attr = drawn[(2 + _HELP_ITEMS.index(item), 1, key_span)]
-            self.assertTrue(key_attr & curses.A_BOLD)
-            description_attr = drawn[
-                (2 + _HELP_ITEMS.index(item), 1 + len(key_span), explanation)
+        for index, (shortcut, suffix) in enumerate(_HELP_ITEMS):
+            if shortcut is None:
+                normal_attr = drawn[(2 + index, 1, suffix)]
+                self.assertFalse(normal_attr & curses.A_BOLD)
+                continue
+            shortcut_attr = drawn[(2 + index, 1, shortcut)]
+            self.assertTrue(shortcut_attr & curses.A_BOLD)
+            suffix_attr = drawn[
+                (2 + index, 1 + len(shortcut), suffix)
             ]
-            self.assertFalse(description_attr & curses.A_BOLD)
+            self.assertFalse(suffix_attr & curses.A_BOLD)
 
         rendered = "\n".join(
             "".join(
@@ -519,7 +759,7 @@ class TuiTests(unittest.TestCase):
         app._render()
 
         first_item = [item for item in screen.drawn if item[0] in (2, 3)]
-        self.assertIn((2, 1, "Up/Down:", curses.A_BOLD), first_item)
+        self.assertIn((2, 1, "Up/Down", curses.A_BOLD), first_item)
         self.assertTrue(any(row == 2 and column > 1 for row, column, _text, _attr in first_item))
         explanation = "".join(
             text for row, column, text, _attr in first_item
