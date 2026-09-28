@@ -60,6 +60,16 @@ VOICEGER_ROOT=~/voiceger_v2 \
 - Prefer streaming synthesized audio directly to a player when the output does not need to be kept.
 - If an artifact needs to be preserved as part of the project, place it in an appropriate tracked directory instead of `scratch/`.
 
+### Manual E2E lifecycle
+
+- Use one stable disposable scratch directory per Issue, normally `scratch/issue<N>-e2e`.
+- At E2E start, treat stale contents in that exact directory as expected residue from an interrupted or previous run: remove the exact directory automatically, then recreate it cleanly. Do not block merely because it already exists.
+- Automatic cleanup must target only the exact known E2E scratch directory. Do not use broad wildcards and do not delete unrelated `scratch/` content.
+- Do not create accumulating fallback directories such as `issue<N>-e2e-resume`. Reuse the canonical path after cleanup.
+- Keep the E2E config, generated audio, logs, and other disposable outputs inside that canonical scratch directory so cleanup is one operation and does not affect normal user settings.
+- For Human-facing macOS lifecycle setup/cleanup commands, use absolute system-tool paths such as `/bin/rm` and `/bin/mkdir` rather than relying on the interactive `PATH` for those commands.
+- At E2E end, first preserve any evidence that must survive the run, then remove the exact E2E scratch directory and verify that it no longer exists.
+- If a run is interrupted before teardown, no special recovery directory or manual cleanup phase is required: the next E2E start performs the same exact-path cleanup before recreating the workspace.
 Examples:
 
 ```bash
