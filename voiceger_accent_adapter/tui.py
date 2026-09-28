@@ -4,15 +4,12 @@ from __future__ import annotations
 
 import argparse
 import curses
-from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import replace
 import os
 from pathlib import Path
-import queue
 import shutil
 import subprocess
 import sys
-from threading import Thread
 from typing import Any, Sequence
 
 from .english_stress import (
@@ -66,6 +63,15 @@ from .tui_editors import (
     SourceTextApplicationResult,
     TuiEditorController,
     UpdateStatusIntent,
+)
+from .tui_operations import (
+    DiscardInitialBatchEffect,
+    FocusEffect,
+    OperationEffect,
+    PlayTakeEffect,
+    StopPlaybackEffect,
+    TuiOperations,
+    UpdateStatusEffect,
 )
 from .voiceger_adapter import VoicegerAdapter
 
@@ -135,23 +141,17 @@ class TuiApp:
         self.session: UtteranceSession | None = None
         self._initial_text = source_text
         self._screen: Any = None
-        self._events: queue.Queue[tuple[str, Any]] = queue.Queue()
-        self._worker: Thread | None = None
-        self._worker_operation: str | None = None
-        self._worker_target: int | None = None
-        self._worker_error: BaseException | None = None
-        self._busy = False
+        self._operations = TuiOperations(
+            platform=lambda: sys.platform,
+            which=lambda name: shutil.which(name),
+            popen=lambda *args, **kwargs: subprocess.Popen(*args, **kwargs),
+        )
         self._exit_requested = False
         self._focus = "settings_summary"
         self._focus_key: tuple[str, int | None] = ("settings_summary", None)
         self._navigation_revision = 0
-        self._operation_focus_revision = 0
-        self._operation_completed = 0
-        self._operation_total = 0
         self._segment_index = 0
-        self._current_take: int | None = None
         self._status = "Enter text, edit pronunciation, then press F5 to generate."
-        self._player: subprocess.Popen[Any] | None = None
         self._help_open = False
         self._editor_controller = TuiEditorController(
             english_word_groups=self.adapter.english_word_phoneme_groups,
@@ -172,6 +172,94 @@ class TuiApp:
     @property
     def _english_groupings(self) -> dict[int, _EnglishGroupingCache]:
         return self._editor_controller.grouping_cache
+
+    @property
+    def _events(self) -> Any:
+        return self._operations.events
+
+    @_events.setter
+    def _events(self, events: Any) -> None:
+        self._operations.events = events
+
+    @property
+    def _worker(self) -> Any:
+        return self._operations.worker
+
+    @_worker.setter
+    def _worker(self, worker: Any) -> None:
+        self._operations.worker = worker
+
+    @property
+    def _worker_operation(self) -> str | None:
+        return self._operations.worker_operation
+
+    @_worker_operation.setter
+    def _worker_operation(self, operation: str | None) -> None:
+        self._operations.worker_operation = operation
+
+    @property
+    def _worker_target(self) -> int | None:
+        return self._operations.worker_target
+
+    @_worker_target.setter
+    def _worker_target(self, target: int | None) -> None:
+        self._operations.worker_target = target
+
+    @property
+    def _worker_error(self) -> BaseException | None:
+        return self._operations.worker_error
+
+    @_worker_error.setter
+    def _worker_error(self, error: BaseException | None) -> None:
+        self._operations.worker_error = error
+
+    @property
+    def _busy(self) -> bool:
+        return self._operations.busy
+
+    @_busy.setter
+    def _busy(self, busy: bool) -> None:
+        self._operations.busy = busy
+
+    @property
+    def _operation_focus_revision(self) -> int:
+        return self._operations.operation_focus_revision
+
+    @_operation_focus_revision.setter
+    def _operation_focus_revision(self, revision: int) -> None:
+        self._operations.operation_focus_revision = revision
+
+    @property
+    def _operation_completed(self) -> int:
+        return self._operations.operation_completed
+
+    @_operation_completed.setter
+    def _operation_completed(self, completed: int) -> None:
+        self._operations.operation_completed = completed
+
+    @property
+    def _operation_total(self) -> int:
+        return self._operations.operation_total
+
+    @_operation_total.setter
+    def _operation_total(self, total: int) -> None:
+        self._operations.operation_total = total
+
+    @property
+    def _current_take(self) -> int | None:
+        return self._operations.current_take
+
+    @_current_take.setter
+    def _current_take(self, number: int | None) -> None:
+        self._operations.current_take = number
+
+    @property
+    def _player(self) -> Any:
+        return self._operations.playback_process
+
+    @_player.setter
+    def _player(self, process: Any) -> None:
+        self._operations.playback_process = process
 
     def run(self, screen: Any) -> None:
         self._screen = screen
@@ -216,16 +304,14 @@ class TuiApp:
                 self._render()
                 self._read_key()
         finally:
-            worker = self._worker
             try:
-                if worker is not None and worker.ident is not None:
-                    worker.join()
+                self._operations.join_worker()
             finally:
                 try:
                     self._stop_playback()
                 finally:
                     if self.session is not None and (
-                        worker is None or not worker.is_alive()
+                        not self._operations.worker_is_alive()
                     ):
                         self.session.close()
 
@@ -720,50 +806,31 @@ class TuiApp:
                 self._status = "Settings saved. Existing temporary takes were cleared."
 
     def _start_generation(self) -> None:
-        if self._busy:
-            self._status = "A sequential take operation is already running."
-            return
-        if self.session is None:
-            return
-        if self.session.has_active_batch:
-            self._status = "A take batch already exists; use R to regenerate all takes."
-            return
-        try:
-            iterator = self.session.generate_takes()
-        except Exception as exc:
-            self._status = f"Error: Could not start take generation: {exc}"
-            return
-        self._current_take = None
-        self._run_in_worker(
-            lambda: iterator,
-            f"Generating 1/{self.settings.take_count}",
-            operation="initial",
+        self._dispatch_operation_effects(
+            self._operations.start_generation(
+                self.session,
+                take_count=self.settings.take_count,
+                navigation_revision=self._navigation_revision,
+            )
         )
 
     def _start_regeneration(self, number: int) -> None:
-        if self.session is None:
-            return
-        self._stop_playback()
-        self._current_take = number
-        self._run_in_worker(
-            lambda: (self.session.regenerate_take(number),),
-            f"Regenerating take {number}…",
-            operation="regenerate_one",
-            target=number,
+        self._dispatch_operation_effects(
+            self._operations.start_regeneration(
+                self.session,
+                number,
+                take_count=self.settings.take_count,
+                navigation_revision=self._navigation_revision,
+            )
         )
 
     def _start_regenerate_all(self) -> None:
-        if self.session is None:
-            return
-        try:
-            iterator = self.session.regenerate_all_takes()
-        except Exception as exc:
-            self._status = f"Error: Could not regenerate all takes: {exc}"
-            return
-        self._run_in_worker(
-            lambda: iterator,
-            f"Regenerating 1/{self.settings.take_count}",
-            operation="regenerate_all",
+        self._dispatch_operation_effects(
+            self._operations.start_regenerate_all(
+                self.session,
+                take_count=self.settings.take_count,
+                navigation_revision=self._navigation_revision,
+            )
         )
 
     def _run_in_worker(
@@ -774,160 +841,60 @@ class TuiApp:
         operation: str,
         target: int | None = None,
     ) -> None:
-        self._busy = True
-        self._worker_operation = operation
-        self._worker_target = target
-        self._worker_error = None
-        self._status = status
-        self._operation_focus_revision = self._navigation_revision
-        self._operation_completed = 0
-        self._operation_total = 1 if operation == "regenerate_one" else self.settings.take_count
-
-        def work() -> None:
-            try:
-                with open(os.devnull, "w", encoding="utf-8") as sink:
-                    with redirect_stdout(sink), redirect_stderr(sink):
-                        for candidate in make_values():
-                            self._events.put(("candidate", candidate))
-            except BaseException as exc:
-                self._events.put(("error", exc))
-            finally:
-                self._events.put(("done", None))
-
-        self._worker = Thread(target=work, name="voiceger-tui-synthesis", daemon=True)
-        self._worker.start()
+        self._dispatch_operation_effects(
+            self._operations.run_worker(
+                make_values,
+                status,
+                operation=operation,
+                target=target,
+                take_count=self.settings.take_count,
+                navigation_revision=self._navigation_revision,
+            )
+        )
 
     def _consume_events(self) -> None:
-        while True:
-            try:
-                kind, value = self._events.get_nowait()
-            except queue.Empty:
-                return
-            if kind == "candidate":
-                operation = self._worker_operation
-                self._operation_completed += 1
-                if operation == "initial":
-                    self._status = (
-                        f"Generating {min(self._operation_completed + 1, self._operation_total)}"
-                        f"/{self._operation_total} · {self._operation_completed} ready"
-                    )
-                elif operation == "regenerate_all":
-                    self._status = (
-                        f"Regenerating {min(self._operation_completed + 1, self._operation_total)}"
-                        f"/{self._operation_total} · {self._operation_completed} ready"
-                    )
-                else:
-                    self._status = f"Take {value.number} replacement ready."
-                if operation == "initial":
-                    if (
-                        self._operation_completed == 1
-                        and self._navigation_revision == self._operation_focus_revision
-                    ):
-                        self._current_take = value.number
-                        self._set_focus_key(("candidate", value.number))
-                        self._play_take(value.number)
-                elif operation == "regenerate_one":
-                    if (
-                        value.number == self._worker_target
-                        and self._current_take == value.number
-                    ):
-                        self._play_take(value.number)
-                elif operation == "regenerate_all":
-                    if value.number == self._current_take:
-                        self._play_take(value.number)
-            elif kind == "error":
-                self._worker_error = value
-                self._status = f"Error: Generation failed: {value}"
-                if self._worker_operation == "initial":
-                    self._stop_playback()
-                    if self.session is not None:
-                        self.session.discard_takes()
-                    self._current_take = None
-                    self._set_focus_key(("segment", self._segment_index))
-            elif kind == "done":
-                operation = self._worker_operation
-                self._busy = False
-                if self._worker_error is not None:
-                    self._status = f"Error: Generation failed: {self._worker_error}"
-                elif operation == "initial" and self.session is not None and self.session.candidates:
-                    self._status = f"{len(self.session.candidates)} take(s) ready."
-                elif operation in {"regenerate_one", "regenerate_all"}:
-                    self._status = "Take regeneration finished."
-                elif not self._exit_requested:
-                    self._status = "No takes were generated. Select Generate to try again."
-                self._worker_operation = None
-                self._worker_target = None
+        effects = self._operations.consume_pending_events(
+            self.session,
+            navigation_revision=self._navigation_revision,
+            segment_index=self._segment_index,
+            exit_requested=self._exit_requested,
+        )
+        self._dispatch_operation_effects(effects)
+
+    def _dispatch_operation_effects(
+        self,
+        effects: Sequence[OperationEffect],
+    ) -> None:
+        for effect in effects:
+            if isinstance(effect, UpdateStatusEffect):
+                self._status = effect.status
+            elif isinstance(effect, FocusEffect):
+                self._set_focus_key(effect.focus_key)
+            elif isinstance(effect, PlayTakeEffect):
+                self._play_take(effect.number)
+            elif isinstance(effect, StopPlaybackEffect):
+                self._stop_playback()
+            elif isinstance(effect, DiscardInitialBatchEffect):
+                if self.session is not None:
+                    self.session.discard_takes()
 
     def _play_take(self, number: int) -> None:
-        if self.session is None:
-            return
-        candidate = next(
-            (item for item in self.session.candidates if item.number == number),
-            None,
+        self._dispatch_operation_effects(
+            self._operations.play_take(self.session, number)
         )
-        if candidate is None:
-            self._status = f"Take {number} is not available yet."
-            return
-        self._stop_playback()
-        try:
-            if sys.platform == "darwin":
-                player = shutil.which("afplay")
-                if player:
-                    command = [player, str(candidate.wav_path)]
-                else:
-                    player = shutil.which("ffplay")
-                    command = (
-                        [player, "-nodisp", "-autoexit", "-loglevel", "error", str(candidate.wav_path)]
-                        if player
-                        else None
-                    )
-            else:
-                player = shutil.which("ffplay")
-                command = (
-                    [player, "-nodisp", "-autoexit", "-loglevel", "error", str(candidate.wav_path)]
-                    if player
-                    else None
-                )
-            if command is None:
-                self._status = "Error: Playback needs afplay (macOS) or ffplay (other systems)."
-                return
-            self._player = subprocess.Popen(
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            self._current_take = number
-            self._status = f"Playing take {number}."
-        except OSError as exc:
-            self._status = f"Error: Could not play take {number}: {exc}"
 
     def _stop_playback(self) -> None:
-        process = self._player
-        self._player = None
-        if process is None:
-            return
-        if process.poll() is None:
-            process.terminate()
-        try:
-            process.wait(timeout=0.25)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
+        self._operations.stop_playback()
 
     def _accept_take(self, number: int) -> None:
-        if self.session is None or self._busy:
-            return
-        self._stop_playback()
-        try:
-            saved = self.session.accept_take(number)
-        except Exception as exc:
-            self._status = f"Error: Could not save take {number}: {exc}"
-            return
-        self._current_take = None
-        self._set_focus_key(("segment", self._segment_index))
-        sidecar = f" and {saved.text_path.name}" if saved.text_path else ""
-        self._status = f"Saved {saved.wav_path.name}{sidecar}."
+        self._dispatch_operation_effects(
+            self._operations.accept_take(
+                self.session,
+                number,
+                busy=self._busy,
+                segment_index=self._segment_index,
+            )
+        )
 
     def _render_state(
         self,
