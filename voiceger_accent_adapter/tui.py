@@ -5,8 +5,7 @@ from __future__ import annotations
 import argparse
 import curses
 from contextlib import redirect_stderr, redirect_stdout
-from dataclasses import dataclass, field, replace
-from decimal import Decimal, InvalidOperation
+from dataclasses import replace
 import os
 from pathlib import Path
 import queue
@@ -51,45 +50,28 @@ from .tui_rendering import (
     _HELP_ITEMS,
     _active_input_prefix,
 )
+from .tui_editors import (
+    AdjustmentPressedIntent,
+    ApplySettingsIntent,
+    ClearAdjustmentFeedbackIntent,
+    CloseEditorIntent,
+    EditorIntent,
+    EditorState as _Editor,
+    EnglishGroupingCache as _EnglishGroupingCache,
+    EnglishWordGroup as _EnglishWordGroup,
+    QueryApplicationResult,
+    ReplaceQueryIntent,
+    ReplaceSourceTextIntent,
+    SettingsApplicationResult,
+    SourceTextApplicationResult,
+    TuiEditorController,
+    UpdateStatusIntent,
+)
 from .voiceger_adapter import VoicegerAdapter
 
 
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
 _ESCAPE = "\x1b"
-
-
-@dataclass(frozen=True)
-class _EnglishWordGroup:
-    """Transient word/token grouping used only by the TUI editor."""
-
-    label: str
-    phonemes: tuple[str, ...]
-    editable: bool
-
-
-@dataclass(frozen=True)
-class _EnglishGroupingCache:
-    source_text: str
-    groups: tuple[_EnglishWordGroup, ...]
-
-    @property
-    def flattened(self) -> tuple[str, ...]:
-        return tuple(phone for group in self.groups for phone in group.phonemes)
-
-
-@dataclass
-class _Editor:
-    kind: str
-    title: str
-    origin: tuple[str, int | None]
-    selection: str | tuple[str, int | None]
-    payload: dict[str, Any] = field(default_factory=dict)
-    active_field: str | None = None
-    input_value: str = ""
-    input_cursor: int = 0
-    input_original: str = ""
-    error: str = ""
-    scroll: int = 0
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -171,10 +153,25 @@ class TuiApp:
         self._status = "Enter text, edit pronunciation, then press F5 to generate."
         self._player: subprocess.Popen[Any] | None = None
         self._help_open = False
-        self._editor: _Editor | None = None
-        self._english_groupings: dict[int, _EnglishGroupingCache] = {}
+        self._editor_controller = TuiEditorController(
+            english_word_groups=self.adapter.english_word_phoneme_groups,
+            available_styles=lambda: available_styles(self.adapter.voiceger_root),
+            input_prefix=_active_input_prefix,
+        )
         self._pressed_adjustment: tuple[str, str, int] | None = None
         self._renderer = TuiRenderer()
+
+    @property
+    def _editor(self) -> _Editor | None:
+        return self._editor_controller.editor
+
+    @_editor.setter
+    def _editor(self, editor: _Editor | None) -> None:
+        self._editor_controller.editor = editor
+
+    @property
+    def _english_groupings(self) -> dict[int, _EnglishGroupingCache]:
+        return self._editor_controller.grouping_cache
 
     def run(self, screen: Any) -> None:
         self._screen = screen
@@ -491,7 +488,7 @@ class TuiApp:
         except Exception as exc:
             self._status = f"Error: Pronunciation was not rebuilt: {exc}"
             return
-        self._english_groupings.clear()
+        self._editor_controller.clear_groupings()
         self._current_take = None
         self._segment_index = 0
         if self._segments():
@@ -543,24 +540,15 @@ class TuiApp:
         ]
 
     def _open_text_editor(self, initial: str | None = None) -> None:
-        if self._busy:
-            self._status = "Wait for synthesis to finish before editing text."
-            return
-        self._status = ""
-        current = (
-            initial
-            if initial is not None
-            else self.session.source_text if self.session is not None else ""
-        )
-        editor = _Editor(
-            kind="text",
-            title="EDIT TEXT",
+        intents = self._editor_controller.open_text(
+            initial,
+            current_source=(
+                self.session.source_text if self.session is not None else None
+            ),
             origin=self._focus_key,
-            selection="draft",
-            payload={"draft": current},
+            busy=self._busy,
         )
-        self._editor = editor
-        self._begin_editor_field("draft", current)
+        self._dispatch_editor_intents(intents)
 
     def _open_settings_editor(
         self,
@@ -568,26 +556,14 @@ class TuiApp:
         *,
         edit: bool = False,
     ) -> None:
-        if self._busy:
-            self._status = "Wait for synthesis to finish before changing settings."
-            return
-        self._status = ""
-        draft = {
-            "style_id": str(self.settings.style_id),
-            "speed": str(self.settings.speed),
-            "take_count": str(self.settings.take_count),
-            "output_dir": str(self.settings.output_dir),
-            "save_text": self.settings.save_text,
-        }
-        self._editor = _Editor(
-            kind="settings",
-            title="EDIT SETTINGS",
+        intents = self._editor_controller.open_settings(
+            self.settings,
             origin=self._focus_key,
-            selection=selected_field or "style_id",
-            payload={"draft_settings": draft},
+            busy=self._busy,
+            selected_field=selected_field,
+            edit=edit,
         )
-        if edit and selected_field is not None:
-            self._begin_editor_field(selected_field, str(draft[selected_field]))
+        self._dispatch_editor_intents(intents)
 
     def _edit_selected_segment(self, segment_index: int | None = None) -> None:
         if self.session is None or self._busy:
@@ -596,101 +572,30 @@ class TuiApp:
         segments = self._segments()
         if not 0 <= index < len(segments):
             return
-        language, segment_text, model_index = segments[index]
-        self._status = ""
         self._segment_index = index
-        origin = ("segment", index)
-        if language == "ja":
-            try:
-                query = self.session.query
-                segment_model_index = (
-                    model_index if query.voicegerSegments is not None else None
-                )
-                current = japanese_pronunciation(
-                    query,
-                    segment_index=segment_model_index,
-                )
-            except Exception as exc:
-                self._status = f"Error: Cannot render Japanese pronunciation: {exc}"
-                return
-            editor = _Editor(
-                kind="japanese",
-                title="EDIT JAPANESE PRONUNCIATION",
-                origin=origin,
-                selection="draft",
-                payload={
-                    "source_text": segment_text,
-                    "draft": current,
-                    "segment_index": segment_model_index,
-                },
+        self._dispatch_editor_intents(
+            self._editor_controller.open_segment(
+                self.session.query,
+                segments,
+                index,
+                origin=("segment", index),
+                busy=self._busy,
             )
-            self._editor = editor
-            self._begin_editor_field("draft", current)
-            return
-        if language == "en" and model_index is not None:
-            try:
-                grouping = self._english_grouping(model_index)
-            except Exception as exc:
-                self._status = f"Error: Cannot align English word pronunciation: {exc}"
-                return
-            self._editor = _Editor(
-                kind="english_segment",
-                title="EDIT ENGLISH SEGMENT",
-                origin=origin,
-                selection=self._first_editable_word_key(grouping.groups),
-                payload={
-                    "segment_index": model_index,
-                    "source_text": segment_text,
-                    "groups": grouping.groups,
-                },
-            )
-            return
-        self._status = f"Error: Pronunciation editing is not available for {language!r}."
+        )
 
     @staticmethod
     def _first_editable_word_key(
         groups: Sequence[_EnglishWordGroup],
     ) -> str | tuple[str, int | None]:
-        for index, group in enumerate(groups):
-            if group.editable:
-                return ("word", index)
-        return "apply"
+        return TuiEditorController.first_editable_word_key(groups)
 
     def _english_grouping(self, segment_index: int) -> _EnglishGroupingCache:
-        if self.session is None or self.session.query.voicegerSegments is None:
+        if self.session is None:
             raise ValueError("English word editing requires a mixed-language segment")
-        if not 0 <= segment_index < len(self.session.query.voicegerSegments):
-            raise ValueError("English segment index is out of range")
-        segment = self.session.query.voicegerSegments[segment_index]
-        if segment.language != "en" or segment.phonemes is None:
-            raise ValueError("selected segment is not an editable English segment")
-        canonical_flat = tuple(segment.phonemes)
-        cached = self._english_groupings.get(segment_index)
-        if (
-            cached is not None
-            and cached.source_text == segment.text
-            and cached.flattened == canonical_flat
-        ):
-            return cached
-        self._english_groupings.pop(segment_index, None)
-
-        raw_groups = self.adapter.english_word_phoneme_groups(segment.text)
-        groups = tuple(
-            _EnglishWordGroup(
-                label=label,
-                phonemes=tuple(phonemes),
-                editable=any(character.isalpha() for character in label),
-            )
-            for label, phonemes in raw_groups
+        return self._editor_controller.english_grouping(
+            self.session.query,
+            segment_index,
         )
-        grouped_flat = tuple(phone for group in groups for phone in group.phonemes)
-        if not groups or grouped_flat != canonical_flat:
-            raise ValueError(
-                "Voiceger word groups do not exactly match the current English segment"
-            )
-        cache = _EnglishGroupingCache(segment.text, groups)
-        self._english_groupings[segment_index] = cache
-        return cache
 
     def _apply_session_query(self, query: Any) -> None:
         if self.session is None:
@@ -698,453 +603,96 @@ class TuiApp:
         self._stop_playback()
         self.session.replace_query(query)
         self._current_take = None
-        segments = query.voicegerSegments or []
-        for index, cached in tuple(self._english_groupings.items()):
-            if (
-                index >= len(segments)
-                or segments[index].language != "en"
-                or segments[index].text != cached.source_text
-                or segments[index].phonemes is None
-                or tuple(segments[index].phonemes) != cached.flattened
-            ):
-                self._english_groupings.pop(index, None)
-
-    def _begin_editor_field(self, name: str, value: str) -> None:
-        if self._editor is None:
-            return
-        self._pressed_adjustment = None
-        self._editor.selection = name
-        self._editor.active_field = name
-        self._editor.input_value = value
-        self._editor.input_cursor = len(value)
-        self._editor.input_original = value
-        self._editor.error = ""
-
-    def _editor_selection_keys(self) -> list[str | tuple[str, int | None]]:
-        editor = self._editor
-        if editor is None:
-            return []
-        if editor.kind in {"text", "japanese"}:
-            return ["draft"]
-        if editor.kind == "settings":
-            return [
-                "style_id", "speed", "take_count", "output_dir", "save_text", "apply",
-            ]
-        if editor.kind == "english_segment":
-            keys = [
-                ("word", index)
-                for index, group in enumerate(editor.payload["groups"])
-                if group.editable
-            ]
-            return keys + ["apply", "cancel"]
-        if editor.kind == "english_word":
-            state: EnglishPhonemeEditorState = editor.payload["draft_state"]
-            keys: list[str | tuple[str, int | None]] = ["phonemes"]
-            keys.extend(("primary", index) for index, _position in enumerate(
-                state.primary_stress_vowel_positions
-            ))
-            return keys + ["done", "cancel"]
-        return []
-
-    def _move_editor_selection(self, delta: int) -> None:
-        editor = self._editor
-        if editor is None:
-            return
-        keys = self._editor_selection_keys()
-        if not keys:
-            return
-        try:
-            index = keys.index(editor.selection)
-        except ValueError:
-            index = 0
-        target = min(max(index + delta, 0), len(keys) - 1)
-        if target != index:
-            self._pressed_adjustment = None
-            editor.selection = keys[target]
-            editor.error = ""
-
-    def _activate_editor_selection(self) -> None:
-        editor = self._editor
-        if editor is None:
-            return
-        selected = editor.selection
-        if editor.kind in {"text", "japanese"}:
-            if selected == "draft":
-                self._begin_editor_field("draft", editor.payload["draft"])
-        elif editor.kind == "settings":
-            if selected == "save_text":
-                draft = editor.payload["draft_settings"]
-                draft["save_text"] = not draft["save_text"]
-            elif selected == "apply":
-                self._apply_editor()
-            elif isinstance(selected, str):
-                value = editor.payload["draft_settings"][selected]
-                self._begin_editor_field(selected, str(value))
-        elif editor.kind == "english_segment":
-            if isinstance(selected, tuple) and selected[0] == "word":
-                self._open_word_editor(selected[1])
-            elif selected == "apply":
-                self._apply_editor()
-            elif selected == "cancel":
-                self._cancel_editor()
-        elif editor.kind == "english_word":
-            if selected == "phonemes":
-                state = editor.payload["draft_state"]
-                self._begin_editor_field("phonemes", " ".join(state.base_phonemes))
-            elif isinstance(selected, tuple) and selected[0] == "primary":
-                state: EnglishPhonemeEditorState = editor.payload["draft_state"]
-                positions = state.primary_stress_vowel_positions
-                ordinal = selected[1]
-                if ordinal is not None and ordinal < len(positions):
-                    source = positions[ordinal]
-                    editor.payload["moving_primary"] = True
-                    editor.payload["stress_source"] = source
-                    editor.payload["stress_destination"] = source
-                    editor.error = "Choose a destination vowel with Left/Right, then Enter."
-            elif selected == "done":
-                self._finish_word_editor()
-            elif selected == "cancel":
-                self._cancel_word_editor()
+        self._editor_controller.reconcile_groupings(query)
 
     def _handle_editor_key(self, key: Any) -> None:
-        editor = self._editor
-        if editor is None:
-            return
-        if editor.active_field is not None:
-            if key in _ENTER_KEYS:
-                if editor.kind in {"text", "japanese"}:
-                    editor.payload["draft"] = editor.input_value
-                    self._apply_editor()
-                else:
-                    self._finish_editor_field()
-            elif key == _ESCAPE:
-                if editor.kind in {"text", "japanese", "settings"}:
-                    self._cancel_editor()
-                elif editor.kind == "english_word":
-                    self._cancel_word_editor()
-                else:
-                    editor.input_value = editor.input_original
-                    editor.input_cursor = len(editor.input_original)
-                    editor.active_field = None
-                    editor.error = ""
-                    self._status = "Field edit canceled; the editor draft is unchanged."
-            elif key == curses.KEY_LEFT:
-                editor.input_cursor = max(0, editor.input_cursor - 1)
-            elif key == curses.KEY_RIGHT:
-                editor.input_cursor = min(len(editor.input_value), editor.input_cursor + 1)
-            elif key == curses.KEY_HOME or key == "\x01":
-                editor.input_cursor = 0
-            elif key == curses.KEY_END or key == "\x05":
-                editor.input_cursor = len(editor.input_value)
-            elif key == curses.KEY_UP:
-                input_width = self._active_input_width(editor)
-                editor.input_cursor = _move_wrapped_cursor(
-                    editor.input_value,
-                    editor.input_cursor,
-                    -1,
-                    input_width,
-                )
-            elif key == curses.KEY_DOWN:
-                input_width = self._active_input_width(editor)
-                editor.input_cursor = _move_wrapped_cursor(
-                    editor.input_value,
-                    editor.input_cursor,
-                    1,
-                    input_width,
-                )
-            elif key in (curses.KEY_BACKSPACE, "\x7f", "\x08"):
-                if editor.input_cursor:
-                    editor.input_value = (
-                        editor.input_value[: editor.input_cursor - 1]
-                        + editor.input_value[editor.input_cursor :]
-                    )
-                    editor.input_cursor -= 1
-            elif key == curses.KEY_DC:
-                if editor.input_cursor < len(editor.input_value):
-                    editor.input_value = (
-                        editor.input_value[: editor.input_cursor]
-                        + editor.input_value[editor.input_cursor + 1 :]
-                    )
-            elif isinstance(key, str) and key and all(char.isprintable() for char in key):
-                editor.input_value = (
-                    editor.input_value[: editor.input_cursor]
-                    + key
-                    + editor.input_value[editor.input_cursor :]
-                )
-                editor.input_cursor += len(key)
-            return
-
-        if editor.kind == "english_word" and editor.payload.get("moving_primary"):
-            if key == curses.KEY_LEFT:
-                editor.payload["stress_destination"] = max(
-                    0, editor.payload["stress_destination"] - 1
-                )
-            elif key == curses.KEY_RIGHT:
-                state: EnglishPhonemeEditorState = editor.payload["draft_state"]
-                editor.payload["stress_destination"] = min(
-                    len(state.vowel_stresses) - 1,
-                    editor.payload["stress_destination"] + 1,
-                )
-            elif key in _ENTER_KEYS:
-                self._commit_primary_move()
-            elif key == _ESCAPE:
-                editor.payload.pop("moving_primary", None)
-                editor.error = ""
-            return
-
-        if editor.kind == "settings" and key in (curses.KEY_LEFT, curses.KEY_RIGHT):
-            self._adjust_settings_draft(-1 if key == curses.KEY_LEFT else 1)
-            return
-
-        if key == _ESCAPE:
-            if editor.kind == "english_word":
-                self._cancel_word_editor()
-            else:
-                self._cancel_editor()
-        elif key == curses.KEY_UP:
-            self._move_editor_selection(-1)
-        elif key == curses.KEY_DOWN:
-            self._move_editor_selection(1)
-        elif key in _ENTER_KEYS:
-            self._activate_editor_selection()
-
-    def _active_input_width(self, editor: _Editor) -> int:
-        screen_width = self._screen.getmaxyx()[1] if self._screen else 80
-        return max(
-            1,
-            screen_width - 1 - _display_width(_active_input_prefix(editor)),
+        screen_width = self._screen.getmaxyx()[1] if self._screen is not None else 80
+        intents = self._editor_controller.handle_key(
+            key,
+            settings=self.settings,
+            query=self.session.query if self.session is not None else None,
+            current_source=(
+                self.session.source_text if self.session is not None else None
+            ),
+            screen_width=screen_width,
         )
-
-    def _finish_editor_field(self) -> None:
-        editor = self._editor
-        if editor is None or editor.active_field is None:
-            return
-        name = editor.active_field
-        value = editor.input_value
-        if editor.kind == "english_word" and name == "phonemes":
-            try:
-                current = editor.payload["draft_state"]
-                updated = replace_editor_base_phonemes(current, value.split())
-            except Exception as exc:
-                editor.error = f"Error: {exc}"
-                return
-            editor.payload["draft_state"] = updated
-            editor.input_value = " ".join(updated.base_phonemes)
-            value = editor.input_value
-        elif editor.kind == "settings":
-            editor.payload["draft_settings"][name] = value
-        else:
-            editor.payload[name] = value
-        editor.active_field = None
-        editor.input_original = value
-        editor.input_cursor = len(value)
-        editor.error = ""
-        if editor.kind == "settings":
-            self._status = "Settings field updated; Apply saves the settings draft."
-        elif editor.kind == "english_word":
-            self._status = "Phonemes updated in the word draft; Done returns it to the segment."
-        else:
-            self._status = "Draft field updated."
-
-    def _open_word_editor(self, group_index: int | None) -> None:
-        parent = self._editor
-        if parent is None or group_index is None:
-            return
-        group: _EnglishWordGroup = parent.payload["groups"][group_index]
-        try:
-            state = english_phonemes_to_editor_state(group.phonemes)
-        except Exception as exc:
-            parent.error = f"Error: Cannot edit token {group.label!r}: {exc}"
-            return
-        self._editor = _Editor(
-            kind="english_word",
-            title="EDIT ENGLISH WORD",
-            origin=parent.origin,
-            selection="phonemes",
-            payload={
-                "parent": parent,
-                "group_index": group_index,
-                "label": group.label,
-                "source_text": parent.payload["source_text"],
-                "draft_state": state,
-                "moving_primary": False,
-            },
-        )
-
-    def _commit_primary_move(self) -> None:
-        editor = self._editor
-        if editor is None:
-            return
-        state: EnglishPhonemeEditorState = editor.payload["draft_state"]
-        source = editor.payload["stress_source"]
-        destination = editor.payload["stress_destination"]
-        occupied = state.primary_stress_vowel_positions
-        if destination in occupied and destination != source:
-            editor.error = "Error: That vowel already has primary stress. Choose another vowel."
-            return
-        if destination != source:
-            try:
-                state = move_primary_stress(state, source, destination)
-            except Exception as exc:
-                editor.error = f"Error: Primary stress was not changed: {exc}"
-                return
-            editor.payload["draft_state"] = state
-        editor.payload.pop("moving_primary", None)
-        positions = state.primary_stress_vowel_positions
-        if destination in positions:
-            editor.selection = ("primary", positions.index(destination))
-        editor.error = ""
-        self._status = "Word stress draft updated."
-
-    def _finish_word_editor(self) -> None:
-        editor = self._editor
-        if editor is None:
-            return
-        parent: _Editor = editor.payload["parent"]
-        index = editor.payload["group_index"]
-        groups = list(parent.payload["groups"])
-        old_group = groups[index]
-        groups[index] = _EnglishWordGroup(
-            old_group.label,
-            tuple(editor_state_to_english_phonemes(editor.payload["draft_state"])),
-            old_group.editable,
-        )
-        parent.payload["groups"] = tuple(groups)
-        parent.selection = ("word", index)
-        parent.error = ""
-        self._editor = parent
-        self._status = f"{old_group.label} draft updated; Apply changes to commit it."
-
-    def _cancel_word_editor(self) -> None:
-        editor = self._editor
-        if editor is None:
-            return
-        parent = editor.payload.get("parent")
-        if parent is not None:
-            self._editor = parent
-            parent.error = ""
-            self._status = "Word changes canceled."
+        self._dispatch_editor_intents(intents)
 
     def _apply_editor(self) -> None:
-        editor = self._editor
-        if editor is None:
-            return
-        if editor.kind == "text":
-            self._apply_text_editor(editor)
-        elif editor.kind == "japanese":
-            try:
-                updated = replace_japanese_pronunciation(
-                    self.session.query,
-                    editor.payload["draft"],
-                    segment_index=editor.payload["segment_index"],
-                )
-                self._apply_session_query(updated)
-            except Exception as exc:
-                editor.error = f"Error: Pronunciation was not changed: {exc}"
-                return
-            self._close_editor("Japanese pronunciation updated; old takes cleared.")
-        elif editor.kind == "english_segment":
-            index = editor.payload["segment_index"]
-            groups = editor.payload["groups"]
-            try:
-                updated = replace_english_phoneme_groups(
-                    self.session.query,
-                    segment_index=index,
-                    phoneme_groups=tuple(group.phonemes for group in groups),
-                )
-                self._apply_session_query(updated)
-            except Exception as exc:
-                editor.error = f"Error: English changes were not applied: {exc}"
-                return
-            self._english_groupings[index] = _EnglishGroupingCache(
-                editor.payload["source_text"], groups
+        self._dispatch_editor_intents(
+            self._editor_controller.apply(
+                self.settings,
+                self.session.query if self.session is not None else None,
+                self.session.source_text if self.session is not None else None,
             )
-            self._close_editor("English pronunciation updated; old takes cleared.")
-        elif editor.kind == "settings":
-            self._apply_settings_editor(editor)
+        )
 
-    def _apply_text_editor(self, editor: _Editor) -> None:
-        source = editor.payload["draft"]
-        if self.session is not None and source == self.session.source_text:
-            self._close_editor("Source text unchanged.")
-            return
+    def _cancel_editor(self) -> None:
+        self._dispatch_editor_intents(self._editor_controller.cancel())
+
+    def _apply_source_text(self, source_text: str) -> SourceTextApplicationResult:
+        if self.session is not None and source_text == self.session.source_text:
+            return SourceTextApplicationResult(unchanged=True)
         if self.session is not None:
             self._stop_playback()
             try:
-                self.session.replace_source_text(source)
+                self.session.replace_source_text(source_text)
             except Exception as exc:
-                editor.error = f"Error: Source text was not changed: {exc}"
-                return
+                return SourceTextApplicationResult(error=str(exc))
             needs_rebuild = self.session.pronunciation_needs_rebuild
         else:
             try:
                 self.session = UtteranceSession.from_text(
                     adapter=self.adapter,
-                    source_text=source,
+                    source_text=source_text,
                     settings=self.settings,
                 )
             except Exception as exc:
-                editor.error = f"Error: Source text was not changed: {exc}"
-                return
+                return SourceTextApplicationResult(error=str(exc))
             needs_rebuild = False
-        self._english_groupings.clear()
         self._segment_index = 0
         self._current_take = None
-        status = (
-            "Source text updated; rebuild pronunciation before generating."
-            if needs_rebuild
-            else "Source text updated; pronunciation preserved."
-        )
-        self._close_editor(status)
+        return SourceTextApplicationResult(needs_rebuild=needs_rebuild)
 
-    def _apply_settings_editor(self, editor: _Editor) -> None:
-        draft = editor.payload["draft_settings"]
-        try:
-            updated = replace(
-                self.settings,
-                style_id=int(draft["style_id"]),
-                speed=float(draft["speed"]),
-                take_count=int(draft["take_count"]),
-                output_dir=Path(draft["output_dir"]).expanduser(),
-                save_text=bool(draft["save_text"]),
-            )
-        except (TypeError, ValueError, SettingsError) as exc:
-            editor.error = f"Error: Settings were not changed: {exc}"
-            return
-        changes = {
-            name: getattr(updated, name)
-            for name in ("style_id", "speed", "take_count", "output_dir", "save_text")
-            if getattr(updated, name) != getattr(self.settings, name)
-        }
-        if changes:
-            self._change_settings(**changes)
-            if self._status.startswith("Error:"):
-                editor.error = self._status
-                return
-            self._close_editor("Settings saved. Existing temporary takes were cleared.")
-        else:
-            self._close_editor("Settings unchanged.")
-
-    def _close_editor(self, status: str) -> None:
-        editor = self._editor
-        if editor is None:
-            return
-        self._pressed_adjustment = None
-        self._editor = None
-        self._set_focus_key(editor.origin)
-        self._status = status
-
-    def _cancel_editor(self) -> None:
-        editor = self._editor
-        if editor is None:
-            return
-        status = {
-            "text": "Text draft discarded.",
-            "japanese": "Japanese pronunciation draft discarded.",
-            "settings": "Settings draft discarded.",
-            "english_segment": "English segment draft discarded.",
-        }.get(editor.kind, "Editor draft discarded.")
-        self._close_editor(status)
+    def _dispatch_editor_intents(self, intents: Sequence[EditorIntent]) -> None:
+        pending = list(intents)
+        while pending:
+            intent = pending.pop(0)
+            if isinstance(intent, UpdateStatusIntent):
+                self._status = intent.status
+            elif isinstance(intent, ClearAdjustmentFeedbackIntent):
+                self._pressed_adjustment = None
+            elif isinstance(intent, AdjustmentPressedIntent):
+                self._mark_adjustment_pressed(
+                    intent.area, intent.control, intent.direction
+                )
+            elif isinstance(intent, CloseEditorIntent):
+                self._pressed_adjustment = None
+                self._set_focus_key(intent.origin)
+                self._status = intent.status
+            elif isinstance(intent, ReplaceQueryIntent):
+                try:
+                    self._apply_session_query(intent.query)
+                except Exception as exc:
+                    result = QueryApplicationResult(error=str(exc))
+                else:
+                    result = QueryApplicationResult()
+                pending[0:0] = self._editor_controller.complete_query_application(
+                    intent, result
+                )
+            elif isinstance(intent, ReplaceSourceTextIntent):
+                result = self._apply_source_text(intent.source_text)
+                pending[0:0] = self._editor_controller.complete_source_text_application(
+                    result
+                )
+            elif isinstance(intent, ApplySettingsIntent):
+                self._change_settings(**intent.changes.as_dict())
+                error_status = (
+                    self._status if self._status.startswith("Error:") else None
+                )
+                pending[0:0] = self._editor_controller.complete_settings_application(
+                    SettingsApplicationResult(error_status=error_status)
+                )
 
     def _change_settings(self, *, report_success: bool = True, **changes: Any) -> None:
         try:
@@ -1428,67 +976,6 @@ class TuiApp:
         screen.refresh()
         self._pressed_adjustment = None
 
-    def _adjust_settings_draft(self, direction: int) -> None:
-        editor = self._editor
-        if editor is None or editor.kind != "settings" or editor.active_field is not None:
-            return
-        draft = editor.payload["draft_settings"]
-        selected = editor.selection
-        if selected in {"style_id", "speed", "take_count", "save_text"}:
-            self._mark_adjustment_pressed("settings", selected, direction)
-        else:
-            return
-        if selected == "style_id":
-            styles = available_styles(self.adapter.voiceger_root)
-            if not styles:
-                editor.error = "Error: No available styles can be selected."
-                return
-            try:
-                current_id = int(draft["style_id"])
-            except (TypeError, ValueError):
-                editor.error = "Error: Style ID must be a positive integer."
-                return
-            index = next(
-                (i for i, style in enumerate(styles) if style.id == current_id),
-                None,
-            )
-            if index is None:
-                choices = [
-                    style for style in styles
-                    if (style.id > current_id if direction > 0 else style.id < current_id)
-                ]
-                if not choices:
-                    return
-                draft["style_id"] = str(choices[0 if direction > 0 else -1].id)
-            else:
-                target = index + direction
-                if not 0 <= target < len(styles):
-                    return
-                draft["style_id"] = str(styles[target].id)
-        elif selected == "speed":
-            try:
-                current = Decimal(str(draft["speed"]))
-                if not current.is_finite() or current <= 0:
-                    raise InvalidOperation
-                current = current.quantize(Decimal("0.01"))
-                updated = current + Decimal("0.01") * direction
-                updated = max(Decimal("0.01"), updated)
-            except (InvalidOperation, ValueError):
-                editor.error = "Error: Speed must be a positive finite number."
-                return
-            draft["speed"] = f"{updated:.2f}"
-        elif selected == "take_count":
-            try:
-                current = int(draft["take_count"])
-            except (TypeError, ValueError):
-                editor.error = "Error: Take count must be an integer from 1 through 8."
-                return
-            draft["take_count"] = str(min(8, max(1, current + direction)))
-        elif selected == "save_text":
-            draft["save_text"] = direction > 0
-        else:
-            return
-        editor.error = ""
 
 
 def main(argv: Sequence[str] | None = None) -> int:
