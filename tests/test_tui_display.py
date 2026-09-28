@@ -41,13 +41,21 @@ class TuiDisplayTests(unittest.TestCase):
         self.assertEqual(cursor[0], 2)
         self.assertFalse(any("キ ョ" in line for line in lines))
 
-    def test_english_phoneme_formatting_marks_primary_stress_without_digits(self):
+    def test_english_phoneme_formatting_shows_digits_and_marks_primary_stress(self):
         self.assertEqual(
             format_english_phonemes(
                 ["V", "OY1", "AH0", "JH", "ER2"],
                 selected_primary=0,
             ),
-            "V ▶[OY] AH JH ER",
+            "V ▶[OY1] AH0 JH ER2",
+        )
+        self.assertEqual(
+            format_english_phonemes(["HH", "AH0", "L", "OW1", "ER2"]),
+            "HH AH0 L [OW1] ER2",
+        )
+        self.assertEqual(
+            format_english_phonemes(["ER", "IH"]),
+            "ER IH",
         )
 
     def test_terminal_width_counts_fullwidth_and_combining_characters(self):
@@ -93,11 +101,19 @@ class TuiDisplayTests(unittest.TestCase):
         )
         self.assertEqual(_wrap_labeled_tokens("Phones: ", [], 20), ["Phones: (none)"])
 
-    def test_phoneme_tokens_display_primary_stress_without_stress_digits(self):
-        state = english_phonemes_to_editor_state(["HH", "AH1", "L", "OW0"])
-        self.assertEqual(_phoneme_state_tokens(state), ["HH", "[AH]", "L", "OW"])
-        self.assertEqual(_phonemes_as_ui_tokens(["HH", "AH1"]), ["HH", "[AH]"])
-        self.assertEqual(_english_display_tokens(["HH", "AH1"]), ["HH", "[AH]"])
+    def test_phoneme_tokens_show_all_stress_values_and_each_primary_marker(self):
+        state = english_phonemes_to_editor_state(
+            ["Z", "UW1", "N", "D", "AA1", "M", "OW0", "N"]
+        )
+        expected = ["Z", "[UW1]", "N", "D", "[AA1]", "M", "OW0", "N"]
+        self.assertEqual(_phoneme_state_tokens(state), expected)
+        self.assertEqual(
+            _phonemes_as_ui_tokens(["HH", "AH0", "L", "OW1", "ER2"]),
+            ["HH", "AH0", "L", "[OW1]", "ER2"],
+        )
+        self.assertEqual(
+            _english_display_tokens(["HH", "AH1"]), ["HH", "[AH1]"]
+        )
 
     def test_wrapped_input_ranges_and_cursor_location_use_terminal_cells(self):
         self.assertEqual(_wrapped_ranges("ab界cd", 3), [(0, 2), (2, 4), (4, 5)])

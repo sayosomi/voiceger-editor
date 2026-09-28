@@ -591,12 +591,12 @@ class QueryEditingTests(unittest.TestCase):
             query,
             segment_index=1,
             source_vowel_position=0,
-            target_vowel_position=1,
+            target_vowel_position=2,
         )
 
         self.assertEqual(
             updated.voicegerSegments[1].phonemes,
-            ["AH0", "EH1", "OW2", "IY1"],
+            ["AH2", "EH0", "OW1", "IY1"],
         )
         self.assertEqual(
             updated.voicegerSegments[2].phonemes,
