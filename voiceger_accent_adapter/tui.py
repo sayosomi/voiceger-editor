@@ -44,23 +44,23 @@ _VOWELS = frozenset(
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
 _ESCAPE = "\x1b"
 _HELP_ITEMS = (
-    "Up/Down: move one selectable Navigation item at a time",
-    "Enter: edit, open, generate, regenerate, or accept the focused action",
-    "Left/Right on Generate: decrease/increase take count",
-    "Left/Right in Settings: adjust the selected value",
-    "Space: replay a focused candidate",
-    "Esc: return from candidate review; cancel editor draft",
-    "Tab: move to the next major section/action",
-    "Shift+Tab: move to the previous major section/action",
-    "F5 / Ctrl+G: activate Generate / Regenerate all",
-    "1-8: focus and play an available candidate",
-    "r: regenerate the focused candidate",
-    "R: activate Generate / Regenerate all",
-    "t: edit Text",
-    "s / v / n / o / x: open Settings at style / speed / takes / output / TXT",
-    "Rebuild pronunciation: rerun automatic pronunciation from current Text",
-    "?: open Help",
-    "q: Quit",
+    ("Up/Down", ": move one selectable Navigation item at a time"),
+    ("Enter", ": edit, open, generate, regenerate, or accept the focused action"),
+    ("Left/Right", " on Generate: decrease/increase take count"),
+    ("Left/Right", " in Settings: adjust the selected value"),
+    ("Space", ": replay a focused candidate"),
+    ("Esc", ": return from candidate review; cancel editor draft"),
+    ("Tab", ": move to the next major section/action"),
+    ("Shift+Tab", ": move to the previous major section/action"),
+    ("F5 / Ctrl+G", ": activate Generate / Regenerate all"),
+    ("1-8", ": focus and play an available candidate"),
+    ("r", ": regenerate the focused candidate"),
+    ("R", ": activate Generate / Regenerate all"),
+    ("t", ": edit Text"),
+    ("s / v / n / o / x", ": open Settings at style / speed / takes / output / TXT"),
+    (None, "Rebuild pronunciation: rerun automatic pronunciation from current Text"),
+    ("?", ": open Help"),
+    ("q", ": Quit"),
 )
 
 
@@ -207,6 +207,7 @@ class TuiApp:
         self._editor: _Editor | None = None
         self._english_groupings: dict[int, _EnglishGroupingCache] = {}
         self._color_attr = 0
+        self._pressed_adjustment: tuple[str, str, int] | None = None
 
     def run(self, screen: Any) -> None:
         self._screen = screen
@@ -299,6 +300,19 @@ class TuiApp:
             | self._attribute("A_BOLD")
             | self._color_attr
         )
+
+    def _mark_adjustment_pressed(self, area: str, control: str, direction: int) -> None:
+        self._pressed_adjustment = (
+            area,
+            control,
+            -1 if direction < 0 else 1,
+        )
+
+    def _adjustment_press_direction(self, area: str, control: str) -> int | None:
+        pressed = self._pressed_adjustment
+        if pressed is None or pressed[:2] != (area, control):
+            return None
+        return pressed[2]
 
     def _handle_key(self, key: Any) -> None:
         if self._editor is not None:
@@ -453,6 +467,8 @@ class TuiApp:
         if key not in items:
             key = items[0]
         changed = key != self._focus_key
+        if changed:
+            self._pressed_adjustment = None
         self._focus_key = key
         self._focus = key[0]
         if key[0] == "segment" and key[1] is not None:
@@ -550,8 +566,10 @@ class TuiApp:
 
     def _adjust_take_count(self, direction: int) -> None:
         if self._busy:
+            self._pressed_adjustment = None
             self._status = "Wait for the current synthesis operation to finish."
             return
+        self._mark_adjustment_pressed("navigation", "generate", direction)
         count = self.settings.take_count
         updated = min(8, max(1, count + direction))
         if updated == count:
@@ -758,6 +776,7 @@ class TuiApp:
     def _begin_editor_field(self, name: str, value: str) -> None:
         if self._editor is None:
             return
+        self._pressed_adjustment = None
         self._editor.selection = name
         self._editor.active_field = name
         self._editor.input_value = value
@@ -804,6 +823,7 @@ class TuiApp:
             index = 0
         target = min(max(index + delta, 0), len(keys) - 1)
         if target != index:
+            self._pressed_adjustment = None
             editor.selection = keys[target]
             editor.error = ""
 
@@ -1191,6 +1211,7 @@ class TuiApp:
         editor = self._editor
         if editor is None:
             return
+        self._pressed_adjustment = None
         self._editor = None
         self._set_focus_key(editor.origin)
         self._status = status
@@ -1451,12 +1472,11 @@ class TuiApp:
         column = 1
         available = max(1, width - column - 1)
         bold = self._attribute("A_BOLD")
-        for item in _HELP_ITEMS:
+        for shortcut, suffix in _HELP_ITEMS:
             if row >= footer_row:
                 break
-            key, separator, explanation = item.partition(":")
-            if not separator:
-                pieces = _wrap_text(item, available) or [""]
+            if shortcut is None:
+                pieces = _wrap_text(suffix, available) or [""]
                 for piece in pieces:
                     if row >= footer_row:
                         break
@@ -1464,16 +1484,15 @@ class TuiApp:
                     row += 1
                 continue
 
-            key_span = f"{key}:"
-            key_width = _display_width(key_span)
+            key_width = _display_width(shortcut)
             if key_width >= available:
-                key_pieces = _wrap_text(key_span, available) or [""]
+                key_pieces = _wrap_text(shortcut, available) or [""]
                 for piece in key_pieces:
                     if row >= footer_row:
                         break
                     self._safe_add(row, column, piece, width, bold)
                     row += 1
-                explanation_pieces = _wrap_text(explanation.strip(), available)
+                explanation_pieces = _wrap_text(suffix, available)
                 for piece in explanation_pieces:
                     if row >= footer_row:
                         break
@@ -1481,19 +1500,9 @@ class TuiApp:
                     row += 1
                 continue
 
-            self._safe_add(row, column, key_span, width, bold)
+            self._safe_add(row, column, shortcut, width, bold)
             explanation_width = available - key_width
-            if explanation_width < 1:
-                row += 1
-                explanation_pieces = _wrap_text(explanation.strip(), available)
-                for piece in explanation_pieces:
-                    if row >= footer_row:
-                        break
-                    self._safe_add(row, column, piece, width)
-                    row += 1
-                continue
-
-            explanation_pieces = _wrap_text(explanation, explanation_width)
+            explanation_pieces = _wrap_text(suffix, explanation_width)
             if explanation_pieces:
                 self._safe_add(row, column + key_width, explanation_pieces[0], width)
             row += 1
@@ -1527,6 +1536,7 @@ class TuiApp:
         else:
             self._render_navigation(height, width)
         screen.refresh()
+        self._pressed_adjustment = None
 
     def _render_navigation(self, height: int, width: int) -> None:
         self._set_focus_key(self._focus_key)
@@ -1783,10 +1793,14 @@ class TuiApp:
                     verb = "Regenerating" if self._worker_operation == "regenerate_all" else "Generating"
                     generate_label = f"{verb} {current}/{self._operation_total}"
             else:
+                adjustable_count = _adjustable_value(
+                    str(self.settings.take_count),
+                    self._adjustment_press_direction("navigation", "generate"),
+                )
                 generate_label = (
-                    f"Regenerate all {self.settings.take_count} takes"
+                    f"Regenerate all {adjustable_count} takes"
                     if has_batch
-                    else f"Generate {self.settings.take_count} takes"
+                    else f"Generate {adjustable_count} takes"
                 )
             action(("generate", None), f"[ {generate_label} ]")
             plain()
@@ -1882,7 +1896,7 @@ class TuiApp:
             draft = editor.payload["draft_settings"]
             values = (
                 ("style_id", "Style", self._setting_display("style_id", draft["style_id"])),
-                ("speed", "Speed", str(draft["speed"])),
+                ("speed", "Speed", self._setting_display("speed", draft["speed"])),
                 ("take_count", "Take count", str(draft["take_count"])),
                 ("output_dir", "Output directory", str(draft["output_dir"])),
                 ("save_text", "TXT sidecar", "ON" if draft["save_text"] else "OFF"),
@@ -1891,6 +1905,11 @@ class TuiApp:
                 if editor.active_field == key:
                     input_field(key)
                 else:
+                    if key in {"style_id", "speed", "take_count", "save_text"}:
+                        value = _adjustable_value(
+                            value,
+                            self._adjustment_press_direction("settings", key),
+                        )
                     selectable(key, f"{label}: {value}")
             plain()
             selectable("apply", "Apply and save settings")
@@ -1954,6 +1973,11 @@ class TuiApp:
                 None,
             )
             return f"{value} {style.name}" if style is not None else str(value)
+        if name == "speed":
+            try:
+                return f"{Decimal(str(value)):.2f}"
+            except (InvalidOperation, ValueError):
+                return str(value)
         return str(value)
 
     def _adjust_settings_draft(self, direction: int) -> None:
@@ -1962,6 +1986,10 @@ class TuiApp:
             return
         draft = editor.payload["draft_settings"]
         selected = editor.selection
+        if selected in {"style_id", "speed", "take_count", "save_text"}:
+            self._mark_adjustment_pressed("settings", selected, direction)
+        else:
+            return
         if selected == "style_id":
             styles = available_styles(self.adapter.voiceger_root)
             if not styles:
@@ -2114,6 +2142,16 @@ def _display_width(value: str) -> int:
         else 2 if unicodedata.east_asian_width(character) in {"F", "W"} else 1
         for character in value
     )
+
+
+def _adjustable_value(value: str, direction: int | None = None) -> str:
+    """Render fixed-width ASCII controls with one-frame pressed feedback."""
+
+    if direction is not None and direction < 0:
+        return f"<<{value} >"
+    if direction is not None and direction > 0:
+        return f"< {value}>>"
+    return f"< {value} >"
 
 
 def _wrap_text(value: str, width: int) -> list[str]:
