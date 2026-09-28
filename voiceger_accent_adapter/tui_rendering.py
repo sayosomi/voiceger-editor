@@ -40,8 +40,11 @@ _HELP_ITEMS = (
     ("r", ": regenerate the focused candidate"),
     ("R", ": activate Generate / Regenerate all"),
     ("t", ": edit Text"),
-    ("s / v / n / o / x", ": open Settings at style / speed / takes / output / TXT"),
-    (None, ""),
+    ("s", ": open Settings at style"),
+    ("v", ": open Settings at speed"),
+    ("n", ": open Settings at takes"),
+    ("o", ": open Settings at output"),
+    ("x", ": open Settings at TXT"),
     (None, "Rebuild pronunciation: rerun automatic pronunciation from current Text"),
     ("?", ": open Help"),
     ("q", ": Quit"),
@@ -177,7 +180,7 @@ class TuiRenderer:
         safe_add(screen, 0, 0, "HELP", width, self._attribute("A_BOLD"))
         safe_add(screen, 1, 0, "Navigation and action shortcuts", width)
         height = screen.getmaxyx()[0]
-        footer_row = max(0, height - 2)
+        footer_row = max(0, height - 1)
         row = 2
         column = 1
         available = max(1, width - column - 1)
@@ -225,7 +228,7 @@ class TuiRenderer:
                 row += 1
         safe_add(
             screen,
-            max(0, screen.getmaxyx()[0] - 2),
+            max(0, screen.getmaxyx()[0] - 1),
             0,
             "Esc / Enter / ? Return to Navigation  |  q Quit",
             width,
