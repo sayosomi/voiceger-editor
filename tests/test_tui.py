@@ -110,13 +110,14 @@ def candidate(number):
 class FakeSession:
     def __init__(self, query=None, candidates=()):
         self.query = query or english_query(["AA1", "IY0", "ER1"])
-        self.source_text = "example"
+        self.caption = "example"
+        self._pure_japanese_utterance_text = "example"
         self.candidates = tuple(candidates)
         self.replace_query_calls = []
         self.replace_settings_calls = []
-        self.replace_source_text_calls = []
-        self.rebuild_calls = 0
-        self.pronunciation_needs_rebuild = False
+        self.replace_caption_calls = []
+        self.build_calls = 0
+        self.utterance_manually_edited = False
         self.rebuild_error = None
         self.discard_calls = 0
         self.close_calls = 0
@@ -126,33 +127,30 @@ class FakeSession:
     def has_active_batch(self):
         return bool(self.candidates)
 
+    @property
+    def pure_japanese_utterance_text(self):
+        if self.query.voicegerSegments is not None:
+            return None
+        return self._pure_japanese_utterance_text
+
     def replace_query(self, query):
         self.replace_query_calls.append(query)
         self.query = query
+        self.utterance_manually_edited = True
         self.candidates = ()
 
-    def replace_source_text(self, source_text):
-        self.replace_source_text_calls.append(source_text)
-        self.source_text = source_text
-        self.pronunciation_needs_rebuild = getattr(
-            self, "rebuild_required_for_source", False
-        )
-        segment_texts = getattr(self, "segment_texts_after_source_change", None)
-        if segment_texts is not None and self.query.voicegerSegments is not None:
-            for segment, text in zip(self.query.voicegerSegments, segment_texts):
-                segment.text = text
-        self.candidates = ()
+    def replace_caption(self, caption):
+        self.replace_caption_calls.append(caption)
+        self.caption = caption
 
-    def rebuild_pronunciation(self):
-        self.rebuild_calls += 1
+    def build_pronunciation_from_caption(self):
+        self.build_calls += 1
         if self.rebuild_error is not None:
             raise self.rebuild_error
-        self.pronunciation_needs_rebuild = False
+        self.utterance_manually_edited = False
         self.candidates = ()
 
     def generate_takes(self):
-        if self.pronunciation_needs_rebuild:
-            raise RuntimeError("pronunciation must be rebuilt before generation")
         return iter(())
 
     def replace_settings(self, settings):
@@ -261,10 +259,12 @@ class TuiTests(unittest.TestCase):
         adapter.english_word_phoneme_groups.return_value = groups
         app = TuiApp(adapter=adapter, settings=Settings())
         app.session = FakeSession(query=query, candidates=candidates)
-        app.session.source_text = "今日は" + next(
+        app.session.caption = "今日は" + next(
             (segment.text for segment in (query.voicegerSegments or []) if segment.language == "en"),
             "example",
         )
+        if query.voicegerSegments is None:
+            app.session._pure_japanese_utterance_text = app.session.caption
         return app
 
     @staticmethod
@@ -353,13 +353,13 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._editor_controller.editor.title, "EDIT WORD PRONUNCIATION")
         self.assertNotIn("english_segment", app._editor_controller.editor.kind)
 
-    def test_rebuild_required_state_skips_editable_pronunciation_tab_stop(self):
+    def test_caption_divergence_keeps_pronunciation_rows_selectable(self):
         app = self.make_app(query=mixed_query())
-        app.session.pronunciation_needs_rebuild = True
-        self.assertNotIn(("pronunciation", 0), navigation_items(app))
-        set_navigation_focus(app, ("text", None))
+        app.session.utterance_manually_edited = True
+        self.assertIn(("pronunciation", 0), navigation_items(app))
+        set_navigation_focus(app, ("caption", None))
         app._handle_key("\t")
-        self.assertEqual(app._navigation.focus_key, ("rebuild", None))
+        self.assertEqual(app._navigation.focus_key, ("build_pronunciation", None))
 
     def test_text_and_generate_are_reachable_with_only_vertical_arrows(self):
         app = self.make_app(query=mixed_query())
@@ -667,7 +667,7 @@ class TuiTests(unittest.TestCase):
 
     def test_run_sets_fast_escape_delay_and_keeps_100ms_polling_with_blank_ready_status(self):
         app = self.make_app()
-        app._initial_text = "example"
+        app._initial_caption = "example"
         screen = FakeScreen(keys=("q",))
         with patch(
             "voiceger_accent_adapter.tui.UtteranceSession.from_text",
@@ -716,13 +716,16 @@ class TuiTests(unittest.TestCase):
             groups=(("hello", ("HH", "AH1", "L", "OW0")),),
         )
         set_navigation_focus(app, ("pronunciation", 0))
+        self.assertFalse(app.session.utterance_manually_edited)
         before = app.session.query.model_dump()
         app._handle_key(curses.KEY_LEFT)
         self.assertEqual(app.session.query.model_dump(), before)
         self.assertEqual(app.session.replace_query_calls, [])
+        self.assertFalse(app.session.utterance_manually_edited)
         app._handle_key(curses.KEY_RIGHT)
         self.assertEqual(app.session.query.accent_phrases[0].accent, 2)
         self.assertEqual(len(app.session.replace_query_calls), 1)
+        self.assertTrue(app.session.utterance_manually_edited)
         self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
 
         set_navigation_focus(app, ("pronunciation", 1))
@@ -739,148 +742,201 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._navigation.focus_key, ("pronunciation", 1))
         self.assertIsNone(app._editor_controller.editor)
 
-    def test_modal_text_editor_is_concise_and_opens_on_the_input_row(self):
+    def test_modal_caption_editor_shows_explicit_action_menu(self):
         app = self.make_app(query=mixed_query())
-        set_navigation_focus(app, ("text", None))
+        set_navigation_focus(app, ("caption", None))
         app._handle_key("\n")
         screen = FakeScreen()
         app._screen = screen
         app._render()
         rendered = self.rendered(screen)
-        self.assertIn("EDIT TEXT", rendered)
+        self.assertIn("EDIT CAPTION TEXT", rendered)
+        self.assertIn("[ Apply ]", rendered)
+        self.assertIn("[ Clear ]", rendered)
+        self.assertIn("[ Reset ]", rendered)
+        self.assertIn("[ Back ]", rendered)
         self.assertNotIn("NAVIGATION", rendered)
         self.assertIn("▶ ", rendered)
         for removed in ("Draft source", "Input:", "[Enter: Edit]", "Enter applies", "Enter Apply", "Esc Cancel"):
             self.assertNotIn(removed, rendered)
 
-    def test_text_editor_applies_existing_session_source_without_reconstruction(self):
-        app = self.make_app(query=mixed_query())
+    def test_caption_apply_leaves_query_candidates_cache_and_playback_untouched(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(3),))
         session = app.session
+        candidates = session.candidates
         english_grouping(app, 1)
         self.assertIn(1, app._editor_controller.grouping_cache)
         query = session.query.model_dump()
-        set_navigation_focus(app, ("text", None))
-        app._open_text_editor("new source")
+        app._operations.current_take = 3
+        app._operations.stop_playback = Mock()
+        set_navigation_focus(app, ("caption", None))
+        app._open_caption_editor()
+        app._editor_controller.editor.input_value = "new caption"
         with patch(
             "voiceger_accent_adapter.tui.UtteranceSession.from_text",
             side_effect=AssertionError("existing session must be reused"),
         ) as from_text:
             app._handle_key("\n")
+            app._handle_key(curses.KEY_DOWN)
+            app._handle_key("\n")
         from_text.assert_not_called()
         self.assertIs(app.session, session)
         self.assertIsNone(app._editor_controller.editor)
-        self.assertEqual(app._navigation.focus_key, ("text", None))
-        self.assertEqual(session.replace_source_text_calls, ["new source"])
+        self.assertEqual(app._navigation.focus_key, ("caption", None))
+        self.assertEqual(session.replace_caption_calls, ["new caption"])
         self.assertEqual(session.replace_query_calls, [])
         self.assertEqual(session.query.model_dump(), query)
+        self.assertEqual(session.caption, "new caption")
+        self.assertEqual(session.candidates, candidates)
+        self.assertFalse(session.utterance_manually_edited)
         self.assertIn(1, app._editor_controller.grouping_cache)
-        self.assertIsNone(app._operations.current_take)
+        self.assertEqual(app._operations.current_take, 3)
+        app._operations.stop_playback.assert_not_called()
 
-    def test_text_editor_close_restores_remembered_segment_after_source_reset(self):
-        app = self.make_app(query=mixed_query())
-        set_navigation_focus(app, ("pronunciation", 1))
-        app._open_text_editor("updated source")
+    def test_first_caption_apply_creates_the_initial_session_query(self):
+        adapter = Mock()
+        adapter.voiceger_root = Path("/nonexistent/voiceger")
+        seeded_session = FakeSession(query=mixed_query())
+        app = TuiApp(adapter=adapter, settings=Settings())
+        app._open_caption_editor("")
+        app._editor_controller.editor.input_value = "initial caption"
+        with patch(
+            "voiceger_accent_adapter.tui.UtteranceSession.from_text",
+            return_value=seeded_session,
+        ) as from_text:
+            app._handle_key("\n")
+            app._handle_key(curses.KEY_DOWN)
+            app._handle_key("\n")
+
+        from_text.assert_called_once_with(
+            adapter=adapter,
+            caption="initial caption",
+            settings=app.settings,
+        )
+        self.assertIs(app.session, seeded_session)
+        self.assertEqual(app._status, "Caption set and pronunciation built.")
+
+    def test_pure_japanese_source_display_uses_utterance_after_caption_changes(self):
+        query = japanese_query((("ナ",), 1), (("ノ", "ダ"), 2))
+        query.voicegerSegments = None
+        app = self.make_app(query=query, groups=())
+        app.session.caption = "Caption B"
+        app.session._pure_japanese_utterance_text = "Utterance A"
+
+        rows = app._pronunciation_rows()
+        self.assertEqual(rows[0].source_text, "Utterance A")
+        rendered = "\n".join(line for line, _key in navigation_document(app, 100))
+        self.assertIn("Caption : Caption B", rendered)
+        set_navigation_focus(app, ("pronunciation", 0))
         app._handle_key("\n")
+        self.assertEqual(app._editor_controller.editor.payload["source_text"], "Utterance A")
 
-        self.assertIsNone(app._editor_controller.editor)
-        self.assertEqual(app._navigation.focus_key, ("pronunciation", 1))
-        self.assertEqual(app._navigation.pronunciation_index, 1)
-
-        app.session.candidates = (candidate(3),)
-        app._operations.play_take = Mock(return_value=())
-        focus_candidate(app, 3)
-        app._handle_key("\x1b")
-        self.assertEqual(app._navigation.focus_key, ("pronunciation", 1))
-
-    def test_same_signature_text_change_displays_updated_source_with_preserved_pronunciation(self):
+    def test_clean_build_runs_directly_and_clears_batch_transients(self):
         app = self.make_app(query=mixed_query())
-        app.session.segment_texts_after_source_change = ["新しい日本語", "new English"]
-        original_phones = app.session.query.voicegerSegments[1].phonemes[:]
-        app._open_text_editor("新しい日本語 new English")
-        app._handle_key("\n")
-
-        rows = navigation_document(app, 100)
-        rendered = "\n".join(line for line, _key in rows)
-        self.assertIn("新しい日本語", rendered)
-        self.assertIn("new English", rendered)
-        self.assertIn("[ア]", rendered)
-        self.assertNotIn("ア'", rendered)
-        self.assertEqual(app.session.query.voicegerSegments[1].phonemes, original_phones)
-        self.assertFalse(app.session.pronunciation_needs_rebuild)
-
-    def test_rebuild_required_text_hides_old_segments_and_fails_closed(self):
-        app = self.make_app(query=mixed_query())
-        app.session.rebuild_required_for_source = True
-        app._open_text_editor("new-source-signature")
-        app._handle_key("\n")
-
-        items = navigation_items(app)
-        rows = navigation_document(app, 80)
-        rendered = "\n".join(line for line, _key in rows)
-        self.assertNotIn(("pronunciation", 0), items)
-        self.assertNotIn(("pronunciation", 1), items)
-        self.assertIn(("rebuild", None), items)
-        self.assertIn(("generate", None), items)
-        self.assertIn("Pronunciation   Rebuild required", rendered)
-        self.assertNotIn("JA |", rendered)
-        self.assertNotIn("EN |", rendered)
-        self.assertNotIn("[Enter: Edit]", rendered)
-
-        set_navigation_focus(app, ("generate", None))
-        app._handle_key("\n")
-        self.assertIn("must be rebuilt", app._status)
-
-    def test_explicit_rebuild_stops_playback_resets_transients_and_focuses_segment(self):
-        app = self.make_app(query=mixed_query())
-        app.session.pronunciation_needs_rebuild = True
-        app._editor_controller.grouping_cache[1] = english_grouping(app, 1)
+        app.session.candidates = (candidate(2),)
+        app.session.utterance_manually_edited = False
+        old_grouping = english_grouping(app, 1)
+        clear_groupings = Mock(wraps=app._editor_controller.clear_groupings)
+        app._editor_controller.clear_groupings = clear_groupings
         app._operations.current_take = 2
-        events = []
-        app._operations.stop_playback = Mock(side_effect=lambda: events.append("stop"))
-        original_rebuild = app.session.rebuild_pronunciation
-
-        def rebuild():
-            events.append("rebuild")
-            original_rebuild()
-
-        app.session.rebuild_pronunciation = Mock(side_effect=rebuild)
-        set_navigation_focus(app, ("rebuild", None))
+        app._operations.stop_playback = Mock()
+        set_navigation_focus(app, ("build_pronunciation", None))
         app._handle_key("\n")
 
-        self.assertEqual(events, ["stop", "rebuild"])
-        self.assertIn(1, app._editor_controller.grouping_cache)
+        self.assertEqual(app.session.build_calls, 1)
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app.session.candidates, ())
+        clear_groupings.assert_called_once_with()
+        self.assertIsNot(app._editor_controller.grouping_cache[1], old_grouping)
         self.assertIsNone(app._operations.current_take)
-        self.assertEqual(app._navigation.pronunciation_index, 0)
+        app._operations.stop_playback.assert_called_once_with()
         self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
-        self.assertIn("Pronunciation rebuilt", app._status)
+        self.assertEqual(app._status, "Pronunciation rebuilt from Caption.")
 
-    def test_failed_explicit_rebuild_preserves_query_and_required_state(self):
-        app = self.make_app(query=mixed_query())
-        app.session.pronunciation_needs_rebuild = True
+    def test_dirty_build_confirmation_cancel_and_escape_leave_state_untouched(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(4),))
+        app.session.utterance_manually_edited = True
+        query = app.session.query.model_dump()
+        candidates = app.session.candidates
+        app._operations.stop_playback = Mock()
+        set_navigation_focus(app, ("build_pronunciation", None))
+        app._handle_key("\n")
+
+        editor = app._editor_controller.editor
+        self.assertEqual(editor.kind, "build_confirmation")
+        self.assertEqual(app.session.build_calls, 0)
+        self.assertEqual(app.session.query.model_dump(), query)
+        self.assertEqual(app.session.candidates, candidates)
+        self.assertTrue(app.session.utterance_manually_edited)
+
+        app._handle_key("\x1b")
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app._navigation.focus_key, ("build_pronunciation", None))
+        self.assertEqual(app.session.query.model_dump(), query)
+        self.assertEqual(app.session.candidates, candidates)
+        self.assertTrue(app.session.utterance_manually_edited)
+        app._operations.stop_playback.assert_not_called()
+
+    def test_dirty_build_confirmation_rebuilds_only_after_explicit_action(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(2),))
+        app.session.utterance_manually_edited = True
+        old_grouping = english_grouping(app, 1)
+        clear_groupings = Mock(wraps=app._editor_controller.clear_groupings)
+        app._editor_controller.clear_groupings = clear_groupings
+        app._operations.current_take = 2
+        app._operations.stop_playback = Mock()
+        set_navigation_focus(app, ("build_pronunciation", None))
+        app._handle_key("\n")
+        self.assertEqual(app.session.build_calls, 0)
+        app._handle_key("\n")
+
+        self.assertEqual(app.session.build_calls, 1)
+        self.assertFalse(app.session.utterance_manually_edited)
+        self.assertEqual(app.session.candidates, ())
+        self.assertIsNone(app._editor_controller.editor)
+        clear_groupings.assert_called_once_with()
+        self.assertIsNot(app._editor_controller.grouping_cache[1], old_grouping)
+        self.assertIsNone(app._operations.current_take)
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
+        self.assertEqual(app._status, "Pronunciation rebuilt from Caption.")
+
+    def test_failed_confirmed_build_preserves_query_and_retains_confirmation(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(2),))
+        app.session.utterance_manually_edited = True
+        app.session.rebuild_error = RuntimeError("analysis failed")
         app._operations.current_take = 2
         query = app.session.query.model_dump()
-        app.session.rebuild_error = RuntimeError("analysis failed")
-        set_navigation_focus(app, ("rebuild", None))
+        candidates = app.session.candidates
+        set_navigation_focus(app, ("build_pronunciation", None))
+        app._handle_key("\n")
+        editor = app._editor_controller.editor
         app._handle_key("\n")
 
+        self.assertIs(app._editor_controller.editor, editor)
         self.assertEqual(app.session.query.model_dump(), query)
-        self.assertTrue(app.session.pronunciation_needs_rebuild)
+        self.assertEqual(app.session.candidates, candidates)
+        self.assertTrue(app.session.utterance_manually_edited)
         self.assertEqual(app._operations.current_take, 2)
-        self.assertIn("analysis failed", app._status)
+        self.assertIn("analysis failed", editor.error)
 
-    def test_text_apply_failure_preserves_draft_and_remains_editable(self):
+    def test_caption_apply_failure_preserves_draft_and_remains_editable(self):
         app = self.make_app(query=mixed_query())
-        app._open_text_editor("bad draft")
+        app._open_caption_editor()
         editor = app._editor_controller.editor
-        app.session.replace_source_text = Mock(
-            side_effect=ValueError("source replacement failed")
+        editor.input_value = "bad draft"
+        app.session.replace_caption = Mock(
+            side_effect=ValueError("caption replacement failed")
         )
         app._handle_key("\n")
+        app._handle_key(curses.KEY_DOWN)
+        app._handle_key("\n")
         self.assertIs(app._editor_controller.editor, editor)
-        self.assertEqual(editor.active_field, "draft")
+        self.assertIsNone(editor.active_field)
         self.assertEqual(editor.input_value, "bad draft")
         self.assertEqual(editor.payload["draft"], "bad draft")
-        self.assertIn("source replacement failed", editor.error)
+        self.assertIn("caption replacement failed", editor.error)
+        app._handle_key(curses.KEY_UP)
+        app._handle_key("\n")
         app._handle_key("!")
         self.assertEqual(editor.input_value, "bad draft!")
 
@@ -1255,12 +1311,12 @@ class TuiTests(unittest.TestCase):
         app._operations.busy = True
 
         for key in (
-            ("text", None),
+            ("caption", None),
             ("pronunciation", 0),
             ("generate", None),
             ("settings_summary", None),
             ("output", None),
-            ("rebuild", None),
+            ("build_pronunciation", None),
         ):
             set_navigation_focus(app, key)
             app._handle_key("\n")
@@ -1520,7 +1576,7 @@ class TuiTests(unittest.TestCase):
 
     def test_shortcuts_are_typed_data_while_raw_input_is_active(self):
         app = self.make_app(query=mixed_query())
-        app._open_text_editor("abc")
+        app._open_caption_editor("abc")
         original_settings = app.settings
         for key in ("q", "?", "s", "x", "t", "1", curses.KEY_F5):
             app._handle_key(key)
@@ -1531,7 +1587,7 @@ class TuiTests(unittest.TestCase):
     def test_navigation_shortcuts_open_the_same_visible_actions(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
         app._handle_key("t")
-        self.assertEqual(app._editor_controller.editor.kind, "text")
+        self.assertEqual(app._editor_controller.editor.kind, "caption")
         app._handle_key("\x1b")
         app._handle_key("s")
         self.assertEqual(app._editor_controller.editor.kind, "settings")
@@ -1644,32 +1700,22 @@ class TuiTests(unittest.TestCase):
             app._change_settings(take_count=2)
         self.assertEqual(events, ["stop", "settings"])
 
-    def test_source_replacement_stops_playback_before_session_invalidation(self):
+    def test_caption_replacement_does_not_stop_playback_or_clear_grouping(self):
         app = self.make_app(query=mixed_query())
         english_grouping(app, 1)
         events = []
         session = app.session
         app._operations.stop_playback = Mock(side_effect=lambda: events.append("stop"))
-        session.replace_source_text = Mock(
-            side_effect=lambda source: events.append("replace")
-        )
-        app._open_text_editor("new source")
-        app._editor_controller.editor.payload["draft"] = "new source"
-        app._editor_controller.editor.active_field = None
-        app._dispatch_editor_intents(
-            app._editor_controller.apply(
-                app.settings,
-                app.session.query,
-                app.session.source_text,
-            )
-        )
-        self.assertEqual(events, ["stop", "replace"])
+        session.replace_caption = Mock(side_effect=lambda caption: events.append("replace"))
+        result = app._apply_caption("new caption")
+        self.assertIsNone(result.error)
+        self.assertEqual(events, ["replace"])
         self.assertIs(app.session, session)
         self.assertIn(1, app._editor_controller.grouping_cache)
 
     def test_busy_shutdown_drains_worker_before_playback_and_session_cleanup(self):
         app = self.make_app()
-        app._initial_text = "example"
+        app._initial_caption = "example"
         app._operations.busy = True
         timeout_read = Event()
         worker_finished = Event()
@@ -1721,7 +1767,7 @@ class TuiTests(unittest.TestCase):
 
     def test_run_exception_joins_worker_before_cleanup(self):
         app = self.make_app()
-        app._initial_text = "example"
+        app._initial_caption = "example"
         app._operations.busy = True
         worker_release = Event()
         cleanup_order = []

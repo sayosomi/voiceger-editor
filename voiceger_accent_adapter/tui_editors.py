@@ -96,8 +96,13 @@ class ReplaceQueryIntent:
 
 
 @dataclass(frozen=True)
-class ReplaceSourceTextIntent:
-    source_text: str
+class ApplyCaptionIntent:
+    caption: str
+
+
+@dataclass(frozen=True)
+class BuildPronunciationIntent:
+    pass
 
 
 @dataclass(frozen=True)
@@ -152,7 +157,8 @@ class ClearAdjustmentFeedbackIntent:
 
 EditorIntent = Union[
     ReplaceQueryIntent,
-    ReplaceSourceTextIntent,
+    ApplyCaptionIntent,
+    BuildPronunciationIntent,
     ApplySettingsIntent,
     CloseEditorIntent,
     UpdateStatusIntent,
@@ -167,9 +173,14 @@ class QueryApplicationResult:
 
 
 @dataclass(frozen=True)
-class SourceTextApplicationResult:
+class CaptionApplicationResult:
     unchanged: bool = False
-    needs_rebuild: bool = False
+    initial_session_created: bool = False
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class BuildPronunciationResult:
     error: str | None = None
 
 
@@ -195,28 +206,44 @@ class TuiEditorController:
         self._available_styles = available_styles
         self._input_prefix = input_prefix
 
-    def open_text(
+    def open_caption(
         self,
         initial: str | None,
         *,
-        current_source: str | None,
+        current_caption: str | None,
         origin: tuple[str, int | None],
         busy: bool,
     ) -> tuple[EditorIntent, ...]:
         if busy:
-            return (UpdateStatusIntent("Wait for synthesis to finish before editing text."),)
-        current = initial if initial is not None else current_source or ""
+            return (UpdateStatusIntent("Wait for synthesis to finish before editing Caption."),)
+        current = initial if initial is not None else current_caption or ""
         self.editor = EditorState(
-            kind="text",
-            title="EDIT TEXT",
+            kind="caption",
+            title="EDIT CAPTION TEXT",
             origin=origin,
             selection="draft",
-            payload={"draft": current},
+            payload={"draft": current, "opening_caption": current},
         )
         return (
             UpdateStatusIntent(""),
             *self.begin_field("draft", current),
         )
+
+    def open_build_confirmation(
+        self,
+        *,
+        origin: tuple[str, int | None],
+    ) -> tuple[EditorIntent, ...]:
+        self.editor = EditorState(
+            kind="build_confirmation",
+            title="REBUILD PRONUNCIATION?",
+            origin=origin,
+            selection="rebuild",
+            payload={
+                "warning": "Manual pronunciation or utterance edits will be replaced."
+            },
+        )
+        return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
 
     def open_settings(
         self,
@@ -592,6 +619,7 @@ class TuiEditorController:
 
     def clear_groupings(self) -> None:
         self.grouping_cache.clear()
+        self.grouping_error = None
 
     def begin_field(self, name: str, value: str) -> tuple[EditorIntent, ...]:
         editor = self.editor
@@ -609,8 +637,10 @@ class TuiEditorController:
         editor = self.editor
         if editor is None:
             return []
-        if editor.kind == "text":
-            return ["draft"]
+        if editor.kind == "caption":
+            return ["draft", "apply", "clear", "reset", "back"]
+        if editor.kind == "build_confirmation":
+            return ["rebuild", "cancel"]
         if editor.kind == "japanese":
             return ["pronunciation"]
         if editor.kind == "settings":
@@ -645,7 +675,7 @@ class TuiEditorController:
         *,
         settings: Settings,
         query: AudioQuery | None,
-        current_source: str | None,
+        current_caption: str | None,
         screen_width: int = 80,
     ) -> tuple[EditorIntent, ...]:
         editor = self.editor
@@ -653,14 +683,13 @@ class TuiEditorController:
             return ()
         if editor.active_field is not None:
             if key in _ENTER_KEYS:
-                if editor.kind == "text":
-                    editor.payload["draft"] = editor.input_value
-                    return self.apply(settings, query, current_source)
+                if editor.kind == "caption":
+                    return self._finish_field()
                 if editor.kind in {"japanese", "english_word"}:
-                    return self.apply(settings, query, current_source)
+                    return self.apply(settings, query, current_caption)
                 return self._finish_field()
             if key == _ESCAPE:
-                if editor.kind in {"text", "japanese", "settings", "english_word"}:
+                if editor.kind in {"caption", "japanese", "settings", "english_word"}:
                     return self.cancel()
                 editor.input_value = editor.input_original
                 editor.input_cursor = len(editor.input_original)
@@ -728,22 +757,41 @@ class TuiEditorController:
         if key == curses.KEY_DOWN:
             return self.move_selection(1)
         if key in _ENTER_KEYS:
-            return self._activate_selection(settings, query, current_source)
+            return self._activate_selection(settings, query, current_caption)
         return ()
 
     def _activate_selection(
         self,
         settings: Settings,
         query: AudioQuery | None,
-        current_source: str | None,
+        current_caption: str | None,
     ) -> tuple[EditorIntent, ...]:
         editor = self.editor
         if editor is None:
             return ()
         selected = editor.selection
-        if editor.kind == "text":
+        if editor.kind == "caption":
             if selected == "draft":
                 return self.begin_field("draft", editor.payload["draft"])
+            if selected == "apply":
+                return self.apply(settings, query, current_caption)
+            if selected == "clear":
+                self._set_caption_draft(editor, "")
+                editor.error = ""
+                return (UpdateStatusIntent("Caption draft cleared."),)
+            if selected == "reset":
+                self._set_caption_draft(
+                    editor, editor.payload["opening_caption"]
+                )
+                editor.error = ""
+                return (UpdateStatusIntent("Caption draft reset."),)
+            if selected == "back":
+                return self.cancel()
+        elif editor.kind == "build_confirmation":
+            if selected == "rebuild":
+                return (BuildPronunciationIntent(),)
+            if selected == "cancel":
+                return self._close_editor("Pronunciation rebuild cancelled.")
         elif editor.kind == "japanese":
             return self.begin_field("pronunciation", editor.input_value)
         elif editor.kind == "settings":
@@ -751,7 +799,7 @@ class TuiEditorController:
                 draft = editor.payload["draft_settings"]
                 draft["save_text"] = not draft["save_text"]
             elif selected == "apply":
-                return self.apply(settings, query, current_source)
+                return self.apply(settings, query, current_caption)
             elif isinstance(selected, str):
                 value = editor.payload["draft_settings"][selected]
                 return self.begin_field(selected, str(value))
@@ -759,6 +807,13 @@ class TuiEditorController:
             if selected == "phonemes":
                 return self.begin_field("phonemes", editor.input_value)
         return ()
+
+    @staticmethod
+    def _set_caption_draft(editor: EditorState, caption: str) -> None:
+        editor.payload["draft"] = caption
+        editor.input_value = caption
+        editor.input_original = caption
+        editor.input_cursor = len(caption)
 
     def _finish_field(self) -> tuple[EditorIntent, ...]:
         editor = self.editor
@@ -784,16 +839,16 @@ class TuiEditorController:
         self,
         settings: Settings,
         query: AudioQuery | None,
-        current_source: str | None,
+        current_caption: str | None,
     ) -> tuple[EditorIntent, ...]:
         editor = self.editor
         if editor is None:
             return ()
-        if editor.kind == "text":
+        if editor.kind == "caption":
             source = editor.payload["draft"]
-            if current_source is not None and source == current_source:
-                return self._close_editor("Source text unchanged.")
-            return (ReplaceSourceTextIntent(source),)
+            if current_caption is not None and source == current_caption:
+                return self._close_editor("Caption unchanged.")
+            return (ApplyCaptionIntent(source),)
         if editor.kind == "japanese":
             try:
                 if query is None:
@@ -924,25 +979,41 @@ class TuiEditorController:
             return ()
         return self._close_editor(intent.success_status)
 
-    def complete_source_text_application(
+    def complete_caption_application(
         self,
-        result: SourceTextApplicationResult,
+        result: CaptionApplicationResult,
     ) -> tuple[EditorIntent, ...]:
         editor = self.editor
         if editor is None:
             return ()
         if result.error is not None:
-            editor.error = f"Error: Source text was not changed: {result.error}"
+            editor.error = f"Error: Caption was not changed: {result.error}"
             return ()
         if result.unchanged:
-            return self._close_editor("Source text unchanged.")
-        self.clear_groupings()
+            return self._close_editor("Caption unchanged.")
         status = (
-            "Source text updated; rebuild pronunciation before generating."
-            if result.needs_rebuild
-            else "Source text updated; pronunciation preserved."
+            "Caption set and pronunciation built."
+            if result.initial_session_created
+            else "Caption updated."
         )
         return self._close_editor(status)
+
+    def complete_build_confirmation(
+        self,
+        result: BuildPronunciationResult,
+    ) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        if result.error is not None:
+            if editor is None:
+                return (
+                    UpdateStatusIntent(
+                        f"Error: Pronunciation was not rebuilt: {result.error}"
+                    ),
+                )
+            editor.error = f"Error: Pronunciation was not rebuilt: {result.error}"
+            return ()
+        self.editor = None
+        return (ClearAdjustmentFeedbackIntent(),)
 
     def complete_settings_application(
         self,
@@ -961,7 +1032,8 @@ class TuiEditorController:
         if editor is None:
             return ()
         status = {
-            "text": "Text draft discarded.",
+            "caption": "Caption draft discarded.",
+            "build_confirmation": "Pronunciation rebuild cancelled.",
             "japanese": "Japanese pronunciation draft discarded.",
             "settings": "Settings draft discarded.",
             "english_word": "English word draft discarded.",

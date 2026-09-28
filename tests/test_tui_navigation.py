@@ -2,15 +2,15 @@ import unittest
 
 from voiceger_accent_adapter.tui_navigation import (
     AcceptCandidate,
+    BuildPronunciation,
     ClearAdjustmentFeedback,
     EditPronunciationItem,
     NavigationContext,
     OpenHelp,
     OpenSettingsEditor,
-    OpenTextEditor,
+    OpenCaptionEditor,
     PlayCandidate,
     Quit,
-    RebuildPronunciation,
     RegenerateAll,
     RegenerateCandidate,
     StartGeneration,
@@ -22,7 +22,6 @@ from voiceger_accent_adapter.tui_navigation import (
 def context(
     *,
     has_session=True,
-    pronunciation_needs_rebuild=False,
     pronunciation_count=4,
     candidate_numbers=(1, 2),
     busy=False,
@@ -30,7 +29,6 @@ def context(
 ):
     return NavigationContext(
         has_session=has_session,
-        pronunciation_needs_rebuild=pronunciation_needs_rebuild,
         pronunciation_count=pronunciation_count,
         candidate_numbers=tuple(candidate_numbers),
         busy=busy,
@@ -50,8 +48,8 @@ class TuiNavigationTests(unittest.TestCase):
             (
                 ("settings_summary", None),
                 ("output", None),
-                ("text", None),
-                ("rebuild", None),
+                ("caption", None),
+                ("build_pronunciation", None),
                 ("pronunciation", 0),
                 ("pronunciation", 1),
                 ("pronunciation", 2),
@@ -73,19 +71,12 @@ class TuiNavigationTests(unittest.TestCase):
             (
                 ("settings_summary", None),
                 ("output", None),
-                ("text", None),
+                ("caption", None),
                 ("settings", None),
                 ("help", None),
                 ("quit", None),
             ),
         )
-
-    def test_rebuild_required_context_hides_all_pronunciation_children(self):
-        items = self.navigation.navigation_items(
-            context(pronunciation_needs_rebuild=True, pronunciation_count=4)
-        )
-        self.assertFalse(any(name == "pronunciation" for name, _ in items))
-        self.assertIn(("rebuild", None), items)
 
     def test_major_navigation_keeps_pronunciation_as_one_section(self):
         self.assertEqual(
@@ -95,8 +86,8 @@ class TuiNavigationTests(unittest.TestCase):
             (
                 ("settings_summary", None),
                 ("output", None),
-                ("text", None),
-                ("rebuild", None),
+                ("caption", None),
+                ("build_pronunciation", None),
                 ("pronunciation", 0),
                 ("generate", None),
                 ("candidate", 5),
@@ -108,11 +99,11 @@ class TuiNavigationTests(unittest.TestCase):
 
     def test_up_and_down_visit_each_child_without_extra_wrap_stops(self):
         state = context(pronunciation_count=3, candidate_numbers=())
-        self.navigation.focus_key = ("text", None)
+        self.navigation.focus_key = ("caption", None)
         self.assertEqual(
             self.navigation.move(state, 1), (ClearAdjustmentFeedback(),)
         )
-        self.assertEqual(self.navigation.focus_key, ("rebuild", None))
+        self.assertEqual(self.navigation.focus_key, ("build_pronunciation", None))
         for index in range(3):
             self.assertEqual(
                 self.navigation.move(state, 1), (ClearAdjustmentFeedback(),)
@@ -158,7 +149,7 @@ class TuiNavigationTests(unittest.TestCase):
         self.assertEqual(
             self.navigation.move_section(state, -1), (ClearAdjustmentFeedback(),)
         )
-        self.assertEqual(self.navigation.focus_key, ("rebuild", None))
+        self.assertEqual(self.navigation.focus_key, ("build_pronunciation", None))
 
     def test_candidate_section_and_vertical_navigation_preserve_order(self):
         state = context(candidate_numbers=(4, 7))
@@ -177,7 +168,7 @@ class TuiNavigationTests(unittest.TestCase):
         )
         self.assertEqual(self.navigation.focus_key, ("settings", None))
 
-    def test_focus_fallback_prefers_remembered_child_then_rebuild_then_text(self):
+    def test_focus_fallback_prefers_remembered_child_then_build_then_caption(self):
         available = context(pronunciation_count=4)
         self.navigation.pronunciation_index = 3
         self.assertEqual(
@@ -186,23 +177,27 @@ class TuiNavigationTests(unittest.TestCase):
         )
         self.assertEqual(self.navigation.focus_key, ("pronunciation", 3))
 
-        rebuild_only = context(
-            pronunciation_needs_rebuild=True,
-            pronunciation_count=0,
-            candidate_numbers=(),
-        )
+        build_only = context(pronunciation_count=0, candidate_numbers=())
         self.assertEqual(
-            self.navigation.set_focus_key(rebuild_only, ("pronunciation", 3)),
+            self.navigation.set_focus_key(build_only, ("pronunciation", 3)),
             (ClearAdjustmentFeedback(),),
         )
-        self.assertEqual(self.navigation.focus_key, ("rebuild", None))
+        self.assertEqual(self.navigation.focus_key, ("build_pronunciation", None))
         self.assertEqual(
             self.navigation.set_focus_key(
-                context(has_session=False), ("rebuild", None)
+                context(has_session=False), ("build_pronunciation", None)
             ),
             (ClearAdjustmentFeedback(),),
         )
-        self.assertEqual(self.navigation.focus_key, ("text", None))
+        self.assertEqual(self.navigation.focus_key, ("caption", None))
+
+    def test_caption_build_and_pronunciation_are_consecutive_main_rows(self):
+        state = context(pronunciation_count=2)
+        self.navigation.focus_key = ("caption", None)
+        self.navigation.move(state, 1)
+        self.assertEqual(self.navigation.focus_key, ("build_pronunciation", None))
+        self.navigation.move(state, 1)
+        self.assertEqual(self.navigation.focus_key, ("pronunciation", 0))
 
     def test_set_focus_updates_remembered_index_even_when_key_is_unchanged(self):
         self.navigation.focus_key = ("pronunciation", 2)
@@ -221,10 +216,10 @@ class TuiNavigationTests(unittest.TestCase):
         mappings = (
             (("settings_summary", None), OpenSettingsEditor("style_id")),
             (("output", None), OpenSettingsEditor("output_dir", edit=True)),
-            (("text", None), OpenTextEditor()),
+            (("caption", None), OpenCaptionEditor()),
             (("pronunciation", 1), EditPronunciationItem(1)),
             (("generate", None), StartGeneration()),
-            (("rebuild", None), RebuildPronunciation()),
+            (("build_pronunciation", None), BuildPronunciation()),
             (("candidate", 1), AcceptCandidate(1)),
             (("settings", None), OpenSettingsEditor("style_id")),
             (("help", None), OpenHelp()),
