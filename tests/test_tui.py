@@ -705,11 +705,16 @@ class TuiTests(unittest.TestCase):
                     language="ja", text="雨", accentPhraseStart=0, accentPhraseCount=1
                 ),
                 VoicegerSegment(
-                    language="en", text="hello", phonemes=["HH", "AH1", "IY0"]
+                    language="en",
+                    text="hello",
+                    phonemes=["HH", "AH1", "L", "OW0"],
                 ),
             ],
         )
-        app = self.make_app(query=query, groups=(("hello", ("HH", "AH1", "IY0")),))
+        app = self.make_app(
+            query=query,
+            groups=(("hello", ("HH", "AH1", "L", "OW0")),),
+        )
         set_navigation_focus(app, ("pronunciation", 0))
         before = app.session.query.model_dump()
         app._handle_key(curses.KEY_LEFT)
@@ -722,7 +727,15 @@ class TuiTests(unittest.TestCase):
 
         set_navigation_focus(app, ("pronunciation", 1))
         app._handle_key(curses.KEY_RIGHT)
-        self.assertEqual(app.session.query.voicegerSegments[1].phonemes, ["HH", "AH0", "IY1"])
+        self.assertEqual(
+            app.session.query.voicegerSegments[1].phonemes,
+            ["HH", "AH0", "L", "OW1"],
+        )
+        app._handle_key(curses.KEY_LEFT)
+        self.assertEqual(
+            app.session.query.voicegerSegments[1].phonemes,
+            ["HH", "AH1", "L", "OW0"],
+        )
         self.assertEqual(app._navigation.focus_key, ("pronunciation", 1))
         self.assertIsNone(app._editor_controller.editor)
 
@@ -1031,7 +1044,6 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(editor.input_value, "ナ'ノダ。")
         self.assertIn("query replacement failed", editor.error)
         self.assertEqual(app.session.query.model_dump(), original_query.model_dump())
-
         app._handle_key("ア")
         self.assertEqual(editor.input_value, "ナ'ノダア。")
         self.assertEqual(editor.error, "")
@@ -1040,6 +1052,48 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(attempts, 2)
         self.assertEqual(app.session.query.voicegerSegments[0].text, "なのだ。")
         self.assertEqual(len(app.session.replace_query_calls), 1)
+
+    def test_english_query_application_failure_keeps_draft_editable_and_clears_on_typing(self):
+        app = self.make_app(
+            query=english_query(["HH", "AY1"], text="Hi"),
+            candidates=(candidate(1),),
+            groups=(("Hi", ("HH", "AY1")),),
+        )
+        original_query = app.session.query.model_copy(deep=True)
+        actual_replace = app.session.replace_query
+        attempts = 0
+
+        def fail_once(replacement):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise ValueError("query replacement failed")
+            actual_replace(replacement)
+
+        app.session.replace_query = fail_once
+        set_navigation_focus(app, ("pronunciation", 0))
+        app._handle_key("\n")
+        editor = app._editor_controller.editor
+        self.assertEqual(editor.active_field, "phonemes")
+        editor.input_value = "HH AA1"
+        editor.input_cursor = len(editor.input_value)
+        app._handle_key("\n")
+
+        self.assertIs(app._editor_controller.editor, editor)
+        self.assertEqual(editor.input_value, "HH AA1")
+        self.assertIn("query replacement failed", editor.error)
+        self.assertEqual(app.session.query.model_dump(), original_query.model_dump())
+        self.assertEqual(len(app.session.candidates), 1)
+
+        app._handle_key(" ")
+        self.assertEqual(editor.input_value, "HH AA1 ")
+        self.assertEqual(editor.error, "")
+        app._handle_key("\n")
+
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app.session.query.voicegerSegments[0].phonemes, ["HH", "AA1"])
+        self.assertEqual(app.session.candidates, ())
+        self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
 
     def test_settings_are_reachable_and_editable_without_shortcuts(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1280,21 +1334,27 @@ class TuiTests(unittest.TestCase):
     def test_english_word_phoneme_edit_commits_directly_to_flat_query(self):
         phones = ["HH", "AY1", "!", "DH", "EH1", "R"]
         groups = (("Hi", ("HH", "AY1")), ("!", ("!",)), ("There", ("DH", "EH1", "R")))
-        app = self.make_app(query=english_query(phones, text="Hi! There"), groups=groups)
+        app = self.make_app(
+            query=english_query(phones, text="Hi! There"),
+            groups=groups,
+            candidates=(candidate(1),),
+        )
         set_navigation_focus(app, ("pronunciation", 0))
         app._handle_key("\n")
         editor = app._editor_controller.editor
         self.assertEqual(editor.kind, "english_word")
         self.assertEqual(editor.payload["label"], "Hi")
+        self.assertEqual(editor.active_field, "phonemes")
+        self.assertEqual(editor.input_value, "HH AY1")
         self.assertNotIn("english_segment", editor.kind)
-        app._handle_key("\n")
-        editor.input_value = "HH AA K"
+        editor.input_value = "HH AA1 K"
         editor.input_cursor = len(editor.input_value)
         app._handle_key("\n")
         self.assertIsNone(app._editor_controller.editor)
         self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
         self.assertEqual(app.session.query.voicegerSegments[0].phonemes, ["HH", "AA1", "K", "!", "DH", "EH1", "R"])
         self.assertEqual(app.session.replace_query_calls[-1].voicegerSegments[0].phonemes, app.session.query.voicegerSegments[0].phonemes)
+        self.assertEqual(app.session.candidates, ())
 
     def test_english_phoneme_edit_returns_directly_to_originating_main_word(self):
         app = self.make_app(
@@ -1305,9 +1365,9 @@ class TuiTests(unittest.TestCase):
         app._handle_key("\n")
         word_editor = app._editor_controller.editor
         self.assertEqual(word_editor.kind, "english_word")
+        self.assertEqual(word_editor.active_field, "phonemes")
         original_query = app.session.query.model_dump()
-        app._handle_key("\n")
-        word_editor.input_value = "HH AA K IY"
+        word_editor.input_value = "HH AA1 K IY0"
         word_editor.input_cursor = len(word_editor.input_value)
         app._handle_key("\n")
 
@@ -1324,8 +1384,9 @@ class TuiTests(unittest.TestCase):
         original_query = app.session.query.model_dump()
         set_navigation_focus(app, ("pronunciation", 0))
         app._handle_key("\n")
-        app._handle_key("\n")
-        app._editor_controller.editor.input_value = "HH AA M"
+        editor = app._editor_controller.editor
+        self.assertEqual(editor.active_field, "phonemes")
+        editor.input_value = "HH AA0 M"
         app._handle_key("\x1b")
         self.assertIsNone(app._editor_controller.editor)
         self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
@@ -1362,6 +1423,61 @@ class TuiTests(unittest.TestCase):
             ["AA0", "K", "IY1", "ER2"],
         )
 
+    def test_main_english_stress_move_swaps_primary_with_secondary(self):
+        phones = ["AH1", "K", "OW2"]
+        app = self.make_app(
+            query=english_query(phones, text="word"),
+            candidates=(candidate(1),),
+            groups=(("word", tuple(phones)),),
+        )
+        set_navigation_focus(app, ("pronunciation", 0))
+
+        app._handle_key(curses.KEY_RIGHT)
+
+        self.assertEqual(
+            app.session.query.voicegerSegments[0].phonemes,
+            ["AH2", "K", "OW1"],
+        )
+        self.assertEqual(app.session.candidates, ())
+
+    def test_main_english_stress_move_is_noop_for_zero_or_multiple_primaries(self):
+        for phones in (["AA0", "K", "IY2"], ["AA1", "K", "IY1"]):
+            with self.subTest(phones=phones):
+                app = self.make_app(
+                    query=english_query(phones, text="word"),
+                    candidates=(candidate(1),),
+                    groups=(("word", tuple(phones)),),
+                )
+                set_navigation_focus(app, ("pronunciation", 0))
+                original_query = app.session.query.model_dump()
+
+                app._handle_key(curses.KEY_RIGHT)
+
+                self.assertEqual(app.session.query.model_dump(), original_query)
+                self.assertEqual(app.session.replace_query_calls, [])
+                self.assertEqual(len(app.session.candidates), 1)
+
+    def test_main_english_stress_move_is_noop_at_requested_vowel_edge(self):
+        cases = (
+            (["AA1", "K", "IY0"], curses.KEY_LEFT),
+            (["AA0", "K", "IY1"], curses.KEY_RIGHT),
+        )
+        for phones, key in cases:
+            with self.subTest(phones=phones, key=key):
+                app = self.make_app(
+                    query=english_query(phones, text="word"),
+                    candidates=(candidate(1),),
+                    groups=(("word", tuple(phones)),),
+                )
+                set_navigation_focus(app, ("pronunciation", 0))
+                original_query = app.session.query.model_dump()
+
+                app._handle_key(key)
+
+                self.assertEqual(app.session.query.model_dump(), original_query)
+                self.assertEqual(app.session.replace_query_calls, [])
+                self.assertEqual(len(app.session.candidates), 1)
+
     def test_group_cache_tracks_phoneme_edits_without_realigning(self):
         app = self.make_app(
             query=english_query(["HH", "AY1"], text="Hi"),
@@ -1369,9 +1485,9 @@ class TuiTests(unittest.TestCase):
         )
         set_navigation_focus(app, ("pronunciation", 0))
         app._handle_key("\n")
-        app._handle_key("\n")
         editor = app._editor_controller.editor
-        editor.input_value = "HH AA M"
+        self.assertEqual(editor.active_field, "phonemes")
+        editor.input_value = "HH AA1 M"
         app._handle_key("\n")
         self.assertIsNone(app._editor_controller.editor)
         calls = app.adapter.english_word_phoneme_groups.call_count

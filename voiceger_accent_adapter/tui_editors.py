@@ -9,11 +9,10 @@ from pathlib import Path
 from typing import Any, Callable, Sequence, Union
 
 from .english_stress import (
-    EnglishPhonemeEditorState,
     editor_state_to_english_phonemes,
     english_phonemes_to_editor_state,
     move_primary_stress,
-    replace_editor_base_phonemes,
+    normalize_english_phonemes,
 )
 from .query_editing import (
     japanese_pronunciation,
@@ -429,7 +428,7 @@ class TuiEditorController:
         ):
             try:
                 group = row.grouping.groups[row.group_index]
-                state = english_phonemes_to_editor_state(group.phonemes)
+                phonemes = normalize_english_phonemes(group.phonemes)
             except Exception as exc:
                 return (
                     UpdateStatusIntent(
@@ -446,10 +445,12 @@ class TuiEditorController:
                     "group_index": row.group_index,
                     "grouping": row.grouping,
                     "label": group.label,
-                    "draft_state": state,
                 },
             )
-            return (UpdateStatusIntent(""),)
+            return (
+                UpdateStatusIntent(""),
+                *self.begin_field("phonemes", " ".join(phonemes)),
+            )
         return (
             UpdateStatusIntent(
                 f"Error: Pronunciation editing is not available for {row.language!r}."
@@ -539,25 +540,12 @@ class TuiEditorController:
             group = row.grouping.groups[row.group_index]
             state = english_phonemes_to_editor_state(group.phonemes)
             primary_positions = state.primary_stress_vowel_positions
-            if not primary_positions:
+            if direction not in {-1, 1} or len(primary_positions) != 1:
                 return clear
-
-            # Move one marker in the requested direction, leaving other primary
-            # markers in this word and the rest of the segment untouched.
-            occupied = set(primary_positions)
-            sources = sorted(primary_positions, reverse=direction > 0)
-            movement = next(
-                (
-                    (source, source + direction)
-                    for source in sources
-                    if 0 <= source + direction < len(state.vowel_stresses)
-                    and source + direction not in occupied
-                ),
-                None,
-            )
-            if movement is None:
+            source = primary_positions[0]
+            target = source + direction
+            if not 0 <= target < len(state.vowel_stresses):
                 return clear
-            source, target = movement
             updated = move_english_primary_stress(
                 query,
                 segment_index=row.model_segment_index,
@@ -668,13 +656,8 @@ class TuiEditorController:
                 if editor.kind == "text":
                     editor.payload["draft"] = editor.input_value
                     return self.apply(settings, query, current_source)
-                if editor.kind == "japanese":
+                if editor.kind in {"japanese", "english_word"}:
                     return self.apply(settings, query, current_source)
-                if editor.kind == "english_word":
-                    intents = self._finish_field()
-                    if editor.error:
-                        return intents
-                    return (*intents, *self.apply(settings, query, current_source))
                 return self._finish_field()
             if key == _ESCAPE:
                 if editor.kind in {"text", "japanese", "settings", "english_word"}:
@@ -732,7 +715,7 @@ class TuiEditorController:
                 )
                 editor.input_cursor += len(key)
                 input_changed = True
-            if input_changed and editor.kind == "japanese":
+            if input_changed and editor.kind in {"japanese", "english_word"}:
                 editor.error = ""
             return ()
 
@@ -774,8 +757,7 @@ class TuiEditorController:
                 return self.begin_field(selected, str(value))
         elif editor.kind == "english_word":
             if selected == "phonemes":
-                state = editor.payload["draft_state"]
-                return self.begin_field("phonemes", " ".join(state.base_phonemes))
+                return self.begin_field("phonemes", editor.input_value)
         return ()
 
     def _finish_field(self) -> tuple[EditorIntent, ...]:
@@ -784,17 +766,7 @@ class TuiEditorController:
             return ()
         name = editor.active_field
         value = editor.input_value
-        if editor.kind == "english_word" and name == "phonemes":
-            try:
-                current = editor.payload["draft_state"]
-                updated = replace_editor_base_phonemes(current, value.split())
-            except Exception as exc:
-                editor.error = f"Error: {exc}"
-                return ()
-            editor.payload["draft_state"] = updated
-            editor.input_value = " ".join(updated.base_phonemes)
-            value = editor.input_value
-        elif editor.kind == "settings":
+        if editor.kind == "settings":
             editor.payload["draft_settings"][name] = value
         else:
             editor.payload[name] = value
@@ -858,9 +830,12 @@ class TuiEditorController:
                     raise ValueError("There is no active utterance")
                 groups = list(grouping.groups)
                 edited_phones = tuple(
-                    editor_state_to_english_phonemes(editor.payload["draft_state"])
+                    normalize_english_phonemes(editor.input_value.split())
                 )
-                if edited_phones == groups[group_index].phonemes:
+                current_phones = tuple(
+                    normalize_english_phonemes(groups[group_index].phonemes)
+                )
+                if edited_phones == current_phones:
                     return self._close_editor("English phonemes unchanged.")
                 groups[group_index] = replace(
                     groups[group_index],

@@ -24,26 +24,12 @@ def format_english_phonemes(
     *,
     selected_primary: int | None = None,
 ) -> str:
-    """Render stress-free ARPAbet, marking primary-stress anchors visually."""
+    """Render stressed ARPAbet, marking primary-stress anchors visually."""
 
     state = english_phonemes_to_editor_state(phonemes)
-    result: list[str] = []
-    vowel_position = 0
-    for token in state.base_phonemes:
-        if token in _VOWELS:
-            stress = state.vowel_stresses[vowel_position]
-            selected = vowel_position == selected_primary
-            if selected:
-                rendered = f"▶[{token}]"
-            elif stress == 1:
-                rendered = f"[{token}]"
-            else:
-                rendered = token
-            result.append(rendered)
-            vowel_position += 1
-        else:
-            result.append(token)
-    return " ".join(result)
+    return " ".join(
+        _phoneme_state_tokens(state, selected_primary=selected_primary)
+    )
 
 
 def _display_width(value: str) -> int:
@@ -141,15 +127,23 @@ def _wrap_labeled_tokens(
     return lines
 
 
-def _phoneme_state_tokens(state: EnglishPhonemeEditorState) -> list[str]:
+def _phoneme_state_tokens(
+    state: EnglishPhonemeEditorState,
+    *,
+    selected_primary: int | None = None,
+) -> list[str]:
     result: list[str] = []
     vowel_index = 0
     for token in state.base_phonemes:
         if token in _VOWELS:
-            if state.vowel_stresses[vowel_index] == 1:
-                result.append(f"[{token}]")
+            stress = state.vowel_stresses[vowel_index]
+            display_token = f"{token}{stress}" if stress is not None else token
+            if vowel_index == selected_primary:
+                result.append(f"▶[{display_token}]")
+            elif stress == 1:
+                result.append(f"[{display_token}]")
             else:
-                result.append(token)
+                result.append(display_token)
             vowel_index += 1
         else:
             result.append(token)
