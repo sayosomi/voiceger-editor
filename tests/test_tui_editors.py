@@ -7,6 +7,7 @@ from voiceger_accent_adapter.settings import Settings
 from voiceger_accent_adapter.tui_editors import (
     AdjustmentPressedIntent,
     ApplySettingsIntent,
+    ClearAdjustmentFeedbackIntent,
     CloseEditorIntent,
     EnglishWordGroup,
     QueryApplicationResult,
@@ -698,7 +699,50 @@ class TuiEditorControllerTests(unittest.TestCase):
                 intents,
             )
 
-    def test_settings_left_right_adjustment_reports_existing_validation_errors(self):
+    def test_settings_no_op_adjustments_clear_feedback_without_pressed_intent(self):
+        styles = (
+            SimpleNamespace(id=1),
+            SimpleNamespace(id=4),
+            SimpleNamespace(id=7),
+        )
+        controller, _provider = self.make_controller(styles=styles)
+        controller.open_settings(
+            self.settings(),
+            origin=("settings_summary", None),
+            busy=False,
+        )
+        editor = controller.editor
+
+        for selected, value, key, unchanged in (
+            ("style_id", "1", curses.KEY_LEFT, "1"),
+            ("style_id", "7", curses.KEY_RIGHT, "7"),
+            ("speed", "0.01", curses.KEY_LEFT, "0.01"),
+            ("take_count", "1", curses.KEY_LEFT, "1"),
+            ("take_count", "8", curses.KEY_RIGHT, "8"),
+            ("save_text", False, curses.KEY_LEFT, False),
+            ("save_text", True, curses.KEY_RIGHT, True),
+        ):
+            with self.subTest(selected=selected, value=value, key=key):
+                editor.selection = selected
+                editor.payload["draft_settings"][selected] = value
+                intents = controller.handle_key(
+                    key,
+                    settings=self.settings(),
+                    query=None,
+                    current_source=None,
+                )
+                self.assertEqual(editor.payload["draft_settings"][selected], unchanged)
+                self.assertNotIn(
+                    AdjustmentPressedIntent(
+                        "settings",
+                        selected,
+                        -1 if key == curses.KEY_LEFT else 1,
+                    ),
+                    intents,
+                )
+                self.assertEqual(intents, (ClearAdjustmentFeedbackIntent(),))
+
+    def test_settings_left_right_adjustment_reports_validation_errors_without_feedback(self):
         controller, _provider = self.make_controller(
             styles=(SimpleNamespace(id=1),)
         )
@@ -708,16 +752,29 @@ class TuiEditorControllerTests(unittest.TestCase):
             busy=False,
         )
         editor = controller.editor
-        editor.selection = "speed"
-        editor.payload["draft_settings"]["speed"] = "nan"
-        intents = controller.handle_key(
-            curses.KEY_RIGHT,
-            settings=self.settings(),
-            query=None,
-            current_source=None,
-        )
-        self.assertIn("Error: Speed must be a positive finite number.", editor.error)
-        self.assertEqual(intents, (AdjustmentPressedIntent("settings", "speed", 1),))
+        for selected, invalid, expected_error in (
+            ("style_id", "invalid", "Error: Style ID must be a positive integer."),
+            ("speed", "nan", "Error: Speed must be a positive finite number."),
+            (
+                "take_count",
+                "invalid",
+                "Error: Take count must be an integer from 1 through 8.",
+            ),
+        ):
+            with self.subTest(selected=selected):
+                editor.selection = selected
+                editor.payload["draft_settings"][selected] = invalid
+                intents = controller.handle_key(
+                    curses.KEY_RIGHT,
+                    settings=self.settings(),
+                    query=None,
+                    current_source=None,
+                )
+                self.assertEqual(editor.error, expected_error)
+                self.assertEqual(
+                    editor.payload["draft_settings"][selected], invalid
+                )
+                self.assertEqual(intents, (ClearAdjustmentFeedbackIntent(),))
 
     def test_settings_apply_validation_errors_keep_draft_open(self):
         for field, invalid in (
