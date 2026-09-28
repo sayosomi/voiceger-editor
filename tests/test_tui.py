@@ -1008,6 +1008,22 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._english_groupings, {})
         self.assertIsNone(app._current_take)
 
+    def test_text_editor_close_restores_remembered_segment_after_source_reset(self):
+        app = self.make_app(query=mixed_query())
+        app._set_focus_key(("segment", 1))
+        app._open_text_editor("updated source")
+        app._handle_editor_key("\n")
+
+        self.assertIsNone(app._editor)
+        self.assertEqual(app._focus_key, ("segment", 1))
+        self.assertEqual(app._segment_index, 1)
+
+        app.session.candidates = (candidate(3),)
+        app._play_take = Mock()
+        app._focus_candidate(3)
+        app._handle_key("\x1b")
+        self.assertEqual(app._focus_key, ("segment", 1))
+
     def test_same_signature_text_change_displays_updated_source_with_preserved_pronunciation(self):
         app = self.make_app(query=mixed_query())
         app.session.segment_texts_after_source_change = ["新しい日本語", "new English"]
