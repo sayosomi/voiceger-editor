@@ -164,6 +164,72 @@ def _english_display_tokens(phonemes: Sequence[str]) -> list[str]:
     return _phonemes_as_ui_tokens(phonemes)
 
 
+def _japanese_mora_tokens(
+    morae: Sequence[str],
+    accent: int,
+) -> list[str]:
+    """Show a Japanese phrase as complete, space-separated mora tokens."""
+
+    return [
+        f"[{mora}]" if index == accent else mora
+        for index, mora in enumerate(morae, start=1)
+    ]
+
+
+def _wrap_tokens_with_prefixes(
+    first_prefix: str,
+    continuation_prefix: str,
+    tokens: Sequence[str],
+    width: int,
+    *,
+    cursor_index: int | None = None,
+) -> tuple[list[str], tuple[int, int] | None]:
+    """Wrap complete tokens and optionally locate a token-boundary cursor."""
+
+    width = max(1, width)
+    lines: list[str] = []
+    current_prefix = first_prefix
+    current = first_prefix
+    used = _display_width(first_prefix)
+    has_token = False
+    cursor: tuple[int, int] | None = None
+    line_index = 0
+    values = list(tokens)
+
+    for index, token in enumerate(values):
+        token_width = _display_width(token)
+        separator_width = 1 if has_token else 0
+        if (
+            used + separator_width + token_width > width
+            and has_token
+        ) or (
+            used + token_width > width
+            and not has_token
+            and current_prefix != continuation_prefix
+        ):
+            lines.append(current)
+            line_index += 1
+            current_prefix = continuation_prefix
+            current = continuation_prefix
+            used = _display_width(continuation_prefix)
+            has_token = False
+            separator_width = 0
+
+        if cursor_index == index:
+            cursor = (line_index, used + separator_width)
+        if separator_width:
+            current += " "
+            used += 1
+        current += token
+        used += token_width
+        has_token = True
+
+    if cursor_index == len(values):
+        cursor = (line_index, used)
+    lines.append(current)
+    return lines, cursor
+
+
 def _wrapped_ranges(value: str, width: int) -> list[tuple[int, int]]:
     width = max(1, width)
     if not value:

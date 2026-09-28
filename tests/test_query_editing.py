@@ -9,10 +9,12 @@ from voiceger_accent_adapter.query_editing import (
     english_editor_state,
     japanese_pronunciation,
     move_english_primary_stress,
+    move_japanese_accent,
     replace_english_base_phonemes,
     replace_english_editor_state,
     replace_english_phoneme_groups,
     replace_japanese_pronunciation,
+    replace_japanese_accent_phrase,
 )
 from voiceger_accent_adapter.voicevox_api_models import (
     AccentPhrase,
@@ -61,6 +63,114 @@ def _mixed_query(phrases, segments, **fields):
 
 
 class QueryEditingTests(unittest.TestCase):
+    def test_japanese_accent_move_changes_one_mora_and_boundary_is_noop(self):
+        query = _pure_query("キョ'ウ/ア'メ。", speedScale=1.25)
+        original = query.model_dump()
+
+        moved = move_japanese_accent(
+            query, accent_phrase_index=0, direction=1
+        )
+
+        self.assertEqual([phrase.accent for phrase in moved.accent_phrases], [2, 1])
+        self.assertEqual(japanese_pronunciation(moved), "キョウ'/ア'メ。")
+        self.assertEqual(query.model_dump(), original)
+        self.assertIs(
+            move_japanese_accent(
+                moved, accent_phrase_index=0, direction=1
+            ),
+            moved,
+        )
+        self.assertEqual(moved.speedScale, 1.25)
+
+    def test_mixed_japanese_accent_move_preserves_other_phrases_and_segments(self):
+        query = _mixed_query(
+            ["キョ'ウ/ア'メ", "サ'ク"],
+            [
+                VoicegerSegment(
+                    language="ja",
+                    text="今日雨",
+                    accentPhraseStart=0,
+                    accentPhraseCount=2,
+                    pronunciationTerminator="？",
+                ),
+                VoicegerSegment(language="en", text="hello", phonemes=["HH", "AH1"]),
+                VoicegerSegment(
+                    language="ja",
+                    text="咲く",
+                    accentPhraseStart=2,
+                    accentPhraseCount=1,
+                    pronunciationTerminator="。",
+                ),
+            ],
+            speedScale=1.4,
+        )
+        before = query.model_dump()
+
+        updated = move_japanese_accent(
+            query,
+            accent_phrase_index=1,
+            direction=1,
+            segment_index=0,
+        )
+
+        self.assertEqual(
+            [phrase.accent for phrase in updated.accent_phrases], [1, 2, 1]
+        )
+        self.assertEqual(len(updated.accent_phrases), len(query.accent_phrases))
+        self.assertEqual(updated.voicegerSegments, query.voicegerSegments)
+        self.assertEqual(updated.speedScale, query.speedScale)
+        self.assertEqual(query.model_dump(), before)
+        self.assertEqual(
+            updated.voicegerSegments[0].pronunciationTerminator, "？"
+        )
+
+    def test_replacing_phrase_reading_keeps_phrase_and_segment_structure(self):
+        query = _mixed_query(
+            ["キョ'ウ/ア'メ", "サ'ク"],
+            [
+                VoicegerSegment(
+                    language="ja",
+                    text="今日雨",
+                    accentPhraseStart=0,
+                    accentPhraseCount=2,
+                    pronunciationTerminator="？",
+                ),
+                VoicegerSegment(language="en", text="hello", phonemes=["HH", "AH1"]),
+                VoicegerSegment(
+                    language="ja",
+                    text="咲く",
+                    accentPhraseStart=2,
+                    accentPhraseCount=1,
+                ),
+            ],
+        )
+        before = query.model_dump()
+
+        updated = replace_japanese_accent_phrase(
+            query,
+            accent_phrase_index=0,
+            morae=("ミャ", "ク"),
+            accent=1,
+            segment_index=0,
+        )
+
+        self.assertEqual(len(updated.accent_phrases), 3)
+        self.assertEqual([mora.text for mora in updated.accent_phrases[0].moras], ["ミャ", "ク"])
+        self.assertEqual(updated.accent_phrases[0].accent, 1)
+        self.assertEqual(updated.accent_phrases[0].is_interrogative, query.accent_phrases[0].is_interrogative)
+        self.assertEqual(updated.voicegerSegments[0].accentPhraseCount, 2)
+        self.assertEqual(updated.voicegerSegments[2].accentPhraseStart, 2)
+        self.assertEqual(updated.voicegerSegments[0].pronunciationTerminator, "？")
+        self.assertEqual(query.model_dump(), before)
+        with self.assertRaisesRegex(ValueError, "complete mora"):
+            replace_japanese_accent_phrase(
+                query,
+                accent_phrase_index=0,
+                morae=("キ", "ョ", "ウ"),
+                accent=1,
+                segment_index=0,
+            )
+
     def test_pure_japanese_notation_uses_synthesis_terminator_rule(self):
         question = _pure_query("ア'メ", kana="アメ？")
         fallback = _pure_query("ア'メ", kana=None)

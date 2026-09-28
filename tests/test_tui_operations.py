@@ -86,7 +86,7 @@ class TuiOperationsTests(unittest.TestCase):
         return self.operations.consume_pending_events(
             session,
             navigation_revision=revision,
-            segment_index=segment,
+            pronunciation_index=segment,
             exit_requested=exiting,
         )
 
@@ -311,7 +311,7 @@ class TuiOperationsTests(unittest.TestCase):
                 UpdateStatusEffect("Error: Generation failed: second synthesis failed"),
                 StopPlaybackEffect(),
                 DiscardInitialBatchEffect(),
-                FocusEffect(("segment", 3)),
+                FocusEffect(("pronunciation", 3)),
                 UpdateStatusEffect("Error: Generation failed: second synthesis failed"),
             ),
         )
@@ -545,7 +545,7 @@ class TuiOperationsTests(unittest.TestCase):
             session,
             3,
             busy=False,
-            segment_index=2,
+            pronunciation_index=2,
         )
         self.assertEqual(session.accept_calls, [3])
         self.assertEqual(self.operations.current_take, None)
@@ -553,7 +553,7 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(
             effects,
             (
-                FocusEffect(("segment", 2)),
+                FocusEffect(("pronunciation", 2)),
                 UpdateStatusEffect("Saved saved.wav and saved.txt."),
             ),
         )
@@ -569,7 +569,7 @@ class TuiOperationsTests(unittest.TestCase):
                 session,
                 3,
                 busy=False,
-                segment_index=0,
+                pronunciation_index=0,
             ),
             (UpdateStatusEffect("Error: Could not save take 3: save failed"),),
         )
@@ -581,7 +581,7 @@ class TuiOperationsTests(unittest.TestCase):
                 session,
                 3,
                 busy=True,
-                segment_index=0,
+                pronunciation_index=0,
             ),
             (),
         )
