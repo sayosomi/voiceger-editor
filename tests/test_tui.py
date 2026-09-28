@@ -8,6 +8,8 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 from voiceger_accent_adapter.settings import Settings
+from voiceger_accent_adapter.tui_editors import PreviewIntent
+from voiceger_accent_adapter.tui_operations import PlayPreviewEffect
 from voiceger_accent_adapter.tui import (
     TuiApp,
     build_argument_parser,
@@ -271,6 +273,15 @@ class TuiTests(unittest.TestCase):
     def rendered(screen):
         return "\n".join(text for _row, _column, text, _attr in screen.drawn)
 
+    @staticmethod
+    def finish_and_apply_pronunciation(app):
+        editor = app._editor_controller.editor
+        if editor is not None and editor.active_field is not None:
+            app._handle_key("\n")
+        app._handle_key(curses.KEY_DOWN)
+        app._handle_key(curses.KEY_DOWN)
+        app._handle_key("\n")
+
     def test_command_line_options_still_override_persisted_defaults(self):
         args = build_argument_parser().parse_args(
             ["example", "--take-count", "8", "--style", "2", "--speed", "1.25", "--save-text"]
@@ -344,13 +355,13 @@ class TuiTests(unittest.TestCase):
         set_navigation_focus(app, ("pronunciation", 0))
         app._handle_key("\n")
         self.assertEqual(app._editor_controller.editor.kind, "japanese")
-        self.assertEqual(app._editor_controller.editor.title, "EDIT JAPANESE PRONUNCIATION")
+        self.assertEqual(app._editor_controller.editor.title, "EDIT PRONUNCIATION")
 
         app._editor_controller.editor = None
         set_navigation_focus(app, ("pronunciation", 1))
         app._handle_key("\n")
         self.assertEqual(app._editor_controller.editor.kind, "english_word")
-        self.assertEqual(app._editor_controller.editor.title, "EDIT WORD PRONUNCIATION")
+        self.assertEqual(app._editor_controller.editor.title, "EDIT PRONUNCIATION")
         self.assertNotIn("english_segment", app._editor_controller.editor.kind)
 
     def test_caption_divergence_keeps_pronunciation_rows_selectable(self):
@@ -679,6 +690,30 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(screen.timeouts, [100])
         self.assertEqual(app._status, "")
 
+    def test_preview_temporary_wav_is_cleaned_during_tui_shutdown(self):
+        app = self.make_app()
+        app._initial_caption = "example"
+        process = Mock()
+        process.poll.return_value = None
+        popen = Mock(return_value=process)
+        app._operations._platform = lambda: "linux"
+        app._operations._which = lambda _name: "/usr/bin/ffplay"
+        app._operations._popen = popen
+        app._operations.play_preview([0.0] * 80, 32000)
+        preview_path = Path(popen.call_args.args[0][-1])
+        self.assertTrue(preview_path.is_file())
+
+        with patch(
+            "voiceger_accent_adapter.tui.UtteranceSession.from_text",
+            return_value=app.session,
+        ), patch("voiceger_accent_adapter.tui.curses.set_escdelay"):
+            app.run(FakeScreen(keys=("q",)))
+
+        self.assertFalse(preview_path.exists())
+        self.assertFalse(preview_path.parent.exists())
+        self.assertIsNone(app._operations.playback_process)
+        process.terminate.assert_called_once_with()
+
     def test_ordinary_navigation_movement_preserves_existing_status(self):
         app = self.make_app(query=mixed_query())
         app._status = "Saved output.wav."
@@ -792,6 +827,26 @@ class TuiTests(unittest.TestCase):
         self.assertIn(1, app._editor_controller.grouping_cache)
         self.assertEqual(app._operations.current_take, 3)
         app._operations.stop_playback.assert_not_called()
+
+    def test_preview_intent_dispatches_preview_without_replacing_canonical_query(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(3),))
+        session = app.session
+        transient = AudioQuery(accent_phrases=[])
+        app._operations.start_preview = Mock(return_value=())
+        canonical = session.query.model_dump()
+        candidates = session.candidates
+
+        app._dispatch_editor_intents((PreviewIntent(transient),))
+
+        app._operations.start_preview.assert_called_once_with(session, transient)
+        self.assertEqual(session.replace_query_calls, [])
+        self.assertEqual(session.query.model_dump(), canonical)
+        self.assertEqual(session.candidates, candidates)
+        self.assertFalse(session.utterance_manually_edited)
+
+        app._operations.play_preview = Mock(return_value=())
+        app._dispatch_operation_effects((PlayPreviewEffect("audio", 22050),))
+        app._operations.play_preview.assert_called_once_with("audio", 22050)
 
     def test_first_caption_apply_creates_the_initial_session_query(self):
         adapter = Mock()
@@ -949,7 +1004,7 @@ class TuiTests(unittest.TestCase):
 
         editor = app._editor_controller.editor
         self.assertEqual(editor.kind, "japanese")
-        self.assertEqual(editor.title, "EDIT JAPANESE PRONUNCIATION")
+        self.assertEqual(editor.title, "EDIT PRONUNCIATION")
         self.assertEqual(editor.selection, "pronunciation")
         self.assertEqual(editor.active_field, "pronunciation")
         self.assertEqual(editor.payload["source_text"], "なのだ。")
@@ -974,6 +1029,10 @@ class TuiTests(unittest.TestCase):
         app._handle_key(curses.KEY_DC)
         self.assertEqual(editor.input_value, "ナ'ノダ'。")
         app._handle_key("\n")
+        self.assertIsNone(editor.active_field)
+        app._handle_key(curses.KEY_DOWN)
+        app._handle_key(curses.KEY_DOWN)
+        app._handle_key("\n")
 
         self.assertIs(app._editor_controller.editor, editor)
         self.assertEqual(editor.input_value, "ナ'ノダ'。")
@@ -981,12 +1040,15 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app.session.query.model_dump(), original_query.model_dump())
         self.assertEqual(app.session.replace_query_calls, [])
 
+        app._handle_key(curses.KEY_UP)
+        app._handle_key(curses.KEY_UP)
+        app._handle_key("\n")
         app._handle_key(curses.KEY_HOME)
         app._handle_key(curses.KEY_RIGHT)
         app._handle_key(curses.KEY_DC)
         self.assertEqual(editor.input_value, "ナノダ'。")
         self.assertEqual(editor.error, "")
-        app._handle_key("\n")
+        self.finish_and_apply_pronunciation(app)
 
         self.assertIsNone(app._editor_controller.editor)
         self.assertEqual(app._navigation.focus_key, ("pronunciation", 1))
@@ -1014,7 +1076,7 @@ class TuiTests(unittest.TestCase):
         app._handle_key("'")
         app._handle_key(" ")
         self.assertEqual(editor.input_value, "ナ' ノダ'。")
-        app._handle_key("\n")
+        self.finish_and_apply_pronunciation(app)
 
         updated = app.session.query
         self.assertIsNone(app._editor_controller.editor)
@@ -1044,7 +1106,7 @@ class TuiTests(unittest.TestCase):
                     app._handle_key(curses.KEY_BACKSPACE)
                 if desired:
                     app._handle_key(desired)
-                app._handle_key("\n")
+                self.finish_and_apply_pronunciation(app)
 
                 segment = app.session.query.voicegerSegments[0]
                 self.assertIsNone(app._editor_controller.editor)
@@ -1093,17 +1155,22 @@ class TuiTests(unittest.TestCase):
         app._handle_key(curses.KEY_LEFT)
         app._handle_key(curses.KEY_DC)
         self.assertEqual(editor.input_value, "ナ'ノダ。")
-        app._handle_key("\n")
+        self.finish_and_apply_pronunciation(app)
 
         self.assertIs(app._editor_controller.editor, editor)
-        self.assertEqual(editor.active_field, "pronunciation")
+        self.assertIsNone(editor.active_field)
         self.assertEqual(editor.input_value, "ナ'ノダ。")
         self.assertIn("query replacement failed", editor.error)
         self.assertEqual(app.session.query.model_dump(), original_query.model_dump())
+        app._handle_key(curses.KEY_UP)
+        app._handle_key(curses.KEY_UP)
+        app._handle_key("\n")
+        app._handle_key(curses.KEY_END)
+        app._handle_key(curses.KEY_LEFT)
         app._handle_key("ア")
         self.assertEqual(editor.input_value, "ナ'ノダア。")
         self.assertEqual(editor.error, "")
-        app._handle_key("\n")
+        self.finish_and_apply_pronunciation(app)
         self.assertIsNone(app._editor_controller.editor)
         self.assertEqual(attempts, 2)
         self.assertEqual(app.session.query.voicegerSegments[0].text, "なのだ。")
@@ -1133,7 +1200,7 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(editor.active_field, "phonemes")
         editor.input_value = "HH AA1"
         editor.input_cursor = len(editor.input_value)
-        app._handle_key("\n")
+        self.finish_and_apply_pronunciation(app)
 
         self.assertIs(app._editor_controller.editor, editor)
         self.assertEqual(editor.input_value, "HH AA1")
@@ -1141,10 +1208,13 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app.session.query.model_dump(), original_query.model_dump())
         self.assertEqual(len(app.session.candidates), 1)
 
+        app._handle_key(curses.KEY_UP)
+        app._handle_key(curses.KEY_UP)
+        app._handle_key("\n")
         app._handle_key(" ")
         self.assertEqual(editor.input_value, "HH AA1 ")
         self.assertEqual(editor.error, "")
-        app._handle_key("\n")
+        self.finish_and_apply_pronunciation(app)
 
         self.assertIsNone(app._editor_controller.editor)
         self.assertEqual(app.session.query.voicegerSegments[0].phonemes, ["HH", "AA1"])
@@ -1405,7 +1475,7 @@ class TuiTests(unittest.TestCase):
         self.assertNotIn("english_segment", editor.kind)
         editor.input_value = "HH AA1 K"
         editor.input_cursor = len(editor.input_value)
-        app._handle_key("\n")
+        self.finish_and_apply_pronunciation(app)
         self.assertIsNone(app._editor_controller.editor)
         self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
         self.assertEqual(app.session.query.voicegerSegments[0].phonemes, ["HH", "AA1", "K", "!", "DH", "EH1", "R"])
@@ -1425,7 +1495,7 @@ class TuiTests(unittest.TestCase):
         original_query = app.session.query.model_dump()
         word_editor.input_value = "HH AA1 K IY0"
         word_editor.input_cursor = len(word_editor.input_value)
-        app._handle_key("\n")
+        self.finish_and_apply_pronunciation(app)
 
         self.assertIsNone(app._editor_controller.editor)
         self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
@@ -1458,7 +1528,10 @@ class TuiTests(unittest.TestCase):
         editor = app._editor_controller.editor
         self.assertEqual(editor.kind, "english_word")
         self.assertNotIn("english_segment", app._editor_controller.selection_keys())
-        self.assertEqual(app._editor_controller.selection_keys(), ["phonemes"])
+        self.assertEqual(
+            app._editor_controller.selection_keys(),
+            ["phonemes", "preview", "apply", "clear", "reset", "back"],
+        )
 
     @staticmethod
     def english_phoneme_state(phonemes):
@@ -1544,7 +1617,7 @@ class TuiTests(unittest.TestCase):
         editor = app._editor_controller.editor
         self.assertEqual(editor.active_field, "phonemes")
         editor.input_value = "HH AA1 M"
-        app._handle_key("\n")
+        self.finish_and_apply_pronunciation(app)
         self.assertIsNone(app._editor_controller.editor)
         calls = app.adapter.english_word_phoneme_groups.call_count
         cached = english_grouping(app, 0)

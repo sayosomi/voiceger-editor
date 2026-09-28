@@ -6,6 +6,11 @@ import unittest
 from voiceger_accent_adapter.compatibility import SUPPORTED_VOICEGER_REVISION
 from voiceger_accent_adapter.mixed_language import build_mixed_audio_query
 from voiceger_accent_adapter.pronunciation import parse_pronunciation
+from voiceger_accent_adapter.query_editing import (
+    english_word_preview_query,
+    japanese_preview_query,
+    japanese_pronunciation,
+)
 from voiceger_accent_adapter.styles import get_style
 from voiceger_accent_adapter.synthesis import synthesize_audio_query
 from voiceger_accent_adapter.voiceger_adapter import VoicegerAdapter
@@ -122,6 +127,84 @@ class VoicegerIntegrationTests(unittest.TestCase):
         self.assertEqual(result["sampling_rate"], 32000)
         duration = len(result["audio"]) / result["sampling_rate"]
         self.assertGreater(duration, 0.5)
+        self.assertLess(duration, 15.0)
+
+    def test_selected_japanese_segment_preview_synthesizes_without_runaway(self):
+        query = build_mixed_audio_query(
+            "今日はhello sweet worldなのだ。",
+            english_g2p=self.adapter.english_phonemes,
+        )
+        japanese_index = next(
+            index
+            for index, segment in enumerate(query.voicegerSegments or [])
+            if segment.language == "ja"
+        )
+        preview_query = japanese_preview_query(
+            query,
+            japanese_pronunciation(query, segment_index=japanese_index),
+            segment_index=japanese_index,
+        )
+
+        self.assertIsNone(preview_query.voicegerSegments)
+        result = synthesize_audio_query(
+            adapter=self.adapter,
+            query=preview_query,
+            style=self.style,
+        )
+
+        self.assertEqual(result["sampling_rate"], 32000)
+        duration = len(result["audio"]) / result["sampling_rate"]
+        self.assertGreater(duration, 0.1)
+        self.assertLess(duration, 10.0)
+
+    def test_english_containing_segment_preview_synthesizes_without_runaway(self):
+        query = build_mixed_audio_query(
+            "今日はhello sweet worldなのだ。",
+            english_g2p=self.adapter.english_phonemes,
+        )
+        english_index = next(
+            index
+            for index, segment in enumerate(query.voicegerSegments or [])
+            if segment.language == "en"
+        )
+        segment = query.voicegerSegments[english_index]
+        raw_groups = self.adapter.english_word_phoneme_groups(segment.text)
+        groups = tuple(tuple(phonemes) for _word, phonemes in raw_groups)
+        group_index = next(
+            index
+            for index, (word, _phonemes) in enumerate(raw_groups)
+            if word.lower() == "sweet"
+        )
+        draft = tuple(raw_groups[group_index][1])
+        for token_index, token in enumerate(draft):
+            if token[-1:] in {"0", "1", "2"}:
+                replacement = "0" if token[-1] != "0" else "1"
+                draft = (
+                    *draft[:token_index],
+                    token[:-1] + replacement,
+                    *draft[token_index + 1 :],
+                )
+                break
+
+        preview_query = english_word_preview_query(
+            query,
+            segment_index=english_index,
+            group_index=group_index,
+            phoneme_groups=groups,
+            draft_phonemes=draft,
+        )
+
+        self.assertEqual(len(preview_query.voicegerSegments), 1)
+        self.assertEqual(preview_query.voicegerSegments[0].text, segment.text)
+        result = synthesize_audio_query(
+            adapter=self.adapter,
+            query=preview_query,
+            style=self.style,
+        )
+
+        self.assertEqual(result["sampling_rate"], 32000)
+        duration = len(result["audio"]) / result["sampling_rate"]
+        self.assertGreater(duration, 0.1)
         self.assertLess(duration, 15.0)
 
 

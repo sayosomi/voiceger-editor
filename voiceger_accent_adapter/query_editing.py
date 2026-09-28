@@ -9,6 +9,7 @@ from .english_stress import (
     editor_state_to_english_phonemes,
     english_phonemes_to_editor_state,
     move_primary_stress,
+    normalize_english_phonemes,
     replace_editor_base_phonemes,
 )
 from .pronunciation import (
@@ -166,6 +167,46 @@ def replace_japanese_pronunciation(
 
     updated.kana = None
     return updated
+
+
+def japanese_preview_query(
+    query: AudioQuery,
+    pronunciation: str,
+    *,
+    segment_index: int | None = None,
+) -> AudioQuery:
+    """Return a query that previews only the selected Japanese segment.
+
+    Pure Japanese input previews its whole utterance. For a mixed query, the
+    selected segment is first edited with the canonical Japanese replacement
+    semantics, then its resulting phrases are isolated into a pure Japanese
+    query. The input and every unrelated segment remain untouched.
+    """
+
+    updated = replace_japanese_pronunciation(
+        query,
+        pronunciation,
+        segment_index=segment_index,
+    )
+    if segment_index is None:
+        return updated
+
+    assert updated.voicegerSegments is not None
+    segment = updated.voicegerSegments[segment_index]
+    start = segment.accentPhraseStart
+    count = segment.accentPhraseCount
+    assert start is not None and count is not None
+    phrases = updated.accent_phrases[start : start + count]
+    pronunciation_value = accent_phrases_to_pronunciation(
+        phrases,
+        terminator=resolve_japanese_segment_terminator(segment),
+    )
+
+    preview = updated.model_copy(deep=True)
+    preview.accent_phrases = preview.accent_phrases[start : start + count]
+    preview.voicegerSegments = None
+    preview.kana = format_pronunciation(pronunciation_value)
+    return preview
 
 
 def _japanese_phrase_range(
@@ -362,6 +403,72 @@ def replace_english_phoneme_groups(
         segment_index=segment_index,
         state=replacement_state,
     )
+
+
+def english_word_preview_query(
+    query: AudioQuery,
+    *,
+    segment_index: int,
+    group_index: int,
+    phoneme_groups: Sequence[Sequence[str]],
+    draft_phonemes: Sequence[str],
+) -> AudioQuery:
+    """Return an English-only query for one segment with a word draft applied.
+
+    ``phoneme_groups`` is the caller's current transient grouping of the
+    canonical English segment. Only the selected group's phonemes are
+    replaced; the other groups are copied verbatim into the resulting segment.
+    """
+
+    _validate_query(query)
+    segments = query.voicegerSegments
+    if segments is None:
+        raise ValueError("English editing requires voicegerSegments")
+    _validate_segment_index(segment_index, len(segments))
+    segment = segments[segment_index]
+    if segment.language != "en":
+        raise ValueError("selected segment is not English")
+    if segment.phonemes is None:
+        raise ValueError("selected English segment has no phonemes")
+    if isinstance(phoneme_groups, (str, bytes)) or not isinstance(
+        phoneme_groups, Sequence
+    ) or not phoneme_groups:
+        raise ValueError("English phoneme groups must be a non-empty sequence")
+    if type(group_index) is not int or not 0 <= group_index < len(phoneme_groups):
+        raise ValueError("group_index is out of range")
+
+    groups: list[tuple[str, ...]] = []
+    flattened: list[str] = []
+    for group in phoneme_groups:
+        if isinstance(group, (str, bytes)) or not isinstance(group, Sequence):
+            raise ValueError("each English phoneme group must be a sequence")
+        values = tuple(group)
+        if any(not isinstance(value, str) for value in values):
+            raise ValueError("English phoneme groups must contain strings")
+        groups.append(values)
+        flattened.extend(values)
+    if tuple(flattened) != tuple(segment.phonemes):
+        raise ValueError("English phoneme groups do not match the selected segment")
+    if isinstance(draft_phonemes, (str, bytes)) or not isinstance(
+        draft_phonemes, Sequence
+    ):
+        raise ValueError("draft_phonemes must be a sequence")
+    replacement = tuple(normalize_english_phonemes(draft_phonemes))
+    groups[group_index] = replacement
+
+    updated = replace_english_phoneme_groups(
+        query,
+        segment_index=segment_index,
+        phoneme_groups=tuple(groups),
+    )
+    assert updated.voicegerSegments is not None
+    preview = updated.model_copy(deep=True)
+    preview.accent_phrases = []
+    preview.voicegerSegments = [
+        preview.voicegerSegments[segment_index].model_copy(deep=True)
+    ]
+    preview.kana = None
+    return preview
 
 
 def move_english_primary_stress(

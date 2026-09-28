@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Iterator
+from typing import Any, Iterator
 
 from .mixed_language import build_mixed_audio_query
 from .output import SavedOutput
@@ -204,6 +204,24 @@ class UtteranceSession:
         self._settings = settings
         self._style = style
         self._query = replacement_query
+
+    def preview_synthesis(self, query: AudioQuery) -> dict[str, Any]:
+        """Synthesize a transient query without changing utterance or take state."""
+
+        _validate_query(query)
+        query_snapshot = AudioQuery.model_validate(query.model_dump())
+        settings_snapshot = deepcopy(self._settings)
+        style_snapshot = deepcopy(self._style)
+        adapter = self._adapter
+        query_snapshot.speedScale = settings_snapshot.speed
+        return synthesize_audio_query(
+            adapter=adapter,
+            query=query_snapshot,
+            style=style_snapshot,
+            top_k=20,
+            top_p=0.6,
+            temperature=0.6,
+        )
 
     def generate_takes(
         self,
