@@ -16,14 +16,14 @@ from .english_stress import (
     replace_editor_base_phonemes,
 )
 from .query_editing import (
+    japanese_pronunciation,
     move_english_primary_stress,
     move_japanese_accent,
     replace_english_phoneme_groups,
-    replace_japanese_accent_phrase,
+    replace_japanese_pronunciation,
 )
-from .pronunciation import parse_pronunciation
 from .settings import Settings, SettingsError
-from .tui_display import _display_width, _japanese_mora_tokens, _move_wrapped_cursor
+from .tui_display import _display_width, _move_wrapped_cursor
 from .voicevox_api_models import AudioQuery
 
 
@@ -392,35 +392,35 @@ class TuiEditorController:
             return ()
         row = rows[index]
         if row.language == "ja" and row.phrase_index is not None:
-            if query.voicegerSegments is None:
-                start, count = 0, len(query.accent_phrases)
-            else:
-                segment = query.voicegerSegments[row.model_segment_index]
-                start = segment.accentPhraseStart
-                count = segment.accentPhraseCount
-                if start is None or count is None:
-                    return (UpdateStatusIntent("Error: Japanese segment references are unavailable."),)
-            phrases = tuple(
-                (
-                    tuple(mora.text for mora in query.accent_phrases[phrase_index].moras),
-                    query.accent_phrases[phrase_index].accent,
-                )
-                for phrase_index in range(start, start + count)
+            segment_index = (
+                row.model_segment_index if query.voicegerSegments is not None else None
             )
+            try:
+                canonical = japanese_pronunciation(
+                    query,
+                    segment_index=segment_index,
+                )
+            except Exception as exc:
+                return (
+                    UpdateStatusIntent(
+                        f"Error: Cannot edit Japanese pronunciation: {exc}"
+                    ),
+                )
             self.editor = EditorState(
                 kind="japanese",
                 title="EDIT JAPANESE PRONUNCIATION",
                 origin=origin,
-                selection=("phrase", row.phrase_index_in_segment),
+                selection="pronunciation",
                 payload={
                     "source_text": row.source_text,
-                    "phrases": phrases,
-                    "phrase_index": row.phrase_index_in_segment,
-                    "accent_phrase_index": row.phrase_index,
-                    "segment_index": row.model_segment_index,
+                    "canonical_pronunciation": canonical,
+                    "segment_index": segment_index,
                 },
             )
-            return (UpdateStatusIntent(""),)
+            return (
+                UpdateStatusIntent(""),
+                *self.begin_field("pronunciation", canonical.replace("/", " ")),
+            )
         if (
             row.language == "en"
             and row.group_index is not None
@@ -617,95 +617,6 @@ class TuiEditorController:
         editor.error = ""
         return (ClearAdjustmentFeedbackIntent(),)
 
-    @staticmethod
-    def _sync_japanese_input(editor: EditorState) -> None:
-        morae = editor.payload["editing_morae"]
-        accent = editor.payload["editing_accent"]
-        cursor = editor.payload["mora_cursor"]
-        tokens = _japanese_mora_tokens(morae, accent)
-        editor.input_value = " ".join(tokens)
-        editor.input_cursor = len(" ".join(tokens[:cursor]))
-        editor.input_original = editor.input_value
-
-    def _begin_japanese_phrase_edit(self) -> tuple[EditorIntent, ...]:
-        editor = self.editor
-        if editor is None or editor.kind != "japanese":
-            return ()
-        selection = editor.selection
-        if not isinstance(selection, tuple) or selection[0] != "phrase":
-            return ()
-        phrase_index = selection[1]
-        if phrase_index is None:
-            return ()
-        morae, accent = editor.payload["phrases"][phrase_index]
-        editor.payload["editing_morae"] = list(morae)
-        editor.payload["editing_accent"] = accent
-        editor.payload["mora_cursor"] = len(morae)
-        editor.active_field = "reading"
-        editor.error = ""
-        self._sync_japanese_input(editor)
-        return (ClearAdjustmentFeedbackIntent(),)
-
-    def _edit_japanese_input(self, key: Any) -> tuple[EditorIntent, ...]:
-        editor = self.editor
-        if editor is None:
-            return ()
-        morae: list[str] = editor.payload["editing_morae"]
-        accent: int = editor.payload["editing_accent"]
-        cursor: int = editor.payload["mora_cursor"]
-        if key == curses.KEY_LEFT:
-            editor.payload["mora_cursor"] = max(0, cursor - 1)
-        elif key == curses.KEY_RIGHT:
-            editor.payload["mora_cursor"] = min(len(morae), cursor + 1)
-        elif key == curses.KEY_HOME or key == "\x01":
-            editor.payload["mora_cursor"] = 0
-        elif key == curses.KEY_END or key == "\x05":
-            editor.payload["mora_cursor"] = len(morae)
-        elif key in (curses.KEY_BACKSPACE, "\x7f", "\x08", curses.KEY_DC):
-            deleting_before = key != curses.KEY_DC
-            deletion_index = cursor - 1 if deleting_before else cursor
-            if not 0 <= deletion_index < len(morae):
-                return ()
-            if len(morae) == 1:
-                editor.error = "Error: An AccentPhrase must contain at least one mora."
-                return ()
-            del morae[deletion_index]
-            if deletion_index + 1 < accent:
-                accent -= 1
-            elif deletion_index + 1 == accent:
-                accent = min(accent, len(morae))
-            editor.payload["editing_accent"] = accent
-            editor.payload["mora_cursor"] = (
-                deletion_index if deleting_before else min(cursor, len(morae))
-            )
-        elif key == " ":
-            return ()
-        elif isinstance(key, str) and key and all(char.isprintable() for char in key):
-            prefix = "".join(morae[:cursor])
-            suffix = "".join(morae[cursor:])
-            try:
-                parsed_prefix = parse_pronunciation(prefix + key + "'")
-                parsed = parse_pronunciation(prefix + key + suffix + "'")
-            except Exception as exc:
-                editor.error = f"Error: {exc}"
-                return ()
-            new_morae = list(parsed.phrases[0].morae)
-            inserted_count = len(parsed_prefix.phrases[0].morae) - cursor
-            if cursor < accent:
-                accent += max(0, inserted_count)
-            accent = min(max(1, accent), len(new_morae))
-            editor.payload["editing_morae"] = new_morae
-            editor.payload["editing_accent"] = accent
-            editor.payload["mora_cursor"] = len(
-                parsed_prefix.phrases[0].morae
-            )
-        else:
-            return ()
-
-        editor.error = ""
-        self._sync_japanese_input(editor)
-        return ()
-
     def selection_keys(self) -> list[str | tuple[str, int | None]]:
         editor = self.editor
         if editor is None:
@@ -713,10 +624,7 @@ class TuiEditorController:
         if editor.kind == "text":
             return ["draft"]
         if editor.kind == "japanese":
-            return [
-                ("phrase", index)
-                for index, _phrase in enumerate(editor.payload["phrases"])
-            ]
+            return ["pronunciation"]
         if editor.kind == "settings":
             return [
                 "style_id", "speed", "take_count", "output_dir", "save_text", "apply",
@@ -761,8 +669,6 @@ class TuiEditorController:
                     editor.payload["draft"] = editor.input_value
                     return self.apply(settings, query, current_source)
                 if editor.kind == "japanese":
-                    if editor.error:
-                        return ()
                     return self.apply(settings, query, current_source)
                 if editor.kind == "english_word":
                     intents = self._finish_field()
@@ -778,8 +684,12 @@ class TuiEditorController:
                 editor.active_field = None
                 editor.error = ""
                 return (UpdateStatusIntent(""),)
-            if editor.kind == "japanese":
-                return self._edit_japanese_input(key)
+            if editor.kind == "japanese" and isinstance(key, str) and "/" in key:
+                editor.error = (
+                    "Error: Use ASCII spaces for phrase boundaries; '/' is not used here."
+                )
+                return ()
+            input_changed = False
             if key == curses.KEY_LEFT:
                 editor.input_cursor = max(0, editor.input_cursor - 1)
             elif key == curses.KEY_RIGHT:
@@ -804,12 +714,14 @@ class TuiEditorController:
                         + editor.input_value[editor.input_cursor :]
                     )
                     editor.input_cursor -= 1
+                    input_changed = True
             elif key == curses.KEY_DC:
                 if editor.input_cursor < len(editor.input_value):
                     editor.input_value = (
                         editor.input_value[: editor.input_cursor]
                         + editor.input_value[editor.input_cursor + 1 :]
                     )
+                    input_changed = True
             elif isinstance(key, str) and key and all(char.isprintable() for char in key):
                 editor.input_value = (
                     editor.input_value[: editor.input_cursor]
@@ -817,6 +729,9 @@ class TuiEditorController:
                     + editor.input_value[editor.input_cursor :]
                 )
                 editor.input_cursor += len(key)
+                input_changed = True
+            if input_changed and editor.kind == "japanese":
+                editor.error = ""
             return ()
 
         if editor.kind == "settings" and key in (curses.KEY_LEFT, curses.KEY_RIGHT):
@@ -845,7 +760,7 @@ class TuiEditorController:
             if selected == "draft":
                 return self.begin_field("draft", editor.payload["draft"])
         elif editor.kind == "japanese":
-            return self._begin_japanese_phrase_edit()
+            return self.begin_field("pronunciation", editor.input_value)
         elif editor.kind == "settings":
             if selected == "save_text":
                 draft = editor.payload["draft_settings"]
@@ -909,20 +824,17 @@ class TuiEditorController:
             try:
                 if query is None:
                     raise ValueError("There is no active utterance")
-                morae = tuple(editor.payload["editing_morae"])
-                accent = editor.payload["editing_accent"]
-                phrase_index = editor.payload["accent_phrase_index"]
-                existing = query.accent_phrases[phrase_index]
-                if (
-                    morae == tuple(mora.text for mora in existing.moras)
-                    and accent == existing.accent
-                ):
+                draft = editor.input_value
+                if "/" in draft:
+                    raise ValueError(
+                        "Use ASCII spaces for phrase boundaries; '/' is not used here."
+                    )
+                canonical = draft.replace(" ", "/")
+                if canonical == editor.payload["canonical_pronunciation"]:
                     return self._close_editor("Japanese pronunciation unchanged.")
-                updated = replace_japanese_accent_phrase(
+                updated = replace_japanese_pronunciation(
                     query,
-                    accent_phrase_index=phrase_index,
-                    morae=morae,
-                    accent=accent,
+                    canonical,
                     segment_index=editor.payload["segment_index"],
                 )
             except Exception as exc:

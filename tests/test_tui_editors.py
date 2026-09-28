@@ -63,6 +63,26 @@ def mixed_query():
     )
 
 
+def direct_japanese_query():
+    return AudioQuery(
+        accent_phrases=[_phrase(("ナ",), 1), _phrase(("ノ", "ダ"), 2)],
+        voicegerSegments=[
+            VoicegerSegment(
+                language="ja",
+                text="なのだ。",
+                accentPhraseStart=0,
+                accentPhraseCount=2,
+                pronunciationTerminator="。",
+            ),
+            VoicegerSegment(
+                language="en",
+                text="hello",
+                phonemes=["HH", "AH1"],
+            ),
+        ],
+    )
+
+
 def segments(query):
     return [
         (item.language, item.text, index)
@@ -189,11 +209,9 @@ class TuiEditorControllerTests(unittest.TestCase):
         )
         self.assertEqual(query.voicegerSegments[0].phonemes[1], "AH1")
 
-    def test_japanese_editor_opens_at_source_phrase_and_commits_only_its_reading(self):
-        query = mixed_query()
-        controller, _provider = self.make_controller(
-            {"hello everyone": (("hello", ("HH", "AH1", "L", "OW2", "EH1", "V", "R", "IY0")),)}
-        )
+    def test_japanese_child_opens_whole_segment_as_active_direct_notation(self):
+        query = direct_japanese_query()
+        controller, _provider = self.make_controller({"hello": (("hello", ("HH", "AH1")),)})
         rows = controller.pronunciation_rows(query, segments(query))
         controller.open_pronunciation_item(
             query,
@@ -204,77 +222,88 @@ class TuiEditorControllerTests(unittest.TestCase):
         )
         editor = controller.editor
         self.assertEqual(editor.kind, "japanese")
-        self.assertEqual(editor.selection, ("phrase", 1))
-        self.assertEqual(editor.payload["accent_phrase_index"], 1)
-        self.assertEqual(editor.payload["phrases"][1], (("キョ", "ウ"), 1))
-
-        controller.handle_key(
-            "\n", settings=self.settings(), query=query, current_source="text"
-        )
-        self.assertEqual(editor.active_field, "reading")
-        self.assertEqual(editor.payload["mora_cursor"], 2)
-        controller.handle_key(
-            curses.KEY_BACKSPACE,
-            settings=self.settings(),
-            query=query,
-            current_source="text",
-        )
-        self.assertEqual(editor.payload["editing_morae"], ["キョ"])
-        self.assertEqual(editor.payload["editing_accent"], 1)
-        self.assertIn("[キョ]", editor.input_value)
+        self.assertEqual(editor.title, "EDIT JAPANESE PRONUNCIATION")
+        self.assertEqual(editor.selection, "pronunciation")
+        self.assertEqual(editor.active_field, "pronunciation")
+        self.assertEqual(editor.payload["source_text"], "なのだ。")
+        self.assertEqual(editor.payload["canonical_pronunciation"], "ナ'/ノダ'。")
+        self.assertEqual(editor.input_value, "ナ' ノダ'。")
+        self.assertEqual(editor.input_original, "ナ' ノダ'。")
         self.assertNotIn("/", editor.input_value)
-        self.assertNotIn("'", editor.input_value)
+        self.assertNotIn("editing_morae", editor.payload)
+        self.assertNotIn("editing_accent", editor.payload)
+        self.assertNotIn("mora_cursor", editor.payload)
 
-        intents = controller.handle_key(
-            "\n", settings=self.settings(), query=query, current_source="text"
-        )
-        replacement = next(item for item in intents if isinstance(item, ReplaceQueryIntent))
-        self.assertEqual(len(replacement.query.accent_phrases), 2)
-        self.assertEqual(
-            [mora.text for mora in replacement.query.accent_phrases[0].moras],
-            ["ア", "シ", "タ", "ワ"],
-        )
-        self.assertEqual(
-            [mora.text for mora in replacement.query.accent_phrases[1].moras],
-            ["キョ"],
-        )
-        completed = controller.complete_query_application(
-            replacement, QueryApplicationResult()
-        )
-        self.assertEqual(completed[-1], CloseEditorIntent(("pronunciation", 1), replacement.success_status))
-        self.assertIsNone(controller.editor)
-
-    def test_japanese_input_moves_and_deletes_by_complete_mora(self):
-        query = AudioQuery(
-            accent_phrases=[_phrase(("ア", "キョ", "ウ"), 2)],
-            voicegerSegments=[
-                VoicegerSegment(
-                    language="ja",
-                    text="今日",
-                    accentPhraseStart=0,
-                    accentPhraseCount=1,
-                )
-            ],
-        )
-        controller, _provider = self.make_controller()
-        rows = controller.pronunciation_rows(query, (("ja", "今日", 0),))
+    def test_japanese_direct_field_uses_character_cursor_and_text_edits(self):
+        query = direct_japanese_query()
+        controller, _provider = self.make_controller({"hello": (("hello", ("HH", "AH1")),)})
+        rows = controller.pronunciation_rows(query, segments(query))
         controller.open_pronunciation_item(
             query, rows, 0, origin=("pronunciation", 0), busy=False
         )
-        controller.handle_key(
-            "\n", settings=self.settings(), query=query, current_source="今日"
-        )
+
+        def press(key):
+            controller.handle_key(
+                key, settings=self.settings(), query=query, current_source="source"
+            )
+
         editor = controller.editor
-        controller.handle_key(
-            curses.KEY_BACKSPACE,
-            settings=self.settings(),
-            query=query,
-            current_source="今日",
+        press(curses.KEY_HOME)
+        self.assertEqual(editor.input_cursor, 0)
+        press(curses.KEY_RIGHT)
+        press("X")
+        self.assertEqual(editor.input_value, "ナX' ノダ'。")
+        self.assertEqual(editor.input_cursor, 2)
+        press(curses.KEY_BACKSPACE)
+        self.assertEqual(editor.input_value, "ナ' ノダ'。")
+        press(curses.KEY_HOME)
+        press(curses.KEY_RIGHT)
+        press(curses.KEY_DC)
+        self.assertEqual(editor.input_value, "ナ ノダ'。")
+        self.assertEqual(editor.input_cursor, 1)
+        press(curses.KEY_END)
+        self.assertEqual(editor.input_cursor, len(editor.input_value))
+        press(curses.KEY_LEFT)
+        self.assertEqual(editor.input_cursor, len(editor.input_value) - 1)
+        self.assertNotIn("editing_morae", editor.payload)
+        self.assertNotIn("mora_cursor", editor.payload)
+
+    def test_unchanged_japanese_direct_field_closes_without_replacing_query(self):
+        query = direct_japanese_query()
+        controller, _provider = self.make_controller({"hello": (("hello", ("HH", "AH1")),)})
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 0, origin=("pronunciation", 0), busy=False
         )
 
-        self.assertEqual(editor.payload["editing_morae"], ["ア", "キョ"])
-        self.assertEqual(editor.payload["mora_cursor"], 2)
-        self.assertNotIn("キ ョ", editor.input_value)
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_source="source"
+        )
+
+        close_intent = next(
+            intent for intent in intents if isinstance(intent, CloseEditorIntent)
+        )
+        self.assertEqual(close_intent.status, "Japanese pronunciation unchanged.")
+        self.assertIsNone(controller.editor)
+
+    def test_japanese_direct_field_rejects_slash_and_explains_space_boundaries(self):
+        query = direct_japanese_query()
+        controller, _provider = self.make_controller({"hello": (("hello", ("HH", "AH1")),)})
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 0, origin=("pronunciation", 0), busy=False
+        )
+        editor = controller.editor
+        original = editor.input_value
+
+        controller.handle_key(
+            "/", settings=self.settings(), query=query, current_source="source"
+        )
+
+        self.assertEqual(editor.input_value, original)
+        self.assertIn("ASCII spaces", editor.error)
+        self.assertIn("phrase boundaries", editor.error)
+        self.assertNotIn("/", editor.input_value)
 
     def test_english_word_opens_directly_and_phoneme_edit_commits_to_query(self):
         query = mixed_query()
