@@ -858,17 +858,18 @@ class TuiEditorController:
         selected = editor.selection
         if selected not in {"style_id", "speed", "take_count", "save_text"}:
             return ()
+        clear_feedback = (ClearAdjustmentFeedbackIntent(),)
         feedback = AdjustmentPressedIntent("settings", selected, direction)
         if selected == "style_id":
             styles = self._available_styles()
             if not styles:
                 editor.error = "Error: No available styles can be selected."
-                return (feedback,)
+                return clear_feedback
             try:
                 current_id = int(draft["style_id"])
             except (TypeError, ValueError):
                 editor.error = "Error: Style ID must be a positive integer."
-                return (feedback,)
+                return clear_feedback
             index = next(
                 (i for i, style in enumerate(styles) if style.id == current_id),
                 None,
@@ -879,13 +880,16 @@ class TuiEditorController:
                     if (style.id > current_id if direction > 0 else style.id < current_id)
                 ]
                 if not choices:
-                    return (feedback,)
-                draft["style_id"] = str(choices[0 if direction > 0 else -1].id)
+                    return clear_feedback
+                updated_id = choices[0 if direction > 0 else -1].id
             else:
                 target = index + direction
                 if not 0 <= target < len(styles):
-                    return (feedback,)
-                draft["style_id"] = str(styles[target].id)
+                    return clear_feedback
+                updated_id = styles[target].id
+            if updated_id == current_id:
+                return clear_feedback
+            draft["style_id"] = str(updated_id)
         elif selected == "speed":
             try:
                 current = Decimal(str(draft["speed"]))
@@ -896,16 +900,27 @@ class TuiEditorController:
                 updated = max(Decimal("0.01"), updated)
             except (InvalidOperation, ValueError):
                 editor.error = "Error: Speed must be a positive finite number."
-                return (feedback,)
+                return clear_feedback
+            if updated == current:
+                editor.error = ""
+                return clear_feedback
             draft["speed"] = f"{updated:.2f}"
         elif selected == "take_count":
             try:
                 current = int(draft["take_count"])
             except (TypeError, ValueError):
                 editor.error = "Error: Take count must be an integer from 1 through 8."
-                return (feedback,)
-            draft["take_count"] = str(min(8, max(1, current + direction)))
+                return clear_feedback
+            updated = min(8, max(1, current + direction))
+            if updated == current:
+                editor.error = ""
+                return clear_feedback
+            draft["take_count"] = str(updated)
         elif selected == "save_text":
-            draft["save_text"] = direction > 0
+            updated = direction > 0
+            if draft["save_text"] == updated:
+                editor.error = ""
+                return clear_feedback
+            draft["save_text"] = updated
         editor.error = ""
         return (feedback,)

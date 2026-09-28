@@ -431,11 +431,12 @@ class TuiApp:
             self._pressed_adjustment = None
             self._status = "Wait for the current synthesis operation to finish."
             return
-        self._mark_adjustment_pressed("navigation", "generate", direction)
         count = self.settings.take_count
         updated = min(8, max(1, count + direction))
         if updated == count:
+            self._pressed_adjustment = None
             return
+        self._mark_adjustment_pressed("navigation", "generate", direction)
         self._change_settings(take_count=updated, report_success=False)
         self._dispatch_navigation_actions(
             self._navigation.set_focus_key(

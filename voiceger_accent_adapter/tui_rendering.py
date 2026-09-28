@@ -41,6 +41,7 @@ _HELP_ITEMS = (
     ("R", ": activate Generate / Regenerate all"),
     ("t", ": edit Text"),
     ("s / v / n / o / x", ": open Settings at style / speed / takes / output / TXT"),
+    (None, ""),
     (None, "Rebuild pronunciation: rerun automatic pronunciation from current Text"),
     ("?", ": open Help"),
     ("q", ": Quit"),

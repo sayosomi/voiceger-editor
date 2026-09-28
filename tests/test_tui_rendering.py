@@ -137,6 +137,56 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(footer[0], screen.rows - 2)
         self.assertTrue(footer[3] & curses.A_BOLD)
 
+    def test_help_settings_and_rebuild_entries_have_separate_80x24_rows(self):
+        screen = FakeScreen(rows=24, columns=80)
+        self.renderer.render_help(screen, screen.columns)
+
+        settings_shortcut, settings_suffix = next(
+            item for item in _HELP_ITEMS if item[0] == "s / v / n / o / x"
+        )
+        settings_draw = next(
+            item
+            for item in screen.drawn
+            if item[2] == settings_shortcut and item[3] & curses.A_BOLD
+        )
+        settings_row = settings_draw[0]
+        settings_explanation = [
+            item
+            for item in screen.drawn
+            if settings_row <= item[0] < settings_row + 3
+            and item[2]
+            and item[1] > settings_draw[1]
+        ]
+        rebuild_draw = next(
+            item
+            for item in screen.drawn
+            if "Rebuild pronunciation: rerun automatic pronunciation from current Text"
+            in item[2]
+        )
+        footer = next(
+            item for item in screen.drawn if "Return to Navigation" in item[2]
+        )
+
+        self.assertTrue(settings_draw[3] & curses.A_BOLD)
+        self.assertTrue(settings_explanation)
+        self.assertTrue(
+            all(not (item[3] & curses.A_BOLD) for item in settings_explanation)
+        )
+        self.assertGreater(rebuild_draw[0], settings_row)
+        self.assertFalse(rebuild_draw[3] & curses.A_BOLD)
+        self.assertLess(rebuild_draw[0], footer[0])
+        settings_text_rows = {settings_draw[0], *(item[0] for item in settings_explanation)}
+        self.assertGreater(rebuild_draw[0], max(settings_text_rows) + 1)
+        for shortcut, _suffix in _HELP_ITEMS:
+            if shortcut is None:
+                continue
+            shortcut_draw = next(
+                item
+                for item in screen.drawn
+                if item[2] == shortcut and item[3] & curses.A_BOLD
+            )
+            self.assertLess(shortcut_draw[0], footer[0])
+
     def test_navigation_document_formats_mixed_language_state_and_narrow_rows(self):
         session = FakeSession()
         session.query.voicegerSegments[1].text = "verylongenglishword"
