@@ -51,14 +51,23 @@ class EnglishStressTests(unittest.TestCase):
             ["AH0", "K", "EH1", "OW2", "IY1"],
         )
 
-    def test_move_primary_stress_replaces_secondary_on_target(self):
+    def test_move_primary_stress_swaps_with_secondary_on_target(self):
         state = english_phonemes_to_editor_state(["AH1", "EH2"])
 
         moved = move_primary_stress(state, 0, 1)
 
-        self.assertEqual(moved.vowel_stresses, (0, 1))
+        self.assertEqual(moved.vowel_stresses, (2, 1))
         self.assertEqual(
-            editor_state_to_english_phonemes(moved), ["AH0", "EH1"]
+            editor_state_to_english_phonemes(moved), ["AH2", "EH1"]
+        )
+
+    def test_move_primary_stress_treats_legacy_unmarked_target_as_zero(self):
+        state = english_phonemes_to_editor_state(["AH1", "ER"])
+
+        moved = move_primary_stress(state, 0, 1)
+
+        self.assertEqual(
+            editor_state_to_english_phonemes(moved), ["AH0", "ER1"]
         )
 
     def test_move_primary_stress_rejects_non_primary_source(self):
