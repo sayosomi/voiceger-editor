@@ -6,6 +6,9 @@ from voiceger_accent_adapter.settings import Settings
 from voiceger_accent_adapter.tui_editors import (
     AdjustmentPressedIntent,
     ApplySettingsIntent,
+    ApplyCaptionIntent,
+    BuildPronunciationIntent,
+    BuildPronunciationResult,
     ClearAdjustmentFeedbackIntent,
     CloseEditorIntent,
     EnglishWordGroup,
@@ -13,7 +16,6 @@ from voiceger_accent_adapter.tui_editors import (
     PronunciationRow,
     QueryApplicationResult,
     ReplaceQueryIntent,
-    ReplaceSourceTextIntent,
     SettingsApplicationResult,
     TuiEditorController,
     UpdateStatusIntent,
@@ -112,20 +114,128 @@ class TuiEditorControllerTests(unittest.TestCase):
     def settings():
         return Settings(output_dir=Path("/tmp/voiceger-editor-tests"))
 
-    def test_text_editor_opens_on_input_and_returns_a_source_intent(self):
+    def test_caption_editor_requires_explicit_apply_after_finishing_input(self):
         controller, _provider = self.make_controller()
-        controller.open_text(
-            "hello", current_source="old", origin=("text", None), busy=False
+        controller.open_caption(
+            "hello", current_caption="old", origin=("caption", None), busy=False
         )
         editor = controller.editor
+        self.assertEqual(editor.kind, "caption")
+        self.assertEqual(editor.title, "EDIT CAPTION TEXT")
+        self.assertEqual(editor.payload["opening_caption"], "hello")
         self.assertEqual(editor.active_field, "draft")
         self.assertEqual(editor.input_value, "hello")
         self.assertEqual(
             controller.handle_key(
-                "\n", settings=self.settings(), query=None, current_source="old"
+                "\n", settings=self.settings(), query=None, current_caption="old"
             ),
-            (ReplaceSourceTextIntent("hello"),),
+            (UpdateStatusIntent(""),),
         )
+        self.assertIsNone(editor.active_field)
+        self.assertEqual(editor.payload["draft"], "hello")
+        self.assertEqual(controller.move_selection(1), (ClearAdjustmentFeedbackIntent(),))
+        self.assertEqual(
+            controller.handle_key(
+                "\n", settings=self.settings(), query=None, current_caption="old"
+            ),
+            (ApplyCaptionIntent("hello"),),
+        )
+
+    def test_caption_clear_reset_and_back_only_change_or_discard_draft(self):
+        controller, _provider = self.make_controller()
+        controller.open_caption(
+            "opening", current_caption="opening", origin=("caption", None), busy=False
+        )
+        editor = controller.editor
+        editor.input_value = "edited"
+        controller.handle_key(
+            "\n", settings=self.settings(), query=None, current_caption="opening"
+        )
+        self.assertEqual(editor.payload["draft"], "edited")
+
+        controller.move_selection(2)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=None, current_caption="opening"
+        )
+        self.assertEqual(editor.payload["draft"], "")
+        self.assertIs(controller.editor, editor)
+
+        controller.move_selection(1)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=None, current_caption="opening"
+        )
+        self.assertEqual(editor.payload["draft"], "opening")
+        self.assertEqual(editor.payload["opening_caption"], "opening")
+        self.assertIs(controller.editor, editor)
+
+        controller.move_selection(1)
+        close = controller.handle_key(
+            "\n", settings=self.settings(), query=None, current_caption="opening"
+        )
+        self.assertIsNone(controller.editor)
+        self.assertIn(
+            CloseEditorIntent(("caption", None), "Caption draft discarded."), close
+        )
+
+    def test_caption_escape_is_back_and_discards_active_draft(self):
+        controller, _provider = self.make_controller()
+        controller.open_caption(
+            "opening", current_caption=None, origin=("caption", None), busy=False
+        )
+        editor = controller.editor
+        editor.input_value = "unapplied"
+        intents = controller.handle_key(
+            "\x1b", settings=self.settings(), query=None, current_caption=None
+        )
+        self.assertIsNone(controller.editor)
+        self.assertIn(
+            CloseEditorIntent(("caption", None), "Caption draft discarded."), intents
+        )
+        self.assertEqual(editor.payload["draft"], "opening")
+
+    def test_build_confirmation_has_typed_rebuild_cancel_and_atomic_completion(self):
+        controller, _provider = self.make_controller()
+        controller.open_build_confirmation(origin=("build_pronunciation", None))
+        editor = controller.editor
+        self.assertEqual(editor.title, "REBUILD PRONUNCIATION?")
+        self.assertIn("manual pronunciation or utterance edits", editor.payload["warning"].lower())
+        self.assertEqual(
+            controller.handle_key(
+                "\n", settings=self.settings(), query=None, current_caption="caption"
+            ),
+            (BuildPronunciationIntent(),),
+        )
+        self.assertEqual(
+            controller.complete_build_confirmation(
+                BuildPronunciationResult(error="analysis failed")
+            ),
+            (),
+        )
+        self.assertIs(controller.editor, editor)
+        self.assertIn("analysis failed", editor.error)
+        self.assertEqual(
+            controller.complete_build_confirmation(BuildPronunciationResult()),
+            (ClearAdjustmentFeedbackIntent(),),
+        )
+        self.assertIsNone(controller.editor)
+
+    def test_build_confirmation_cancel_and_escape_close_without_build_intent(self):
+        controller, _provider = self.make_controller()
+        controller.open_build_confirmation(origin=("build_pronunciation", None))
+        controller.move_selection(1)
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=None, current_caption="caption"
+        )
+        self.assertEqual(
+            intents,
+            (
+                ClearAdjustmentFeedbackIntent(),
+                CloseEditorIntent(
+                    ("build_pronunciation", None), "Pronunciation rebuild cancelled."
+                ),
+            ),
+        )
+        self.assertIsNone(controller.editor)
 
     def test_pronunciation_rows_are_one_per_phrase_and_english_word(self):
         groups = {
@@ -242,7 +352,7 @@ class TuiEditorControllerTests(unittest.TestCase):
 
         def press(key):
             controller.handle_key(
-                key, settings=self.settings(), query=query, current_source="source"
+                key, settings=self.settings(), query=query, current_caption="source"
             )
 
         editor = controller.editor
@@ -275,7 +385,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         )
 
         intents = controller.handle_key(
-            "\n", settings=self.settings(), query=query, current_source="source"
+            "\n", settings=self.settings(), query=query, current_caption="source"
         )
 
         close_intent = next(
@@ -295,7 +405,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         original = editor.input_value
 
         controller.handle_key(
-            "/", settings=self.settings(), query=query, current_source="source"
+            "/", settings=self.settings(), query=query, current_caption="source"
         )
 
         self.assertEqual(editor.input_value, original)
@@ -317,16 +427,16 @@ class TuiEditorControllerTests(unittest.TestCase):
         editor = controller.editor
         editor.input_cursor = 2
         controller.handle_key(
-            curses.KEY_DC, settings=self.settings(), query=query, current_source="source"
+            curses.KEY_DC, settings=self.settings(), query=query, current_caption="source"
         )
         controller.handle_key(
-            "　", settings=self.settings(), query=query, current_source="source"
+            "　", settings=self.settings(), query=query, current_caption="source"
         )
 
         self.assertEqual(editor.input_value, "ナ'　ノダ'。")
         self.assertEqual(editor.error, "")
         intents = controller.handle_key(
-            "\n", settings=self.settings(), query=query, current_source="source"
+            "\n", settings=self.settings(), query=query, current_caption="source"
         )
         self.assertEqual(
             intents,
@@ -356,7 +466,7 @@ class TuiEditorControllerTests(unittest.TestCase):
                 controller.editor.input_value = notation
 
                 intents = controller.apply(
-                    self.settings(), query=query, current_source="source"
+                    self.settings(), query=query, current_caption="source"
                 )
 
                 replacement = next(
@@ -400,18 +510,18 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(editor.active_field, "phonemes")
         self.assertEqual(editor.input_value, "HH AH1 L OW2")
         controller.handle_key(
-            "X", settings=self.settings(), query=query, current_source="source"
+            "X", settings=self.settings(), query=query, current_caption="source"
         )
         self.assertEqual(editor.input_value, "HH AH1 L OW2X")
         controller.handle_key(
             curses.KEY_BACKSPACE,
-            settings=self.settings(), query=query, current_source="source",
+            settings=self.settings(), query=query, current_caption="source",
         )
         self.assertEqual(editor.input_value, "HH AH1 L OW2")
         editor.input_value = "HH AE1 L OW0"
         editor.input_cursor = len(editor.input_value)
         intents = controller.handle_key(
-            "\n", settings=self.settings(), query=query, current_source="source"
+            "\n", settings=self.settings(), query=query, current_caption="source"
         )
         replacement = next(item for item in intents if isinstance(item, ReplaceQueryIntent))
         self.assertEqual(
@@ -446,7 +556,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         editor.input_value = "Z UW1 N D AA0 M OW0 N"
 
         intents = controller.handle_key(
-            "\n", settings=self.settings(), query=query, current_source="source"
+            "\n", settings=self.settings(), query=query, current_caption="source"
         )
         replacement = next(
             intent for intent in intents if isinstance(intent, ReplaceQueryIntent)
@@ -474,7 +584,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         original_query = query.model_dump()
 
         intents = controller.handle_key(
-            "\n", settings=self.settings(), query=query, current_source="source"
+            "\n", settings=self.settings(), query=query, current_caption="source"
         )
 
         self.assertEqual(intents, ())
@@ -483,16 +593,16 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertTrue(editor.error.startswith("Error: English phonemes were not changed:"))
         controller.handle_key(
             curses.KEY_BACKSPACE,
-            settings=self.settings(), query=query, current_source="source",
+            settings=self.settings(), query=query, current_caption="source",
         )
         controller.handle_key(
-            "0", settings=self.settings(), query=query, current_source="source"
+            "0", settings=self.settings(), query=query, current_caption="source"
         )
         self.assertEqual(editor.input_value, "hh ah0 l ow2")
         self.assertEqual(editor.error, "")
 
         intents = controller.handle_key(
-            "\n", settings=self.settings(), query=query, current_source="source"
+            "\n", settings=self.settings(), query=query, current_caption="source"
         )
         replacement = next(
             intent for intent in intents if isinstance(intent, ReplaceQueryIntent)
@@ -524,7 +634,7 @@ class TuiEditorControllerTests(unittest.TestCase):
                 key,
                 settings=self.settings(),
                 query=query,
-                current_source="source",
+                current_caption="source",
                 screen_width=8,
             )
 
@@ -569,7 +679,7 @@ class TuiEditorControllerTests(unittest.TestCase):
 
         self.assertEqual(
             controller.handle_key(
-                "\n", settings=self.settings(), query=query, current_source="source"
+                "\n", settings=self.settings(), query=query, current_caption="source"
             ),
             (),
         )
@@ -594,7 +704,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.editor.input_value = "hh ah1 l ow2"
 
         intents = controller.handle_key(
-            "\n", settings=self.settings(), query=query, current_source="source"
+            "\n", settings=self.settings(), query=query, current_caption="source"
         )
 
         self.assertEqual(
@@ -664,7 +774,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(controller.editor.active_field, "output_dir")
         self.assertEqual(
             controller.handle_key(
-                "\n", settings=self.settings(), query=None, current_source=None
+                "\n", settings=self.settings(), query=None, current_caption=None
             ),
             (UpdateStatusIntent(""),),
         )
@@ -673,11 +783,11 @@ class TuiEditorControllerTests(unittest.TestCase):
 
     def test_cancel_and_success_close_restore_the_exact_origin(self):
         controller, _provider = self.make_controller()
-        controller.open_text(
-            "draft", current_source="old", origin=("pronunciation", 3), busy=False
+        controller.open_caption(
+            "draft", current_caption="old", origin=("pronunciation", 3), busy=False
         )
         close = controller.cancel()[1]
-        self.assertEqual(close, CloseEditorIntent(("pronunciation", 3), "Text draft discarded."))
+        self.assertEqual(close, CloseEditorIntent(("pronunciation", 3), "Caption draft discarded."))
 
         controller.open_settings(self.settings(), origin=("settings", None), busy=False)
         result = controller.complete_settings_application(SettingsApplicationResult())

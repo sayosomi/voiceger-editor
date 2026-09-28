@@ -28,7 +28,6 @@ class TakeBatchTests(unittest.TestCase):
         return TakeBatch(
             take_count=take_count,
             synthesize_one=synthesize_one,
-            source_text="exact source text\n",
             style_name=options.pop("style_name", "Neutral"),
             output_dir=Path(root) / "final-output",
             **options,
@@ -287,7 +286,6 @@ class TakeBatchTests(unittest.TestCase):
                 synthesize_one=synthesize_one,
                 style_name="Sweet",
                 save_text=True,
-                filename_text="filename naming text",
             )
             with patch.dict(
                 "sys.modules", {"soundfile": self.fake_soundfile_module()}
@@ -302,17 +300,21 @@ class TakeBatchTests(unittest.TestCase):
             with patch(
                 "voiceger_accent_adapter.takes.save_output", return_value=saved
             ) as save_output:
-                result = batch.accept(2)
+                result = batch.accept(
+                    2,
+                    source_text="new caption",
+                    filename_text="new caption",
+                )
 
             self.assertIs(result, saved)
             save_output.assert_called_once_with(
                 audio=audio_values[1],
                 sampling_rate=22050,
-                source_text="exact source text\n",
+                source_text="new caption",
                 style_name="Sweet",
                 output_dir=Path(directory) / "final-output",
                 save_text=True,
-                filename_text="filename naming text",
+                filename_text="new caption",
             )
             self.assertTrue(all(not path.exists() for path in temporary_paths))
             self.assertFalse(temporary_directory.exists())
@@ -330,7 +332,9 @@ class TakeBatchTests(unittest.TestCase):
                 side_effect=OSError("save failed"),
             ):
                 with self.assertRaisesRegex(OSError, "save failed"):
-                    batch.accept(1)
+                    batch.accept(
+                        1, source_text="caption", filename_text="caption"
+                    )
 
             self.assertEqual(batch.candidates, tuple(candidates))
             self.assertTrue(all(candidate.wav_path.is_file() for candidate in candidates))
@@ -358,7 +362,7 @@ class TakeBatchTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 batch.regenerate_all()
             with self.assertRaises(RuntimeError):
-                batch.accept(1)
+                batch.accept(1, source_text="caption", filename_text="caption")
 
     def test_context_manager_closes_batch(self):
         with tempfile.TemporaryDirectory() as directory:

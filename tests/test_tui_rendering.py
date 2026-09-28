@@ -43,7 +43,7 @@ class FakeScreen:
 
 class FakeSession:
     def __init__(self, candidates=()):
-        self.source_text = "明日はhello everyoneまた明日"
+        self.caption = "明日はhello everyoneまた明日"
         self.query = AudioQuery(
             accent_phrases=[
                 AccentPhrase(
@@ -91,7 +91,6 @@ class FakeSession:
                 ),
             ],
         )
-        self.pronunciation_needs_rebuild = False
         self.candidates = tuple(candidates)
         self.has_active_batch = bool(candidates)
 
@@ -202,14 +201,15 @@ class TuiRenderingTests(unittest.TestCase):
         selectable = [line for line in lines if line.key and line.key[0] == "pronunciation"]
 
         labels = [line.text for line in lines]
-        text_index = next(index for index, value in enumerate(labels) if "Text :" in value)
-        rebuild_index = labels.index("  [ Rebuild pronunciation ]")
+        caption_index = next(index for index, value in enumerate(labels) if "Caption :" in value)
+        build_index = labels.index("  [ Build pronunciation ]")
         pronunciation_index = next(
             index for index, line in enumerate(lines)
             if line.key and line.key[0] == "pronunciation"
         )
-        self.assertEqual(rebuild_index, text_index + 1)
-        self.assertLess(rebuild_index, pronunciation_index)
+        self.assertEqual(build_index, caption_index + 1)
+        self.assertTrue(labels[caption_index].endswith("Caption : 明日はhello everyoneまた明日"))
+        self.assertLess(build_index, pronunciation_index)
         self.assertNotIn("Pronunciation", labels)
         self.assertEqual(selectable[0].text, "▶ JA | ア シ タ [ワ]")
         self.assertEqual(selectable[1].text, "     | イ イ [テ] ン キ")
@@ -386,19 +386,50 @@ class TuiRenderingTests(unittest.TestCase):
                 self.assertTrue(any(item[3] & curses.A_BOLD for item in draws))
         self.assertFalse(any("Return to Navigation" in text for _row, _column, text, _attr in screen.drawn))
 
-    def test_text_editor_is_one_active_input_row_without_persistent_instructions(self):
+    def test_caption_editor_has_explicit_actions_after_draft(self):
         editor = SimpleNamespace(
-            kind="text", title="EDIT TEXT", selection="draft", payload={"draft": "hello"},
+            kind="caption", title="EDIT CAPTION TEXT", selection="draft", payload={"draft": "hello"},
             active_field="draft", input_value="hello", input_cursor=3, error="", scroll=0,
         )
         screen = FakeScreen()
         self.renderer.render_editor(screen, render_state(editor=editor), screen.rows, screen.columns)
         visible = self.rendered(screen)
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), screen.columns
+        )
+        labels = [line for line, _key in document]
+        self.assertEqual(document[0][0], "EDIT CAPTION TEXT")
+        self.assertEqual(
+            labels[-4:], ["  [ Apply ]", "  [ Clear ]", "  [ Reset ]", "  [ Back ]"]
+        )
+        self.assertEqual(labels.index(""), 1)
+        self.assertEqual(labels.index("", 2), labels.index("▶ hello") + 1)
         self.assertIn("▶ hello", visible)
         for removed in ("Draft source", "Input:", "[Enter: Edit]", "Enter applies", "compatible pronunciation"):
             self.assertNotIn(removed, visible)
         self.assertNotIn("Esc Cancel", visible)
         self.assertIsNotNone(screen.cursor)
+
+    def test_build_confirmation_document_warns_and_orders_actions(self):
+        editor = SimpleNamespace(
+            kind="build_confirmation",
+            title="REBUILD PRONUNCIATION?",
+            selection="rebuild",
+            payload={"warning": "Manual pronunciation or utterance edits will be replaced."},
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+        document, cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        labels = [line for line, _key in document]
+        self.assertEqual(document[0][0], "REBUILD PRONUNCIATION?")
+        self.assertIn("Manual pronunciation or utterance edits will be replaced.", labels)
+        self.assertEqual(labels[-2:], ["▶ [ Rebuild ]", "  [ Cancel ]"])
+        self.assertIsNone(cursor_line)
 
     def test_japanese_editor_shows_wrapped_source_and_active_direct_notation(self):
         editor = SimpleNamespace(

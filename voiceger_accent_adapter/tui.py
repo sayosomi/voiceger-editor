@@ -25,16 +25,18 @@ from .tui_rendering import (
 )
 from .tui_editors import (
     AdjustmentPressedIntent,
+    ApplyCaptionIntent,
     ApplySettingsIntent,
+    BuildPronunciationIntent,
+    BuildPronunciationResult,
+    CaptionApplicationResult,
     ClearAdjustmentFeedbackIntent,
     CloseEditorIntent,
     EditorIntent,
     QueryApplicationResult,
     PronunciationRow,
     ReplaceQueryIntent,
-    ReplaceSourceTextIntent,
     SettingsApplicationResult,
-    SourceTextApplicationResult,
     TuiEditorController,
     UpdateStatusIntent,
 )
@@ -49,16 +51,16 @@ from .tui_operations import (
 )
 from .tui_navigation import (
     AcceptCandidate,
+    BuildPronunciation,
     ClearAdjustmentFeedback,
     EditPronunciationItem,
     NavigationAction,
     NavigationContext,
     OpenHelp,
     OpenSettingsEditor,
-    OpenTextEditor,
+    OpenCaptionEditor,
     PlayCandidate,
     Quit,
-    RebuildPronunciation,
     RegenerateAll,
     RegenerateCandidate,
     StartGeneration,
@@ -131,7 +133,7 @@ class TuiApp:
         self._persisted_settings = persisted_settings or settings
         self.config_path = config_path
         self.session: UtteranceSession | None = None
-        self._initial_text = source_text
+        self._initial_caption = source_text
         self._screen: Any = None
         self._operations = TuiOperations()
         self._navigation = TuiNavigation()
@@ -158,22 +160,22 @@ class TuiApp:
             except curses.error:
                 pass
 
-            source_text = self._initial_text
-            if source_text is None:
-                self._open_text_editor("")
-            elif not source_text.strip():
-                self._open_text_editor(source_text)
+            caption = self._initial_caption
+            if caption is None:
+                self._open_caption_editor("")
+            elif not caption.strip():
+                self._open_caption_editor(caption)
             else:
                 try:
                     self.session = UtteranceSession.from_text(
                         adapter=self.adapter,
-                        source_text=source_text,
+                        caption=caption,
                         settings=self.settings,
                     )
                     self._status = ""
                 except Exception as exc:
                     self._status = f"Error: Unable to prepare utterance: {exc}"
-                    self._open_text_editor(source_text)
+                    self._open_caption_editor(caption)
 
             while not self._exit_requested:
                 self._consume_events()
@@ -224,8 +226,8 @@ class TuiApp:
                 key,
                 settings=self.settings,
                 query=self.session.query if self.session is not None else None,
-                current_source=(
-                    self.session.source_text if self.session is not None else None
+                current_caption=(
+                    self.session.caption if self.session is not None else None
                 ),
                 screen_width=(
                     self._screen.getmaxyx()[1] if self._screen is not None else 80
@@ -276,7 +278,7 @@ class TuiApp:
             )
             return
         if key == "t":
-            self._open_text_editor()
+            self._open_caption_editor()
             return
         setting_shortcuts = {
             "s": "style_id",
@@ -352,12 +354,9 @@ class TuiApp:
         session = self.session
         return NavigationContext(
             has_session=session is not None,
-            pronunciation_needs_rebuild=(
-                session.pronunciation_needs_rebuild if session is not None else False
-            ),
             pronunciation_count=(
                 len(self._pronunciation_rows())
-                if session is not None and not session.pronunciation_needs_rebuild
+                if session is not None
                 else 0
             ),
             candidate_numbers=(
@@ -382,8 +381,8 @@ class TuiApp:
                 self._status = action.status
             elif isinstance(action, OpenSettingsEditor):
                 self._open_settings_editor(action.selected_field, edit=action.edit)
-            elif isinstance(action, OpenTextEditor):
-                self._open_text_editor()
+            elif isinstance(action, OpenCaptionEditor):
+                self._open_caption_editor()
             elif isinstance(action, EditPronunciationItem):
                 self._edit_selected_pronunciation(action.index)
             elif isinstance(action, StartGeneration):
@@ -402,8 +401,8 @@ class TuiApp:
                         navigation_revision=self._navigation.revision,
                     )
                 )
-            elif isinstance(action, RebuildPronunciation):
-                self._activate_rebuild_pronunciation()
+            elif isinstance(action, BuildPronunciation):
+                self._request_build_pronunciation()
             elif isinstance(action, AcceptCandidate):
                 self._dispatch_operation_effects(
                     self._operations.accept_take(
@@ -432,21 +431,34 @@ class TuiApp:
             elif isinstance(action, Quit):
                 self._activate_quit()
 
-    def _activate_rebuild_pronunciation(self) -> None:
+    def _request_build_pronunciation(self) -> None:
         if self.session is None:
             return
-        self._operations.stop_playback()
+        if self.session.utterance_manually_edited:
+            self._dispatch_editor_intents(
+                self._editor_controller.open_build_confirmation(
+                    origin=self._navigation.focus_key
+                )
+            )
+            return
+        self._build_pronunciation_from_caption()
+
+    def _build_pronunciation_from_caption(self) -> str | None:
+        if self.session is None:
+            return "there is no active session"
         try:
-            self.session.rebuild_pronunciation()
+            self.session.build_pronunciation_from_caption()
         except Exception as exc:
             self._status = f"Error: Pronunciation was not rebuilt: {exc}"
-            return
+            return str(exc)
+        self._operations.stop_playback()
         self._editor_controller.clear_groupings()
         self._operations.clear_current_take()
         self._dispatch_navigation_actions(
             self._navigation.reset_after_rebuild(self._navigation_context())
         )
-        self._status = "Pronunciation rebuilt from the current Text."
+        self._status = "Pronunciation rebuilt from Caption."
+        return None
 
     def _adjust_take_count(self, direction: int) -> None:
         if self._operations.busy:
@@ -472,18 +484,20 @@ class TuiApp:
             self._status = "Finishing the current sequential synthesis before cleanup…"
 
     def _segments(self) -> list[tuple[str, str, int | None]]:
-        if self.session is None or self.session.pronunciation_needs_rebuild:
+        if self.session is None:
             return []
         query = self.session.query
         if query.voicegerSegments is None:
-            return [("ja", self.session.source_text, None)]
+            return [
+                ("ja", self.session.pure_japanese_utterance_text or "", None)
+            ]
         return [
             (segment.language, segment.text, index)
             for index, segment in enumerate(query.voicegerSegments)
         ]
 
     def _pronunciation_rows(self) -> tuple[PronunciationRow, ...]:
-        if self.session is None or self.session.pronunciation_needs_rebuild:
+        if self.session is None:
             return ()
         rows = self._editor_controller.pronunciation_rows(
             self.session.query,
@@ -495,11 +509,11 @@ class TuiApp:
             self._status = ""
         return rows
 
-    def _open_text_editor(self, initial: str | None = None) -> None:
-        intents = self._editor_controller.open_text(
+    def _open_caption_editor(self, initial: str | None = None) -> None:
+        intents = self._editor_controller.open_caption(
             initial,
-            current_source=(
-                self.session.source_text if self.session is not None else None
+            current_caption=(
+                self.session.caption if self.session is not None else None
             ),
             origin=self._navigation.focus_key,
             busy=self._operations.busy,
@@ -545,30 +559,26 @@ class TuiApp:
         self._operations.clear_current_take()
         self._editor_controller.reconcile_groupings(query)
 
-    def _apply_source_text(self, source_text: str) -> SourceTextApplicationResult:
-        if self.session is not None and source_text == self.session.source_text:
-            return SourceTextApplicationResult(unchanged=True)
+    def _apply_caption(self, caption: str) -> CaptionApplicationResult:
+        if self.session is not None and caption == self.session.caption:
+            return CaptionApplicationResult(unchanged=True)
         if self.session is not None:
-            self._operations.stop_playback()
             try:
-                self.session.replace_source_text(source_text)
+                self.session.replace_caption(caption)
             except Exception as exc:
-                return SourceTextApplicationResult(error=str(exc))
-            needs_rebuild = self.session.pronunciation_needs_rebuild
-            self._editor_controller.clear_groupings()
+                return CaptionApplicationResult(error=str(exc))
         else:
             try:
                 self.session = UtteranceSession.from_text(
                     adapter=self.adapter,
-                    source_text=source_text,
+                    caption=caption,
                     settings=self.settings,
                 )
             except Exception as exc:
-                return SourceTextApplicationResult(error=str(exc))
-            needs_rebuild = False
-        self._navigation.reset_pronunciation_index()
-        self._operations.clear_current_take()
-        return SourceTextApplicationResult(needs_rebuild=needs_rebuild)
+                return CaptionApplicationResult(error=str(exc))
+            self._navigation.reset_pronunciation_index()
+            return CaptionApplicationResult(initial_session_created=True)
+        return CaptionApplicationResult()
 
     def _dispatch_editor_intents(self, intents: Sequence[EditorIntent]) -> None:
         pending = list(intents)
@@ -600,10 +610,15 @@ class TuiApp:
                 pending[0:0] = self._editor_controller.complete_query_application(
                     intent, result
                 )
-            elif isinstance(intent, ReplaceSourceTextIntent):
-                result = self._apply_source_text(intent.source_text)
-                pending[0:0] = self._editor_controller.complete_source_text_application(
+            elif isinstance(intent, ApplyCaptionIntent):
+                result = self._apply_caption(intent.caption)
+                pending[0:0] = self._editor_controller.complete_caption_application(
                     result
+                )
+            elif isinstance(intent, BuildPronunciationIntent):
+                error = self._build_pronunciation_from_caption()
+                pending[0:0] = self._editor_controller.complete_build_confirmation(
+                    BuildPronunciationResult(error=error)
                 )
             elif isinstance(intent, ApplySettingsIntent):
                 self._change_settings(**intent.changes.as_dict())
@@ -681,7 +696,6 @@ class TuiApp:
         pronunciation_rows = (
             self._pronunciation_rows()
             if self.session is not None
-            and not self.session.pronunciation_needs_rebuild
             else ()
         )
         return TuiRenderState(
