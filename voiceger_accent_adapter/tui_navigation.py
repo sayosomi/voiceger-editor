@@ -14,7 +14,6 @@ class NavigationContext:
     """Immutable facts needed to derive the current selectable navigation rows."""
 
     has_session: bool
-    pronunciation_needs_rebuild: bool
     pronunciation_count: int
     candidate_numbers: tuple[int, ...]
     busy: bool
@@ -38,7 +37,7 @@ class OpenSettingsEditor:
 
 
 @dataclass(frozen=True)
-class OpenTextEditor:
+class OpenCaptionEditor:
     pass
 
 
@@ -58,7 +57,7 @@ class RegenerateAll:
 
 
 @dataclass(frozen=True)
-class RebuildPronunciation:
+class BuildPronunciation:
     pass
 
 
@@ -91,11 +90,11 @@ NavigationAction = Union[
     ClearAdjustmentFeedback,
     UpdateNavigationStatus,
     OpenSettingsEditor,
-    OpenTextEditor,
+    OpenCaptionEditor,
     EditPronunciationItem,
     StartGeneration,
     RegenerateAll,
-    RebuildPronunciation,
+    BuildPronunciation,
     AcceptCandidate,
     RegenerateCandidate,
     PlayCandidate,
@@ -116,15 +115,14 @@ class TuiNavigation:
         items: list[FocusKey] = [
             ("settings_summary", None),
             ("output", None),
-            ("text", None),
+            ("caption", None),
         ]
         if context.has_session:
-            items.append(("rebuild", None))
-            if not context.pronunciation_needs_rebuild:
-                items.extend(
-                    ("pronunciation", index)
-                    for index in range(context.pronunciation_count)
-                )
+            items.append(("build_pronunciation", None))
+            items.extend(
+                ("pronunciation", index)
+                for index in range(context.pronunciation_count)
+            )
             items.append(("generate", None))
             items.extend(
                 ("candidate", number) for number in context.candidate_numbers
@@ -163,10 +161,10 @@ class TuiNavigation:
             remembered_item = ("pronunciation", self.pronunciation_index)
             if remembered_item in items:
                 key = remembered_item
-            elif ("rebuild", None) in items:
-                key = ("rebuild", None)
+            elif ("build_pronunciation", None) in items:
+                key = ("build_pronunciation", None)
             else:
-                key = ("text", None)
+                key = ("caption", None)
         if key not in items:
             key = items[0]
 
@@ -246,7 +244,7 @@ class TuiNavigation:
             return_key = (
                 ("pronunciation", 0)
                 if ("pronunciation", 0) in self.navigation_items(context)
-                else ("rebuild", None)
+                else ("build_pronunciation", None)
             )
         actions = list(
             self.set_focus_key(
@@ -267,14 +265,14 @@ class TuiNavigation:
             return (OpenSettingsEditor("style_id"),)
         if name == "output":
             return (OpenSettingsEditor("output_dir", edit=True),)
-        if name == "text":
+        if name == "caption":
             if context.busy:
                 return (
                     UpdateNavigationStatus(
-                        "Wait for synthesis to finish before editing text."
+                        "Wait for synthesis to finish before editing Caption."
                     ),
                 )
-            return (OpenTextEditor(),)
+            return (OpenCaptionEditor(),)
         if name == "pronunciation" and number is not None:
             if context.busy:
                 return (
@@ -285,14 +283,14 @@ class TuiNavigation:
             return (EditPronunciationItem(number),)
         if name == "generate":
             return self.activate_generate(context)
-        if name == "rebuild":
+        if name == "build_pronunciation":
             if context.busy:
                 return (
                     UpdateNavigationStatus(
                         "Wait for the current synthesis operation to finish."
                     ),
                 )
-            return (RebuildPronunciation(),)
+            return (BuildPronunciation(),)
         if name == "candidate" and number is not None:
             if context.busy:
                 return (
@@ -360,7 +358,7 @@ class TuiNavigation:
         focus_key = (
             ("pronunciation", 0)
             if context.has_session and context.pronunciation_count > 0
-            else ("generate", None)
+            else ("build_pronunciation", None)
         )
         return self.set_focus_key(context, focus_key, moved=True)
 
