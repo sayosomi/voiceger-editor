@@ -9,11 +9,15 @@ from unittest.mock import Mock, patch
 from voiceger_accent_adapter.tui_operations import (
     DiscardInitialBatchEffect,
     FocusEffect,
+    PlayPreviewEffect,
     PlayTakeEffect,
+    PreviewFailedEvent,
+    PreviewReadyEvent,
     StopPlaybackEffect,
     TuiOperations,
     UpdateStatusEffect,
 )
+from voiceger_accent_adapter.voicevox_api_models import AudioQuery
 
 
 def candidate(number):
@@ -33,6 +37,9 @@ class FakeSession:
         self.accept_calls = []
         self.regenerate_calls = []
         self.regenerate_all_calls = 0
+        self.preview_calls = []
+        self.preview_error = None
+        self.preview_result = {"audio": "preview", "sampling_rate": 22050}
         self.accepted = SimpleNamespace(
             wav_path=Path("/tmp/saved.wav"),
             text_path=Path("/tmp/saved.txt"),
@@ -65,6 +72,14 @@ class FakeSession:
                 yield item
 
         return values()
+
+    def preview_synthesis(self, query):
+        self.preview_calls.append(query)
+        print("preview stdout")
+        print("preview stderr", file=sys.stderr)
+        if self.preview_error is not None:
+            raise self.preview_error
+        return self.preview_result
 
     def discard_takes(self):
         self.discard_calls += 1
@@ -124,6 +139,74 @@ class TuiOperationsTests(unittest.TestCase):
                 ),
             ),
         )
+
+    def test_preview_worker_emits_ready_playback_effect_without_candidate_focus(self):
+        session_candidate = candidate(3)
+        session = FakeSession((session_candidate,))
+        query = AudioQuery(accent_phrases=[])
+        self.operations.current_take = 3
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", stdout), patch("sys.stderr", stderr):
+            effects = self.operations.start_preview(session, query)
+            self.operations.join_worker()
+
+        self.assertEqual(
+            effects,
+            (UpdateStatusEffect("Synthesizing pronunciation Preview…"),),
+        )
+        self.assertTrue(self.operations.busy)
+        self.assertEqual(self.operations.worker_operation, "preview")
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(stderr.getvalue(), "")
+        event = self.operations.events.get_nowait()
+        self.assertIsInstance(event, PreviewReadyEvent)
+        self.assertEqual(event.audio, "preview")
+        self.assertEqual(event.sampling_rate, 22050)
+        done_event = self.operations.events.get_nowait()
+        self.assertEqual(done_event, ("done", None))
+        self.operations.events.put(event)
+        self.operations.events.put(done_event)
+
+        effects = self.consume(session)
+
+        self.assertEqual(effects, (PlayPreviewEffect("preview", 22050),))
+        self.assertFalse(self.operations.busy)
+        self.assertIsNone(self.operations.worker_operation)
+        self.assertEqual(self.operations.current_take, 3)
+        self.assertEqual(session.candidates, [session_candidate])
+        self.assertEqual(session.preview_calls[0].model_dump(), query.model_dump())
+        self.assertFalse(any(isinstance(item, FocusEffect) for item in effects))
+        self.assertFalse(any(isinstance(item, PlayTakeEffect) for item in effects))
+
+    def test_preview_worker_failure_is_preview_specific_and_keeps_candidates(self):
+        session_candidate = candidate(2)
+        session = FakeSession((session_candidate,))
+        session.preview_error = RuntimeError("model unavailable")
+        self.operations.current_take = 2
+
+        self.operations.start_preview(session, AudioQuery(accent_phrases=[]))
+        self.assertTrue(self.operations.busy)
+        self.operations.join_worker()
+        event = self.operations.events.get_nowait()
+        self.assertIsInstance(event, PreviewFailedEvent)
+        self.assertEqual(str(event.error), "model unavailable")
+        done_event = self.operations.events.get_nowait()
+        self.assertEqual(done_event, ("done", None))
+        self.operations.events.put(event)
+        self.operations.events.put(done_event)
+
+        effects = self.consume(session)
+
+        self.assertEqual(
+            effects,
+            (UpdateStatusEffect("Error: Preview failed: model unavailable"),),
+        )
+        self.assertFalse(self.operations.busy)
+        self.assertEqual(self.operations.current_take, 2)
+        self.assertEqual(session.candidates, [session_candidate])
+        self.assertFalse(any(isinstance(item, FocusEffect) for item in effects))
+        self.assertFalse(any(isinstance(item, DiscardInitialBatchEffect) for item in effects))
 
     def test_initial_generation_initializes_progress_and_clears_current_take(self):
         session = FakeSession()
@@ -455,6 +538,47 @@ class TuiOperationsTests(unittest.TestCase):
                         "/tmp/take-3.wav",
                     ]
                 )
+
+    def test_preview_playback_temp_wav_is_replaced_stopped_and_keeps_take_selection(self):
+        first_process = Mock()
+        first_process.poll.return_value = None
+        second_process = Mock()
+        second_process.poll.return_value = None
+        third_process = Mock()
+        third_process.poll.return_value = None
+        popen = Mock(side_effect=[first_process, second_process, third_process])
+        operations = TuiOperations(
+            platform=lambda: "linux",
+            which=lambda _name: "/usr/bin/ffplay",
+            popen=popen,
+        )
+        session_candidate = candidate(3)
+        session = FakeSession((session_candidate,))
+        operations.current_take = 3
+
+        first_effects = operations.play_preview([0.0] * 80, 32000)
+        first_path = Path(popen.call_args_list[0].args[0][-1])
+        first_directory = first_path.parent
+        self.assertTrue(first_path.is_file())
+        self.assertEqual(
+            first_effects,
+            (UpdateStatusEffect("Playing pronunciation Preview."),),
+        )
+        self.assertEqual(operations.current_take, 3)
+
+        operations.play_preview([0.0] * 80, 32000)
+        second_path = Path(popen.call_args_list[1].args[0][-1])
+        second_directory = second_path.parent
+        self.assertFalse(first_directory.exists())
+        self.assertTrue(second_path.is_file())
+        self.assertEqual(operations.current_take, 3)
+
+        replay = operations.play_take(session, 3)
+        self.assertEqual(replay, (UpdateStatusEffect("Playing take 3."),))
+        self.assertFalse(second_directory.exists())
+        self.assertEqual(operations.current_take, 3)
+        self.assertEqual(session.candidates, [session_candidate])
+        operations.stop_playback()
 
     def test_missing_player_and_playback_oserror_preserve_status_text(self):
         with patch("voiceger_accent_adapter.tui_operations.sys.platform", "linux"):

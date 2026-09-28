@@ -15,7 +15,9 @@ from .english_stress import (
     normalize_english_phonemes,
 )
 from .query_editing import (
+    english_word_preview_query,
     japanese_pronunciation,
+    japanese_preview_query,
     move_english_primary_stress,
     move_japanese_accent,
     replace_english_phoneme_groups,
@@ -96,6 +98,11 @@ class ReplaceQueryIntent:
 
 
 @dataclass(frozen=True)
+class PreviewIntent:
+    query: AudioQuery
+
+
+@dataclass(frozen=True)
 class ApplyCaptionIntent:
     caption: str
 
@@ -157,6 +164,7 @@ class ClearAdjustmentFeedbackIntent:
 
 EditorIntent = Union[
     ReplaceQueryIntent,
+    PreviewIntent,
     ApplyCaptionIntent,
     BuildPronunciationIntent,
     ApplySettingsIntent,
@@ -434,12 +442,13 @@ class TuiEditorController:
                 )
             self.editor = EditorState(
                 kind="japanese",
-                title="EDIT JAPANESE PRONUNCIATION",
+                title="EDIT PRONUNCIATION",
                 origin=origin,
                 selection="pronunciation",
                 payload={
                     "source_text": row.source_text,
                     "canonical_pronunciation": canonical,
+                    "opening_draft": canonical.replace("/", " "),
                     "segment_index": segment_index,
                 },
             )
@@ -464,7 +473,7 @@ class TuiEditorController:
                 )
             self.editor = EditorState(
                 kind="english_word",
-                title="EDIT WORD PRONUNCIATION",
+                title="EDIT PRONUNCIATION",
                 origin=origin,
                 selection="phonemes",
                 payload={
@@ -472,6 +481,7 @@ class TuiEditorController:
                     "group_index": row.group_index,
                     "grouping": row.grouping,
                     "label": group.label,
+                    "opening_draft": " ".join(phonemes),
                 },
             )
             return (
@@ -642,13 +652,13 @@ class TuiEditorController:
         if editor.kind == "build_confirmation":
             return ["rebuild", "cancel"]
         if editor.kind == "japanese":
-            return ["pronunciation"]
+            return ["pronunciation", "preview", "apply", "clear", "reset", "back"]
         if editor.kind == "settings":
             return [
                 "style_id", "speed", "take_count", "output_dir", "save_text", "apply",
             ]
         if editor.kind == "english_word":
-            return ["phonemes"]
+            return ["phonemes", "preview", "apply", "clear", "reset", "back"]
         return []
 
     def move_selection(self, delta: int) -> tuple[EditorIntent, ...]:
@@ -677,16 +687,19 @@ class TuiEditorController:
         query: AudioQuery | None,
         current_caption: str | None,
         screen_width: int = 80,
+        preview_busy: bool = False,
     ) -> tuple[EditorIntent, ...]:
         editor = self.editor
         if editor is None:
             return ()
+        if preview_busy and editor.kind in {"japanese", "english_word"}:
+            return (
+                UpdateStatusIntent(
+                    "Wait for Preview to finish before editing pronunciation."
+                ),
+            )
         if editor.active_field is not None:
             if key in _ENTER_KEYS:
-                if editor.kind == "caption":
-                    return self._finish_field()
-                if editor.kind in {"japanese", "english_word"}:
-                    return self.apply(settings, query, current_caption)
                 return self._finish_field()
             if key == _ESCAPE:
                 if editor.kind in {"caption", "japanese", "settings", "english_word"}:
@@ -793,7 +806,24 @@ class TuiEditorController:
             if selected == "cancel":
                 return self._close_editor("Pronunciation rebuild cancelled.")
         elif editor.kind == "japanese":
-            return self.begin_field("pronunciation", editor.input_value)
+            if selected == "pronunciation":
+                return self.begin_field("pronunciation", editor.input_value)
+            if selected == "preview":
+                return self.preview(query)
+            if selected == "apply":
+                return self.apply(settings, query, current_caption)
+            if selected == "clear":
+                self._set_pronunciation_draft(editor, "")
+                editor.error = ""
+                return (UpdateStatusIntent("Japanese pronunciation draft cleared."),)
+            if selected == "reset":
+                self._set_pronunciation_draft(
+                    editor, editor.payload["opening_draft"]
+                )
+                editor.error = ""
+                return (UpdateStatusIntent("Japanese pronunciation draft reset."),)
+            if selected == "back":
+                return self.cancel()
         elif editor.kind == "settings":
             if selected == "save_text":
                 draft = editor.payload["draft_settings"]
@@ -806,6 +836,22 @@ class TuiEditorController:
         elif editor.kind == "english_word":
             if selected == "phonemes":
                 return self.begin_field("phonemes", editor.input_value)
+            if selected == "preview":
+                return self.preview(query)
+            if selected == "apply":
+                return self.apply(settings, query, current_caption)
+            if selected == "clear":
+                self._set_pronunciation_draft(editor, "")
+                editor.error = ""
+                return (UpdateStatusIntent("English phoneme draft cleared."),)
+            if selected == "reset":
+                self._set_pronunciation_draft(
+                    editor, editor.payload["opening_draft"]
+                )
+                editor.error = ""
+                return (UpdateStatusIntent("English phoneme draft reset."),)
+            if selected == "back":
+                return self.cancel()
         return ()
 
     @staticmethod
@@ -814,6 +860,56 @@ class TuiEditorController:
         editor.input_value = caption
         editor.input_original = caption
         editor.input_cursor = len(caption)
+
+    @staticmethod
+    def _set_pronunciation_draft(editor: EditorState, value: str) -> None:
+        field = "pronunciation" if editor.kind == "japanese" else "phonemes"
+        editor.input_value = value
+        editor.input_original = value
+        editor.input_cursor = len(value)
+        editor.active_field = None
+        editor.payload[field] = value
+
+    def preview(self, query: AudioQuery | None) -> tuple[EditorIntent, ...]:
+        """Validate a pronunciation draft and emit a transient query intent."""
+
+        editor = self.editor
+        if editor is None or editor.kind not in {"japanese", "english_word"}:
+            return ()
+        try:
+            if query is None:
+                raise ValueError("There is no active utterance")
+            if editor.kind == "japanese":
+                draft = editor.input_value
+                if "/" in draft:
+                    raise ValueError(
+                        "Use spaces for phrase boundaries; '/' is not used in this editor."
+                    )
+                canonical = draft.replace("　", "/").replace(" ", "/")
+                preview_query = japanese_preview_query(
+                    query,
+                    canonical,
+                    segment_index=editor.payload["segment_index"],
+                )
+            else:
+                grouping: EnglishGroupingCache = editor.payload["grouping"]
+                draft_phonemes = normalize_english_phonemes(
+                    editor.input_value.split()
+                )
+                preview_query = english_word_preview_query(
+                    query,
+                    segment_index=editor.payload["segment_index"],
+                    group_index=editor.payload["group_index"],
+                    phoneme_groups=tuple(
+                        group.phonemes for group in grouping.groups
+                    ),
+                    draft_phonemes=draft_phonemes,
+                )
+        except Exception as exc:
+            editor.error = f"Error: Preview failed: {exc}"
+            return ()
+        editor.error = ""
+        return (PreviewIntent(preview_query),)
 
     def _finish_field(self) -> tuple[EditorIntent, ...]:
         editor = self.editor

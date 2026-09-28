@@ -7,7 +7,9 @@ from voiceger_accent_adapter.english_stress import (
 from voiceger_accent_adapter.pronunciation import parse_pronunciation
 from voiceger_accent_adapter.query_editing import (
     english_editor_state,
+    english_word_preview_query,
     japanese_pronunciation,
+    japanese_preview_query,
     move_english_primary_stress,
     move_japanese_accent,
     replace_english_base_phonemes,
@@ -63,6 +65,119 @@ def _mixed_query(phrases, segments, **fields):
 
 
 class QueryEditingTests(unittest.TestCase):
+    def test_mixed_japanese_preview_isolates_selected_segment_and_controls(self):
+        query = _mixed_query(
+            ["キョ'ウ", "サ'ク", "ア'メ"],
+            [
+                VoicegerSegment(
+                    language="ja",
+                    text="今日",
+                    accentPhraseStart=0,
+                    accentPhraseCount=1,
+                    pronunciationTerminator="。",
+                ),
+                VoicegerSegment(
+                    language="en",
+                    text="hello",
+                    phonemes=["HH", "AH1", "L", "OW0"],
+                ),
+                VoicegerSegment(
+                    language="ja",
+                    text="咲く雨",
+                    accentPhraseStart=1,
+                    accentPhraseCount=2,
+                    pronunciationTerminator="？",
+                ),
+            ],
+            speedScale=1.3,
+            outputSamplingRate=44100,
+            volumeScale=0.7,
+        )
+        original = query.model_dump()
+
+        preview = japanese_preview_query(
+            query,
+            "オ'ト！",
+            segment_index=2,
+        )
+
+        self.assertIsNone(preview.voicegerSegments)
+        self.assertEqual(len(preview.accent_phrases), 1)
+        self.assertEqual(japanese_pronunciation(preview), "オ'ト！")
+        self.assertEqual(preview.kana, "オ'ト！")
+        self.assertEqual(preview.speedScale, 1.3)
+        self.assertEqual(preview.outputSamplingRate, 44100)
+        self.assertEqual(preview.volumeScale, 0.7)
+        self.assertEqual(query.model_dump(), original)
+
+    def test_pure_japanese_preview_keeps_the_whole_current_utterance(self):
+        query = _pure_query("ア'メ/キョ'ウ。", speedScale=1.2)
+        original = query.model_dump()
+
+        preview = japanese_preview_query(query, "アメ'/サ'ク？")
+
+        self.assertIsNone(preview.voicegerSegments)
+        self.assertEqual(len(preview.accent_phrases), 2)
+        self.assertEqual(japanese_pronunciation(preview), "アメ'/サ'ク？")
+        self.assertEqual(preview.speedScale, 1.2)
+        self.assertEqual(query.model_dump(), original)
+
+    def test_english_word_preview_isolates_segment_and_changes_only_selected_group(self):
+        groups = (
+            ("HH", "AH1", "L", "OW0"),
+            ("S", "W", "IY1", "T"),
+            ("W", "ER0", "L", "D"),
+        )
+        query = _mixed_query(
+            ["ア'メ", "サ'ク"],
+            [
+                VoicegerSegment(
+                    language="ja",
+                    text="前",
+                    accentPhraseStart=0,
+                    accentPhraseCount=1,
+                ),
+                VoicegerSegment(
+                    language="en",
+                    text="hello sweet world",
+                    phonemes=[phoneme for group in groups for phoneme in group],
+                ),
+                VoicegerSegment(
+                    language="ja",
+                    text="後",
+                    accentPhraseStart=1,
+                    accentPhraseCount=1,
+                ),
+            ],
+            speedScale=1.15,
+            outputSamplingRate=44100,
+            volumeScale=0.65,
+        )
+        original = query.model_dump()
+
+        preview = english_word_preview_query(
+            query,
+            segment_index=1,
+            group_index=1,
+            phoneme_groups=groups,
+            draft_phonemes=("S", "W", "EH1", "T"),
+        )
+
+        self.assertEqual(preview.accent_phrases, [])
+        self.assertIsNone(preview.kana)
+        self.assertEqual(len(preview.voicegerSegments), 1)
+        segment = preview.voicegerSegments[0]
+        self.assertEqual(segment.language, "en")
+        self.assertEqual(segment.text, "hello sweet world")
+        self.assertEqual(
+            segment.phonemes,
+            [*groups[0], "S", "W", "EH1", "T", *groups[2]],
+        )
+        self.assertEqual(preview.speedScale, 1.15)
+        self.assertEqual(preview.outputSamplingRate, 44100)
+        self.assertEqual(preview.volumeScale, 0.65)
+        self.assertEqual(query.model_dump(), original)
+
     def test_japanese_accent_move_changes_one_mora_and_boundary_is_noop(self):
         query = _pure_query("キョ'ウ/ア'メ。", speedScale=1.25)
         original = query.model_dump()

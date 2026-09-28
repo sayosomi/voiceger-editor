@@ -532,8 +532,9 @@ class TuiRenderer:
             lines.append((prefix + wrapped[0], name))
             continuation = " " * prefix_width
             lines.extend((continuation + value, name) for value in wrapped[1:])
-            cursor_line = first_line + cursor_row
-            cursor_column = prefix_width + cursor_cells
+            if editor.active_field == name:
+                cursor_line = first_line + cursor_row
+                cursor_column = prefix_width + cursor_cells
 
         plain(editor.title)
         if editor.kind == "caption":
@@ -558,7 +559,16 @@ class TuiRenderer:
             plain("Source")
             wrap("  ", editor.payload["source_text"])
             plain()
-            input_field("pronunciation", "▶ ")
+            input_field(
+                "pronunciation",
+                "▶ " if editor.selection == "pronunciation" else "  ",
+            )
+            plain()
+            selectable("preview", "[ Preview ]")
+            selectable("apply", "[ Apply ]")
+            selectable("clear", "[ Clear ]")
+            selectable("reset", "[ Reset ]")
+            selectable("back", "[ Back ]")
         elif editor.kind == "settings":
             draft = editor.payload["draft_settings"]
             values = (
@@ -594,7 +604,16 @@ class TuiRenderer:
             plain("Word")
             plain(f"  {editor.payload['label']}")
             plain()
-            input_field("phonemes", "▶ ")
+            input_field(
+                "phonemes",
+                "▶ " if editor.selection == "phonemes" else "  ",
+            )
+            plain()
+            selectable("preview", "[ Preview ]")
+            selectable("apply", "[ Apply ]")
+            selectable("clear", "[ Clear ]")
+            selectable("reset", "[ Reset ]")
+            selectable("back", "[ Back ]")
         return lines, cursor_line, cursor_column
 
     @staticmethod
