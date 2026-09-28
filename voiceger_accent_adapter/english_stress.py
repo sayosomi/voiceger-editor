@@ -310,8 +310,20 @@ def move_primary_stress(
         raise ValueError("source vowel does not have primary stress")
 
     vowel_stresses = list(validated_state.vowel_stresses)
-    vowel_stresses[source_vowel_position] = 0
-    vowel_stresses[target_vowel_position] = 1
+    source_stress = vowel_stresses[source_vowel_position]
+    target_stress = vowel_stresses[target_vowel_position]
+    vowel_bases = [
+        token for token in validated_state.base_phonemes if token in _VOWELS
+    ]
+    if target_stress is None and vowel_bases[source_vowel_position] not in {
+        "ER",
+        "IH",
+    }:
+        # The legacy bare ER/IH representation has no digit to swap back to
+        # an ordinary vowel, so use its unstressed equivalent there.
+        target_stress = 0
+    vowel_stresses[source_vowel_position] = target_stress
+    vowel_stresses[target_vowel_position] = source_stress
 
     return EnglishPhonemeEditorState(
         base_phonemes=validated_state.base_phonemes,

@@ -4,7 +4,6 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from voiceger_accent_adapter.english_stress import english_phonemes_to_editor_state
 from voiceger_accent_adapter.settings import Settings
 from voiceger_accent_adapter.tui_editors import (
     EnglishGroupingCache,
@@ -247,18 +246,55 @@ class TuiRenderingTests(unittest.TestCase):
         english = [line for line in selectable if "hello" in line.text or "everyone" in line.text]
 
         self.assertEqual(len(english), 2)
-        self.assertEqual(english[0].text, "  EN | hello      HH [AH] L OW")
-        self.assertIn("HH [AH] L OW", english[0].text)
+        self.assertEqual(english[0].text, "  EN | hello      HH [AH1] L OW0")
+        self.assertIn("HH [AH1] L OW0", english[0].text)
         self.assertEqual(
             english[1].text,
-            "     | everyone   [EH] V R IY W AH N",
+            "     | everyone   [EH1] V R IY0 W AH0 N",
         )
-        self.assertIn("[EH] V R IY W AH N", english[1].text)
+        self.assertIn("[EH1] V R IY0 W AH0 N", english[1].text)
         self.assertEqual(english[0].key, ("pronunciation", 2))
         self.assertEqual(english[1].key, ("pronunciation", 3))
         self.assertTrue(selectable[-1].text.startswith("  JA |"))
         self.assertNotIn("JA1", "\n".join(self.labels(lines)))
         self.assertNotIn("EN1", "\n".join(self.labels(lines)))
+
+    def test_main_english_rows_show_all_stress_digits_and_primary_markers(self):
+        cases = (
+            (
+                "record",
+                ("HH", "AH0", "L", "OW1", "ER2"),
+                "HH AH0 L [OW1] ER2",
+            ),
+            (
+                "unusual",
+                ("Z", "UW1", "N", "D", "AA1", "M", "OW0", "N"),
+                "Z [UW1] N D [AA1] M OW0 N",
+            ),
+        )
+        for word, phones, expected in cases:
+            with self.subTest(word=word):
+                grouping = EnglishGroupingCache(
+                    word, (EnglishWordGroup(word, phones, True),)
+                )
+                item = PronunciationRow(
+                    "en", word, 0, 0, True, group_index=0, word=word,
+                    phonemes=phones, word_column_width=len(word), grouping=grouping,
+                )
+                lines = self.renderer.navigation_document(
+                    render_state(
+                        session=FakeSession(),
+                        focus_key=("pronunciation", 0),
+                        pronunciation_rows=(item,),
+                        segments=(("en", word, 0),),
+                    ),
+                    80,
+                )
+                rendered = next(
+                    line.text for line in lines
+                    if line.key == ("pronunciation", 0)
+                )
+                self.assertIn(expected, rendered)
 
     def test_focused_english_source_is_bold_and_phonemes_are_reverse_only(self):
         state = render_state(
@@ -290,7 +326,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertFalse(idle_source[3] & curses.A_REVERSE)
 
     def test_wrapped_physical_rows_keep_tokens_and_do_not_gain_focus_keys(self):
-        phones = tuple(["HH", "AH1", "L", "OW0"] * 7)
+        phones = tuple(["UW1", "AA0", "OW2", "HH"] * 7)
         grouping = EnglishGroupingCache(
             "hello",
             (EnglishWordGroup("hello", phones, True),),
@@ -312,7 +348,10 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertGreater(len(child_lines), 1)
         self.assertEqual(sum(line.key == ("pronunciation", 0) for line in child_lines), 1)
         self.assertTrue(all(_display_width(line.text) <= 23 for line in child_lines))
-        self.assertTrue(all("AH1" not in line.text for line in child_lines))
+        wrapped = " ".join(line.text for line in child_lines)
+        self.assertIn("[UW1]", wrapped)
+        self.assertIn("AA0", wrapped)
+        self.assertIn("OW2", wrapped)
 
     def test_help_contains_pronunciation_controls_and_separate_settings_shortcuts(self):
         screen = FakeScreen()
@@ -384,29 +423,25 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("'", visible)
         self.assertNotIn("[Enter: Edit]", visible)
 
-    def test_english_word_editor_only_shows_stress_free_phoneme_sequence(self):
+    def test_english_word_editor_opens_on_full_stressed_phoneme_input(self):
         editor = SimpleNamespace(
             kind="english_word", title="EDIT WORD PRONUNCIATION",
             selection="phonemes",
-            payload={
-                "label": "hello",
-                "draft_state": english_phonemes_to_editor_state(
-                    ["HH", "AH1", "L", "OW2"]
-                ),
-            },
-            active_field=None, input_value="", input_cursor=0, error="", scroll=0,
+            payload={"label": "hello"},
+            active_field="phonemes", input_value="HH AH1 L OW2",
+            input_cursor=12, error="", scroll=0,
         )
-        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+        document, cursor_line, _cursor_column = self.renderer.editor_document(
             render_state(editor=editor), 80
         )
         visible = "\n".join(line for line, _key in document)
         self.assertIn("EDIT WORD PRONUNCIATION", visible)
         self.assertIn("Word", visible)
         self.assertIn("hello", visible)
-        self.assertIn("Phonemes  HH AH L OW", visible)
+        self.assertIn("▶ HH AH1 L OW2", visible)
+        self.assertIsNotNone(cursor_line)
+        self.assertNotIn("Phonemes", visible)
         self.assertNotIn("Primary stress", visible)
-        self.assertNotIn("AH1", visible)
-        self.assertNotIn("OW2", visible)
         self.assertNotIn("Done", visible)
 
     def test_settings_use_compact_rows_and_edit_the_current_field_in_place(self):

@@ -2,9 +2,6 @@ import curses
 from pathlib import Path
 import unittest
 
-from voiceger_accent_adapter.english_stress import (
-    english_phonemes_to_editor_state,
-)
 from voiceger_accent_adapter.settings import Settings
 from voiceger_accent_adapter.tui_editors import (
     AdjustmentPressedIntent,
@@ -202,7 +199,7 @@ class TuiEditorControllerTests(unittest.TestCase):
 
         self.assertEqual(
             intent.query.voicegerSegments[0].phonemes,
-            ["HH", "AH0", "L", "OW1", "W", "ER1", "L", "D"],
+            ["HH", "AH2", "L", "OW1", "W", "ER1", "L", "D"],
         )
         self.assertEqual(
             intent.accepted_grouping.groups[1].phonemes,
@@ -400,11 +397,18 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertNotIn("english_segment", editor.kind)
         self.assertEqual(editor.payload["label"], "hello")
         self.assertEqual(controller.selection_keys(), ["phonemes"])
-
+        self.assertEqual(editor.active_field, "phonemes")
+        self.assertEqual(editor.input_value, "HH AH1 L OW2")
         controller.handle_key(
-            "\n", settings=self.settings(), query=query, current_source="source"
+            "X", settings=self.settings(), query=query, current_source="source"
         )
-        editor.input_value = "HH AE L OW"
+        self.assertEqual(editor.input_value, "HH AH1 L OW2X")
+        controller.handle_key(
+            curses.KEY_BACKSPACE,
+            settings=self.settings(), query=query, current_source="source",
+        )
+        self.assertEqual(editor.input_value, "HH AH1 L OW2")
+        editor.input_value = "HH AE1 L OW0"
         editor.input_cursor = len(editor.input_value)
         intents = controller.handle_key(
             "\n", settings=self.settings(), query=query, current_source="source"
@@ -412,13 +416,192 @@ class TuiEditorControllerTests(unittest.TestCase):
         replacement = next(item for item in intents if isinstance(item, ReplaceQueryIntent))
         self.assertEqual(
             replacement.query.voicegerSegments[1].phonemes[:4],
-            ["HH", "AE1", "L", "OW2"],
+            ["HH", "AE1", "L", "OW0"],
         )
         completed = controller.complete_query_application(
             replacement, QueryApplicationResult()
         )
         self.assertEqual(completed[-1], CloseEditorIntent(("pronunciation", 2), replacement.success_status))
-        self.assertEqual(controller.grouping_cache[1].groups[0].phonemes, ("HH", "AE1", "L", "OW2"))
+        self.assertEqual(controller.grouping_cache[1].groups[0].phonemes, ("HH", "AE1", "L", "OW0"))
+        self.assertIsNone(controller.editor)
+
+    def test_english_direct_edit_applies_full_stress_values_to_selected_word(self):
+        original = ("Z", "UW1", "N", "D", "AA1", "M", "OW1", "N")
+        expected = ["Z", "UW1", "N", "D", "AA0", "M", "OW0", "N"]
+        query = AudioQuery(
+            accent_phrases=[],
+            voicegerSegments=[
+                VoicegerSegment(language="en", text="Zundamon", phonemes=list(original))
+            ],
+        )
+        controller, _provider = self.make_controller(
+            {"Zundamon": (("Zundamon", original),)}
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 0, origin=("pronunciation", 0), busy=False
+        )
+        editor = controller.editor
+        self.assertEqual(editor.input_value, " ".join(original))
+        editor.input_value = "Z UW1 N D AA0 M OW0 N"
+
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_source="source"
+        )
+        replacement = next(
+            intent for intent in intents if isinstance(intent, ReplaceQueryIntent)
+        )
+
+        self.assertEqual(replacement.query.voicegerSegments[0].phonemes, expected)
+
+    def test_english_direct_field_rejects_invalid_stress_then_retries_corrected_draft(self):
+        query = mixed_query()
+        controller, _provider = self.make_controller(
+            {
+                "hello everyone": (
+                    ("hello", ("HH", "AH1", "L", "OW2")),
+                    ("everyone", ("EH1", "V", "R", "IY0")),
+                )
+            }
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 2, origin=("pronunciation", 2), busy=False
+        )
+        editor = controller.editor
+        editor.input_value = "hh ah3 l ow2"
+        editor.input_cursor = 6
+        original_query = query.model_dump()
+
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_source="source"
+        )
+
+        self.assertEqual(intents, ())
+        self.assertEqual(query.model_dump(), original_query)
+        self.assertEqual(editor.input_value, "hh ah3 l ow2")
+        self.assertTrue(editor.error.startswith("Error: English phonemes were not changed:"))
+        controller.handle_key(
+            curses.KEY_BACKSPACE,
+            settings=self.settings(), query=query, current_source="source",
+        )
+        controller.handle_key(
+            "0", settings=self.settings(), query=query, current_source="source"
+        )
+        self.assertEqual(editor.input_value, "hh ah0 l ow2")
+        self.assertEqual(editor.error, "")
+
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_source="source"
+        )
+        replacement = next(
+            intent for intent in intents if isinstance(intent, ReplaceQueryIntent)
+        )
+        self.assertEqual(
+            replacement.query.voicegerSegments[1].phonemes[:4],
+            ["HH", "AH0", "L", "OW2"],
+        )
+
+    def test_english_direct_field_uses_shared_cursor_and_text_edit_keys(self):
+        query = mixed_query()
+        controller, _provider = self.make_controller(
+            {
+                "hello everyone": (
+                    ("hello", ("HH", "AH1", "L", "OW2")),
+                    ("everyone", ("EH1", "V", "R", "IY0")),
+                )
+            }
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 2, origin=("pronunciation", 2), busy=False
+        )
+        editor = controller.editor
+        original = "HH AH1 L OW2"
+
+        def press(key):
+            controller.handle_key(
+                key,
+                settings=self.settings(),
+                query=query,
+                current_source="source",
+                screen_width=8,
+            )
+
+        press(curses.KEY_HOME)
+        self.assertEqual(editor.input_cursor, 0)
+        press(curses.KEY_DOWN)
+        self.assertGreater(editor.input_cursor, 0)
+        press(curses.KEY_UP)
+        self.assertEqual(editor.input_cursor, 0)
+        press(curses.KEY_RIGHT)
+        self.assertEqual(editor.input_cursor, 1)
+        press("X")
+        self.assertEqual(editor.input_value, "HXH AH1 L OW2")
+        press(curses.KEY_BACKSPACE)
+        self.assertEqual(editor.input_value, original)
+        press(curses.KEY_END)
+        self.assertEqual(editor.input_cursor, len(original))
+        press(curses.KEY_LEFT)
+        press(curses.KEY_DC)
+        self.assertEqual(editor.input_value, "HH AH1 L OW")
+        press("2")
+        self.assertEqual(editor.input_value, original)
+
+    def test_english_direct_field_rejects_empty_pronunciation_without_mutation(self):
+        query = mixed_query()
+        controller, _provider = self.make_controller(
+            {
+                "hello everyone": (
+                    ("hello", ("HH", "AH1", "L", "OW2")),
+                    ("everyone", ("EH1", "V", "R", "IY0")),
+                )
+            }
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 2, origin=("pronunciation", 2), busy=False
+        )
+        editor = controller.editor
+        editor.input_value = ""
+        editor.input_cursor = 0
+        original_query = query.model_dump()
+
+        self.assertEqual(
+            controller.handle_key(
+                "\n", settings=self.settings(), query=query, current_source="source"
+            ),
+            (),
+        )
+        self.assertEqual(query.model_dump(), original_query)
+        self.assertEqual(editor.input_value, "")
+        self.assertIn("must not be empty", editor.error)
+
+    def test_unchanged_english_direct_field_closes_without_query_replacement(self):
+        query = mixed_query()
+        controller, _provider = self.make_controller(
+            {
+                "hello everyone": (
+                    ("hello", ("HH", "AH1", "L", "OW2")),
+                    ("everyone", ("EH1", "V", "R", "IY0")),
+                )
+            }
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 2, origin=("pronunciation", 2), busy=False
+        )
+        controller.editor.input_value = "hh ah1 l ow2"
+
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_source="source"
+        )
+
+        self.assertEqual(
+            intents[-1],
+            CloseEditorIntent(("pronunciation", 2), "English phonemes unchanged."),
+        )
+        self.assertFalse(any(isinstance(item, ReplaceQueryIntent) for item in intents))
         self.assertIsNone(controller.editor)
 
     def test_english_main_adjustment_preserves_cache_only_after_application(self):

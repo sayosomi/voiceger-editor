@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol, Sequence
 
-from .english_stress import EnglishPhonemeEditorState
 from .session import UtteranceSession
 from .settings import Settings
 from .styles import available_styles
@@ -101,7 +100,7 @@ def _active_input_prefix(editor: EditorRenderState) -> str:
     if editor.kind == "japanese":
         return "▶ "
     if editor.kind == "english_word":
-        return "▶ Phonemes  "
+        return "▶ "
     if editor.kind == "settings":
         labels = {
             "style_id": "Style",
@@ -586,12 +585,7 @@ class TuiRenderer:
             plain("Word")
             plain(f"  {editor.payload['label']}")
             plain()
-            phoneme_state: EnglishPhonemeEditorState = editor.payload["draft_state"]
-            if editor.active_field == "phonemes":
-                input_field("phonemes", "▶ Phonemes  ")
-            else:
-                tokens = " ".join(phoneme_state.base_phonemes)
-                selectable("phonemes", f"Phonemes  {tokens}")
+            input_field("phonemes", "▶ ")
         return lines, cursor_line, cursor_column
 
     @staticmethod
