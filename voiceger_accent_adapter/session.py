@@ -5,11 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Iterator
 
-from .mixed_language import (
-    build_mixed_audio_query,
-    detect_language_segments,
-    is_pure_japanese,
-)
+from .mixed_language import build_mixed_audio_query
 from .output import SavedOutput
 from .settings import Settings
 from .styles import VoicegerStyle, get_style
@@ -19,12 +15,12 @@ from .voiceger_adapter import VoicegerAdapter
 from .voicevox_api_models import AudioQuery
 
 
-def _validate_source_text(source_text: str) -> None:
-    if not isinstance(source_text, str):
-        raise TypeError("source_text must be a string")
-    if not source_text or not source_text.strip():
-        raise ValueError("source_text must not be empty")
-    if "\n" in source_text or "\r" in source_text:
+def _validate_caption(caption: str) -> None:
+    if not isinstance(caption, str):
+        raise TypeError("caption must be a string")
+    if not caption or not caption.strip():
+        raise ValueError("caption must not be empty")
+    if "\n" in caption or "\r" in caption:
         raise ValueError(
             "v1 supports one utterance per request; newlines are not supported"
         )
@@ -40,24 +36,19 @@ def _validate_query(query: AudioQuery) -> None:
         raise TypeError("query must be an AudioQuery instance")
 
 
-def _query_language_signature(query: AudioQuery) -> tuple[str, ...]:
-    if query.voicegerSegments is None:
-        return ("ja",)
-    return tuple(segment.language for segment in query.voicegerSegments)
-
-
 class UtteranceSession:
-    """Own one source utterance, its editable query, settings, and take batch."""
+    """Own one user-facing Caption, its synthesized query, settings, and takes."""
 
     def __init__(
         self,
         *,
         adapter: VoicegerAdapter,
-        source_text: str,
+        caption: str,
         query: AudioQuery,
         settings: Settings,
+        pure_japanese_utterance_text: str | None = None,
     ) -> None:
-        _validate_source_text(source_text)
+        _validate_caption(caption)
         _validate_query(query)
         _validate_settings(settings)
 
@@ -66,43 +57,66 @@ class UtteranceSession:
         style = get_style(adapter.voiceger_root, settings.style_id)
 
         self._adapter = adapter
-        self._source_text = source_text
+        self._caption = caption
         self._query = owned_query
+        self._pure_japanese_utterance_text = None
+        if owned_query.voicegerSegments is None:
+            actual_text = (
+                pure_japanese_utterance_text
+                if pure_japanese_utterance_text is not None
+                else caption
+            )
+            _validate_caption(actual_text)
+            self._pure_japanese_utterance_text = actual_text
         self._settings = settings
         self._style = style
         self._active_batch: TakeBatch | None = None
-        self._pronunciation_needs_rebuild = False
+        self._utterance_manually_edited = False
 
     @classmethod
     def from_text(
         cls,
         *,
         adapter: VoicegerAdapter,
-        source_text: str,
+        caption: str,
         settings: Settings,
     ) -> UtteranceSession:
-        """Build an editable mixed-language query and own it in a session."""
+        """Create the initial query from the supplied Caption."""
 
-        _validate_source_text(source_text)
+        _validate_caption(caption)
         query = build_mixed_audio_query(
-            source_text,
+            caption,
             english_g2p=adapter.english_phonemes,
             output_sampling_rate=32000,
         )
+        _validate_query(query)
         return cls(
             adapter=adapter,
-            source_text=source_text,
+            caption=caption,
             query=query,
             settings=settings,
+            pure_japanese_utterance_text=(
+                caption if query.voicegerSegments is None else None
+            ),
         )
 
     @property
-    def source_text(self) -> str:
-        return self._source_text
+    def caption(self) -> str:
+        """The current user-facing Caption used for accepted output text."""
+
+        return self._caption
 
     @property
-    def pronunciation_needs_rebuild(self) -> bool:
-        return self._pronunciation_needs_rebuild
+    def pure_japanese_utterance_text(self) -> str | None:
+        """Actual source text for a pure-Japanese query, when applicable."""
+
+        if self._query.voicegerSegments is not None:
+            return None
+        return self._pure_japanese_utterance_text
+
+    @property
+    def utterance_manually_edited(self) -> bool:
+        return self._utterance_manually_edited
 
     @property
     def settings(self) -> Settings:
@@ -128,65 +142,55 @@ class UtteranceSession:
 
         return deepcopy(self._query)
 
-    def replace_query(self, query: AudioQuery) -> None:
-        """Install an edited query and invalidate candidates from the old one."""
+    def replace_caption(self, caption: str) -> None:
+        """Replace only Caption, leaving query state and active takes untouched."""
+
+        _validate_caption(caption)
+        self._caption = caption
+
+    def replace_query(
+        self,
+        query: AudioQuery,
+        *,
+        pure_japanese_utterance_text: str | None = None,
+    ) -> None:
+        """Install a committed query edit and invalidate takes from the old one."""
 
         _validate_query(query)
         replacement = deepcopy(query)
         replacement.speedScale = self._settings.speed
+        actual_pure_japanese_text = self._pure_japanese_utterance_text
+        if replacement.voicegerSegments is None:
+            if pure_japanese_utterance_text is not None:
+                _validate_caption(pure_japanese_utterance_text)
+                actual_pure_japanese_text = pure_japanese_utterance_text
+        else:
+            actual_pure_japanese_text = None
 
         self.discard_takes()
         self._query = replacement
+        self._pure_japanese_utterance_text = actual_pure_japanese_text
+        self._utterance_manually_edited = True
 
-    def replace_source_text(self, source_text: str) -> None:
-        """Replace source text while retaining pronunciation for matching runs."""
+    def build_pronunciation_from_caption(self) -> None:
+        """Build and atomically install a fresh complete query from Caption."""
 
-        if source_text == self._source_text:
-            return
-
-        _validate_source_text(source_text)
-        detected = detect_language_segments(source_text)
-        detected_signature = (
-            ("ja",)
-            if is_pure_japanese(detected)
-            else tuple(segment.language for segment in detected)
-        )
-        same_signature = detected_signature == _query_language_signature(
-            self._query
-        )
-
-        replacement_query = deepcopy(self._query)
-        if same_signature and replacement_query.voicegerSegments is not None:
-            for segment, detected_segment in zip(
-                replacement_query.voicegerSegments,
-                detected,
-            ):
-                segment.text = detected_segment.text
-
-        self.discard_takes()
-        self._source_text = source_text
-        if same_signature:
-            self._query = replacement_query
-            self._pronunciation_needs_rebuild = False
-        else:
-            self._pronunciation_needs_rebuild = True
-
-    def rebuild_pronunciation(self) -> None:
-        """Replace current pronunciation data with fresh automatic analysis."""
-
-        replacement_query = deepcopy(
-            build_mixed_audio_query(
-                self._source_text,
-                english_g2p=self._adapter.english_phonemes,
-                output_sampling_rate=32000,
-            )
+        replacement_query = build_mixed_audio_query(
+            self._caption,
+            english_g2p=self._adapter.english_phonemes,
+            output_sampling_rate=32000,
         )
         _validate_query(replacement_query)
+        replacement_query = deepcopy(replacement_query)
         replacement_query.speedScale = self._settings.speed
+        pure_japanese_text = (
+            self._caption if replacement_query.voicegerSegments is None else None
+        )
 
         self.discard_takes()
         self._query = replacement_query
-        self._pronunciation_needs_rebuild = False
+        self._pure_japanese_utterance_text = pure_japanese_text
+        self._utterance_manually_edited = False
 
     def replace_settings(self, settings: Settings) -> None:
         """Resolve new settings before invalidating the current take batch."""
@@ -210,10 +214,6 @@ class UtteranceSession:
     ) -> Iterator[TakeCandidate]:
         """Start a take batch using a fixed snapshot of synthesis conditions."""
 
-        if self._pronunciation_needs_rebuild:
-            raise RuntimeError(
-                "pronunciation must be rebuilt after the source-text structure changed"
-            )
         if self._active_batch is not None:
             raise RuntimeError("a take batch is already active")
 
@@ -235,11 +235,9 @@ class UtteranceSession:
         batch = TakeBatch(
             take_count=settings_snapshot.take_count,
             synthesize_one=synthesize_one,
-            source_text=self._source_text,
             style_name=style_snapshot.name,
             output_dir=settings_snapshot.output_dir,
             save_text=settings_snapshot.save_text,
-            filename_text=self._source_text,
         )
         try:
             iterator = batch.generate_all()
@@ -258,7 +256,11 @@ class UtteranceSession:
 
     def accept_take(self, take_number: int) -> SavedOutput:
         batch = self._require_active_batch()
-        saved = batch.accept(take_number)
+        saved = batch.accept(
+            take_number,
+            source_text=self._caption,
+            filename_text=self._caption,
+        )
         self._active_batch = None
         return saved
 

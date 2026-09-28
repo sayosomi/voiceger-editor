@@ -43,13 +43,13 @@ _HELP_ITEMS = (
     ("1-8", ": focus and play an available candidate"),
     ("r", ": regenerate the focused candidate"),
     ("R", ": activate Generate / Regenerate all"),
-    ("t", ": edit Text"),
+    ("t", ": edit Caption"),
     ("s", ": open Settings at style"),
     ("v", ": open Settings at speed"),
     ("n", ": open Settings at takes"),
     ("o", ": open Settings at output"),
     ("x", ": open Settings at TXT"),
-    (None, "Rebuild pronunciation: rerun automatic pronunciation from current Text"),
+    (None, "Build pronunciation: rebuild automatically from the current Caption"),
     ("?", ": open Help"),
     ("q", ": Quit"),
 )
@@ -95,7 +95,7 @@ class NavigationLine:
 
 
 def _active_input_prefix(editor: EditorRenderState) -> str:
-    if editor.kind == "text":
+    if editor.kind == "caption":
         return "▶ "
     if editor.kind == "japanese":
         return "▶ "
@@ -342,9 +342,9 @@ class TuiRenderer:
             marker = "▶ " if key == state.focus_key else "  "
             lines.append(NavigationLine(marker + label, key, key))
 
-        def text_action(key: tuple[str, int | None], value: str) -> None:
+        def caption_action(key: tuple[str, int | None], value: str) -> None:
             marker = "▶ " if key == state.focus_key else "  "
-            prefix = f"{marker}Text : "
+            prefix = f"{marker}Caption : "
             available = max(1, width - 1 - _display_width(prefix))
             pieces = _wrap_text(value, available) or [""]
             lines.append(NavigationLine(prefix + pieces[0], key, key))
@@ -438,15 +438,12 @@ class TuiRenderer:
                 )
 
         session = state.session
-        text_action(("text", None), session.source_text if session else "")
+        caption_action(("caption", None), session.caption if session else "")
         if session is not None:
-            action(("rebuild", None), "[ Rebuild pronunciation ]")
+            action(("build_pronunciation", None), "[ Build pronunciation ]")
             plain()
-            if session.pronunciation_needs_rebuild:
-                plain("Pronunciation   Rebuild required")
-            else:
-                for index, item in enumerate(state.pronunciation_rows):
-                    pronunciation_action(index, item)
+            for index, item in enumerate(state.pronunciation_rows):
+                pronunciation_action(index, item)
             plain()
             has_batch = session.has_active_batch
             if state.busy:
@@ -539,11 +536,23 @@ class TuiRenderer:
             cursor_column = prefix_width + cursor_cells
 
         plain(editor.title)
-        if editor.kind == "text":
+        if editor.kind == "caption":
+            plain()
             if editor.active_field == "draft":
                 input_field("draft", "▶ ")
             else:
                 selectable("draft", editor.payload["draft"])
+            plain()
+            selectable("apply", "[ Apply ]")
+            selectable("clear", "[ Clear ]")
+            selectable("reset", "[ Reset ]")
+            selectable("back", "[ Back ]")
+        elif editor.kind == "build_confirmation":
+            plain()
+            wrap("", editor.payload["warning"])
+            plain()
+            selectable("rebuild", "[ Rebuild ]")
+            selectable("cancel", "[ Cancel ]")
         elif editor.kind == "japanese":
             plain()
             plain("Source")

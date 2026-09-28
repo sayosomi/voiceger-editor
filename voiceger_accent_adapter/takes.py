@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import tempfile
-from typing import Any, Callable, Iterator, Mapping, Optional
+from typing import Any, Callable, Iterator, Mapping
 
 from .output import SavedOutput, save_output
 
@@ -29,11 +29,9 @@ class TakeBatch:
         *,
         take_count: int,
         synthesize_one: Callable[[], Mapping[str, Any]],
-        source_text: str,
         style_name: str,
         output_dir: Path,
         save_text: bool = False,
-        filename_text: Optional[str] = None,
     ) -> None:
         if (
             isinstance(take_count, bool)
@@ -44,11 +42,9 @@ class TakeBatch:
 
         self.take_count = take_count
         self.synthesize_one = synthesize_one
-        self.source_text = source_text
         self.style_name = style_name
         self.output_dir = Path(output_dir)
         self.save_text = save_text
-        self.filename_text = filename_text
 
         self._temporary_directory = tempfile.TemporaryDirectory(
             prefix="voiceger-takes-"
@@ -117,8 +113,14 @@ class TakeBatch:
 
         return regenerate()
 
-    def accept(self, take_number: int) -> SavedOutput:
-        """Save a selected candidate and clean up the temporary batch."""
+    def accept(
+        self,
+        take_number: int,
+        *,
+        source_text: str,
+        filename_text: str,
+    ) -> SavedOutput:
+        """Save a candidate using output text supplied at acceptance time."""
 
         self._ensure_open()
         number = self._validate_take_number(take_number)
@@ -129,11 +131,11 @@ class TakeBatch:
         saved = save_output(
             audio=candidate.audio,
             sampling_rate=candidate.sampling_rate,
-            source_text=self.source_text,
+            source_text=source_text,
             style_name=self.style_name,
             output_dir=self.output_dir,
             save_text=self.save_text,
-            filename_text=self.filename_text,
+            filename_text=filename_text,
         )
         self.close()
         return saved
