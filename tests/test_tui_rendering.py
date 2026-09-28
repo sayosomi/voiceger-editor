@@ -202,6 +202,7 @@ class TuiRenderingTests(unittest.TestCase):
         lines = self.renderer.navigation_document(state, 80)
         selectable = [line for line in lines if line.key and line.key[0] == "pronunciation"]
 
+        self.assertIn("Pronunciation", [line.text for line in lines])
         self.assertEqual(selectable[0].text, "▶ JA | ア シ タ [ワ]")
         self.assertEqual(selectable[1].text, "     | イ イ [テ] ン キ")
         self.assertNotIn("キ ョ", "\n".join(self.labels(lines)))
@@ -311,7 +312,7 @@ class TuiRenderingTests(unittest.TestCase):
         for text in (
             "Up/Down", "on JA: accent by one mora",
             "on EN: primary stress by one vowel",
-            "on JA: edit reading",
+            "on JA: edit segment pronunciation",
             "on EN: edit word phonemes",
         ):
             self.assertIn(text, visible)
@@ -351,26 +352,27 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertNotIn("Esc Cancel", visible)
         self.assertIsNotNone(screen.cursor)
 
-    def test_japanese_editor_shows_structural_phrase_rows_without_raw_notation(self):
+    def test_japanese_editor_shows_wrapped_source_and_active_direct_notation(self):
         editor = SimpleNamespace(
             kind="japanese", title="EDIT JAPANESE PRONUNCIATION",
-            selection=("phrase", 1),
-            payload={
-                "source_text": "明日は",
-                "phrases": ((("ア", "シ", "タ", "ワ"), 4), (("キョ", "ウ"), 1)),
-            },
-            active_field=None, input_value="", input_cursor=0, error="", scroll=0,
+            selection="pronunciation",
+            payload={"source_text": "今日は明日なのだ。"},
+            active_field="pronunciation", input_value="ナ' ノダ'。",
+            input_cursor=2, error="", scroll=0,
         )
-        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+        document, cursor_line, cursor_column = self.renderer.editor_document(
             render_state(editor=editor), 80
         )
         visible = "\n".join(line for line, _key in document)
-        self.assertIn("Source", visible)
-        self.assertIn("Pronunciation", visible)
-        self.assertIn("ア シ タ [ワ]", visible)
-        self.assertIn("▶ [キョ] ウ", visible)
+        self.assertEqual(document[0][0], "EDIT JAPANESE PRONUNCIATION")
+        self.assertIn("\nSource\n", f"\n{visible}\n")
+        self.assertIn("  今日は明日なのだ。", visible)
+        self.assertIn("▶ ナ' ノダ'。", visible)
+        self.assertEqual(cursor_line, 5)
+        self.assertEqual(cursor_column, 5)
+        self.assertNotIn("\nPronunciation\n", f"\n{visible}\n")
         self.assertNotIn("/", visible)
-        self.assertNotIn("'", visible)
+        self.assertIn("'", visible)
         self.assertNotIn("[Enter: Edit]", visible)
 
     def test_english_word_editor_only_shows_stress_free_phoneme_sequence(self):

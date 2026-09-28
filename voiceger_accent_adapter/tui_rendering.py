@@ -33,7 +33,7 @@ _HELP_ITEMS = (
     ),
     (
         "Enter",
-        ": on JA: edit reading; on EN: edit word phonemes; "
+        ": on JA: edit segment pronunciation; on EN: edit word phonemes; "
         "otherwise activate the focused action",
     ),
     ("Space", ": replay a focused candidate"),
@@ -551,33 +551,7 @@ class TuiRenderer:
             plain("Source")
             wrap("  ", editor.payload["source_text"])
             plain()
-            plain("Pronunciation")
-            selected_phrase = editor.selection
-            editing = editor.active_field == "reading"
-            for index, (morae, accent) in enumerate(editor.payload["phrases"]):
-                key = ("phrase", index)
-                if editing and selected_phrase == key:
-                    tokens = _japanese_mora_tokens(
-                        editor.payload["editing_morae"],
-                        editor.payload["editing_accent"],
-                    )
-                    physical, cursor = _wrap_tokens_with_prefixes(
-                        "▶ ", "  ", tokens, width - 1,
-                        cursor_index=editor.payload["mora_cursor"],
-                    )
-                    first_line = len(lines)
-                    lines.extend((line, key) for line in physical)
-                    if cursor is not None:
-                        cursor_line = first_line + cursor[0]
-                        cursor_column = cursor[1]
-                else:
-                    marker = "▶ " if editor.selection == key else "  "
-                    tokens = _japanese_mora_tokens(morae, accent)
-                    physical, _cursor = _wrap_tokens_with_prefixes(
-                        marker, "  ", tokens, width - 1
-                    )
-                    lines.append((physical[0], key))
-                    lines.extend((line, key) for line in physical[1:])
+            input_field("pronunciation", "▶ ")
         elif editor.kind == "settings":
             draft = editor.payload["draft_settings"]
             values = (
