@@ -267,7 +267,16 @@ class TuiNavigation:
         self,
         context: NavigationContext,
     ) -> tuple[NavigationAction, ...]:
-        name, number = self.focus_key
+        return self.activate_item(context, self.focus_key)
+
+    def activate_item(
+        self,
+        context: NavigationContext,
+        key: FocusKey,
+    ) -> tuple[NavigationAction, ...]:
+        if key not in self.navigation_items(context):
+            return ()
+        name, number = key
         if name == "settings_summary":
             return (OpenSettingsEditor("style_id"),)
         if name == "output":
