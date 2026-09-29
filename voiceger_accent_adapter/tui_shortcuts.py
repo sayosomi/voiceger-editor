@@ -1,4 +1,4 @@
-"""Declarative shortcut metadata for editor and modal selectable items."""
+"""Declarative shortcut metadata for Main actions and editor/modal items."""
 
 from __future__ import annotations
 
