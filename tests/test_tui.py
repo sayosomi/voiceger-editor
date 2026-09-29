@@ -13,6 +13,7 @@ from voiceger_accent_adapter.tui_operations import PlayPreviewEffect
 from voiceger_accent_adapter.tui import (
     TuiApp,
     build_argument_parser,
+    main,
     settings_for_invocation,
 )
 from voiceger_accent_adapter.voicevox_api_models import (
@@ -461,6 +462,19 @@ class TuiTests(unittest.TestCase):
                 shortcut._handle_key(key)
                 self.assertFalse(shortcut._help_open)
                 self.assertTrue(shortcut._exit_requested)
+
+    def test_ctrl_c_requests_batch_cancellation_and_exit(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        cancellation_event = Event()
+        app._operations._cancellation_event = cancellation_event
+
+        app._handle_key("\x03")
+
+        self.assertTrue(app._exit_requested)
+        self.assertTrue(cancellation_event.is_set())
+        self.assertEqual(app._status, "Cancelling current batch before cleanup…")
 
     def test_help_and_cancelled_editor_leave_candidates_available(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
@@ -2339,6 +2353,47 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(events, ["replace"])
         self.assertIs(app.session, session)
         self.assertIn(1, app._editor_controller.grouping_cache)
+
+    def test_keyboard_interrupt_requests_cancellation_then_cleans_session(self):
+        app = self.make_app()
+        app._initial_caption = "example"
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        cancellation_event = Event()
+        app._operations._cancellation_event = cancellation_event
+        app._operations.join_worker = Mock()
+        app._operations.stop_playback = Mock()
+
+        class InterruptScreen(FakeScreen):
+            def get_wch(self):
+                raise KeyboardInterrupt
+
+        with patch(
+            "voiceger_accent_adapter.tui.UtteranceSession.from_text",
+            return_value=app.session,
+        ), patch("voiceger_accent_adapter.tui.curses.set_escdelay"):
+            app.run(InterruptScreen())
+
+        self.assertTrue(app._exit_requested)
+        self.assertTrue(cancellation_event.is_set())
+        app._operations.join_worker.assert_called_once_with()
+        app._operations.stop_playback.assert_called_once_with()
+        self.assertEqual(app.session.close_calls, 1)
+
+    def test_main_sweeps_stale_take_directories_before_starting_tui(self):
+        with patch(
+            "voiceger_accent_adapter.tui.cleanup_stale_take_directories"
+        ) as cleanup, patch(
+            "voiceger_accent_adapter.tui.load_settings",
+            return_value=Settings(),
+        ), patch(
+            "voiceger_accent_adapter.tui.VoicegerAdapter",
+        ), patch(
+            "voiceger_accent_adapter.tui.curses.wrapper",
+        ):
+            self.assertEqual(main([]), 0)
+
+        cleanup.assert_called_once_with()
 
     def test_busy_shutdown_drains_worker_before_playback_and_session_cleanup(self):
         app = self.make_app()

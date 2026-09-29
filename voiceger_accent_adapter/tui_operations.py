@@ -295,6 +295,16 @@ class TuiOperations:
         self.cancellation_requested = True
         return (UpdateStatusEffect("Cancelling…"),)
 
+    def request_shutdown(self) -> tuple[OperationEffect, ...]:
+        """Prepare a safe shutdown without forcibly terminating Voiceger."""
+
+        if self.can_cancel_batch:
+            self.request_batch_cancellation()
+            return (UpdateStatusEffect("Cancelling current batch before cleanup…"),)
+        if self.busy:
+            return (UpdateStatusEffect("Finishing the current synthesis before cleanup…"),)
+        return ()
+
     def consume_pending_events(
         self,
         session: UtteranceSession | None,
@@ -570,8 +580,13 @@ class TuiOperations:
 
     def join_worker(self) -> None:
         worker = self.worker
-        if worker is not None and worker.ident is not None:
-            worker.join()
+        if worker is None or worker.ident is None:
+            return
+        while worker.is_alive():
+            try:
+                worker.join(timeout=0.1)
+            except KeyboardInterrupt:
+                self.request_batch_cancellation()
 
     def worker_is_alive(self) -> bool:
         return self.worker is not None and self.worker.is_alive()

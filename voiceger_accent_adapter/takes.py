@@ -5,10 +5,88 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import shutil
 import tempfile
+import time
 from typing import Any, Callable, Iterator, Mapping
 
 from .output import SavedOutput, save_output_wav
+
+
+_TAKE_TEMP_PREFIX = "voiceger-takes-"
+_OWNER_PID_FILE = ".owner-pid"
+_LEGACY_CLEANUP_GRACE_SECONDS = 24 * 60 * 60
+
+
+def _process_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if pid == os.getpid():
+        return True
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            process_query_limited_information = 0x1000
+            handle = ctypes.windll.kernel32.OpenProcess(
+                process_query_limited_information, False, pid
+            )
+            if not handle:
+                return False
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+        except Exception:
+            return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def cleanup_stale_take_directories(
+    *,
+    temp_root: Path | None = None,
+    now: float | None = None,
+    legacy_grace_seconds: float = _LEGACY_CLEANUP_GRACE_SECONDS,
+) -> int:
+    """Remove orphaned take directories without touching a live adapter process."""
+
+    root = Path(tempfile.gettempdir()) if temp_root is None else Path(temp_root)
+    current_time = time.time() if now is None else now
+    removed = 0
+    try:
+        entries = tuple(root.glob(f"{_TAKE_TEMP_PREFIX}*"))
+    except OSError:
+        return 0
+
+    for path in entries:
+        try:
+            if path.is_symlink() or not path.is_dir():
+                continue
+            marker = path / _OWNER_PID_FILE
+            owner_pid = None
+            if marker.is_file():
+                try:
+                    owner_pid = int(marker.read_text(encoding="ascii").strip())
+                except (OSError, ValueError):
+                    owner_pid = None
+            if owner_pid is not None:
+                if _process_is_alive(owner_pid):
+                    continue
+            else:
+                age = current_time - path.stat().st_mtime
+                if age < legacy_grace_seconds:
+                    continue
+            shutil.rmtree(path)
+            removed += 1
+        except (FileNotFoundError, OSError):
+            continue
+    return removed
 
 
 @dataclass(frozen=True)
@@ -49,9 +127,16 @@ class TakeBatch:
         self._source_text = source_text
 
         self._temporary_directory = tempfile.TemporaryDirectory(
-            prefix="voiceger-takes-"
+            prefix=_TAKE_TEMP_PREFIX
         )
         self._temporary_path = Path(self._temporary_directory.name)
+        try:
+            (self._temporary_path / _OWNER_PID_FILE).write_text(
+                f"{os.getpid()}\n", encoding="ascii"
+            )
+        except BaseException:
+            self._temporary_directory.cleanup()
+            raise
         self._candidates: dict[int, TakeCandidate] = {}
         self._initial_generation_started = False
         self._closed = False
@@ -148,9 +233,14 @@ class TakeBatch:
 
         if self._closed:
             return
-        self._closed = True
         self._candidates.clear()
-        self._temporary_directory.cleanup()
+        while True:
+            try:
+                self._temporary_directory.cleanup()
+                break
+            except KeyboardInterrupt:
+                continue
+        self._closed = True
 
     def __enter__(self) -> TakeBatch:
         self._ensure_open()
