@@ -1550,7 +1550,6 @@ class TuiTests(unittest.TestCase):
         cases = (
             ("style_id", "2", Settings(style_id=2)),
             ("speed", "1.25", Settings(speed=1.25)),
-            ("take_count", "5", Settings(take_count=5)),
             ("save_text", True, Settings(save_text=True)),
         )
         for field, value, expected in cases:
@@ -1588,6 +1587,47 @@ class TuiTests(unittest.TestCase):
                         "save_text": target.save_text,
                     },
                 )
+
+    def test_take_count_enter_edits_then_apply_shortcut_saves_the_full_draft(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+            app.config_path = Path(directory) / "config.json"
+            app._open_settings_editor("take_count")
+            editor = app._editor_controller.editor
+
+            app._handle_key("\n")
+            self.assertIs(app._editor_controller.editor, editor)
+            self.assertEqual(editor.active_field, "take_count")
+
+            editor.input_value = "42"
+            editor.input_cursor = 2
+            app._handle_key("\n")
+
+            self.assertIs(app._editor_controller.editor, editor)
+            self.assertIsNone(editor.active_field)
+            self.assertEqual(editor.payload["draft_settings"]["take_count"], "42")
+            self.assertEqual(app.settings.take_count, 4)
+
+            app._handle_key("a")
+
+            target = Settings(
+                take_count=42,
+                output_dir=app.settings.output_dir,
+            )
+            self.assertIsNone(app._editor_controller.editor)
+            self.assertEqual(app.settings, target)
+            self.assertEqual(app._persisted_settings, target)
+            self.assertEqual(app.session.replace_settings_calls, [target])
+            self.assertEqual(
+                json.loads(app.config_path.read_text()),
+                {
+                    "output_dir": str(target.output_dir),
+                    "take_count": 42,
+                    "style_id": target.style_id,
+                    "speed": target.speed,
+                    "save_text": target.save_text,
+                },
+            )
 
     def test_settings_reset_and_back_or_escape_only_change_the_modal_draft(self):
         opening = Settings(
