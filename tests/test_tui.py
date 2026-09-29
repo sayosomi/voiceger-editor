@@ -450,6 +450,26 @@ class TuiTests(unittest.TestCase):
                 self.assertFalse(shortcut._help_open)
                 self.assertTrue(shortcut._exit_requested)
 
+    def test_main_only_generation_and_candidate_shortcuts_do_not_escape_editor(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        app._open_settings_editor()
+        editor = app._editor_controller.editor
+        app._navigation.activate_generate = Mock(return_value=())
+        app._navigation.focus_candidate = Mock(return_value=())
+        app._navigation.activate_regenerate_focused = Mock(return_value=())
+
+        for key in (curses.KEY_F5, "\x07", "1", "R"):
+            app._handle_key(key)
+
+        app._navigation.activate_generate.assert_not_called()
+        app._navigation.focus_candidate.assert_not_called()
+        app._navigation.activate_regenerate_focused.assert_not_called()
+        self.assertIs(app._editor_controller.editor, editor)
+
+        app._handle_key("r")
+        app._navigation.activate_regenerate_focused.assert_not_called()
+        self.assertIs(app._editor_controller.editor, editor)
+
     def test_help_from_editor_restores_exact_editor_state_and_focus(self):
         app = self.make_app(query=mixed_query())
         app._open_settings_editor()
