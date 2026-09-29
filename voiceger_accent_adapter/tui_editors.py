@@ -794,6 +794,14 @@ class TuiEditorController:
         editor = self.editor
         if editor is None:
             return ()
+        if preview_busy and editor.kind in {"japanese", "english_word", "section_text"}:
+            return (
+                UpdateStatusIntent(
+                    "Wait for Preview to finish before editing section text."
+                    if editor.kind == "section_text"
+                    else "Wait for Preview to finish before editing pronunciation."
+                ),
+            )
         if editor.active_field is not None:
             if key in _ENTER_KEYS:
                 return self._finish_field()
@@ -866,15 +874,6 @@ class TuiEditorController:
             return (QuitIntent(),)
         if key == "?":
             return (OpenHelpIntent(),)
-        if preview_busy and editor.kind in {"japanese", "english_word", "section_text"}:
-            return (
-                UpdateStatusIntent(
-                    "Wait for Preview to finish before editing section text."
-                    if editor.kind == "section_text"
-                    else "Wait for Preview to finish before editing pronunciation."
-                ),
-            )
-
         shortcut = resolve_shortcut(editor.kind, key, editor.payload)
         if shortcut is not None:
             editor.selection = shortcut.key
