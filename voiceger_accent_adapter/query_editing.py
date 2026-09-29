@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from difflib import SequenceMatcher
 
 from .english_stress import (
     EnglishPhonemeEditorState,
@@ -17,6 +18,7 @@ from .pronunciation import (
     format_pronunciation,
     parse_pronunciation,
 )
+from .openjtalk_converter import text_to_pronunciation
 from .mixed_language import resolve_japanese_segment_terminator
 from .synthesis import _query_terminator
 from .voicevox_api_models import AudioQuery, VoicegerSegment
@@ -93,6 +95,92 @@ def _parse_replacement(pronunciation: str) -> Pronunciation:
     if not isinstance(pronunciation, str):
         raise ValueError("pronunciation must be a string")
     return parse_pronunciation(pronunciation)
+
+
+EnglishWordPhonemeGroups = Sequence[tuple[str, Sequence[str]]]
+
+
+def _validate_section_text(text: str, language: str) -> None:
+    if not isinstance(text, str):
+        raise ValueError(f"{language} section text must be a string")
+    if not text.strip():
+        raise ValueError(f"{language} section text must not be empty")
+    if "\n" in text or "\r" in text:
+        raise ValueError(f"{language} section text must not contain newlines")
+
+
+def _validated_word_groups(
+    groups: EnglishWordPhonemeGroups,
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    if isinstance(groups, (str, bytes)) or not isinstance(groups, Sequence) or not groups:
+        raise ValueError("English word groups must be a non-empty sequence")
+    result: list[tuple[str, tuple[str, ...]]] = []
+    for group in groups:
+        if isinstance(group, (str, bytes)) or not isinstance(group, Sequence) or len(group) != 2:
+            raise ValueError("English word groups must contain label/phoneme pairs")
+        label, phonemes = group
+        if not isinstance(label, str):
+            raise ValueError("English word group labels must be strings")
+        if isinstance(phonemes, (str, bytes)) or not isinstance(phonemes, Sequence):
+            raise ValueError("English word group phonemes must be a sequence")
+        values = tuple(phonemes)
+        if any(not isinstance(value, str) for value in values):
+            raise ValueError("English word group phonemes must be strings")
+        result.append((label, values))
+    return tuple(result)
+
+
+def retain_unchanged_english_word_phonemes(
+    old_groups: EnglishWordPhonemeGroups,
+    new_groups: EnglishWordPhonemeGroups,
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Carry old canonical phonemes through SequenceMatcher equal word blocks."""
+
+    old = _validated_word_groups(old_groups)
+    new = _validated_word_groups(new_groups)
+    matcher = SequenceMatcher(
+        None,
+        [label.casefold() for label, _phones in old],
+        [label.casefold() for label, _phones in new],
+        autojunk=False,
+    )
+    merged = list(new)
+    for tag, old_start, old_end, new_start, new_end in matcher.get_opcodes():
+        if tag != "equal":
+            continue
+        for old_index, new_index in zip(range(old_start, old_end), range(new_start, new_end)):
+            merged[new_index] = (merged[new_index][0], old[old_index][1])
+
+    flattened = [phone for _label, group in merged for phone in group]
+    canonical = normalize_english_phonemes(flattened)
+    normalized_groups: list[tuple[str, tuple[str, ...]]] = []
+    offset = 0
+    for label, group in merged:
+        normalized_groups.append((label, tuple(canonical[offset : offset + len(group)])))
+        offset += len(group)
+    return tuple(normalized_groups)
+
+
+def merge_english_section_text_groups(
+    query: AudioQuery,
+    *,
+    segment_index: int,
+    old_groups: EnglishWordPhonemeGroups,
+    new_groups: EnglishWordPhonemeGroups,
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Align a current editor snapshot to generated groups for edited text."""
+
+    _validate_query(query)
+    _validate_segment_index(segment_index, len(query.voicegerSegments or []))
+    if query.voicegerSegments is None:
+        raise ValueError("English section editing requires voicegerSegments")
+    segment = query.voicegerSegments[segment_index]
+    if segment.language != "en" or segment.phonemes is None:
+        raise ValueError("selected segment is not an editable English segment")
+    old = _validated_word_groups(old_groups)
+    if tuple(phone for _label, group in old for phone in group) != tuple(segment.phonemes):
+        raise ValueError("English editor groups do not match the current segment")
+    return retain_unchanged_english_word_phonemes(old, new_groups)
 
 
 def japanese_pronunciation(
@@ -207,6 +295,297 @@ def japanese_preview_query(
     preview.voicegerSegments = None
     preview.kana = format_pronunciation(pronunciation_value)
     return preview
+
+
+def replace_japanese_section_text(
+    query: AudioQuery,
+    text: str,
+    *,
+    segment_index: int | None = None,
+) -> AudioQuery:
+    """Rebuild only the selected Japanese section from its actual text."""
+
+    _validate_query(query)
+    _validate_section_text(text, "Japanese")
+    segment = _japanese_mode_segment(query, segment_index)
+    pronunciation = text_to_pronunciation(text)
+    replacement_phrases = pronunciation_to_accent_phrases(pronunciation)
+    updated = query.model_copy(deep=True)
+
+    if segment is None:
+        updated.accent_phrases = replacement_phrases
+        updated.kana = format_pronunciation(pronunciation)
+        return updated
+
+    start = segment.accentPhraseStart
+    count = segment.accentPhraseCount
+    assert start is not None and count is not None
+    updated.accent_phrases = (
+        updated.accent_phrases[:start]
+        + replacement_phrases
+        + updated.accent_phrases[start + count :]
+    )
+    assert updated.voicegerSegments is not None
+    changed_segment = updated.voicegerSegments[segment_index]
+    changed_segment.text = text
+    changed_segment.accentPhraseCount = len(replacement_phrases)
+    changed_segment.pronunciationTerminator = pronunciation.terminator or ""
+
+    next_offset = 0
+    for updated_segment in updated.voicegerSegments:
+        if updated_segment.language != "ja":
+            continue
+        updated_segment.accentPhraseStart = next_offset
+        assert updated_segment.accentPhraseCount is not None
+        next_offset += updated_segment.accentPhraseCount
+    updated.kana = None
+    return updated
+
+
+def _isolated_japanese_segment_query(
+    query: AudioQuery,
+    segment_index: int,
+) -> AudioQuery:
+    if query.voicegerSegments is None:
+        raise ValueError("Japanese segment preview requires voicegerSegments")
+    _validate_segment_index(segment_index, len(query.voicegerSegments))
+    segment = query.voicegerSegments[segment_index]
+    if segment.language != "ja":
+        raise ValueError("selected segment is not Japanese")
+    start = segment.accentPhraseStart
+    count = segment.accentPhraseCount
+    if type(start) is not int or type(count) is not int or count < 1:
+        raise ValueError("Japanese segment references are invalid")
+    preview = query.model_copy(deep=True)
+    phrases = preview.accent_phrases[start : start + count]
+    pronunciation = accent_phrases_to_pronunciation(
+        phrases,
+        terminator=resolve_japanese_segment_terminator(segment),
+    )
+    preview.accent_phrases = phrases
+    preview.voicegerSegments = None
+    preview.kana = format_pronunciation(pronunciation)
+    return preview
+
+
+def japanese_section_text_preview_query(
+    query: AudioQuery,
+    text: str,
+    *,
+    segment_index: int | None = None,
+) -> AudioQuery:
+    """Build a transient Preview query for only the rebuilt Japanese section."""
+
+    updated = replace_japanese_section_text(
+        query,
+        text,
+        segment_index=segment_index,
+    )
+    if segment_index is None:
+        return updated
+    return _isolated_japanese_segment_query(updated, segment_index)
+
+
+def replace_english_section_text(
+    query: AudioQuery,
+    *,
+    segment_index: int,
+    text: str,
+    phoneme_groups: EnglishWordPhonemeGroups,
+) -> AudioQuery:
+    """Replace one complete English segment with validated grouped phonemes."""
+
+    _validate_query(query)
+    _validate_section_text(text, "English")
+    _validate_segment_index(segment_index, len(query.voicegerSegments or []))
+    if query.voicegerSegments is None:
+        raise ValueError("English section editing requires voicegerSegments")
+    segment = query.voicegerSegments[segment_index]
+    if segment.language != "en":
+        raise ValueError("selected segment is not English")
+    if segment.phonemes is None:
+        raise ValueError("selected English segment has no phonemes")
+    groups = _validated_word_groups(phoneme_groups)
+    flattened = tuple(phone for _label, group in groups for phone in group)
+    if not flattened or tuple(normalize_english_phonemes(flattened)) != flattened:
+        raise ValueError("English section phonemes are not canonical")
+
+    updated = replace_english_phoneme_groups(
+        query,
+        segment_index=segment_index,
+        phoneme_groups=tuple(group for _label, group in groups),
+    )
+    assert updated.voicegerSegments is not None
+    updated.voicegerSegments[segment_index].text = text
+    return updated
+
+
+def english_section_text_preview_query(
+    query: AudioQuery,
+    *,
+    segment_index: int,
+    text: str,
+    old_groups: EnglishWordPhonemeGroups,
+    new_groups: EnglishWordPhonemeGroups,
+) -> AudioQuery:
+    """Build an isolated transient Preview using unchanged-word retention."""
+
+    merged_groups = merge_english_section_text_groups(
+        query,
+        segment_index=segment_index,
+        old_groups=old_groups,
+        new_groups=new_groups,
+    )
+    updated = replace_english_section_text(
+        query,
+        segment_index=segment_index,
+        text=text,
+        phoneme_groups=merged_groups,
+    )
+    assert updated.voicegerSegments is not None
+    preview = updated.model_copy(deep=True)
+    preview.accent_phrases = []
+    preview.voicegerSegments = [
+        preview.voicegerSegments[segment_index].model_copy(deep=True)
+    ]
+    preview.kana = None
+    return preview
+
+
+def _explicit_query_for_append(
+    query: AudioQuery,
+    pure_japanese_utterance_text: str | None,
+) -> AudioQuery:
+    updated = query.model_copy(deep=True)
+    if updated.voicegerSegments is not None:
+        _validate_japanese_references(updated)
+        updated.kana = None
+        return updated
+
+    if pure_japanese_utterance_text is None:
+        raise ValueError("pure Japanese section text is unavailable")
+    _validate_section_text(pure_japanese_utterance_text, "Japanese")
+    if not updated.accent_phrases:
+        raise ValueError("pure Japanese query has no accent phrases")
+    updated.voicegerSegments = [
+        VoicegerSegment(
+            language="ja",
+            text=pure_japanese_utterance_text,
+            accentPhraseStart=0,
+            accentPhraseCount=len(updated.accent_phrases),
+            pronunciationTerminator=_query_terminator(query) or "",
+        )
+    ]
+    updated.kana = None
+    return updated
+
+
+def append_japanese_section(
+    query: AudioQuery,
+    text: str,
+    *,
+    pure_japanese_utterance_text: str | None = None,
+) -> AudioQuery:
+    """Append one Japanese segment, preserving all existing pronunciation."""
+
+    _validate_query(query)
+    _validate_section_text(text, "Japanese")
+    pronunciation = text_to_pronunciation(text)
+    phrases = pronunciation_to_accent_phrases(pronunciation)
+    updated = _explicit_query_for_append(query, pure_japanese_utterance_text)
+    start = len(updated.accent_phrases)
+    updated.accent_phrases.extend(phrases)
+    assert updated.voicegerSegments is not None
+    updated.voicegerSegments.append(
+        VoicegerSegment(
+            language="ja",
+            text=text,
+            accentPhraseStart=start,
+            accentPhraseCount=len(phrases),
+            pronunciationTerminator=pronunciation.terminator or "",
+        )
+    )
+    return updated
+
+
+def append_english_section(
+    query: AudioQuery,
+    text: str,
+    *,
+    phoneme_groups: EnglishWordPhonemeGroups,
+    pure_japanese_utterance_text: str | None = None,
+) -> AudioQuery:
+    """Append one English segment with validated Voiceger word groups."""
+
+    _validate_query(query)
+    _validate_section_text(text, "English")
+    groups = _validated_word_groups(phoneme_groups)
+    flattened = tuple(phone for _label, group in groups for phone in group)
+    if not flattened:
+        raise ValueError("English section produced no phonemes")
+    phonemes = normalize_english_phonemes(flattened)
+    updated = _explicit_query_for_append(query, pure_japanese_utterance_text)
+    assert updated.voicegerSegments is not None
+    updated.voicegerSegments.append(
+        VoicegerSegment(language="en", text=text, phonemes=phonemes)
+    )
+    return updated
+
+
+def delete_utterance_section(
+    query: AudioQuery,
+    *,
+    segment_index: int,
+) -> tuple[AudioQuery, str | None]:
+    """Delete one explicit segment and normalize a lone Japanese remainder."""
+
+    _validate_query(query)
+    if query.voicegerSegments is None:
+        raise ValueError("pure Japanese utterances cannot delete their only section")
+    _validate_segment_index(segment_index, len(query.voicegerSegments))
+    if len(query.voicegerSegments) <= 1:
+        raise ValueError("the only utterance section cannot be deleted")
+    _validate_japanese_references(query)
+
+    updated = query.model_copy(deep=True)
+    removed = updated.voicegerSegments[segment_index]
+    if removed.language == "ja":
+        start = removed.accentPhraseStart
+        count = removed.accentPhraseCount
+        assert start is not None and count is not None
+        updated.accent_phrases = (
+            updated.accent_phrases[:start]
+            + updated.accent_phrases[start + count :]
+        )
+    updated.voicegerSegments.pop(segment_index)
+
+    next_offset = 0
+    for segment in updated.voicegerSegments:
+        if segment.language != "ja":
+            continue
+        segment.accentPhraseStart = next_offset
+        assert segment.accentPhraseCount is not None
+        next_offset += segment.accentPhraseCount
+    updated.kana = None
+
+    if (
+        len(updated.voicegerSegments) == 1
+        and updated.voicegerSegments[0].language == "ja"
+    ):
+        remaining = updated.voicegerSegments[0]
+        start = remaining.accentPhraseStart
+        count = remaining.accentPhraseCount
+        assert start is not None and count is not None
+        updated.accent_phrases = updated.accent_phrases[start : start + count]
+        pronunciation = accent_phrases_to_pronunciation(
+            updated.accent_phrases,
+            terminator=resolve_japanese_segment_terminator(remaining),
+        )
+        updated.voicegerSegments = None
+        updated.kana = format_pronunciation(pronunciation)
+        return updated, remaining.text
+
+    return updated, None
 
 
 def _japanese_phrase_range(

@@ -1,6 +1,8 @@
 import curses
+from copy import deepcopy
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from voiceger_accent_adapter.settings import Settings
 from voiceger_accent_adapter.tui_editors import (
@@ -23,6 +25,7 @@ from voiceger_accent_adapter.tui_editors import (
 )
 from voiceger_accent_adapter.tui_rendering import _active_input_prefix
 from voiceger_accent_adapter.query_editing import japanese_pronunciation
+from voiceger_accent_adapter.pronunciation import parse_pronunciation
 from voiceger_accent_adapter.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
@@ -516,7 +519,7 @@ class TuiEditorControllerTests(unittest.TestCase):
                 direct_japanese_query(),
                 (("hello", ("HH", "AH1")),),
                 0,
-                ["pronunciation", "preview", "apply", "clear", "reset", "back"],
+                ["pronunciation", "preview", "apply", "edit_text", "clear", "reset", "back"],
                 "ナ' ノダ'！",
                 "pronunciation",
             ),
@@ -530,7 +533,7 @@ class TuiEditorControllerTests(unittest.TestCase):
                     )
                 },
                 2,
-                ["phonemes", "preview", "apply", "clear", "reset", "back"],
+                ["phonemes", "preview", "apply", "edit_text", "clear", "reset", "back"],
                 "HH AE1 L OW0",
                 "phonemes",
             ),
@@ -696,7 +699,7 @@ class TuiEditorControllerTests(unittest.TestCase):
                     current_caption="source",
                 )
 
-                controller.move_selection(3)
+                controller.move_selection(4)
                 cleared = controller.handle_key(
                     "\n",
                     settings=self.settings(),
@@ -793,7 +796,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(editor.payload["label"], "hello")
         self.assertEqual(
             controller.selection_keys(),
-            ["phonemes", "preview", "apply", "clear", "reset", "back"],
+            ["phonemes", "preview", "apply", "edit_text", "clear", "reset", "back"],
         )
         self.assertEqual(editor.active_field, "phonemes")
         self.assertEqual(editor.input_value, "HH AH1 L OW2")
@@ -1139,6 +1142,575 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.open_settings(self.settings(), origin=("settings", None), busy=False)
         result = controller.complete_settings_application(SettingsApplicationResult())
         self.assertEqual(result[-1].origin, ("settings", None))
+
+    def test_japanese_edit_text_back_restores_the_pronunciation_draft_exactly(self):
+        query = direct_japanese_query()
+        controller, _provider = self.make_controller(
+            {"hello": (("hello", ("HH", "AH1")),)}
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 0, origin=("pronunciation", 0), busy=False
+        )
+        parent = controller.editor
+        parent.input_value = "ナ' ノダ'？"
+        parent.input_cursor = 4
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        parent.input_cursor = 4
+        controller.move_selection(3)
+        before = deepcopy(parent)
+
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        section = controller.editor
+        self.assertEqual(section.kind, "section_text")
+        self.assertEqual(section.payload["language"], "ja")
+        self.assertEqual(section.payload["opening_text"], "なのだ。")
+        section.input_value = "discard this text"
+        controller.handle_key(
+            "\x1b", settings=self.settings(), query=query, current_caption="caption"
+        )
+
+        self.assertEqual(controller.editor, before)
+        self.assertEqual(controller.editor.input_value, "ナ' ノダ'？")
+        self.assertEqual(controller.editor.input_cursor, 4)
+        self.assertEqual(controller.editor.payload["pronunciation"], "ナ' ノダ'？")
+
+    def test_english_edit_text_back_restores_the_pronunciation_draft_exactly(self):
+        query = direct_japanese_query()
+        controller, _provider = self.make_controller(
+            {"hello": (("hello", ("HH", "AH1")),)}
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 2, origin=("pronunciation", 2), busy=False
+        )
+        parent = controller.editor
+        parent.input_value = "HH AH0"
+        parent.input_cursor = 5
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        parent.input_cursor = 5
+        controller.move_selection(3)
+        before = deepcopy(parent)
+
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        section = controller.editor
+        self.assertEqual(section.kind, "section_text")
+        self.assertEqual(section.payload["language"], "en")
+        self.assertEqual(section.payload["opening_text"], "hello")
+        section.input_value = "discard this word"
+        controller.handle_key(
+            "\x1b", settings=self.settings(), query=query, current_caption="caption"
+        )
+
+        self.assertEqual(controller.editor, before)
+        self.assertEqual(controller.editor.input_value, "HH AH0")
+        self.assertEqual(controller.editor.input_cursor, 5)
+        self.assertEqual(controller.editor.payload["phonemes"], "HH AH0")
+
+    def test_section_text_reset_and_apply_emit_a_committed_query_intent(self):
+        query = direct_japanese_query()
+        controller, _provider = self.make_controller(
+            {"hello": (("hello", ("HH", "AH1")),)}
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 0, origin=("pronunciation", 0), busy=False
+        )
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        controller.move_selection(3)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        section = controller.editor
+        original_query = query.model_dump()
+        section.input_value = "draft text"
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        controller.move_selection(3)
+        reset = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        self.assertEqual(reset, (UpdateStatusIntent("Section text draft reset."),))
+        self.assertEqual(section.input_value, "なのだ。")
+        self.assertEqual(query.model_dump(), original_query)
+
+        controller.move_selection(-3)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        section.input_value = "明日も晴れ"
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        controller.move_selection(2)
+        with patch(
+            "voiceger_accent_adapter.query_editing.text_to_pronunciation",
+            return_value=parse_pronunciation("ア'シ/タ'モ！"),
+        ):
+            intents = controller.handle_key(
+                "\n", settings=self.settings(), query=query, current_caption="caption"
+            )
+
+        replacement = next(item for item in intents if isinstance(item, ReplaceQueryIntent))
+        self.assertEqual(replacement.editor_kind, "section_text")
+        self.assertEqual(replacement.query.voicegerSegments[0].text, "明日も晴れ")
+        self.assertIsNone(replacement.pure_japanese_utterance_text)
+        self.assertEqual(query.model_dump(), original_query)
+        closed = controller.complete_query_application(
+            replacement, QueryApplicationResult()
+        )
+        self.assertIsNone(controller.editor)
+        self.assertEqual(
+            closed[-1],
+            CloseEditorIntent(("pronunciation", 0), replacement.success_status),
+        )
+
+    def test_pure_japanese_section_apply_carries_the_new_utterance_source(self):
+        query = AudioQuery(
+            accent_phrases=[_phrase(("ア", "メ"), 2)],
+            kana="アメ'。",
+        )
+        controller, _provider = self.make_controller()
+        rows = controller.pronunciation_rows(query, (("ja", "本当の発話", None),))
+        controller.open_pronunciation_item(
+            query, rows, 0, origin=("pronunciation", 0), busy=False
+        )
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.move_selection(3)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        section = controller.editor
+        self.assertEqual(section.payload["opening_text"], "本当の発話")
+        section.input_value = "更新した発話"
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.move_selection(2)
+        with patch(
+            "voiceger_accent_adapter.query_editing.text_to_pronunciation",
+            return_value=parse_pronunciation("キョ'ウ！"),
+        ):
+            intents = controller.handle_key(
+                "\n", settings=self.settings(), query=query, current_caption="Caption"
+            )
+        replacement = next(item for item in intents if isinstance(item, ReplaceQueryIntent))
+        self.assertEqual(replacement.pure_japanese_utterance_text, "更新した発話")
+        self.assertIsNone(replacement.query.voicegerSegments)
+        self.assertEqual(japanese_pronunciation(replacement.query), "キョ'ウ！")
+
+    def test_section_text_preview_is_noncommitting_and_locks_until_preview_finishes(self):
+        query = direct_japanese_query()
+        controller, _provider = self.make_controller(
+            {"hello": (("hello", ("HH", "AH1")),)}
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 0, origin=("pronunciation", 0), busy=False
+        )
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        controller.move_selection(3)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        section = controller.editor
+        section.input_value = "preview text"
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        original = query.model_dump()
+        with patch(
+            "voiceger_accent_adapter.query_editing.text_to_pronunciation",
+            return_value=parse_pronunciation("ミ'ズ？"),
+        ):
+            controller.move_selection(1)
+            intents = controller.handle_key(
+                "\n", settings=self.settings(), query=query, current_caption="caption"
+            )
+        preview = next(item for item in intents if isinstance(item, PreviewIntent))
+        self.assertEqual(preview.query.kana, "ミ'ズ？")
+        self.assertFalse(any(isinstance(item, ReplaceQueryIntent) for item in intents))
+        self.assertIs(controller.editor, section)
+        locked = controller.handle_key(
+            "\x1b",
+            settings=self.settings(),
+            query=query,
+            current_caption="caption",
+            preview_busy=True,
+        )
+        self.assertEqual(
+            locked,
+            (UpdateStatusIntent("Wait for Preview to finish before editing section text."),),
+        )
+        self.assertIs(controller.editor, section)
+        self.assertEqual(query.model_dump(), original)
+
+    def test_english_section_apply_retains_unchanged_words_and_accepts_new_grouping(self):
+        query = mixed_query()
+        manual_hello = ("HH", "AH0", "L", "OW1")
+        query.voicegerSegments[1].phonemes[:4] = manual_hello
+        groups = {
+            "hello everyone": (
+                ("hello", ("HH", "AH1", "L", "OW2")),
+                ("everyone", ("EH1", "V", "R", "IY0")),
+            ),
+            "very hello everyone": (
+                ("very", ("V", "EH1", "R", "IY0")),
+                ("hello", ("HH", "AH1", "L", "OW0")),
+                ("everyone", ("EH1", "V", "R", "IY0")),
+            ),
+        }
+        controller, _provider = self.make_controller(groups)
+        controller.grouping_cache[1] = EnglishGroupingCache(
+            "hello everyone",
+            (
+                EnglishWordGroup("hello", manual_hello, True),
+                EnglishWordGroup("everyone", ("EH1", "V", "R", "IY0"), True),
+            ),
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 2, origin=("pronunciation", 2), busy=False
+        )
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.move_selection(3)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        section = controller.editor
+        section.input_value = "very hello everyone"
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.move_selection(2)
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        replacement = next(item for item in intents if isinstance(item, ReplaceQueryIntent))
+        self.assertEqual(replacement.query.voicegerSegments[1].text, "very hello everyone")
+        self.assertEqual(replacement.query.voicegerSegments[1].phonemes[4:8], list(manual_hello))
+        self.assertEqual(replacement.grouping_index, 1)
+        controller.complete_query_application(replacement, QueryApplicationResult())
+        self.assertEqual(controller.grouping_cache[1].source_text, "very hello everyone")
+        self.assertEqual(controller.grouping_cache[1].groups[1].phonemes, manual_hello)
+
+    def test_add_clear_reset_and_back_keep_the_opening_language_and_empty_draft(self):
+        query = mixed_query()
+        controller, _provider = self.make_controller()
+        controller.open_add_section(
+            query,
+            pure_japanese_utterance_text=None,
+            origin=("add_section", None),
+            busy=False,
+        )
+        editor = controller.editor
+        self.assertEqual(controller.selection_keys(), ["language", "draft", "add", "clear", "reset", "back"])
+        editor.input_value = "discarded"
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.move_selection(2)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        self.assertEqual(editor.payload["draft"], "")
+        self.assertEqual(editor.payload["language"], "ja")
+        controller.move_selection(1)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        self.assertEqual(editor.payload["draft"], "")
+        self.assertEqual(editor.payload["language"], "ja")
+        controller.move_selection(1)
+        close = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        self.assertIsNone(controller.editor)
+        self.assertIn(
+            CloseEditorIntent(("add_section", None), "New section draft discarded."),
+            close,
+        )
+
+    def test_delete_confirmation_cancel_restores_section_editor(self):
+        query = direct_japanese_query()
+        controller, _provider = self.make_controller(
+            {"hello": (("hello", ("HH", "AH1")),)}
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 0, origin=("pronunciation", 0), busy=False
+        )
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        controller.move_selection(3)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        section = controller.editor
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        controller.move_selection(4)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        confirmation = controller.editor
+        self.assertEqual(confirmation.title, "DELETE SECTION?")
+        self.assertEqual(
+            confirmation.payload["warning"],
+            "This section will be removed from the synthesized utterance.",
+        )
+        canceled = controller.handle_key(
+            "\x1b", settings=self.settings(), query=query, current_caption="caption"
+        )
+        self.assertEqual(controller.editor, section)
+        self.assertEqual(query.voicegerSegments[0].text, "なのだ。")
+        self.assertFalse(any(isinstance(item, ReplaceQueryIntent) for item in canceled))
+
+    def test_delete_action_is_absent_for_the_only_pure_japanese_section(self):
+        query = AudioQuery(
+            accent_phrases=[_phrase(("ア",), 1)],
+            kana="ア'。",
+        )
+        controller, _provider = self.make_controller()
+        rows = controller.pronunciation_rows(query, (("ja", "actual", None),))
+        controller.open_pronunciation_item(
+            query, rows, 0, origin=("pronunciation", 0), busy=False
+        )
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        controller.move_selection(3)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="caption"
+        )
+        self.assertFalse(controller.editor.payload["can_delete"])
+        self.assertNotIn("delete_section", controller.selection_keys())
+
+    def test_add_japanese_appends_one_built_section_to_a_mixed_query(self):
+        query = mixed_query()
+        original = query.model_dump()
+        controller, _provider = self.make_controller()
+        controller.open_add_section(
+            query,
+            pure_japanese_utterance_text=None,
+            origin=("add_section", None),
+            busy=False,
+        )
+        editor = controller.editor
+        editor.input_value = "追加の日本語"
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.move_selection(1)
+        with patch(
+            "voiceger_accent_adapter.query_editing.text_to_pronunciation",
+            return_value=parse_pronunciation("ツ'イカ！"),
+        ):
+            intents = controller.handle_key(
+                "\n", settings=self.settings(), query=query, current_caption="Caption"
+            )
+        addition = next(item for item in intents if isinstance(item, ReplaceQueryIntent))
+        self.assertEqual(addition.editor_kind, "add_section")
+        self.assertEqual(addition.query.voicegerSegments[0].model_dump(), original["voicegerSegments"][0])
+        self.assertEqual(addition.query.voicegerSegments[1].model_dump(), original["voicegerSegments"][1])
+        self.assertEqual(addition.query.voicegerSegments[2].language, "ja")
+        self.assertEqual(addition.query.voicegerSegments[2].text, "追加の日本語")
+        self.assertEqual(addition.query.voicegerSegments[2].accentPhraseStart, 2)
+        self.assertEqual(addition.query.voicegerSegments[2].accentPhraseCount, 1)
+        self.assertEqual(addition.query.voicegerSegments[2].pronunciationTerminator, "！")
+        self.assertEqual(query.model_dump(), original)
+
+    def test_add_english_appends_and_installs_the_new_grouping_cache(self):
+        query = mixed_query()
+        groups = {
+            "hello everyone": (
+                ("hello", ("HH", "AH1", "L", "OW2")),
+                ("everyone", ("EH1", "V", "R", "IY0")),
+            ),
+            "bright world": (
+                ("bright", ("B", "R", "AY1", "T")),
+                ("world", ("W", "ER0", "L", "D")),
+            ),
+        }
+        controller, _provider = self.make_controller(groups)
+        existing_grouping = controller.english_grouping(query, 1)
+        controller.open_add_section(
+            query,
+            pure_japanese_utterance_text=None,
+            origin=("add_section", None),
+            busy=False,
+        )
+        editor = controller.editor
+        editor.payload["language"] = "en"
+        editor.input_value = "bright world"
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.move_selection(1)
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        addition = next(item for item in intents if isinstance(item, ReplaceQueryIntent))
+        self.assertEqual(len(addition.query.voicegerSegments), 3)
+        self.assertEqual(addition.query.voicegerSegments[2].text, "bright world")
+        self.assertEqual(addition.grouping_index, 2)
+        controller.complete_query_application(addition, QueryApplicationResult())
+        self.assertIs(controller.grouping_cache[1], existing_grouping)
+        self.assertEqual(controller.grouping_cache[2].source_text, "bright world")
+        self.assertEqual(
+            controller.grouping_cache[2].flattened,
+            tuple(addition.query.voicegerSegments[2].phonemes),
+        )
+
+    def test_add_english_from_pure_japanese_preserves_manual_phrases_and_resets(self):
+        query = AudioQuery(
+            accent_phrases=[_phrase(("ア", "メ"), 1), _phrase(("キョ", "ウ"), 1)],
+            kana="ア'メ/キョ'ウ？",
+            speedScale=1.2,
+        )
+        original_phrases = [phrase.model_dump() for phrase in query.accent_phrases]
+        groups = {"hello": (("hello", ("HH", "AH1", "L", "OW0")),)}
+        controller, _provider = self.make_controller(groups)
+        controller.open_add_section(
+            query,
+            pure_japanese_utterance_text="実際の日本語？",
+            origin=("add_section", None),
+            busy=False,
+        )
+        editor = controller.editor
+        editor.input_value = "discarded"
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.move_selection(-1)
+        controller.handle_key(
+            curses.KEY_RIGHT,
+            settings=self.settings(), query=query, current_caption="Caption"
+        )
+        self.assertEqual(editor.payload["language"], "en")
+        controller.handle_key(
+            curses.KEY_DOWN,
+            settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        editor.input_value = "hello"
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.move_selection(1)
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        addition = next(item for item in intents if isinstance(item, ReplaceQueryIntent))
+        self.assertEqual(len(addition.query.voicegerSegments), 2)
+        self.assertEqual(addition.query.voicegerSegments[0].text, "実際の日本語？")
+        self.assertEqual(addition.query.voicegerSegments[0].pronunciationTerminator, "？")
+        self.assertEqual([p.model_dump() for p in addition.query.accent_phrases], original_phrases)
+        self.assertEqual(addition.query.speedScale, 1.2)
+        controller.complete_query_application(addition, QueryApplicationResult())
+        self.assertEqual(controller.grouping_cache[1].source_text, "hello")
+
+    def test_delete_remaps_later_english_grouping_caches(self):
+        query = AudioQuery(
+            accent_phrases=[_phrase(("ア",), 1)],
+            voicegerSegments=[
+                VoicegerSegment(language="ja", text="雨", accentPhraseStart=0, accentPhraseCount=1),
+                VoicegerSegment(language="en", text="hello", phonemes=["HH", "AH1"]),
+                VoicegerSegment(language="en", text="world", phonemes=["W", "ER0"]),
+            ],
+        )
+        groups = {
+            "hello": (("hello", ("HH", "AH1")),),
+            "world": (("world", ("W", "ER0")),),
+        }
+        controller, _provider = self.make_controller(groups)
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.english_grouping(query, 1)
+        controller.english_grouping(query, 2)
+        world_grouping = controller.grouping_cache[2]
+        controller.open_pronunciation_item(
+            query, rows, 1, origin=("pronunciation", 1), busy=False
+        )
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.move_selection(3)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.move_selection(4)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        deletion = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        intent = next(item for item in deletion if isinstance(item, ReplaceQueryIntent))
+        self.assertEqual(intent.deleted_segment_index, 1)
+        controller.complete_query_application(intent, QueryApplicationResult())
+        self.assertEqual(set(controller.grouping_cache), {1})
+        self.assertEqual(controller.grouping_cache[1], world_grouping)
+
+    def test_deleting_back_to_one_japanese_section_records_pure_source(self):
+        query = direct_japanese_query()
+        controller, _provider = self.make_controller(
+            {"hello": (("hello", ("HH", "AH1")),)}
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 2, origin=("pronunciation", 2), busy=False
+        )
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.move_selection(3)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        editor = controller.editor
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.move_selection(4)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        intents = controller.handle_key(
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        deletion = next(item for item in intents if isinstance(item, ReplaceQueryIntent))
+        self.assertIsNone(deletion.query.voicegerSegments)
+        self.assertEqual(deletion.pure_japanese_utterance_text, "なのだ。")
+        self.assertEqual(
+            [phrase.model_dump() for phrase in deletion.query.accent_phrases],
+            [phrase.model_dump() for phrase in query.accent_phrases],
+        )
+        self.assertEqual(deletion.editor_kind, "delete_section")
+        self.assertIsNotNone(editor)
 
 
 if __name__ == "__main__":

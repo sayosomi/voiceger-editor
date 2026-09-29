@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 from voiceger_accent_adapter.settings import Settings
-from voiceger_accent_adapter.tui_editors import PreviewIntent
+from voiceger_accent_adapter.tui_editors import PreviewIntent, ReplaceQueryIntent
 from voiceger_accent_adapter.tui_operations import PlayPreviewEffect
 from voiceger_accent_adapter.tui import (
     TuiApp,
@@ -135,9 +135,13 @@ class FakeSession:
             return None
         return self._pure_japanese_utterance_text
 
-    def replace_query(self, query):
+    def replace_query(self, query, *, pure_japanese_utterance_text=None):
         self.replace_query_calls.append(query)
         self.query = query
+        if query.voicegerSegments is None and pure_japanese_utterance_text is not None:
+            self._pure_japanese_utterance_text = pure_japanese_utterance_text
+        elif query.voicegerSegments is not None:
+            self._pure_japanese_utterance_text = None
         self.utterance_manually_edited = True
         self.candidates = ()
 
@@ -363,6 +367,23 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._editor_controller.editor.kind, "english_word")
         self.assertEqual(app._editor_controller.editor.title, "EDIT PRONUNCIATION")
         self.assertNotIn("english_segment", app._editor_controller.editor.kind)
+
+    def test_main_add_section_is_placed_after_pronunciation_and_opens_its_editor(self):
+        app = self.make_app(query=mixed_query())
+        items = navigation_items(app)
+        pronunciation_positions = [
+            index for index, key in enumerate(items) if key[0] == "pronunciation"
+        ]
+        self.assertEqual(
+            items[pronunciation_positions[-1] + 1], ("add_section", None)
+        )
+        self.assertEqual(
+            items[pronunciation_positions[-1] + 2], ("generate", None)
+        )
+        set_navigation_focus(app, ("add_section", None))
+        app._handle_key("\n")
+        self.assertEqual(app._editor_controller.editor.kind, "add_section")
+        self.assertEqual(app._editor_controller.editor.title, "ADD SECTION")
 
     def test_caption_divergence_keeps_pronunciation_rows_selectable(self):
         app = self.make_app(query=mixed_query())
@@ -847,6 +868,32 @@ class TuiTests(unittest.TestCase):
         app._operations.play_preview = Mock(return_value=())
         app._dispatch_operation_effects((PlayPreviewEffect("audio", 22050),))
         app._operations.play_preview.assert_called_once_with("audio", 22050)
+
+    def test_committed_utterance_text_intent_preserves_caption_and_clears_takes(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(3),))
+        session = app.session
+        old_caption = session.caption
+        updated = session.query
+        updated.voicegerSegments[0].text = "変更された日本語"
+        updated.accent_phrases[0].moras[0].text = "イ"
+        app._operations.current_take = 3
+
+        app._dispatch_editor_intents(
+            (
+                ReplaceQueryIntent(
+                    query=updated,
+                    editor_kind="section_text",
+                    success_status="Section text updated.",
+                ),
+            )
+        )
+
+        self.assertEqual(session.caption, old_caption)
+        self.assertEqual(session.query.voicegerSegments[0].text, "変更された日本語")
+        self.assertEqual(session.replace_query_calls, [updated])
+        self.assertEqual(session.candidates, ())
+        self.assertTrue(session.utterance_manually_edited)
+        self.assertIsNone(app._operations.current_take)
 
     def test_first_caption_apply_creates_the_initial_session_query(self):
         adapter = Mock()
@@ -1530,7 +1577,7 @@ class TuiTests(unittest.TestCase):
         self.assertNotIn("english_segment", app._editor_controller.selection_keys())
         self.assertEqual(
             app._editor_controller.selection_keys(),
-            ["phonemes", "preview", "apply", "clear", "reset", "back"],
+            ["phonemes", "preview", "apply", "edit_text", "clear", "reset", "back"],
         )
 
     @staticmethod
@@ -1644,7 +1691,15 @@ class TuiTests(unittest.TestCase):
         english_grouping(app, 0)
         updated = app.session.query.model_copy(deep=True)
         updated.voicegerSegments[0].phonemes = ["HH", "AA1"]
-        app._apply_session_query(updated)
+        app._dispatch_editor_intents(
+            (
+                ReplaceQueryIntent(
+                    query=updated,
+                    editor_kind="test",
+                    success_status="updated",
+                ),
+            )
+        )
         self.assertNotIn(0, app._editor_controller.grouping_cache)
 
     def test_shortcuts_are_typed_data_while_raw_input_is_active(self):
