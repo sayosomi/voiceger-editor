@@ -31,6 +31,7 @@ from .tui_editors import (
     BuildPronunciationResult,
     CaptionApplicationResult,
     ClearAdjustmentFeedbackIntent,
+    ClearCandidatesIntent,
     CloseEditorIntent,
     EditorIntent,
     OpenHelpIntent,
@@ -62,6 +63,7 @@ from .tui_navigation import (
     EditPronunciationItem,
     NavigationAction,
     NavigationContext,
+    OpenClearCandidatesConfirmation,
     OpenHelp,
     OpenSettingsEditor,
     OpenCaptionEditor,
@@ -89,7 +91,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--voiceger-root", type=Path, help="Voiceger installation path")
     parser.add_argument("--config", type=Path, help="settings file path")
     parser.add_argument("--output-dir", type=Path, help="override output directory")
-    parser.add_argument("--take-count", type=int, help="override take count (1–8)")
+    parser.add_argument("--take-count", type=int, help="override take count (1–100)")
     parser.add_argument("--style", type=int, help="override reference style ID")
     parser.add_argument("--speed", type=float, help="override speech speed")
     save_group = parser.add_mutually_exclusive_group()
@@ -227,6 +229,9 @@ class TuiApp:
         )
 
     def _handle_key(self, key: Any) -> None:
+        if key == _ESCAPE and self._operations.can_cancel_batch:
+            self._dispatch_operation_effects(self._operations.request_batch_cancellation())
+            return
         if self._help_open:
             if key in ("q", "Q", "\x03"):
                 self._help_open = False
@@ -322,7 +327,7 @@ class TuiApp:
                         )
                     )
             return
-        if isinstance(key, str) and len(key) == 1 and key in "12345678":
+        if isinstance(key, str) and len(key) == 1 and key in "123456789":
             self._dispatch_navigation_actions(
                 self._navigation.focus_candidate(
                     self._navigation_context(), int(key)
@@ -389,6 +394,15 @@ class TuiApp:
                 self._open_settings_editor(action.selected_field, edit=action.edit)
             elif isinstance(action, OpenCaptionEditor):
                 self._open_caption_editor()
+            elif isinstance(action, OpenClearCandidatesConfirmation):
+                if self._operations.busy:
+                    self._status = "Finish or cancel synthesis before clearing candidates."
+                elif self.session is not None and self.session.candidates:
+                    self._dispatch_editor_intents(
+                        self._editor_controller.open_clear_candidates_confirmation(
+                            origin=self._navigation.focus_key
+                        )
+                    )
             elif isinstance(action, EditPronunciationItem):
                 self._edit_selected_pronunciation(action.index)
             elif isinstance(action, AddSectionEditor):
@@ -416,7 +430,11 @@ class TuiApp:
                 self._dispatch_operation_effects(
                     self._operations.start_regenerate_all(
                         self.session,
-                        take_count=self.settings.take_count,
+                        take_count=(
+                            self.session.active_candidate_count
+                            if self.session is not None
+                            else 0
+                        ),
                         navigation_revision=self._navigation.revision,
                     )
                 )
@@ -485,7 +503,7 @@ class TuiApp:
             self._status = "Wait for the current synthesis operation to finish."
             return
         count = self.settings.take_count
-        updated = min(8, max(1, count + direction))
+        updated = min(100, max(1, count + direction))
         if updated == count:
             self._pressed_adjustment = None
             return
@@ -625,6 +643,14 @@ class TuiApp:
                 self._help_open = True
             elif isinstance(intent, QuitIntent):
                 self._activate_quit()
+            elif isinstance(intent, ClearCandidatesIntent):
+                if self._operations.busy:
+                    self._status = "Finish or cancel synthesis before clearing candidates."
+                else:
+                    self._operations.stop_playback()
+                    if self.session is not None:
+                        self.session.discard_takes()
+                    self._operations.clear_current_take()
             elif isinstance(intent, CloseEditorIntent):
                 self._pressed_adjustment = None
                 self._dispatch_navigation_actions(
@@ -671,8 +697,13 @@ class TuiApp:
     def _change_settings(self, *, report_success: bool = True, **changes: Any) -> None:
         try:
             updated = replace(self.settings, **changes)
+            synthesis_changed = (
+                updated.style_id != self.settings.style_id
+                or updated.speed != self.settings.speed
+            )
             if self.session is not None:
-                self._operations.stop_playback()
+                if synthesis_changed:
+                    self._operations.stop_playback()
                 self.session.replace_settings(updated)
         except (SettingsError, ValueError) as exc:
             self._status = f"Error: Settings were not changed: {exc}"
@@ -684,27 +715,38 @@ class TuiApp:
             self._status = f"Error: Settings changed for this run but were not saved: {exc}"
             return
         self._persisted_settings = persisted
-        self._operations.clear_current_take()
+        if synthesis_changed:
+            self._operations.clear_current_take()
         try:
             save_settings(persisted, self.config_path)
         except OSError as exc:
             self._status = f"Error: Settings changed for this run but could not be saved: {exc}"
         else:
             if report_success:
-                self._status = "Settings saved. Existing temporary takes were cleared."
+                self._status = (
+                    "Settings saved. Existing temporary takes were cleared."
+                    if synthesis_changed
+                    else "Settings saved. Existing temporary takes were preserved."
+                )
 
     def _apply_settings_target(self, target: Settings) -> SettingsApplicationResult:
         runtime_changed = target != self.settings
+        synthesis_changed = (
+            target.style_id != self.settings.style_id
+            or target.speed != self.settings.speed
+        )
         if runtime_changed:
             try:
-                self._operations.stop_playback()
+                if synthesis_changed:
+                    self._operations.stop_playback()
                 if self.session is not None:
                     self.session.replace_settings(target)
             except (SettingsError, ValueError) as exc:
                 self._status = f"Error: Settings were not changed: {exc}"
                 return SettingsApplicationResult(error_status=self._status)
             self.settings = target
-            self._operations.clear_current_take()
+            if synthesis_changed:
+                self._operations.clear_current_take()
 
         try:
             save_settings(target, self.config_path)

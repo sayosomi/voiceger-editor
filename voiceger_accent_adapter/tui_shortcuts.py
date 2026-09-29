@@ -49,6 +49,7 @@ _MAIN_SHORTCUTS: tuple[MainShortcut, ...] = (
     MainShortcut("build_pronunciation", "Build pronunciation", "b"),
     MainShortcut("add_section", "Add section", "a"),
     MainShortcut("generate", "Generate", "g"),
+    MainShortcut("clear_candidates", "Clear candidates", "c"),
     MainShortcut("settings", "Settings", "s"),
     MainShortcut("help", "Help", "?"),
     MainShortcut("quit", "Quit", "q"),
@@ -156,6 +157,10 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
     ),
     "delete_confirmation": (
         MenuItem("delete", "Delete", "d", "action", "activate"),
+        MenuItem("cancel", "Cancel", "b", "action", "activate"),
+    ),
+    "clear_candidates_confirmation": (
+        MenuItem("clear", "Clear candidates", "c", "action", "activate"),
         MenuItem("cancel", "Cancel", "b", "action", "activate"),
     ),
     "help": (

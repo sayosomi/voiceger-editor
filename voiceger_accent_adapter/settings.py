@@ -55,9 +55,9 @@ class Settings:
         if (
             isinstance(self.take_count, bool)
             or not isinstance(self.take_count, int)
-            or not 1 <= self.take_count <= 8
+            or not 1 <= self.take_count <= 100
         ):
-            raise SettingsError("take_count must be an integer from 1 through 8")
+            raise SettingsError("take_count must be an integer from 1 through 100")
 
         if (
             isinstance(self.style_id, bool)

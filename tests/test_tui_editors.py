@@ -12,6 +12,7 @@ from voiceger_accent_adapter.tui_editors import (
     BuildPronunciationIntent,
     BuildPronunciationResult,
     ClearAdjustmentFeedbackIntent,
+    ClearCandidatesIntent,
     CloseEditorIntent,
     EnglishWordGroup,
     EnglishGroupingCache,
@@ -1153,7 +1154,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller, _provider = self.make_controller()
         controller.open_settings(settings, origin=("settings", None), busy=False)
         editor = controller.editor
-        editor.payload["draft_settings"]["take_count"] = "9"
+        editor.payload["draft_settings"]["take_count"] = "101"
 
         intents = controller.handle_key(
             "\n", settings=settings, query=None, current_caption=None
@@ -1161,7 +1162,7 @@ class TuiEditorControllerTests(unittest.TestCase):
 
         self.assertEqual(intents, ())
         self.assertIs(controller.editor, editor)
-        self.assertIn("take_count must be an integer from 1 through 8", editor.error)
+        self.assertIn("take_count must be an integer from 1 through 100", editor.error)
 
     def test_settings_reset_restores_opening_snapshot_and_back_or_escape_discards(self):
         opening = Settings(
@@ -1601,6 +1602,39 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(controller.editor, section)
         self.assertEqual(query.voicegerSegments[0].text, "なのだ。")
         self.assertFalse(any(isinstance(item, ReplaceQueryIntent) for item in canceled))
+
+    def test_clear_candidates_confirmation_cancel_is_non_destructive(self):
+        controller, _provider = self.make_controller()
+        controller.open_clear_candidates_confirmation(origin=("clear_candidates", None))
+        confirmation = controller.editor
+
+        self.assertEqual(confirmation.title, "CLEAR CANDIDATES?")
+        self.assertIn("candidate WAV files will be discarded", confirmation.payload["warning"])
+        canceled = controller.handle_key(
+            "b", settings=self.settings(), query=None, current_caption="Caption"
+        )
+
+        self.assertIsNone(controller.editor)
+        self.assertFalse(any(isinstance(item, ClearCandidatesIntent) for item in canceled))
+        self.assertIn(
+            CloseEditorIntent(("clear_candidates", None), "Candidate clearing cancelled."),
+            canceled,
+        )
+
+    def test_clear_candidates_confirmation_emits_application_intent_then_closes(self):
+        controller, _provider = self.make_controller()
+        controller.open_clear_candidates_confirmation(origin=("clear_candidates", None))
+
+        confirmed = controller.handle_key(
+            "c", settings=self.settings(), query=None, current_caption="Caption"
+        )
+
+        self.assertIsNone(controller.editor)
+        self.assertIsInstance(confirmed[0], ClearCandidatesIntent)
+        self.assertEqual(
+            confirmed[-1],
+            CloseEditorIntent(("clear_candidates", None), "Candidates cleared."),
+        )
 
     def test_delete_action_is_absent_for_the_only_pure_japanese_section(self):
         query = AudioQuery(
