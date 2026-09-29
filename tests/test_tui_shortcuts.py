@@ -1,6 +1,7 @@
 import curses
 from types import SimpleNamespace
 import unittest
+from unittest.mock import Mock
 
 from voiceger_accent_adapter.settings import Settings
 from voiceger_accent_adapter.tui_editors import (
@@ -88,6 +89,61 @@ class TuiShortcutTests(unittest.TestCase):
                     self.assertIsNotNone(
                         item.shortcut,
                         f"{screen_kind}:{item.key} ordinary action requires a shortcut",
+                    )
+
+    def test_every_declared_shortcut_resolves_to_the_same_selectable_declaration(self):
+        for screen_kind, definitions in menu_definitions().items():
+            payload = {
+                item.condition_key: True
+                for item in definitions
+                if item.condition_key is not None
+            }
+            visible = menu_items(screen_kind, payload)
+            visible_keys = {item.key for item in visible}
+            for item in visible:
+                if item.shortcut is None:
+                    continue
+                with self.subTest(screen_kind=screen_kind, key=item.key):
+                    resolved = resolve_shortcut(screen_kind, item.shortcut, payload)
+                    self.assertEqual(resolved, item)
+                    self.assertIn(resolved.key, visible_keys)
+                    self.assertIn(item.shortcut.upper(), item.display_label)
+                    self.assertIn(item.label, item.display_label)
+
+    def test_activate_shortcuts_use_the_same_activation_path_as_enter(self):
+        controller = self.make_controller()
+        settings = Settings()
+        for screen_kind, definitions in menu_definitions().items():
+            if screen_kind == "help":
+                continue
+            payload = {
+                item.condition_key: True
+                for item in definitions
+                if item.condition_key is not None
+            }
+            first = menu_items(screen_kind, payload)[0]
+            controller.editor = EditorState(
+                kind=screen_kind,
+                title="",
+                origin=("caption", None),
+                selection=first.key,
+                payload=dict(payload),
+            )
+            for item in menu_items(screen_kind, payload):
+                if item.shortcut_mode != "activate":
+                    continue
+                with self.subTest(screen_kind=screen_kind, key=item.key):
+                    controller.editor.selection = first.key
+                    controller._activate_selection = Mock(return_value=())
+                    controller.handle_key(
+                        item.shortcut,
+                        settings=settings,
+                        query=None,
+                        current_caption="opening",
+                    )
+                    self.assertEqual(controller.editor.selection, item.key)
+                    controller._activate_selection.assert_called_once_with(
+                        settings, None, "opening"
                     )
 
     def test_dynamic_delete_shortcut_exists_only_when_delete_is_selectable(self):
