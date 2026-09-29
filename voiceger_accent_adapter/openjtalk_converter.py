@@ -11,6 +11,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from .pronunciation import AccentPhrase, Pronunciation, format_pronunciation
+from .runtime_locks import OPENJTALK_LOCK
 
 
 _SMALL_KANA = frozenset("ァィゥェォャュョヮぁぃぅぇぉゃゅょゎ")
@@ -145,7 +146,9 @@ def text_to_pronunciation(
             ) from exc
         run_frontend = pyopenjtalk.run_frontend
 
-    return frontend_features_to_pronunciation(run_frontend(text))
+    with OPENJTALK_LOCK:
+        features = run_frontend(text)
+    return frontend_features_to_pronunciation(features)
 
 
 def text_to_pronunciation_string(

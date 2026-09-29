@@ -4,3 +4,4 @@ from threading import RLock
 
 
 LANGSEGMENT_LOCK = RLock()
+OPENJTALK_LOCK = RLock()

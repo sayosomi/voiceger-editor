@@ -1,7 +1,9 @@
 import unittest
+from contextlib import nullcontext
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
+import sys
 from unittest.mock import patch
 
 from voiceger_accent_adapter.output import SavedOutput
@@ -12,6 +14,7 @@ from voiceger_accent_adapter.voiceger_adapter import (
     pronunciation_to_spoken_text,
     resolve_pronunciation,
 )
+from voiceger_accent_adapter.user_dictionary import UserDictionaryCore
 
 
 class ResolvePronunciationTests(unittest.TestCase):
@@ -213,6 +216,65 @@ class ResolvePronunciationTests(unittest.TestCase):
                 original_clean_text_inf,
             )
             self.assertIs(japanese.g2p, original_japanese_g2p)
+
+
+class EnglishDictionaryAdapterTests(unittest.TestCase):
+    def make_adapter(self, root: Path, data_dir: Path) -> VoicegerAdapter:
+        voiceger_root = root / "voiceger"
+        voiceger_root.mkdir()
+        adapter = VoicegerAdapter(voiceger_root=voiceger_root)
+        adapter.user_dictionary = UserDictionaryCore(
+            voiceger_root,
+            data_directory=data_dir,
+            openjtalk_dictionary=object(),
+        )
+        return adapter
+
+    def test_exact_dictionary_hit_bypasses_voiceger_for_both_apis(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            adapter = self.make_adapter(root, root / "adapter-state")
+            expected = ["V", "OY1", "AH0", "JH", "ER0"]
+            adapter.user_dictionary.set_english_entry("Voiceger", expected)
+            with patch.object(
+                adapter,
+                "_require_text_paths",
+                side_effect=AssertionError("Voiceger G2P should be bypassed"),
+            ):
+                self.assertEqual(adapter.english_phonemes("  VOICEGER  "), expected)
+                self.assertEqual(
+                    adapter.english_word_phoneme_groups("voiceger"),
+                    (("voiceger", tuple(expected)),),
+                )
+
+    def test_dictionary_miss_uses_existing_voiceger_g2p_and_grouping(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            adapter = self.make_adapter(root, root / "adapter-state")
+            english = SimpleNamespace(
+                text_normalize=lambda value: value,
+                g2p=lambda value: ["HH", "AH0"] if value == "hello" else [],
+                word_tokenize=lambda value: [value],
+                _g2p=lambda value: ["HH", "AH0"],
+                replace_phs=lambda values: list(values),
+            )
+            text_package = ModuleType("text")
+            text_package.__path__ = []
+            text_package.english = english
+            with patch.dict(
+                sys.modules,
+                {"text": text_package, "text.english": english},
+            ), patch.object(adapter, "_require_text_paths"), patch.object(
+                adapter, "_ensure_import_paths"
+            ), patch(
+                "voiceger_accent_adapter.voiceger_adapter._pushd",
+                return_value=nullcontext(),
+            ):
+                self.assertEqual(adapter.english_phonemes("hello"), ["HH", "AH0"])
+                self.assertEqual(
+                    adapter.english_word_phoneme_groups("hello"),
+                    (("hello", ("HH", "AH0")),),
+                )
 
 
 if __name__ == "__main__":

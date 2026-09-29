@@ -18,6 +18,12 @@ from .voiceger_tokens import (
     accent_phrase_to_voiceger_tokens,
     pronunciation_to_voiceger_tokens,
 )
+from .user_dictionary import (
+    EnglishUserDictionaryEntry,
+    JapaneseWordType,
+    UserDictWord,
+    UserDictionaryCore,
+)
 
 __all__ = [
     "AccentPhrase",
@@ -25,6 +31,10 @@ __all__ = [
     "Pronunciation",
     "PronunciationSyntaxError",
     "VoicegerTokenConversionError",
+    "EnglishUserDictionaryEntry",
+    "JapaneseWordType",
+    "UserDictWord",
+    "UserDictionaryCore",
     "accent_phrase_to_voiceger_tokens",
     "format_pronunciation",
     "frontend_features_to_pronunciation",
