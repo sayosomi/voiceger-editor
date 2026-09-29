@@ -530,6 +530,18 @@ class TuiRenderer:
             marker = "▶ " if editor.selection == key else "  "
             lines.append((marker + label, key))
 
+        def wrapped_selectable_text(
+            key: str | tuple[str, int | None],
+            value: str,
+        ) -> None:
+            marker = "▶ " if editor.selection == key else "  "
+            marker_width = _display_width(marker)
+            available = max(1, width - 1 - marker_width)
+            pieces = _wrap_text(value, available) or [""]
+            lines.append((marker + pieces[0], key))
+            continuation = " " * marker_width
+            lines.extend((continuation + piece, key) for piece in pieces[1:])
+
         def input_field(name: str, prefix: str | None = None) -> None:
             nonlocal cursor_line, cursor_column
             prefix = prefix if prefix is not None else _active_input_prefix(editor)
@@ -554,7 +566,7 @@ class TuiRenderer:
             if editor.active_field == "draft":
                 input_field("draft", "▶ ")
             else:
-                selectable("draft", editor.payload["draft"])
+                wrapped_selectable_text("draft", editor.payload["draft"])
             plain()
             selectable("apply", "[ Apply ]")
             selectable("clear", "[ Clear ]")
@@ -639,7 +651,7 @@ class TuiRenderer:
             if editor.active_field == "draft":
                 input_field("draft", "▶ " if editor.selection == "draft" else "  ")
             else:
-                selectable("draft", editor.payload["draft"])
+                wrapped_selectable_text("draft", editor.payload["draft"])
             plain()
             selectable("preview", "[ Preview ]")
             selectable("apply", "[ Apply ]")
@@ -655,7 +667,7 @@ class TuiRenderer:
             if editor.active_field == "draft":
                 input_field("draft", "▶ " if editor.selection == "draft" else "  ")
             else:
-                selectable("draft", editor.payload["draft"])
+                wrapped_selectable_text("draft", editor.payload["draft"])
             plain()
             selectable("add", "[ Add ]")
             selectable("clear", "[ Clear ]")
@@ -737,6 +749,8 @@ class TuiRenderer:
             attr = self._focus_attribute() if key == editor.selection else 0
             safe_add(screen, offset + 1, 0, line, width, attr)
         status = editor.error or state.status
+        if not status and editor.active_field is not None:
+            status = "Enter: Finish editing   Esc: Back"
         if status:
             status_attr = self._attribute("A_BOLD")
             if status.startswith("Error:"):
