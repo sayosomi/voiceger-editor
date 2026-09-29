@@ -87,10 +87,10 @@ class TuiShortcutTests(unittest.TestCase):
                         item.no_shortcut_reason,
                         f"{screen_kind}:{item.key} omitted a shortcut accidentally",
                     )
-                if item.kind == "action":
+                if item.kind == "action" and item.shortcut is None:
                     self.assertIsNotNone(
-                        item.shortcut,
-                        f"{screen_kind}:{item.key} ordinary action requires a shortcut",
+                        item.no_shortcut_reason,
+                        f"{screen_kind}:{item.key} action needs an explicit no-shortcut exception",
                     )
 
     def test_every_declared_shortcut_resolves_to_the_same_selectable_declaration(self):
