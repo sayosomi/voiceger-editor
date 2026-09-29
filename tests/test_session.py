@@ -433,6 +433,22 @@ class UtteranceSessionTests(unittest.TestCase):
         self.assertEqual(session.query.accent_phrases[0].moras[0].text, "新")
         self.assertTrue(session.utterance_manually_edited)
 
+    def test_committed_pure_text_replacement_keeps_caption_and_updates_actual_source(self):
+        session = self.make_session(caption="Caption", query=_query(mora_text="雨"))
+        batch = self.activate_batch(session)
+
+        session.replace_query(
+            _query(mora_text="明日"),
+            pure_japanese_utterance_text="明日の発話",
+        )
+
+        self.assertEqual(session.caption, "Caption")
+        self.assertEqual(session.pure_japanese_utterance_text, "明日の発話")
+        self.assertTrue(session.utterance_manually_edited)
+        self.assertTrue(batch.closed)
+        self.assertFalse(session.has_active_batch)
+        self.assertEqual(session.candidates, ())
+
     def test_invalid_replace_query_preserves_active_batch_and_candidates(self):
         session = self.make_session()
         batch = self.activate_batch(session)

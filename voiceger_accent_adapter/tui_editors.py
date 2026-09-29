@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import curses
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -15,13 +16,21 @@ from .english_stress import (
     normalize_english_phonemes,
 )
 from .query_editing import (
+    append_english_section,
+    append_japanese_section,
+    delete_utterance_section,
+    english_section_text_preview_query,
     english_word_preview_query,
+    merge_english_section_text_groups,
     japanese_pronunciation,
     japanese_preview_query,
     move_english_primary_stress,
     move_japanese_accent,
+    replace_english_section_text,
     replace_english_phoneme_groups,
     replace_japanese_pronunciation,
+    replace_japanese_section_text,
+    japanese_section_text_preview_query,
 )
 from .settings import Settings, SettingsError
 from .tui_display import _display_width, _move_wrapped_cursor
@@ -94,6 +103,8 @@ class ReplaceQueryIntent:
     success_status: str
     grouping_index: int | None = None
     accepted_grouping: EnglishGroupingCache | None = None
+    deleted_segment_index: int | None = None
+    pure_japanese_utterance_text: str | None = None
     close_editor: bool = True
 
 
@@ -284,6 +295,94 @@ class TuiEditorController:
         if edit and selected_field is not None:
             intents.extend(self.begin_field(selected_field, str(draft[selected_field])))
         return tuple(intents)
+
+    def open_add_section(
+        self,
+        query: AudioQuery | None,
+        *,
+        pure_japanese_utterance_text: str | None,
+        origin: tuple[str, int | None],
+        busy: bool,
+    ) -> tuple[EditorIntent, ...]:
+        if busy:
+            return (
+                UpdateStatusIntent(
+                    "Wait for synthesis to finish before adding a section."
+                ),
+            )
+        if query is None:
+            return (UpdateStatusIntent("Error: There is no active utterance."),)
+        self.editor = EditorState(
+            kind="add_section",
+            title="ADD SECTION",
+            origin=origin,
+            selection="draft",
+            payload={
+                "language": "ja",
+                "opening_language": "ja",
+                "draft": "",
+                "opening_draft": "",
+                "pure_japanese_utterance_text": pure_japanese_utterance_text,
+            },
+        )
+        return (UpdateStatusIntent(""), *self.begin_field("draft", ""))
+
+    def open_section_text(
+        self,
+        query: AudioQuery | None,
+        *,
+        pure_japanese_utterance_text: str | None,
+        busy: bool,
+    ) -> tuple[EditorIntent, ...]:
+        parent = self.editor
+        if busy or parent is None or parent.kind not in {"japanese", "english_word"}:
+            return ()
+        if query is None:
+            return (UpdateStatusIntent("Error: There is no active utterance."),)
+
+        segment_index = parent.payload["segment_index"]
+        language = "ja" if parent.kind == "japanese" else "en"
+        if language == "ja" and segment_index is None:
+            if query.voicegerSegments is not None or pure_japanese_utterance_text is None:
+                return (
+                    UpdateStatusIntent(
+                        "Error: The pure Japanese section text is unavailable."
+                    ),
+                )
+            source_text = pure_japanese_utterance_text
+        else:
+            if query.voicegerSegments is None or type(segment_index) is not int:
+                return (UpdateStatusIntent("Error: The selected section is unavailable."),)
+            if not 0 <= segment_index < len(query.voicegerSegments):
+                return (UpdateStatusIntent("Error: The selected section is unavailable."),)
+            segment = query.voicegerSegments[segment_index]
+            if segment.language != language:
+                return (UpdateStatusIntent("Error: The selected section changed."),)
+            source_text = segment.text
+
+        can_delete = (
+            query.voicegerSegments is not None
+            and len(query.voicegerSegments) > 1
+        )
+        payload: dict[str, Any] = {
+            "language": language,
+            "segment_index": segment_index,
+            "opening_text": source_text,
+            "draft": source_text,
+            "parent_editor": deepcopy(parent),
+            "can_delete": can_delete,
+        }
+        if language == "en":
+            payload["grouping"] = parent.payload["grouping"]
+
+        self.editor = EditorState(
+            kind="section_text",
+            title="EDIT SECTION TEXT",
+            origin=parent.origin,
+            selection="draft",
+            payload=payload,
+        )
+        return (UpdateStatusIntent(""), *self.begin_field("draft", source_text))
 
     def pronunciation_rows(
         self,
@@ -627,6 +726,19 @@ class TuiEditorController:
             ):
                 self.grouping_cache.pop(index, None)
 
+    def remap_groupings_after_deletion(
+        self,
+        deleted_index: int,
+        query: AudioQuery,
+    ) -> None:
+        remapped: dict[int, EnglishGroupingCache] = {}
+        for index, grouping in self.grouping_cache.items():
+            if index == deleted_index:
+                continue
+            remapped[index if index < deleted_index else index - 1] = grouping
+        self.grouping_cache = remapped
+        self.reconcile_groupings(query)
+
     def clear_groupings(self) -> None:
         self.grouping_cache.clear()
         self.grouping_error = None
@@ -652,13 +764,27 @@ class TuiEditorController:
         if editor.kind == "build_confirmation":
             return ["rebuild", "cancel"]
         if editor.kind == "japanese":
-            return ["pronunciation", "preview", "apply", "clear", "reset", "back"]
+            return [
+                "pronunciation", "preview", "apply", "edit_text", "clear", "reset", "back"
+            ]
         if editor.kind == "settings":
             return [
                 "style_id", "speed", "take_count", "output_dir", "save_text", "apply",
             ]
         if editor.kind == "english_word":
-            return ["phonemes", "preview", "apply", "clear", "reset", "back"]
+            return [
+                "phonemes", "preview", "apply", "edit_text", "clear", "reset", "back"
+            ]
+        if editor.kind == "section_text":
+            keys = ["draft", "preview", "apply", "reset"]
+            if editor.payload["can_delete"]:
+                keys.append("delete_section")
+            keys.append("back")
+            return keys
+        if editor.kind == "add_section":
+            return ["language", "draft", "add", "clear", "reset", "back"]
+        if editor.kind == "delete_confirmation":
+            return ["delete", "cancel"]
         return []
 
     def move_selection(self, delta: int) -> tuple[EditorIntent, ...]:
@@ -692,17 +818,22 @@ class TuiEditorController:
         editor = self.editor
         if editor is None:
             return ()
-        if preview_busy and editor.kind in {"japanese", "english_word"}:
+        if preview_busy and editor.kind in {"japanese", "english_word", "section_text"}:
             return (
                 UpdateStatusIntent(
-                    "Wait for Preview to finish before editing pronunciation."
+                    "Wait for Preview to finish before editing section text."
+                    if editor.kind == "section_text"
+                    else "Wait for Preview to finish before editing pronunciation."
                 ),
             )
         if editor.active_field is not None:
             if key in _ENTER_KEYS:
                 return self._finish_field()
             if key == _ESCAPE:
-                if editor.kind in {"caption", "japanese", "settings", "english_word"}:
+                if editor.kind in {
+                    "caption", "japanese", "settings", "english_word",
+                    "section_text", "add_section",
+                }:
                     return self.cancel()
                 editor.input_value = editor.input_original
                 editor.input_cursor = len(editor.input_original)
@@ -757,12 +888,27 @@ class TuiEditorController:
                 )
                 editor.input_cursor += len(key)
                 input_changed = True
-            if input_changed and editor.kind in {"japanese", "english_word"}:
+            if input_changed and editor.kind in {
+                "japanese", "english_word", "section_text", "add_section"
+            }:
                 editor.error = ""
             return ()
 
         if editor.kind == "settings" and key in (curses.KEY_LEFT, curses.KEY_RIGHT):
             return self.adjust_settings(-1 if key == curses.KEY_LEFT else 1)
+        if (
+            editor.kind == "add_section"
+            and editor.selection == "language"
+            and key in (curses.KEY_LEFT, curses.KEY_RIGHT)
+        ):
+            language = editor.payload["language"]
+            if (key == curses.KEY_RIGHT and language == "ja") or (
+                key == curses.KEY_LEFT and language == "en"
+            ):
+                editor.payload["language"] = "en" if language == "ja" else "ja"
+                editor.error = ""
+                return (ClearAdjustmentFeedbackIntent(), UpdateStatusIntent(""))
+            return ()
         if key == _ESCAPE:
             return self.cancel()
         if key == curses.KEY_UP:
@@ -812,6 +958,16 @@ class TuiEditorController:
                 return self.preview(query)
             if selected == "apply":
                 return self.apply(settings, query, current_caption)
+            if selected == "edit_text":
+                return self.open_section_text(
+                    query,
+                    pure_japanese_utterance_text=(
+                        editor.payload["source_text"]
+                        if editor.payload["segment_index"] is None
+                        else None
+                    ),
+                    busy=False,
+                )
             if selected == "clear":
                 self._set_pronunciation_draft(editor, "")
                 editor.error = ""
@@ -840,6 +996,12 @@ class TuiEditorController:
                 return self.preview(query)
             if selected == "apply":
                 return self.apply(settings, query, current_caption)
+            if selected == "edit_text":
+                return self.open_section_text(
+                    query,
+                    pure_japanese_utterance_text=None,
+                    busy=False,
+                )
             if selected == "clear":
                 self._set_pronunciation_draft(editor, "")
                 editor.error = ""
@@ -852,6 +1014,42 @@ class TuiEditorController:
                 return (UpdateStatusIntent("English phoneme draft reset."),)
             if selected == "back":
                 return self.cancel()
+        elif editor.kind == "section_text":
+            if selected == "draft":
+                return self.begin_field("draft", editor.input_value)
+            if selected == "preview":
+                return self.preview_section_text(query)
+            if selected == "apply":
+                return self.apply_section_text(query)
+            if selected == "reset":
+                self._set_text_draft(editor, editor.payload["opening_text"])
+                editor.error = ""
+                return (UpdateStatusIntent("Section text draft reset."),)
+            if selected == "delete_section":
+                return self.open_delete_confirmation()
+            if selected == "back":
+                return self.cancel()
+        elif editor.kind == "add_section":
+            if selected == "draft":
+                return self.begin_field("draft", editor.input_value)
+            if selected == "add":
+                return self.add_section(query)
+            if selected == "clear":
+                self._set_text_draft(editor, "")
+                editor.error = ""
+                return (UpdateStatusIntent("New section draft cleared."),)
+            if selected == "reset":
+                editor.payload["language"] = editor.payload["opening_language"]
+                self._set_text_draft(editor, editor.payload["opening_draft"])
+                editor.error = ""
+                return (UpdateStatusIntent("New section draft reset."),)
+            if selected == "back":
+                return self.cancel()
+        elif editor.kind == "delete_confirmation":
+            if selected == "delete":
+                return self.delete_section(query)
+            if selected == "cancel":
+                return self._restore_parent_editor("Section deletion cancelled.")
         return ()
 
     @staticmethod
@@ -869,6 +1067,231 @@ class TuiEditorController:
         editor.input_cursor = len(value)
         editor.active_field = None
         editor.payload[field] = value
+
+    @staticmethod
+    def _set_text_draft(editor: EditorState, value: str) -> None:
+        editor.payload["draft"] = value
+        editor.input_value = value
+        editor.input_original = value
+        editor.input_cursor = len(value)
+        editor.active_field = None
+
+    @staticmethod
+    def _word_group_values(
+        grouping: EnglishGroupingCache,
+    ) -> tuple[tuple[str, tuple[str, ...]], ...]:
+        return tuple((group.label, group.phonemes) for group in grouping.groups)
+
+    @staticmethod
+    def _grouping_cache(
+        source_text: str,
+        groups: Sequence[tuple[str, Sequence[str]]],
+    ) -> EnglishGroupingCache:
+        return EnglishGroupingCache(
+            source_text,
+            tuple(
+                EnglishWordGroup(
+                    label=label,
+                    phonemes=tuple(phonemes),
+                    editable=any(character.isalpha() for character in label),
+                )
+                for label, phonemes in groups
+            ),
+        )
+
+    @staticmethod
+    def _validated_text(editor: EditorState) -> str:
+        text = editor.payload["draft"]
+        language = "Japanese" if editor.payload["language"] == "ja" else "English"
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError(f"{language} section text must not be empty")
+        if "\n" in text or "\r" in text:
+            raise ValueError(f"{language} section text must not contain newlines")
+        return text
+
+    def preview_section_text(
+        self,
+        query: AudioQuery | None,
+    ) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        if editor is None or editor.kind != "section_text":
+            return ()
+        try:
+            if query is None:
+                raise ValueError("There is no active utterance")
+            text = self._validated_text(editor)
+            if editor.payload["language"] == "ja":
+                preview_query = japanese_section_text_preview_query(
+                    query,
+                    text,
+                    segment_index=editor.payload["segment_index"],
+                )
+            else:
+                grouping: EnglishGroupingCache = editor.payload["grouping"]
+                preview_query = english_section_text_preview_query(
+                    query,
+                    segment_index=editor.payload["segment_index"],
+                    text=text,
+                    old_groups=self._word_group_values(grouping),
+                    new_groups=self._english_word_groups(text),
+                )
+        except Exception as exc:
+            editor.error = f"Error: Preview failed: {exc}"
+            return ()
+        editor.error = ""
+        return (PreviewIntent(preview_query),)
+
+    def apply_section_text(
+        self,
+        query: AudioQuery | None,
+    ) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        if editor is None or editor.kind != "section_text":
+            return ()
+        try:
+            if query is None:
+                raise ValueError("There is no active utterance")
+            text = self._validated_text(editor)
+            if text == editor.payload["opening_text"]:
+                return self._close_editor("Section text unchanged.")
+            segment_index = editor.payload["segment_index"]
+            accepted_grouping = None
+            if editor.payload["language"] == "ja":
+                updated = replace_japanese_section_text(
+                    query,
+                    text,
+                    segment_index=segment_index,
+                )
+                pure_text = text if segment_index is None else None
+            else:
+                grouping: EnglishGroupingCache = editor.payload["grouping"]
+                merged = merge_english_section_text_groups(
+                    query,
+                    segment_index=segment_index,
+                    old_groups=self._word_group_values(grouping),
+                    new_groups=self._english_word_groups(text),
+                )
+                updated = replace_english_section_text(
+                    query,
+                    segment_index=segment_index,
+                    text=text,
+                    phoneme_groups=merged,
+                )
+                accepted_grouping = self._grouping_cache(text, merged)
+                pure_text = None
+        except Exception as exc:
+            editor.error = f"Error: Section text was not changed: {exc}"
+            return ()
+        return (
+            ReplaceQueryIntent(
+                query=updated,
+                editor_kind="section_text",
+                success_status="Section text updated; old takes cleared.",
+                grouping_index=(
+                    segment_index if accepted_grouping is not None else None
+                ),
+                accepted_grouping=accepted_grouping,
+                pure_japanese_utterance_text=pure_text,
+            ),
+        )
+
+    def open_delete_confirmation(self) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        if (
+            editor is None
+            or editor.kind != "section_text"
+            or not editor.payload["can_delete"]
+        ):
+            return ()
+        self.editor = EditorState(
+            kind="delete_confirmation",
+            title="DELETE SECTION?",
+            origin=editor.origin,
+            selection="delete",
+            payload={
+                "warning": "This section will be removed from the synthesized utterance.",
+                "parent_editor": deepcopy(editor),
+            },
+        )
+        return (ClearAdjustmentFeedbackIntent(), UpdateStatusIntent(""))
+
+    def delete_section(
+        self,
+        query: AudioQuery | None,
+    ) -> tuple[EditorIntent, ...]:
+        confirmation = self.editor
+        if confirmation is None or confirmation.kind != "delete_confirmation":
+            return ()
+        section_editor: EditorState = confirmation.payload["parent_editor"]
+        self.editor = section_editor
+        try:
+            if query is None:
+                raise ValueError("There is no active utterance")
+            segment_index = section_editor.payload["segment_index"]
+            if type(segment_index) is not int:
+                raise ValueError("pure Japanese utterances cannot delete their only section")
+            updated, pure_text = delete_utterance_section(
+                query,
+                segment_index=segment_index,
+            )
+        except Exception as exc:
+            section_editor.error = f"Error: Section was not deleted: {exc}"
+            return ()
+        return (
+            ReplaceQueryIntent(
+                query=updated,
+                editor_kind="delete_section",
+                success_status="Section deleted; old takes cleared.",
+                deleted_segment_index=segment_index,
+                pure_japanese_utterance_text=pure_text,
+            ),
+        )
+
+    def add_section(
+        self,
+        query: AudioQuery | None,
+    ) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        if editor is None or editor.kind != "add_section":
+            return ()
+        try:
+            if query is None:
+                raise ValueError("There is no active utterance")
+            text = self._validated_text(editor)
+            language = editor.payload["language"]
+            pure_text = editor.payload["pure_japanese_utterance_text"]
+            if language == "ja":
+                updated = append_japanese_section(
+                    query,
+                    text,
+                    pure_japanese_utterance_text=pure_text,
+                )
+                accepted_grouping = None
+                grouping_index = None
+            else:
+                generated = self._english_word_groups(text)
+                updated = append_english_section(
+                    query,
+                    text,
+                    phoneme_groups=generated,
+                    pure_japanese_utterance_text=pure_text,
+                )
+                assert updated.voicegerSegments is not None
+                grouping_index = len(updated.voicegerSegments) - 1
+                accepted_grouping = self._grouping_cache(text, generated)
+        except Exception as exc:
+            editor.error = f"Error: Section was not added: {exc}"
+            return ()
+        language_name = "Japanese" if language == "ja" else "English"
+        return (
+            ReplaceQueryIntent(
+                query=updated,
+                editor_kind="add_section",
+                success_status=f"{language_name} section added; old takes cleared.",
+                grouping_index=grouping_index,
+                accepted_grouping=accepted_grouping,
+            ),
+        )
 
     def preview(self, query: AudioQuery | None) -> tuple[EditorIntent, ...]:
         """Validate a pronunciation draft and emit a transient query intent."""
@@ -1060,13 +1483,23 @@ class TuiEditorController:
         editor = self.editor
         if result.error is not None:
             if editor is None:
-                return (UpdateStatusIntent(f"Error: Pronunciation was not changed: {result.error}"),)
-            if intent.editor_kind == "japanese":
-                editor.error = f"Error: Pronunciation was not changed: {result.error}"
-            else:
-                editor.error = f"Error: English pronunciation was not changed: {result.error}"
+                return (UpdateStatusIntent(f"Error: Query was not changed: {result.error}"),)
+            error_prefix = {
+                "japanese": "Pronunciation was not changed",
+                "english_word": "English pronunciation was not changed",
+                "section_text": "Section text was not changed",
+                "add_section": "Section was not added",
+                "delete_section": "Section was not deleted",
+            }.get(intent.editor_kind, "Query was not changed")
+            editor.error = f"Error: {error_prefix}: {result.error}"
             return ()
-        self.reconcile_groupings(intent.query)
+        if intent.deleted_segment_index is not None:
+            self.remap_groupings_after_deletion(
+                intent.deleted_segment_index,
+                intent.query,
+            )
+        else:
+            self.reconcile_groupings(intent.query)
         if intent.grouping_index is not None and intent.accepted_grouping is not None:
             self.grouping_cache[intent.grouping_index] = intent.accepted_grouping
         if not intent.close_editor:
@@ -1127,14 +1560,32 @@ class TuiEditorController:
         editor = self.editor
         if editor is None:
             return ()
+        if editor.kind in {"section_text", "delete_confirmation"}:
+            status = (
+                "Section text draft discarded."
+                if editor.kind == "section_text"
+                else "Section deletion cancelled."
+            )
+            return self._restore_parent_editor(status)
         status = {
             "caption": "Caption draft discarded.",
             "build_confirmation": "Pronunciation rebuild cancelled.",
             "japanese": "Japanese pronunciation draft discarded.",
             "settings": "Settings draft discarded.",
             "english_word": "English word draft discarded.",
+            "add_section": "New section draft discarded.",
         }.get(editor.kind, "Editor draft discarded.")
         return self._close_editor(status)
+
+    def _restore_parent_editor(self, status: str) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        if editor is None:
+            return ()
+        parent = editor.payload.get("parent_editor")
+        if not isinstance(parent, EditorState):
+            return self._close_editor(status)
+        self.editor = parent
+        return (ClearAdjustmentFeedbackIntent(), UpdateStatusIntent(status))
 
     def _close_editor(self, status: str) -> tuple[EditorIntent, ...]:
         editor = self.editor

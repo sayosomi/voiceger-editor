@@ -2,6 +2,7 @@ import unittest
 
 from voiceger_accent_adapter.tui_navigation import (
     AcceptCandidate,
+    AddSectionEditor,
     BuildPronunciation,
     ClearAdjustmentFeedback,
     EditPronunciationItem,
@@ -54,6 +55,7 @@ class TuiNavigationTests(unittest.TestCase):
                 ("pronunciation", 1),
                 ("pronunciation", 2),
                 ("pronunciation", 3),
+                ("add_section", None),
                 ("generate", None),
                 ("candidate", 5),
                 ("candidate", 2),
@@ -89,6 +91,7 @@ class TuiNavigationTests(unittest.TestCase):
                 ("caption", None),
                 ("build_pronunciation", None),
                 ("pronunciation", 0),
+                ("add_section", None),
                 ("generate", None),
                 ("candidate", 5),
                 ("settings", None),
@@ -112,12 +115,16 @@ class TuiNavigationTests(unittest.TestCase):
         self.assertEqual(
             self.navigation.move(state, 1), (ClearAdjustmentFeedback(),)
         )
+        self.assertEqual(self.navigation.focus_key, ("add_section", None))
+        self.assertEqual(
+            self.navigation.move(state, 1), (ClearAdjustmentFeedback(),)
+        )
         self.assertEqual(self.navigation.focus_key, ("generate", None))
         self.navigation.focus_key = ("pronunciation", 1)
         self.assertEqual(
             self.navigation.move_section(state, 1), (ClearAdjustmentFeedback(),)
         )
-        self.assertEqual(self.navigation.focus_key, ("generate", None))
+        self.assertEqual(self.navigation.focus_key, ("add_section", None))
 
     def test_candidate_rows_play_on_arrow_and_escape_restores_last_child(self):
         state = context(pronunciation_count=3, candidate_numbers=(4, 7))
@@ -144,7 +151,7 @@ class TuiNavigationTests(unittest.TestCase):
         self.assertEqual(
             self.navigation.move_section(state, 1), (ClearAdjustmentFeedback(),)
         )
-        self.assertEqual(self.navigation.focus_key, ("generate", None))
+        self.assertEqual(self.navigation.focus_key, ("add_section", None))
         self.navigation.focus_key = ("pronunciation", 3)
         self.assertEqual(
             self.navigation.move_section(state, -1), (ClearAdjustmentFeedback(),)
@@ -218,6 +225,7 @@ class TuiNavigationTests(unittest.TestCase):
             (("output", None), OpenSettingsEditor("output_dir", edit=True)),
             (("caption", None), OpenCaptionEditor()),
             (("pronunciation", 1), EditPronunciationItem(1)),
+            (("add_section", None), AddSectionEditor()),
             (("generate", None), StartGeneration()),
             (("build_pronunciation", None), BuildPronunciation()),
             (("candidate", 1), AcceptCandidate(1)),
@@ -235,6 +243,11 @@ class TuiNavigationTests(unittest.TestCase):
         self.assertEqual(
             self.navigation.activate_focused_item(context(busy=True)),
             (UpdateNavigationStatus("Wait for synthesis to finish before editing pronunciation."),),
+        )
+        self.navigation.focus_key = ("add_section", None)
+        self.assertEqual(
+            self.navigation.activate_focused_item(context(busy=True)),
+            (UpdateNavigationStatus("Wait for synthesis to finish before adding a section."),),
         )
 
     def test_generate_regenerate_and_candidate_regeneration_behavior(self):
