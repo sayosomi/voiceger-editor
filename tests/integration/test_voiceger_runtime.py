@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import subprocess
+from tempfile import TemporaryDirectory
 import unittest
 
 from voiceger_accent_adapter.compatibility import SUPPORTED_VOICEGER_REVISION
@@ -20,8 +21,13 @@ from voiceger_accent_adapter.query_editing import (
     replace_japanese_section_text,
 )
 from voiceger_accent_adapter.styles import get_style
+from voiceger_accent_adapter.session import UtteranceSession
+from voiceger_accent_adapter.settings import Settings
 from voiceger_accent_adapter.synthesis import synthesize_audio_query
 from voiceger_accent_adapter.voiceger_adapter import VoicegerAdapter
+from voiceger_accent_adapter.user_dictionary import UserDictionaryCore
+from voiceger_accent_adapter.openjtalk_converter import text_to_pronunciation
+from voiceger_accent_adapter.runtime_locks import OPENJTALK_LOCK
 from voiceger_accent_adapter.voicevox_query import build_audio_query
 
 
@@ -346,6 +352,68 @@ class VoicegerIntegrationTests(unittest.TestCase):
         self.assertIsNone(pure.voicegerSegments)
         self.assertEqual(pure_text, japanese_text)
         self.assert_full_synthesis_succeeds(pure)
+
+    def test_user_dictionary_live_reload_survives_voiceger_runtime_loading(self):
+        adapter = VoicegerAdapter(voiceger_root=self.voiceger_root)
+        text = "テストアクセント辞書固有語は雨。"
+        surface = "テストアクセント辞書固有語"
+
+        def reading(value):
+            pronunciation = text_to_pronunciation(value)
+            return "".join(
+                mora
+                for phrase in pronunciation.phrases
+                for mora in phrase.morae
+            )
+
+        with TemporaryDirectory(prefix="voiceger-adapter-user-dict-") as temporary:
+            adapter.user_dictionary = UserDictionaryCore(
+                self.voiceger_root,
+                data_directory=Path(temporary),
+            )
+            adapter.ensure_japanese_dictionary_active()
+            before = reading(text)
+            adapter.user_dictionary.add_japanese_word(
+                surface=surface,
+                pronunciation="ズンダモン",
+                accent_type=3,
+            )
+            after_live_reload = reading(text)
+            self.assertNotEqual(before, after_live_reload)
+            self.assertTrue(after_live_reload.startswith("ズンダモン"))
+
+            # Simulate the process-global dictionary reset performed by a
+            # Voiceger Japanese runtime import, then verify _ensure_runtime
+            # reapplies the merged adapter dictionary before returning.
+            import pyopenjtalk
+
+            opaque_voiceger_dictionary = (
+                self.voiceger_root
+                / "GPT-SoVITS"
+                / "GPT_SoVITS"
+                / "text"
+                / "ja_userdic"
+                / "user.dict"
+            )
+            with OPENJTALK_LOCK:
+                pyopenjtalk.update_global_jtalk_with_user_dict(
+                    str(opaque_voiceger_dictionary)
+                )
+            self.assertNotEqual(reading(text), after_live_reload)
+
+            adapter._ensure_runtime()
+            session = UtteranceSession.from_text(
+                adapter=adapter,
+                caption=text,
+                settings=Settings(style_id=1),
+            )
+            query_reading = "".join(
+                mora.text
+                for phrase in session.query.accent_phrases
+                for mora in phrase.moras
+            )
+            self.assertTrue(query_reading.startswith("ズンダモン"))
+            self.assertEqual(query_reading, reading(text))
 
 
 if __name__ == "__main__":
