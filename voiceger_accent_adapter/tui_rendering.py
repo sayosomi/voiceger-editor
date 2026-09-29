@@ -39,19 +39,25 @@ _HELP_ITEMS = (
     ("Space", ": replay a focused candidate"),
     ("Esc", ": return from Help/candidate review; cancel editor draft"),
     ("Tab / Shift+Tab", ": move to next / previous major section/action"),
-    ("b / a / g", ": Build pronunciation / Add section / Generate or regenerate all"),
+    (
+        " / ".join(
+            main_shortcut(name).shortcut
+            for name in ("build_pronunciation", "add_section", "generate")
+        ),
+        ": Build pronunciation / Add section / Generate or regenerate all",
+    ),
     ("1-8", ": focus and play an available candidate"),
     ("r", ": regenerate the focused candidate"),
     ("t", ": edit Caption"),
-    ("s", ": open Settings at style"),
+    (main_shortcut("settings").shortcut, ": open Settings at style"),
     ("v", ": open Settings at speed"),
     ("n", ": open Settings at takes"),
     ("o", ": open Settings at output"),
     ("x", ": open Settings at TXT"),
     (None, "Menu mode: editor/modal action letters are active."),
     (None, "Editing: Enter finishes; printable shortcut letters insert text."),
-    ("?", ": open or close Help"),
-    ("q", ": Quit"),
+    (main_shortcut("help").shortcut, ": open or close Help"),
+    (main_shortcut("quit").shortcut, ": Quit"),
 )
 
 
