@@ -53,6 +53,7 @@ from .tui_operations import (
 )
 from .tui_navigation import (
     AcceptCandidate,
+    AddSectionEditor,
     BuildPronunciation,
     ClearAdjustmentFeedback,
     EditPronunciationItem,
@@ -391,6 +392,19 @@ class TuiApp:
                 self._open_caption_editor()
             elif isinstance(action, EditPronunciationItem):
                 self._edit_selected_pronunciation(action.index)
+            elif isinstance(action, AddSectionEditor):
+                self._dispatch_editor_intents(
+                    self._editor_controller.open_add_section(
+                        self.session.query if self.session is not None else None,
+                        pure_japanese_utterance_text=(
+                            self.session.pure_japanese_utterance_text
+                            if self.session is not None
+                            else None
+                        ),
+                        origin=self._navigation.focus_key,
+                        busy=self._operations.busy,
+                    )
+                )
             elif isinstance(action, StartGeneration):
                 self._dispatch_operation_effects(
                     self._operations.start_generation(
@@ -557,13 +571,23 @@ class TuiApp:
             )
         )
 
-    def _apply_session_query(self, query: Any) -> None:
+    def _apply_session_query(
+        self,
+        query: Any,
+        *,
+        pure_japanese_utterance_text: str | None = None,
+    ) -> None:
         if self.session is None:
             return
         self._operations.stop_playback()
-        self.session.replace_query(query)
+        if pure_japanese_utterance_text is None:
+            self.session.replace_query(query)
+        else:
+            self.session.replace_query(
+                query,
+                pure_japanese_utterance_text=pure_japanese_utterance_text,
+            )
         self._operations.clear_current_take()
-        self._editor_controller.reconcile_groupings(query)
 
     def _apply_caption(self, caption: str) -> CaptionApplicationResult:
         if self.session is not None and caption == self.session.caption:
@@ -608,7 +632,12 @@ class TuiApp:
                 self._status = intent.status
             elif isinstance(intent, ReplaceQueryIntent):
                 try:
-                    self._apply_session_query(intent.query)
+                    self._apply_session_query(
+                        intent.query,
+                        pure_japanese_utterance_text=(
+                            intent.pure_japanese_utterance_text
+                        ),
+                    )
                 except Exception as exc:
                     result = QueryApplicationResult(error=str(exc))
                 else:

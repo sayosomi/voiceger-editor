@@ -4,12 +4,20 @@ import subprocess
 import unittest
 
 from voiceger_accent_adapter.compatibility import SUPPORTED_VOICEGER_REVISION
-from voiceger_accent_adapter.mixed_language import build_mixed_audio_query
+from voiceger_accent_adapter.mixed_language import (
+    DetectedSegment,
+    build_mixed_audio_query,
+)
 from voiceger_accent_adapter.pronunciation import parse_pronunciation
 from voiceger_accent_adapter.query_editing import (
+    append_english_section,
+    delete_utterance_section,
     english_word_preview_query,
+    merge_english_section_text_groups,
     japanese_preview_query,
     japanese_pronunciation,
+    replace_english_section_text,
+    replace_japanese_section_text,
 )
 from voiceger_accent_adapter.styles import get_style
 from voiceger_accent_adapter.synthesis import synthesize_audio_query
@@ -32,6 +40,18 @@ class VoicegerIntegrationTests(unittest.TestCase):
         ).expanduser().resolve()
         cls.adapter = VoicegerAdapter(voiceger_root=cls.voiceger_root)
         cls.style = get_style(cls.voiceger_root, 1)
+
+    def assert_full_synthesis_succeeds(self, query):
+        result = synthesize_audio_query(
+            adapter=self.adapter,
+            query=query,
+            style=self.style,
+        )
+        self.assertEqual(result["sampling_rate"], 32000)
+        duration = len(result["audio"]) / result["sampling_rate"]
+        self.assertGreater(duration, 0.1)
+        self.assertLess(duration, 20.0)
+        return result
 
     def test_recorded_voiceger_revision(self):
         revision = subprocess.check_output(
@@ -206,6 +226,126 @@ class VoicegerIntegrationTests(unittest.TestCase):
         duration = len(result["audio"]) / result["sampling_rate"]
         self.assertGreater(duration, 0.1)
         self.assertLess(duration, 15.0)
+
+    def test_local_japanese_section_text_replacement_synthesizes_full_utterance(self):
+        query = build_mixed_audio_query(
+            "今日はhello sweet worldなのだ。",
+            english_g2p=self.adapter.english_phonemes,
+        )
+        japanese_index = next(
+            index
+            for index, segment in enumerate(query.voicegerSegments or [])
+            if segment.language == "ja"
+        )
+
+        updated = replace_japanese_section_text(
+            query,
+            "明日はいい天気。",
+            segment_index=japanese_index,
+        )
+
+        self.assertEqual(
+            updated.voicegerSegments[japanese_index].text,
+            "明日はいい天気。",
+        )
+        self.assert_full_synthesis_succeeds(updated)
+
+    def test_local_english_section_text_retains_manual_words_and_synthesizes(self):
+        query = build_mixed_audio_query(
+            "今日はhello sweet worldなのだ。",
+            english_g2p=self.adapter.english_phonemes,
+        )
+        english_index = next(
+            index
+            for index, segment in enumerate(query.voicegerSegments or [])
+            if segment.language == "en"
+        )
+        segment = query.voicegerSegments[english_index]
+        old_groups = list(self.adapter.english_word_phoneme_groups(segment.text))
+        sweet_index = next(
+            index
+            for index, (label, _phones) in enumerate(old_groups)
+            if label.casefold() == "sweet"
+        )
+        sweet_phones = list(old_groups[sweet_index][1])
+        for phone_index, phone in enumerate(sweet_phones):
+            if phone[-1:] in {"0", "1", "2"}:
+                sweet_phones[phone_index] = phone[:-1] + (
+                    "2" if phone[-1] != "2" else "1"
+                )
+                break
+        else:
+            self.fail("Voiceger G2P returned no stressed vowel for sweet")
+        old_groups[sweet_index] = (old_groups[sweet_index][0], tuple(sweet_phones))
+        old_snapshot = tuple((label, tuple(phones)) for label, phones in old_groups)
+        segment.phonemes = [
+            phone for _label, group in old_snapshot for phone in group
+        ]
+        new_text = "very hello sweet world"
+        generated = self.adapter.english_word_phoneme_groups(new_text)
+        merged = merge_english_section_text_groups(
+            query,
+            segment_index=english_index,
+            old_groups=old_snapshot,
+            new_groups=generated,
+        )
+        retained_sweet = next(
+            group for label, group in merged if label.casefold() == "sweet"
+        )
+        self.assertEqual(retained_sweet, tuple(sweet_phones))
+
+        updated = replace_english_section_text(
+            query,
+            segment_index=english_index,
+            text=new_text,
+            phoneme_groups=merged,
+        )
+        self.assert_full_synthesis_succeeds(updated)
+
+    def test_adding_english_to_pure_japanese_synthesizes_explicit_query(self):
+        pure_text = "明日はいい天気。"
+        query = build_mixed_audio_query(
+            pure_text,
+            english_g2p=self.adapter.english_phonemes,
+        )
+        self.assertIsNone(query.voicegerSegments)
+        groups = self.adapter.english_word_phoneme_groups("hello world")
+
+        updated = append_english_section(
+            query,
+            "hello world",
+            phoneme_groups=groups,
+            pure_japanese_utterance_text=pure_text,
+        )
+
+        self.assertEqual(len(updated.voicegerSegments), 2)
+        self.assertEqual(updated.voicegerSegments[0].text, pure_text)
+        self.assert_full_synthesis_succeeds(updated)
+
+    def test_deleting_back_to_one_japanese_section_synthesizes_pure_query(self):
+        japanese_text = "明日も晴れ。"
+        query = build_mixed_audio_query(
+            "今日はhello明日も晴れ。",
+            segments=(
+                DetectedSegment("ja", "今日は"),
+                DetectedSegment("en", "hello"),
+                DetectedSegment("ja", japanese_text),
+            ),
+            english_g2p=self.adapter.english_phonemes,
+        )
+
+        after_english, _pure_text = delete_utterance_section(
+            query,
+            segment_index=1,
+        )
+        pure, pure_text = delete_utterance_section(
+            after_english,
+            segment_index=0,
+        )
+
+        self.assertIsNone(pure.voicegerSegments)
+        self.assertEqual(pure_text, japanese_text)
+        self.assert_full_synthesis_succeeds(pure)
 
 
 if __name__ == "__main__":

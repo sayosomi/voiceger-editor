@@ -203,6 +203,8 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line.text for line in lines]
         caption_index = next(index for index, value in enumerate(labels) if "Caption :" in value)
         build_index = labels.index("  [ Build pronunciation ]")
+        add_index = labels.index("  [ Add section ]")
+        generate_index = next(index for index, value in enumerate(labels) if value.startswith("  [ Generate"))
         pronunciation_index = next(
             index for index, line in enumerate(lines)
             if line.key and line.key[0] == "pronunciation"
@@ -210,6 +212,8 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(build_index, caption_index + 1)
         self.assertTrue(labels[caption_index].endswith("Caption : 明日はhello everyoneまた明日"))
         self.assertLess(build_index, pronunciation_index)
+        self.assertLess(pronunciation_index, add_index)
+        self.assertLess(add_index, generate_index)
         self.assertNotIn("Pronunciation", labels)
         self.assertEqual(selectable[0].text, "▶ JA | ア シ タ [ワ]")
         self.assertEqual(selectable[1].text, "     | イ イ [テ] ン キ")
@@ -454,10 +458,11 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("'", visible)
         self.assertNotIn("[Enter: Edit]", visible)
         self.assertEqual(
-            [line for line, _key in document[-5:]],
+            [line for line, _key in document[-6:]],
             [
                 "  [ Preview ]",
                 "  [ Apply ]",
+                "  [ Edit text ]",
                 "  [ Clear ]",
                 "  [ Reset ]",
                 "  [ Back ]",
@@ -485,15 +490,95 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertNotIn("Primary stress", visible)
         self.assertNotIn("Done", visible)
         self.assertEqual(
-            [line for line, _key in document[-5:]],
+            [line for line, _key in document[-6:]],
             [
                 "  [ Preview ]",
                 "  [ Apply ]",
+                "  [ Edit text ]",
                 "  [ Clear ]",
                 "  [ Reset ]",
                 "  [ Back ]",
             ],
         )
+
+    def test_section_text_editor_document_has_language_and_local_actions(self):
+        editor = SimpleNamespace(
+            kind="section_text",
+            title="EDIT SECTION TEXT",
+            selection="draft",
+            payload={
+                "language": "ja",
+                "draft": "明日はいい天気",
+                "can_delete": True,
+            },
+            active_field="draft",
+            input_value="明日はいい天気",
+            input_cursor=4,
+            error="",
+            scroll=0,
+        )
+        document, cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        labels = [line for line, _key in document]
+        self.assertEqual(labels[0], "EDIT SECTION TEXT")
+        self.assertEqual(labels[2:4], ["Language", "  Japanese"])
+        self.assertIn("▶ 明日はいい天気", labels)
+        self.assertEqual(
+            labels[-5:],
+            [
+                "  [ Preview ]",
+                "  [ Apply ]",
+                "  [ Reset ]",
+                "  [ Delete section ]",
+                "  [ Back ]",
+            ],
+        )
+        self.assertIsNotNone(cursor_line)
+
+    def test_add_section_document_shows_two_language_choices_and_ordered_actions(self):
+        editor = SimpleNamespace(
+            kind="add_section",
+            title="ADD SECTION",
+            selection="draft",
+            payload={"language": "ja", "draft": ""},
+            active_field="draft",
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        labels = [line for line, _key in document]
+        self.assertEqual(labels[0], "ADD SECTION")
+        self.assertIn("  Language    < Japanese >", labels)
+        self.assertIn("▶ ", labels)
+        self.assertEqual(
+            labels[-4:],
+            ["  [ Add ]", "  [ Clear ]", "  [ Reset ]", "  [ Back ]"],
+        )
+
+    def test_delete_confirmation_document_uses_required_warning_and_choices(self):
+        editor = SimpleNamespace(
+            kind="delete_confirmation",
+            title="DELETE SECTION?",
+            selection="delete",
+            payload={"warning": "This section will be removed from the synthesized utterance."},
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        labels = [line for line, _key in document]
+        self.assertEqual(labels[0], "DELETE SECTION?")
+        self.assertIn("This section will be removed from the synthesized utterance.", labels)
+        self.assertEqual(labels[-2:], ["▶ [ Delete ]", "  [ Cancel ]"])
 
     def test_settings_use_compact_rows_and_edit_the_current_field_in_place(self):
         editor = SimpleNamespace(
