@@ -226,6 +226,10 @@ class SynthesisTests(unittest.TestCase):
         for kana, is_interrogative, expected in cases:
             with self.subTest(kana=kana, is_interrogative=is_interrogative):
                 adapter = FakeAdapter()
+                adapter.synthesize_audio.return_value = {
+                    "audio": object(),
+                    "sampling_rate": 32000,
+                }
                 query = AudioQuery(
                     accent_phrases=[
                         _accent_phrase(
