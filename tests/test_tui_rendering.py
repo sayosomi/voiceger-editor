@@ -186,6 +186,31 @@ class TuiRenderingTests(unittest.TestCase):
     def labels(rows):
         return [line.text for line in rows]
 
+    def assert_inactive_draft_wrapping(self, editor, draft, width, marker):
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), width
+        )
+        draft_lines = [(line, key) for line, key in document if key == "draft"]
+
+        self.assertGreater(len(draft_lines), 1)
+        self.assertTrue(draft_lines[0][0].startswith(marker))
+        self.assertEqual(
+            "".join(line[len(marker):] for line, _key in draft_lines),
+            draft,
+        )
+        self.assertTrue(all(key == "draft" for _line, key in draft_lines))
+        self.assertTrue(
+            all(
+                line.startswith(" " * _display_width(marker))
+                for line, _key in draft_lines[1:]
+            )
+        )
+        self.assertTrue(
+            all(_display_width(line) <= width - 1 for line, _key in draft_lines)
+        )
+        self.assertEqual(editor.payload["draft"], draft)
+        return [line for line, _key in draft_lines]
+
     def test_main_header_shows_product_title_without_navigation_label(self):
         screen = FakeScreen()
         with patch("voiceger_accent_adapter.tui_rendering.available_styles", return_value=()):
@@ -428,6 +453,205 @@ class TuiRenderingTests(unittest.TestCase):
             self.assertNotIn(removed, visible)
         self.assertNotIn("Esc Cancel", visible)
         self.assertIsNotNone(screen.cursor)
+
+    def test_long_inactive_caption_wraps_and_keeps_logical_focus_on_every_line(self):
+        draft = "このずんだ餅はvery sweetなのだ。さらに長い文章がここまで続いていても全部表示されるのだ。"
+        editor = SimpleNamespace(
+            kind="caption",
+            title="EDIT CAPTION TEXT",
+            selection="draft",
+            payload={"draft": draft},
+            active_field=None,
+            input_value=draft,
+            input_cursor=len(draft),
+            error="",
+            scroll=0,
+        )
+        width = 19
+        draft_lines = self.assert_inactive_draft_wrapping(
+            editor, draft, width, "▶ "
+        )
+
+        screen = FakeScreen(rows=24, columns=width)
+        self.renderer.render_editor(
+            screen, render_state(editor=editor), screen.rows, screen.columns
+        )
+        rendered_draft = [
+            item for item in screen.drawn if item[2] in draft_lines
+        ]
+        self.assertEqual([item[2] for item in rendered_draft], draft_lines)
+        self.assertTrue(all(item[3] & curses.A_REVERSE for item in rendered_draft))
+
+    def test_long_inactive_section_text_wraps_without_selection_marker(self):
+        draft = "このセクションの文章も長くなって、表示幅を超えて最後まで続くのだ。"
+        editor = SimpleNamespace(
+            kind="section_text",
+            title="EDIT SECTION TEXT",
+            selection="preview",
+            payload={"language": "ja", "draft": draft, "can_delete": False},
+            active_field=None,
+            input_value=draft,
+            input_cursor=len(draft),
+            error="",
+            scroll=0,
+        )
+
+        self.assert_inactive_draft_wrapping(editor, draft, 17, "  ")
+
+    def test_long_inactive_add_section_text_wraps(self):
+        draft = "追加する文章も画面幅に収まらない長さになって最後まで表示されるのだ。"
+        editor = SimpleNamespace(
+            kind="add_section",
+            title="ADD SECTION",
+            selection="draft",
+            payload={"language": "ja", "draft": draft},
+            active_field=None,
+            input_value=draft,
+            input_cursor=len(draft),
+            error="",
+            scroll=0,
+        )
+
+        self.assert_inactive_draft_wrapping(editor, draft, 17, "▶ ")
+
+    def test_wrapped_caption_keeps_actions_reachable_in_short_viewport(self):
+        editor = SimpleNamespace(
+            kind="caption",
+            title="EDIT CAPTION TEXT",
+            selection="apply",
+            payload={"draft": "A long caption that spans many physical terminal lines."},
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+        screen = FakeScreen(rows=7, columns=16)
+
+        self.renderer.render_editor(
+            screen, render_state(editor=editor), screen.rows, screen.columns
+        )
+
+        apply_line = next(
+            item for item in screen.drawn if item[2] == "▶ [ Apply ]"
+        )
+        self.assertLess(apply_line[0], screen.rows - 1)
+        self.assertTrue(apply_line[3] & curses.A_REVERSE)
+
+    def test_editor_status_shows_hint_for_each_active_text_entry_mode(self):
+        settings = {
+            "style_id": "1",
+            "speed": "1.00",
+            "take_count": "4",
+            "output_dir": "/tmp/output",
+            "save_text": True,
+        }
+        editors = (
+            SimpleNamespace(
+                kind="caption", title="EDIT CAPTION TEXT", selection="draft",
+                payload={"draft": "caption"}, active_field="draft",
+                input_value="caption", input_cursor=7, error="", scroll=0,
+            ),
+            SimpleNamespace(
+                kind="japanese", title="EDIT PRONUNCIATION", selection="pronunciation",
+                payload={"source_text": "今日は"}, active_field="pronunciation",
+                input_value="キョウワ", input_cursor=4, error="", scroll=0,
+            ),
+            SimpleNamespace(
+                kind="english_word", title="EDIT PRONUNCIATION", selection="phonemes",
+                payload={"label": "hello"}, active_field="phonemes",
+                input_value="HH AH1", input_cursor=6, error="", scroll=0,
+            ),
+            SimpleNamespace(
+                kind="section_text", title="EDIT SECTION TEXT", selection="draft",
+                payload={"language": "ja", "draft": "section", "can_delete": False},
+                active_field="draft", input_value="section", input_cursor=7,
+                error="", scroll=0,
+            ),
+            SimpleNamespace(
+                kind="add_section", title="ADD SECTION", selection="draft",
+                payload={"language": "ja", "draft": "new section"},
+                active_field="draft", input_value="new section", input_cursor=11,
+                error="", scroll=0,
+            ),
+            SimpleNamespace(
+                kind="settings", title="EDIT SETTINGS", selection="output_dir",
+                payload={"draft_settings": settings}, active_field="output_dir",
+                input_value="/tmp/output", input_cursor=11, error="", scroll=0,
+            ),
+        )
+
+        for editor in editors:
+            with self.subTest(kind=editor.kind, active_field=editor.active_field):
+                screen = FakeScreen(rows=10, columns=80)
+                with patch(
+                    "voiceger_accent_adapter.tui_rendering.available_styles",
+                    return_value=(),
+                ):
+                    self.renderer.render_editor(
+                        screen,
+                        render_state(editor=editor),
+                        screen.rows,
+                        screen.columns,
+                    )
+                status = [
+                    text
+                    for row, _column, text, _attr in screen.drawn
+                    if row == screen.rows - 1
+                ]
+                self.assertEqual(status, ["Enter: Finish editing   Esc: Back"])
+
+    def test_editor_status_hint_disappears_after_editing_finishes(self):
+        editor = SimpleNamespace(
+            kind="caption", title="EDIT CAPTION TEXT", selection="draft",
+            payload={"draft": "caption"}, active_field=None,
+            input_value="caption", input_cursor=7, error="", scroll=0,
+        )
+        screen = FakeScreen(rows=10, columns=80)
+
+        self.renderer.render_editor(
+            screen, render_state(editor=editor), screen.rows, screen.columns
+        )
+
+        self.assertFalse(
+            any(row == screen.rows - 1 for row, _column, _text, _attr in screen.drawn)
+        )
+
+    def test_editor_error_and_existing_status_override_editing_hint(self):
+        editor = SimpleNamespace(
+            kind="caption", title="EDIT CAPTION TEXT", selection="draft",
+            payload={"draft": "caption"}, active_field="draft",
+            input_value="caption", input_cursor=7,
+            error="Error: invalid Caption", scroll=0,
+        )
+        error_screen = FakeScreen(rows=10, columns=80)
+        self.renderer.render_editor(
+            error_screen,
+            render_state(editor=editor, status="Saved output.wav."),
+            error_screen.rows,
+            error_screen.columns,
+        )
+        error_status = [
+            text
+            for row, _column, text, _attr in error_screen.drawn
+            if row == error_screen.rows - 1
+        ]
+        self.assertEqual(error_status, ["Error: invalid Caption"])
+
+        editor.error = ""
+        status_screen = FakeScreen(rows=10, columns=80)
+        self.renderer.render_editor(
+            status_screen,
+            render_state(editor=editor, status="Saved output.wav."),
+            status_screen.rows,
+            status_screen.columns,
+        )
+        existing_status = [
+            text
+            for row, _column, text, _attr in status_screen.drawn
+            if row == status_screen.rows - 1
+        ]
+        self.assertEqual(existing_status, ["Saved output.wav."])
 
     def test_build_confirmation_document_warns_and_orders_actions(self):
         editor = SimpleNamespace(
