@@ -124,30 +124,8 @@ class BuildPronunciationIntent:
 
 
 @dataclass(frozen=True)
-class SettingsChanges:
-    style_id: int | None = None
-    speed: float | None = None
-    take_count: int | None = None
-    output_dir: Path | None = None
-    save_text: bool | None = None
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            name: value
-            for name, value in (
-                ("style_id", self.style_id),
-                ("speed", self.speed),
-                ("take_count", self.take_count),
-                ("output_dir", self.output_dir),
-                ("save_text", self.save_text),
-            )
-            if value is not None
-        }
-
-
-@dataclass(frozen=True)
 class ApplySettingsIntent:
-    changes: SettingsChanges
+    settings: Settings
 
 
 @dataclass(frozen=True)
@@ -277,24 +255,35 @@ class TuiEditorController:
             return (
                 UpdateStatusIntent("Wait for synthesis to finish before changing settings."),
             )
-        draft = {
+        self.editor = EditorState(
+            kind="settings",
+            title="EDIT SETTINGS",
+            origin=origin,
+            selection=selected_field or "style_id",
+            payload={
+                "opening_settings": settings,
+                "draft_settings": self._settings_draft(settings),
+            },
+        )
+        intents: list[EditorIntent] = [UpdateStatusIntent("")]
+        if edit and selected_field is not None:
+            intents.extend(
+                self.begin_field(
+                    selected_field,
+                    str(self.editor.payload["draft_settings"][selected_field]),
+                )
+            )
+        return tuple(intents)
+
+    @staticmethod
+    def _settings_draft(settings: Settings) -> dict[str, Any]:
+        return {
             "style_id": str(settings.style_id),
             "speed": str(settings.speed),
             "take_count": str(settings.take_count),
             "output_dir": str(settings.output_dir),
             "save_text": settings.save_text,
         }
-        self.editor = EditorState(
-            kind="settings",
-            title="EDIT SETTINGS",
-            origin=origin,
-            selection=selected_field or "style_id",
-            payload={"draft_settings": draft},
-        )
-        intents: list[EditorIntent] = [UpdateStatusIntent("")]
-        if edit and selected_field is not None:
-            intents.extend(self.begin_field(selected_field, str(draft[selected_field])))
-        return tuple(intents)
 
     def open_add_section(
         self,
@@ -769,7 +758,8 @@ class TuiEditorController:
             ]
         if editor.kind == "settings":
             return [
-                "style_id", "speed", "take_count", "output_dir", "save_text", "apply",
+                "style_id", "speed", "take_count", "output_dir", "save_text",
+                "apply", "reset", "back",
             ]
         if editor.kind == "english_word":
             return [
@@ -981,14 +971,22 @@ class TuiEditorController:
             if selected == "back":
                 return self.cancel()
         elif editor.kind == "settings":
-            if selected == "save_text":
-                draft = editor.payload["draft_settings"]
-                draft["save_text"] = not draft["save_text"]
-            elif selected == "apply":
+            if selected in {"style_id", "speed", "take_count", "save_text", "apply"}:
                 return self.apply(settings, query, current_caption)
-            elif isinstance(selected, str):
+            if selected == "output_dir":
                 value = editor.payload["draft_settings"][selected]
                 return self.begin_field(selected, str(value))
+            if selected == "reset":
+                editor.payload["draft_settings"] = self._settings_draft(
+                    editor.payload["opening_settings"]
+                )
+                editor.error = ""
+                return (
+                    ClearAdjustmentFeedbackIntent(),
+                    UpdateStatusIntent("Settings draft reset."),
+                )
+            if selected == "back":
+                return self.cancel()
         elif editor.kind == "english_word":
             if selected == "phonemes":
                 return self.begin_field("phonemes", editor.input_value)
@@ -1445,35 +1443,17 @@ class TuiEditorController:
             return ()
         draft = editor.payload["draft_settings"]
         try:
-            updated = replace(
-                settings,
+            updated = Settings(
                 style_id=int(draft["style_id"]),
                 speed=float(draft["speed"]),
                 take_count=int(draft["take_count"]),
-                output_dir=Path(draft["output_dir"]).expanduser(),
-                save_text=bool(draft["save_text"]),
+                output_dir=Path(draft["output_dir"]),
+                save_text=draft["save_text"],
             )
         except (TypeError, ValueError, SettingsError) as exc:
             editor.error = f"Error: Settings were not changed: {exc}"
             return ()
-        changes = {
-            name: getattr(updated, name)
-            for name in ("style_id", "speed", "take_count", "output_dir", "save_text")
-            if getattr(updated, name) != getattr(settings, name)
-        }
-        if not changes:
-            return self._close_editor("Settings unchanged.")
-        return (
-            ApplySettingsIntent(
-                SettingsChanges(
-                    style_id=changes.get("style_id"),
-                    speed=changes.get("speed"),
-                    take_count=changes.get("take_count"),
-                    output_dir=changes.get("output_dir"),
-                    save_text=changes.get("save_text"),
-                )
-            ),
-        )
+        return (ApplySettingsIntent(updated),)
 
     def complete_query_application(
         self,
@@ -1554,7 +1534,7 @@ class TuiEditorController:
         if result.error_status is not None and result.error_status.startswith("Error:"):
             editor.error = result.error_status
             return ()
-        return self._close_editor("Settings saved. Existing temporary takes were cleared.")
+        return self._close_editor("Settings saved.")
 
     def cancel(self) -> tuple[EditorIntent, ...]:
         editor = self.editor

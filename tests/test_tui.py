@@ -419,16 +419,36 @@ class TuiTests(unittest.TestCase):
         set_navigation_focus(app, ("help", None))
         app._handle_key("\n")
         self.assertTrue(app._help_open)
+        self.assertEqual(app._navigation.focus_key, ("help", None))
+        app._handle_key(curses.KEY_UP)
+        app._handle_key(curses.KEY_DOWN)
+        self.assertTrue(app._help_open)
+        app._handle_key("\n")
+        self.assertFalse(app._help_open)
+        self.assertEqual(app._navigation.focus_key, ("help", None))
+
+        app._handle_key("?")
+        self.assertTrue(app._help_open)
+        app._handle_key("?")
+        self.assertFalse(app._help_open)
+        self.assertEqual(app._navigation.focus_key, ("help", None))
+        app._handle_key("?")
+        self.assertTrue(app._help_open)
         app._handle_key("\x1b")
+        self.assertFalse(app._help_open)
+        self.assertEqual(app._navigation.focus_key, ("help", None))
         set_navigation_focus(app, ("quit", None))
         app._handle_key("\n")
         self.assertTrue(app._exit_requested)
 
-        shortcut = self.make_app(query=mixed_query())
-        shortcut._handle_key("?")
-        self.assertTrue(shortcut._help_open)
-        shortcut._handle_key("q")
-        self.assertTrue(shortcut._exit_requested)
+        for key in ("q", "Q", "\x03"):
+            with self.subTest(key=key):
+                shortcut = self.make_app(query=mixed_query())
+                shortcut._handle_key("?")
+                self.assertTrue(shortcut._help_open)
+                shortcut._handle_key(key)
+                self.assertFalse(shortcut._help_open)
+                self.assertTrue(shortcut._exit_requested)
 
     def test_pressed_generate_feedback_requires_a_movable_change(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -524,8 +544,8 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "style_id"
             )
-            self.assertIn("Style       < 1 Neutral >", style_left)
-            value_column = style_left.index("1 Neutral")
+            self.assertIn("Style       < Neutral >", style_left)
+            value_column = style_left.index("Neutral")
 
             editor.selection = "style_id"
             app._handle_key(curses.KEY_RIGHT)
@@ -535,8 +555,8 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "style_id"
             )
-            self.assertIn("Style       < 2 Sweet>>", style_right)
-            self.assertEqual(style_right.index("2 Sweet"), value_column)
+            self.assertIn("Style       < Sweet>>", style_right)
+            self.assertEqual(style_right.index("Sweet"), value_column)
 
             app._handle_key(curses.KEY_LEFT)
             self.assertEqual(editor.payload["draft_settings"]["style_id"], "1")
@@ -544,7 +564,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "style_id"
             )
-            self.assertIn("Style       <<1 Neutral >", style_left_moved)
+            self.assertIn("Style       <<Neutral >", style_left_moved)
 
             app._handle_key(curses.KEY_RIGHT)
             self.assertEqual(editor.payload["draft_settings"]["style_id"], "2")
@@ -557,7 +577,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "style_id"
             )
-            self.assertIn("Style       < 2 Sweet >", style_right)
+            self.assertIn("Style       < Sweet >", style_right)
 
             editor.selection = "speed"
             editor.payload["draft_settings"]["speed"] = "0.01"
@@ -1274,23 +1294,29 @@ class TuiTests(unittest.TestCase):
             app.config_path = Path(directory) / "config.json"
             app._handle_key("\n")
             self.assertEqual(app._editor_controller.editor.kind, "settings")
-            app._editor_controller.editor.selection = "take_count"
-            app._handle_key("\n")
-            app._handle_key(curses.KEY_BACKSPACE)
-            app._handle_key("2")
-            app._handle_key("\n")
             editor = app._editor_controller.editor
+            editor.selection = "output_dir"
+            app._handle_key("\n")
+            self.assertEqual(editor.active_field, "output_dir")
+            editor.input_value = "/tmp/settings-output"
+            app._handle_key("\n")
             self.assertIsNotNone(editor)
-            self.assertEqual(editor.kind, "settings")
             self.assertIsNone(editor.active_field)
-            self.assertEqual(app.settings.take_count, 4)
+            self.assertEqual(
+                editor.payload["draft_settings"]["output_dir"],
+                "/tmp/settings-output",
+            )
+            self.assertEqual(app.settings.output_dir, Settings().output_dir)
+            self.assertEqual(app.session.replace_settings_calls, [])
             self.assertFalse(app.config_path.exists())
-            for _ in range(3):
-                app._handle_key(curses.KEY_DOWN)
+            editor.selection = "apply"
             app._handle_key("\n")
             self.assertIsNone(app._editor_controller.editor)
-            self.assertEqual(app.settings.take_count, 2)
-            self.assertEqual(json.loads(app.config_path.read_text())["take_count"], 2)
+            self.assertEqual(app.settings.output_dir, Path("/tmp/settings-output"))
+            self.assertEqual(
+                json.loads(app.config_path.read_text())["output_dir"],
+                "/tmp/settings-output",
+            )
 
     def test_settings_arrows_edit_only_the_draft_and_apply_rows_are_compact(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1326,6 +1352,12 @@ class TuiTests(unittest.TestCase):
             self.assertEqual(app.session.candidates, (candidate(1),))
             self.assertFalse(app.config_path.exists())
 
+            editor.selection = "output_dir"
+            output_before = dict(editor.payload["draft_settings"])
+            app._handle_key(curses.KEY_LEFT)
+            app._handle_key(curses.KEY_RIGHT)
+            self.assertEqual(editor.payload["draft_settings"], output_before)
+
             screen = FakeScreen()
             app._screen = screen
             app._render()
@@ -1357,6 +1389,224 @@ class TuiTests(unittest.TestCase):
             editor.payload["draft_settings"]["style_id"] = "2"
             app._handle_key(curses.KEY_LEFT)
             self.assertEqual(editor.payload["draft_settings"]["style_id"], "2")
+
+    def test_adjustable_settings_enter_saves_the_full_draft_and_txt_enter_does_not_toggle(self):
+        cases = (
+            ("style_id", "2", Settings(style_id=2)),
+            ("speed", "1.25", Settings(speed=1.25)),
+            ("take_count", "5", Settings(take_count=5)),
+            ("save_text", True, Settings(save_text=True)),
+        )
+        for field, value, expected in cases:
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
+                app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+                app.config_path = Path(directory) / "config.json"
+                app._open_settings_editor(field)
+                editor = app._editor_controller.editor
+                if field == "save_text":
+                    app._handle_key(curses.KEY_RIGHT)
+                    self.assertTrue(editor.payload["draft_settings"][field])
+                else:
+                    editor.payload["draft_settings"][field] = value
+
+                target = Settings(
+                    style_id=expected.style_id,
+                    speed=expected.speed,
+                    take_count=expected.take_count,
+                    output_dir=app.settings.output_dir,
+                    save_text=expected.save_text,
+                )
+                app._handle_key("\n")
+
+                self.assertIsNone(app._editor_controller.editor)
+                self.assertEqual(app.settings, target)
+                self.assertEqual(app._persisted_settings, target)
+                self.assertEqual(app.session.replace_settings_calls, [target])
+                self.assertEqual(
+                    json.loads(app.config_path.read_text()),
+                    {
+                        "output_dir": str(target.output_dir),
+                        "take_count": target.take_count,
+                        "style_id": target.style_id,
+                        "speed": target.speed,
+                        "save_text": target.save_text,
+                    },
+                )
+
+    def test_settings_reset_and_back_or_escape_only_change_the_modal_draft(self):
+        opening = Settings(
+            style_id=3,
+            speed=1.2,
+            take_count=6,
+            output_dir=Path("/tmp/opening-settings"),
+            save_text=True,
+        )
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        app.settings = opening
+        app._persisted_settings = Settings()
+        app._operations.current_take = 1
+        app._operations.stop_playback = Mock()
+        clear_current_take = Mock(wraps=app._operations.clear_current_take)
+        app._operations.clear_current_take = clear_current_take
+        app._open_settings_editor()
+        editor = app._editor_controller.editor
+        editor.payload["draft_settings"].update(
+            {
+                "style_id": "7",
+                "speed": "2.00",
+                "take_count": "1",
+                "output_dir": "/tmp/changed-settings",
+                "save_text": False,
+            }
+        )
+        editor.selection = "reset"
+        with patch("voiceger_accent_adapter.tui.save_settings") as save:
+            app._handle_key("\n")
+        save.assert_not_called()
+        self.assertEqual(
+            editor.payload["draft_settings"],
+            {
+                "style_id": "3",
+                "speed": "1.2",
+                "take_count": "6",
+                "output_dir": "/tmp/opening-settings",
+                "save_text": True,
+            },
+        )
+        self.assertIs(app._editor_controller.editor, editor)
+        self.assertEqual(app.settings, opening)
+        self.assertEqual(app.session.replace_settings_calls, [])
+        self.assertEqual(app.session.candidates, (candidate(1),))
+        self.assertEqual(app._operations.current_take, 1)
+        self.assertNotEqual(app._persisted_settings, opening)
+
+        editor.payload["draft_settings"]["take_count"] = "2"
+        editor.selection = "back"
+        with patch("voiceger_accent_adapter.tui.save_settings") as save:
+            app._handle_key("\n")
+        save.assert_not_called()
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app.settings, opening)
+        self.assertEqual(app.session.replace_settings_calls, [])
+        self.assertEqual(app._operations.current_take, 1)
+
+        app._open_settings_editor()
+        app._editor_controller.editor.payload["draft_settings"]["style_id"] = "1"
+        with patch("voiceger_accent_adapter.tui.save_settings") as save:
+            app._handle_key("\x1b")
+        save.assert_not_called()
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app.settings, opening)
+        self.assertEqual(app.session.replace_settings_calls, [])
+        self.assertEqual(app._operations.current_take, 1)
+        app._operations.stop_playback.assert_not_called()
+        clear_current_take.assert_not_called()
+
+    def test_explicit_settings_save_persists_entire_cli_effective_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "settings.json"
+            effective = Settings(
+                style_id=2,
+                speed=1.25,
+                take_count=7,
+                output_dir=Path("/tmp/effective-output"),
+                save_text=True,
+            )
+            persisted = Settings(output_dir=Path("/tmp/config-output"))
+            app = TuiApp(
+                adapter=Mock(),
+                settings=effective,
+                persisted_settings=persisted,
+                config_path=config_path,
+            )
+            app.session = FakeSession(query=mixed_query(), candidates=(candidate(1),))
+            app._open_settings_editor()
+            editor = app._editor_controller.editor
+            editor.payload["draft_settings"]["output_dir"] = "/tmp/explicit-output"
+            editor.selection = "apply"
+
+            app._handle_key("\n")
+
+            target = Settings(
+                style_id=2,
+                speed=1.25,
+                take_count=7,
+                output_dir=Path("/tmp/explicit-output"),
+                save_text=True,
+            )
+            self.assertEqual(app.session.replace_settings_calls, [target])
+            self.assertEqual(app._persisted_settings, target)
+            self.assertEqual(json.loads(config_path.read_text()), {
+                "output_dir": "/tmp/explicit-output",
+                "take_count": 7,
+                "style_id": 2,
+                "speed": 1.25,
+                "save_text": True,
+            })
+
+    def test_identical_runtime_settings_still_save_without_reapplying_or_clearing_takes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+            app.config_path = Path(directory) / "settings.json"
+            app._operations.current_take = 1
+            app._operations.stop_playback = Mock()
+            clear_current_take = Mock(wraps=app._operations.clear_current_take)
+            app._operations.clear_current_take = clear_current_take
+            target = app.settings
+            app._open_settings_editor()
+
+            with patch("voiceger_accent_adapter.tui.save_settings") as save:
+                app._handle_key("\n")
+
+            save.assert_called_once_with(target, app.config_path)
+            self.assertEqual(app.session.replace_settings_calls, [])
+            self.assertEqual(app.session.candidates, (candidate(1),))
+            self.assertEqual(app._operations.current_take, 1)
+            clear_current_take.assert_not_called()
+            app._operations.stop_playback.assert_not_called()
+            self.assertEqual(app._persisted_settings, target)
+            self.assertEqual(app._status, "Settings saved.")
+            self.assertIsNone(app._editor_controller.editor)
+
+    def test_settings_save_failure_retry_does_not_reapply_or_invalidate_twice(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+            app.config_path = Path(directory) / "settings.json"
+            original_persisted = app._persisted_settings
+            app._operations.current_take = 1
+            app._operations.stop_playback = Mock()
+            clear_current_take = Mock(wraps=app._operations.clear_current_take)
+            app._operations.clear_current_take = clear_current_take
+            app._open_settings_editor("speed")
+            editor = app._editor_controller.editor
+            editor.payload["draft_settings"]["speed"] = "1.25"
+            target = Settings(speed=1.25, output_dir=app.settings.output_dir)
+
+            with patch(
+                "voiceger_accent_adapter.tui.save_settings",
+                side_effect=[OSError("disk full"), None],
+            ) as save:
+                app._handle_key("\n")
+                self.assertIs(app._editor_controller.editor, editor)
+                self.assertIn("could not be saved", editor.error)
+                self.assertIn("disk full", editor.error)
+                self.assertEqual(app.settings, target)
+                self.assertEqual(app._persisted_settings, original_persisted)
+                self.assertEqual(app.session.replace_settings_calls, [target])
+                self.assertEqual(app.session.candidates, ())
+                self.assertIsNone(app._operations.current_take)
+                clear_current_take.assert_called_once_with()
+                app._operations.stop_playback.assert_called_once_with()
+
+                app._handle_key("\n")
+
+            self.assertEqual(save.call_count, 2)
+            self.assertEqual(app.session.replace_settings_calls, [target])
+            clear_current_take.assert_called_once_with()
+            app._operations.stop_playback.assert_called_once_with()
+            self.assertEqual(app._persisted_settings, target)
+            self.assertIsNone(app._editor_controller.editor)
+            self.assertEqual(app._status, "Settings saved.")
 
     def test_generate_arrows_persist_count_clear_old_batch_and_respect_bounds_and_busy(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1391,11 +1641,10 @@ class TuiTests(unittest.TestCase):
             app = self.make_app(query=mixed_query())
             app.config_path = Path(directory) / "config.json"
             original_settings = app.settings
-            app._open_settings_editor("speed")
+            app._open_settings_editor("output_dir", edit=True)
             editor = app._editor_controller.editor
             editor.payload["draft_settings"]["take_count"] = "2"
-            app._handle_key("\n")
-            self.assertEqual(editor.active_field, "speed")
+            self.assertEqual(editor.active_field, "output_dir")
             app._handle_key("9")
             app._handle_key("\x1b")
             self.assertIsNone(app._editor_controller.editor)
@@ -1733,10 +1982,22 @@ class TuiTests(unittest.TestCase):
             navigation_revision=navigation_revision,
         )
 
-        settings_shortcut = self.make_app(query=mixed_query())
-        settings_shortcut._handle_key("s")
-        self.assertEqual(settings_shortcut._editor_controller.editor.kind, "settings")
-        self.assertEqual(settings_shortcut._editor_controller.editor.selection, "style_id")
+        for shortcut, field in (
+            ("s", "style_id"), ("v", "speed"), ("n", "take_count"),
+            ("x", "save_text"),
+        ):
+            with self.subTest(shortcut=shortcut):
+                settings_shortcut = self.make_app(query=mixed_query())
+                settings_shortcut._handle_key(shortcut)
+                editor = settings_shortcut._editor_controller.editor
+                self.assertEqual(editor.kind, "settings")
+                self.assertEqual(editor.selection, field)
+                self.assertIsNone(editor.active_field)
+
+        output_shortcut = self.make_app(query=mixed_query())
+        output_shortcut._handle_key("o")
+        self.assertEqual(output_shortcut._editor_controller.editor.selection, "output_dir")
+        self.assertIsNone(output_shortcut._editor_controller.editor.active_field)
 
         help_shortcut = self.make_app(query=mixed_query())
         help_shortcut._handle_key("?")

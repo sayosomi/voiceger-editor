@@ -1112,16 +1112,128 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.editor.selection = "apply"
         intent = controller._activate_selection(self.settings(), None, None)[0]
         self.assertIsInstance(intent, ApplySettingsIntent)
-        self.assertEqual(intent.changes.style_id, 2)
+        self.assertEqual(intent.settings.style_id, 2)
+        self.assertEqual(intent.settings.output_dir, self.settings().output_dir)
+
+    def test_settings_selection_order_and_adjustable_enter_emit_full_targets(self):
+        settings = self.settings()
+        controller, _provider = self.make_controller()
+        controller.open_settings(settings, origin=("settings", None), busy=False)
+        self.assertEqual(
+            controller.selection_keys(),
+            [
+                "style_id", "speed", "take_count", "output_dir", "save_text",
+                "apply", "reset", "back",
+            ],
+        )
+
+        drafts = (
+            ("style_id", {"style_id": "2"}, Settings(style_id=2, output_dir=settings.output_dir)),
+            ("speed", {"speed": "1.25"}, Settings(speed=1.25, output_dir=settings.output_dir)),
+            ("take_count", {"take_count": "3"}, Settings(take_count=3, output_dir=settings.output_dir)),
+            ("save_text", {"save_text": True}, Settings(save_text=True, output_dir=settings.output_dir)),
+        )
+        for field, updates, expected in drafts:
+            with self.subTest(field=field):
+                controller.open_settings(
+                    settings, origin=("settings", None), busy=False
+                )
+                editor = controller.editor
+                editor.payload["draft_settings"].update(updates)
+                editor.selection = field
+                intents = controller.handle_key(
+                    "\n", settings=settings, query=None, current_caption=None
+                )
+                self.assertEqual(intents, (ApplySettingsIntent(expected),))
+                self.assertIs(controller.editor, editor)
+                self.assertIsNone(editor.active_field)
+
+    def test_settings_validation_rejects_invalid_full_draft_before_emitting_apply(self):
+        settings = self.settings()
+        controller, _provider = self.make_controller()
+        controller.open_settings(settings, origin=("settings", None), busy=False)
+        editor = controller.editor
+        editor.payload["draft_settings"]["take_count"] = "9"
+
+        intents = controller.handle_key(
+            "\n", settings=settings, query=None, current_caption=None
+        )
+
+        self.assertEqual(intents, ())
+        self.assertIs(controller.editor, editor)
+        self.assertIn("take_count must be an integer from 1 through 8", editor.error)
+
+    def test_settings_reset_restores_opening_snapshot_and_back_or_escape_discards(self):
+        opening = Settings(
+            style_id=3,
+            speed=1.2,
+            take_count=6,
+            output_dir=Path("/tmp/opening-output"),
+            save_text=True,
+        )
+        controller, _provider = self.make_controller()
+        controller.open_settings(opening, origin=("help", None), busy=False)
+        editor = controller.editor
+        editor.payload["draft_settings"].update(
+            {
+                "style_id": "7",
+                "speed": "2.00",
+                "take_count": "1",
+                "output_dir": "/tmp/changed-output",
+                "save_text": False,
+            }
+        )
+        editor.selection = "reset"
+        intents = controller.handle_key(
+            "\n", settings=opening, query=None, current_caption=None
+        )
+        self.assertEqual(
+            editor.payload["draft_settings"],
+            {
+                "style_id": "3",
+                "speed": "1.2",
+                "take_count": "6",
+                "output_dir": "/tmp/opening-output",
+                "save_text": True,
+            },
+        )
+        self.assertEqual(intents[-1], UpdateStatusIntent("Settings draft reset."))
+        self.assertIs(controller.editor, editor)
+
+        editor.payload["draft_settings"]["take_count"] = "2"
+        editor.selection = "back"
+        back = controller.handle_key(
+            "\n", settings=opening, query=None, current_caption=None
+        )
+        self.assertIsNone(controller.editor)
+        self.assertEqual(
+            back[-1], CloseEditorIntent(("help", None), "Settings draft discarded.")
+        )
+
+        controller.open_settings(opening, origin=("settings", None), busy=False)
+        controller.editor.payload["draft_settings"]["style_id"] = "1"
+        cancelled = controller.handle_key(
+            "\x1b", settings=opening, query=None, current_caption=None
+        )
+        self.assertIsNone(controller.editor)
+        self.assertEqual(
+            cancelled[-1],
+            CloseEditorIntent(("settings", None), "Settings draft discarded."),
+        )
 
     def test_settings_field_edits_remain_on_the_same_selection_row(self):
         controller, _provider = self.make_controller()
         controller.open_settings(
             self.settings(), origin=("settings", None), busy=False,
-            selected_field="output_dir", edit=True,
+            selected_field="output_dir",
         )
         self.assertEqual(controller.editor.selection, "output_dir")
+        self.assertIsNone(controller.editor.active_field)
+        controller.handle_key(
+            "\n", settings=self.settings(), query=None, current_caption=None
+        )
         self.assertEqual(controller.editor.active_field, "output_dir")
+        controller.editor.input_value = "/tmp/new-output"
         self.assertEqual(
             controller.handle_key(
                 "\n", settings=self.settings(), query=None, current_caption=None
@@ -1130,6 +1242,10 @@ class TuiEditorControllerTests(unittest.TestCase):
         )
         self.assertEqual(controller.editor.selection, "output_dir")
         self.assertIsNone(controller.editor.active_field)
+        self.assertEqual(
+            controller.editor.payload["draft_settings"]["output_dir"],
+            "/tmp/new-output",
+        )
 
     def test_cancel_and_success_close_restore_the_exact_origin(self):
         controller, _provider = self.make_controller()
@@ -1142,6 +1258,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.open_settings(self.settings(), origin=("settings", None), busy=False)
         result = controller.complete_settings_application(SettingsApplicationResult())
         self.assertEqual(result[-1].origin, ("settings", None))
+        self.assertEqual(result[-1].status, "Settings saved.")
 
     def test_japanese_edit_text_back_restores_the_pronunciation_draft_exactly(self):
         query = direct_japanese_query()
