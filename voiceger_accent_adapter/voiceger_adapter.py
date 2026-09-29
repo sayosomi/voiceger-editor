@@ -20,7 +20,8 @@ from .english_stress import normalize_english_phonemes
 from .openjtalk_converter import text_to_pronunciation
 from .output import save_output
 from .pronunciation import Pronunciation, format_pronunciation, parse_pronunciation
-from .runtime_locks import LANGSEGMENT_LOCK
+from .runtime_locks import LANGSEGMENT_LOCK, OPENJTALK_LOCK
+from .user_dictionary import UserDictionaryCore
 from .voiceger_tokens import pronunciation_to_voiceger_tokens
 
 
@@ -135,9 +136,16 @@ class VoicegerAdapter:
             "ずんだもん",
         )
 
+        self.user_dictionary = UserDictionaryCore(self.voiceger_root)
+
         self._lock = RLock()
         self._loaded = False
         self._runtime: dict[str, Any] = {}
+
+    def ensure_japanese_dictionary_active(self, *, force: bool = False) -> None:
+        """Activate the merged Voiceger and adapter Japanese dictionary."""
+
+        self.user_dictionary.ensure_japanese_active(force=force)
 
     def _require_paths(self) -> None:
         required = [
@@ -174,6 +182,10 @@ class VoicegerAdapter:
         if "\n" in text or "\r" in text:
             raise ValueError("English segment text must not contain newlines")
 
+        dictionary_hit = self.user_dictionary.lookup_english_entry(text)
+        if dictionary_hit is not None:
+            return dictionary_hit
+
         with self._lock:
             self._require_text_paths()
             self._ensure_import_paths()
@@ -198,6 +210,10 @@ class VoicegerAdapter:
             raise ValueError("English segment text must not be empty")
         if "\n" in text or "\r" in text:
             raise ValueError("English segment text must not contain newlines")
+
+        dictionary_hit = self.user_dictionary.lookup_english_entry(text)
+        if dictionary_hit is not None:
+            return ((text, tuple(dictionary_hit)),)
 
         with self._lock:
             self._require_text_paths()
@@ -283,8 +299,9 @@ class VoicegerAdapter:
             with _pushd(self.sovits_dir):
                 from AR.modules.activation import MhaPatched
                 import text.english as english
-                import text.japanese as japanese
-                import GPT_SoVITS.inference_webui as inference_webui
+                with self.user_dictionary.voiceger_japanese_runtime_transition():
+                    import text.japanese as japanese
+                    import GPT_SoVITS.inference_webui as inference_webui
 
                 with MhaPatched():
                     inference_webui.change_gpt_weights(
@@ -318,6 +335,8 @@ class VoicegerAdapter:
         """Synthesize one utterance and return audio in memory."""
 
         source_text = _ensure_single_utterance(text)
+        if pronunciation is None:
+            self.user_dictionary.ensure_japanese_active()
         synthesis_text, parsed, resolved = resolve_pronunciation(
             source_text,
             pronunciation,
@@ -359,7 +378,8 @@ class VoicegerAdapter:
             def controlled_g2p(norm_text: str, with_prosody: bool = True):
                 if norm_text == normalized_target and with_prosody:
                     return list(tokens)
-                return original_g2p(norm_text, with_prosody)
+                with OPENJTALK_LOCK:
+                    return original_g2p(norm_text, with_prosody)
 
             try:
                 japanese.g2p = controlled_g2p
@@ -469,7 +489,8 @@ class VoicegerAdapter:
                     queue = japanese_override_queues.get(norm_text)
                     if queue:
                         return queue.popleft()
-                return original_japanese_g2p(norm_text, with_prosody)
+                with OPENJTALK_LOCK:
+                    return original_japanese_g2p(norm_text, with_prosody)
 
             def controlled_clean_text_inf(
                 value: str,

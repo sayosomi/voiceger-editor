@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 
 from .pronunciation import AccentPhrase, Pronunciation
+from .runtime_locks import OPENJTALK_LOCK
 
 
 MoraG2P = Callable[[str], Sequence[str]]
@@ -36,7 +37,8 @@ def _default_mora_g2p(mora: str) -> Sequence[str]:
             "run this from Voiceger's Python environment or install pyopenjtalk"
         ) from exc
 
-    phones = pyopenjtalk.g2p(mora, kana=False, join=False)
+    with OPENJTALK_LOCK:
+        phones = pyopenjtalk.g2p(mora, kana=False, join=False)
     return tuple(phones)
 
 

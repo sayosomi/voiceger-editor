@@ -84,6 +84,7 @@ class UtteranceSession:
         """Create the initial query from the supplied Caption."""
 
         _validate_caption(caption)
+        adapter.ensure_japanese_dictionary_active()
         query = build_mixed_audio_query(
             caption,
             english_g2p=adapter.english_phonemes,
@@ -175,6 +176,7 @@ class UtteranceSession:
     def build_pronunciation_from_caption(self) -> None:
         """Build and atomically install a fresh complete query from Caption."""
 
+        self._adapter.ensure_japanese_dictionary_active()
         replacement_query = build_mixed_audio_query(
             self._caption,
             english_g2p=self._adapter.english_phonemes,

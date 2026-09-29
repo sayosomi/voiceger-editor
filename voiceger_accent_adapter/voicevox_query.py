@@ -9,6 +9,7 @@ from .pronunciation import (
     Pronunciation,
     format_pronunciation,
 )
+from .runtime_locks import OPENJTALK_LOCK
 from .voicevox_api_models import AccentPhrase, AudioQuery, Mora
 
 
@@ -33,7 +34,8 @@ def _mora_phones(
             "pyopenjtalk is required; run this from Voiceger's Python environment"
         ) from exc
 
-    phones = list(pyopenjtalk.g2p(text, kana=False, join=False))
+    with OPENJTALK_LOCK:
+        phones = list(pyopenjtalk.g2p(text, kana=False, join=False))
     if len(phones) == 1:
         return None, phones[0]
     if len(phones) == 2:

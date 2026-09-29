@@ -67,6 +67,7 @@ class FakeAdapter:
     def __init__(self):
         self.voiceger_root = Path("/voiceger")
         self.english_phonemes = Mock(return_value=["HH", "AH0"])
+        self.ensure_japanese_dictionary_active = Mock()
 
 
 class FakeTakeBatch:
@@ -298,6 +299,7 @@ class UtteranceSessionTests(unittest.TestCase):
             english_g2p=self.adapter.english_phonemes,
             output_sampling_rate=32000,
         )
+        self.adapter.ensure_japanese_dictionary_active.assert_called_once_with()
         self.assertFalse(session.has_active_batch)
         self.assertFalse(session.utterance_manually_edited)
         self.assertEqual(session.query.speedScale, self.settings.speed)
@@ -400,6 +402,7 @@ class UtteranceSessionTests(unittest.TestCase):
             english_g2p=self.adapter.english_phonemes,
             output_sampling_rate=32000,
         )
+        self.adapter.ensure_japanese_dictionary_active.assert_called_once_with()
         self.assertEqual(session.caption, source)
         self.assertEqual(session.pure_japanese_utterance_text, source)
         self.assertFalse(session.utterance_manually_edited)
