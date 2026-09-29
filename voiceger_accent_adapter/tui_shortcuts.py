@@ -1,4 +1,4 @@
-"""Declarative shortcut metadata for editor and modal selectable items."""
+"""Declarative shortcut metadata for Main actions and editor/modal items."""
 
 from __future__ import annotations
 
@@ -27,6 +27,32 @@ class MenuItem:
         if self.shortcut is None:
             return self.label
         return f"[{self.shortcut.upper()}] {self.label}"
+
+
+@dataclass(frozen=True)
+class MainShortcut:
+    """One visible primary Main-screen action shortcut."""
+
+    navigation_key: str
+    label: str
+    shortcut: str
+
+    @property
+    def display_label(self) -> str:
+        return f"[{self.shortcut.upper()}] {self.label}"
+
+    def display_with_label(self, label: str) -> str:
+        return f"[{self.shortcut.upper()}] {label}"
+
+
+_MAIN_SHORTCUTS: tuple[MainShortcut, ...] = (
+    MainShortcut("build_pronunciation", "Build pronunciation", "b"),
+    MainShortcut("add_section", "Add section", "a"),
+    MainShortcut("generate", "Generate", "g"),
+    MainShortcut("settings", "Settings", "s"),
+    MainShortcut("help", "Help", "?"),
+    MainShortcut("quit", "Quit", "q"),
+)
 
 
 _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
@@ -138,6 +164,32 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
 }
 
 
+def main_shortcuts() -> tuple[MainShortcut, ...]:
+    """Return the visible primary Main-screen shortcut declarations."""
+
+    return _MAIN_SHORTCUTS
+
+
+def main_shortcut(navigation_key: str) -> MainShortcut:
+    """Return one declared Main shortcut by navigation key."""
+
+    for item in _MAIN_SHORTCUTS:
+        if item.navigation_key == navigation_key:
+            return item
+    raise KeyError(f"Main has no shortcut declaration for {navigation_key!r}")
+
+
+def resolve_main_shortcut(key: Any) -> MainShortcut | None:
+    """Resolve one lowercase visible Main shortcut."""
+
+    if not isinstance(key, str) or len(key) != 1:
+        return None
+    for item in _MAIN_SHORTCUTS:
+        if item.shortcut == key:
+            return item
+    return None
+
+
 def menu_definitions() -> Mapping[str, tuple[MenuItem, ...]]:
     """Return all declared editor/modal menu definitions for architecture tests."""
 
@@ -247,4 +299,19 @@ def validate_menu_definitions() -> tuple[str, ...]:
                 errors.append(
                     f"{screen_kind}:{item.key}: shortcut target is not declared selectable"
                 )
+    seen_main_keys: set[str] = set()
+    seen_main_shortcuts: set[str] = set()
+    for item in _MAIN_SHORTCUTS:
+        if item.navigation_key in seen_main_keys:
+            errors.append(
+                f"main: duplicate navigation key {item.navigation_key!r}"
+            )
+        seen_main_keys.add(item.navigation_key)
+        if len(item.shortcut) != 1 or item.shortcut != item.shortcut.lower():
+            errors.append(
+                f"main:{item.navigation_key}: shortcut must be one lowercase character"
+            )
+        if item.shortcut in seen_main_shortcuts:
+            errors.append(f"main: duplicate shortcut {item.shortcut!r}")
+        seen_main_shortcuts.add(item.shortcut)
     return tuple(errors)

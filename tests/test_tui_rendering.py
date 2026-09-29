@@ -227,9 +227,9 @@ class TuiRenderingTests(unittest.TestCase):
 
         labels = [line.text for line in lines]
         caption_index = next(index for index, value in enumerate(labels) if "Caption :" in value)
-        build_index = labels.index("  [ Build pronunciation ]")
-        add_index = labels.index("  [ Add section ]")
-        generate_index = next(index for index, value in enumerate(labels) if value.startswith("  [ Generate"))
+        build_index = labels.index("  [B] Build pronunciation")
+        add_index = labels.index("  [A] Add section")
+        generate_index = next(index for index, value in enumerate(labels) if value.startswith("  [G] Generate"))
         pronunciation_index = next(
             index for index, line in enumerate(lines)
             if line.key and line.key[0] == "pronunciation"
@@ -391,10 +391,14 @@ class TuiRenderingTests(unittest.TestCase):
             "on EN: primary stress by one vowel",
             "on JA: edit segment pronunciation",
             "on EN: edit word phonemes",
+            "b / a / g",
+            "Build pronunciation / Add section / Generate or regenerate all",
             "Menu mode: editor/modal action letters are active.",
             "Editing: Enter finishes; printable shortcut letters insert text.",
         ):
             self.assertIn(text, visible)
+        self.assertNotIn("F5", visible)
+        self.assertNotIn("Ctrl+G", visible)
         settings_shortcuts = (("s", "style"), ("v", "speed"), ("n", "takes"), ("o", "output"), ("x", "TXT"))
         rows = []
         for shortcut, label in settings_shortcuts:
@@ -903,7 +907,7 @@ class TuiRenderingTests(unittest.TestCase):
         )
         self.assertFalse(any(text.startswith("Status:") for _row, _col, text, _attr in screen.drawn))
 
-    def test_generate_and_candidate_rows_keep_existing_main_actions(self):
+    def test_main_action_and_candidate_rows_show_visible_shortcuts(self):
         state = render_state(
             session=FakeSession(candidates=(candidate(1), candidate(2))),
             settings=Settings(take_count=6),
@@ -912,9 +916,17 @@ class TuiRenderingTests(unittest.TestCase):
         )
         lines = self.renderer.navigation_document(state, 100)
         labels = {line.key: line.text for line in lines if line.key is not None}
-        self.assertIn("Regenerate all <<6 > takes", labels[("generate", None)])
-        self.assertIn("Take 1  0.01s", labels[("candidate", 1)])
-        self.assertIn("Take 2  0.01s", labels[("candidate", 2)])
+        self.assertEqual(labels[("build_pronunciation", None)], "  [B] Build pronunciation")
+        self.assertEqual(labels[("add_section", None)], "  [A] Add section")
+        self.assertIn("[G] Regenerate all <<6 > takes", labels[("generate", None)])
+        self.assertEqual(labels[("candidate", 1)], "  [1] Take 1  0.01s")
+        self.assertEqual(labels[("candidate", 2)], "  [2] Take 2  0.01s")
+        self.assertEqual(labels[("settings", None)], "  [S] Settings")
+        self.assertEqual(labels[("help", None)], "  [?] Help")
+        self.assertEqual(labels[("quit", None)], "  [Q] Quit")
+        caption = labels[("caption", None)]
+        self.assertIn("Caption : ", caption)
+        self.assertNotIn("[T]", caption)
 
     def test_unavailable_status_and_terminal_write_safety_remain(self):
         screen = FakeScreen()

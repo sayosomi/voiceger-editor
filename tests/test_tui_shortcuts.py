@@ -13,8 +13,11 @@ from voiceger_accent_adapter.tui_editors import (
 )
 from voiceger_accent_adapter.tui_rendering import TuiRenderer, TuiRenderState
 from voiceger_accent_adapter.tui_shortcuts import (
+    main_shortcut,
+    main_shortcuts,
     menu_definitions,
     menu_items,
+    resolve_main_shortcut,
     resolve_shortcut,
     validate_menu_definitions,
 )
@@ -71,6 +74,30 @@ class TuiShortcutTests(unittest.TestCase):
                     if item.shortcut is not None
                 }
                 self.assertEqual(actual, mapping)
+
+    def test_main_shortcuts_match_issue_49_contract_and_share_display_metadata(self):
+        expected = {
+            "b": "build_pronunciation",
+            "a": "add_section",
+            "g": "generate",
+            "s": "settings",
+            "?": "help",
+            "q": "quit",
+        }
+        actual = {item.shortcut: item.navigation_key for item in main_shortcuts()}
+        self.assertEqual(actual, expected)
+        for shortcut, navigation_key in expected.items():
+            with self.subTest(shortcut=shortcut):
+                resolved = resolve_main_shortcut(shortcut)
+                self.assertIsNotNone(resolved)
+                self.assertEqual(resolved, main_shortcut(navigation_key))
+                self.assertTrue(resolved.display_label.startswith(
+                    f"[{shortcut.upper()}] "
+                ))
+
+        for removed in (curses.KEY_F5, "\x07", "R"):
+            with self.subTest(removed=removed):
+                self.assertIsNone(resolve_main_shortcut(removed))
 
     def test_metadata_architecture_is_valid_and_no_shortcut_exception_is_explicit(self):
         self.assertEqual(validate_menu_definitions(), ())

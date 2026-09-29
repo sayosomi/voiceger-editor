@@ -21,7 +21,7 @@ from .tui_display import (
     _wrap_text,
 )
 from .tui_editors import PronunciationRow
-from .tui_shortcuts import menu_item
+from .tui_shortcuts import main_shortcut, menu_item
 
 
 _HELP_ITEMS = (
@@ -39,20 +39,25 @@ _HELP_ITEMS = (
     ("Space", ": replay a focused candidate"),
     ("Esc", ": return from Help/candidate review; cancel editor draft"),
     ("Tab / Shift+Tab", ": move to next / previous major section/action"),
-    ("F5 / Ctrl+G / R", ": activate Generate / Regenerate all"),
+    (
+        " / ".join(
+            main_shortcut(name).shortcut
+            for name in ("build_pronunciation", "add_section", "generate")
+        ),
+        ": Build pronunciation / Add section / Generate or regenerate all",
+    ),
     ("1-8", ": focus and play an available candidate"),
     ("r", ": regenerate the focused candidate"),
     ("t", ": edit Caption"),
-    ("s", ": open Settings at style"),
+    (main_shortcut("settings").shortcut, ": open Settings at style"),
     ("v", ": open Settings at speed"),
     ("n", ": open Settings at takes"),
     ("o", ": open Settings at output"),
     ("x", ": open Settings at TXT"),
-    (None, "Build pronunciation: rebuild automatically from the current Caption"),
     (None, "Menu mode: editor/modal action letters are active."),
     (None, "Editing: Enter finishes; printable shortcut letters insert text."),
-    ("?", ": open or close Help"),
-    ("q", ": Quit"),
+    (main_shortcut("help").shortcut, ": open or close Help"),
+    (main_shortcut("quit").shortcut, ": Quit"),
 )
 
 
@@ -452,12 +457,18 @@ class TuiRenderer:
         session = state.session
         caption_action(("caption", None), session.caption if session else "")
         if session is not None:
-            action(("build_pronunciation", None), "[ Build pronunciation ]")
+            action(
+                ("build_pronunciation", None),
+                main_shortcut("build_pronunciation").display_label,
+            )
             plain()
             for index, item in enumerate(state.pronunciation_rows):
                 pronunciation_action(index, item)
             plain()
-            action(("add_section", None), "[ Add section ]")
+            action(
+                ("add_section", None),
+                main_shortcut("add_section").display_label,
+            )
             has_batch = session.has_active_batch
             if state.busy:
                 if state.worker_operation == "regenerate_one":
@@ -483,7 +494,10 @@ class TuiRenderer:
                     if has_batch
                     else f"Generate {adjustable_count} takes"
                 )
-            action(("generate", None), f"[ {generate_label} ]")
+            action(
+                ("generate", None),
+                main_shortcut("generate").display_with_label(generate_label),
+            )
             plain()
             if not session.candidates:
                 plain("Candidates   No candidates yet.")
@@ -493,13 +507,13 @@ class TuiRenderer:
                 duration = _duration_seconds(candidate.audio, candidate.sampling_rate)
                 action(
                     ("candidate", candidate.number),
-                    f"Take {candidate.number}  {duration:.2f}s",
+                    f"[{candidate.number}] Take {candidate.number}  {duration:.2f}s",
                 )
             plain()
 
-        action(("settings", None), "Settings  [s]")
-        action(("help", None), "Help      [?]")
-        action(("quit", None), "Quit      [q]")
+        action(("settings", None), main_shortcut("settings").display_label)
+        action(("help", None), main_shortcut("help").display_label)
+        action(("quit", None), main_shortcut("quit").display_label)
         return lines
 
     def editor_document(

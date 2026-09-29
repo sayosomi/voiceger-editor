@@ -454,14 +454,14 @@ class TuiTests(unittest.TestCase):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
         app._open_settings_editor()
         editor = app._editor_controller.editor
-        app._navigation.activate_generate = Mock(return_value=())
+        app._navigation.activate_item = Mock(return_value=())
         app._navigation.focus_candidate = Mock(return_value=())
         app._navigation.activate_regenerate_focused = Mock(return_value=())
 
-        for key in (curses.KEY_F5, "\x07", "1", "R"):
+        for key in ("g", curses.KEY_F5, "\x07", "1", "R"):
             app._handle_key(key)
 
-        app._navigation.activate_generate.assert_not_called()
+        app._navigation.activate_item.assert_not_called()
         app._navigation.focus_candidate.assert_not_called()
         app._navigation.activate_regenerate_focused.assert_not_called()
         self.assertIs(app._editor_controller.editor, editor)
@@ -516,13 +516,13 @@ class TuiTests(unittest.TestCase):
                 line for line, key in navigation_document(app, 100)
                 if key == ("generate", None)
             )
-            self.assertIn("[ Generate <<3 > takes ]", left_label)
+            self.assertIn("[G] Generate <<3 > takes", left_label)
 
             app._render()
-            self.assertTrue(any("[ Generate <<3 > takes ]" in text for _row, _column, text, _attr in screen.drawn))
+            self.assertTrue(any("[G] Generate <<3 > takes" in text for _row, _column, text, _attr in screen.drawn))
             self.assertIsNone(app._pressed_adjustment)
             app._render()
-            self.assertTrue(any("[ Generate < 3 > takes ]" in text for _row, _column, text, _attr in screen.drawn))
+            self.assertTrue(any("[G] Generate < 3 > takes" in text for _row, _column, text, _attr in screen.drawn))
 
             app._handle_key(curses.KEY_RIGHT)
             self.assertEqual(app.settings.take_count, 4)
@@ -530,12 +530,12 @@ class TuiTests(unittest.TestCase):
                 line for line, key in navigation_document(app, 100)
                 if key == ("generate", None)
             )
-            self.assertIn("[ Generate < 4>> takes ]", right_label)
+            self.assertIn("[G] Generate < 4>> takes", right_label)
             app._render()
-            self.assertTrue(any("[ Generate < 4>> takes ]" in text for _row, _column, text, _attr in screen.drawn))
+            self.assertTrue(any("[G] Generate < 4>> takes" in text for _row, _column, text, _attr in screen.drawn))
             self.assertIsNone(app._pressed_adjustment)
             app._render()
-            self.assertTrue(any("[ Generate < 4 > takes ]" in text for _row, _column, text, _attr in screen.drawn))
+            self.assertTrue(any("[G] Generate < 4 > takes" in text for _row, _column, text, _attr in screen.drawn))
 
             app.settings = Settings(take_count=1)
             app._pressed_adjustment = ("navigation", "generate", 1)
@@ -546,7 +546,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in navigation_document(app, 100)
                 if key == ("generate", None)
             )
-            self.assertIn("[ Generate < 1 > takes ]", left_label)
+            self.assertIn("[G] Generate < 1 > takes", left_label)
 
             app.settings = Settings(take_count=8)
             app._pressed_adjustment = ("navigation", "generate", -1)
@@ -557,7 +557,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in navigation_document(app, 100)
                 if key == ("generate", None)
             )
-            self.assertIn("[ Generate < 8 > takes ]", right_label)
+            self.assertIn("[G] Generate < 8 > takes", right_label)
 
             app._handle_key(curses.KEY_UP)
             app._handle_key(curses.KEY_DOWN)
@@ -566,7 +566,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in navigation_document(app, 100)
                 if key == ("generate", None)
             )
-            self.assertIn("[ Generate < 8 > takes ]", idle_label)
+            self.assertIn("[G] Generate < 8 > takes", idle_label)
 
     def test_settings_feedback_requires_a_movable_change_and_clears_after_render(self):
         app = self.make_app(query=mixed_query())
@@ -2002,11 +2002,50 @@ class TuiTests(unittest.TestCase):
         app = self.make_app(query=mixed_query())
         app._open_caption_editor("abc")
         original_settings = app.settings
-        for key in ("q", "?", "s", "x", "t", "1", curses.KEY_F5):
+        for key in ("q", "?", "s", "x", "t", "1", "a", "b", "g", curses.KEY_F5):
             app._handle_key(key)
         self.assertFalse(app._exit_requested)
         self.assertTrue(app.settings is original_settings)
-        self.assertEqual(app._editor_controller.editor.input_value, "abcq? sxt1".replace(" ", ""))
+        self.assertEqual(app._editor_controller.editor.input_value, "abcq?sxt1abg")
+
+    def test_primary_main_shortcuts_activate_visible_actions_and_legacy_generation_keys_are_removed(self):
+        build = self.make_app(query=mixed_query())
+        build._request_build_pronunciation = Mock()
+        build._handle_key("b")
+        build._request_build_pronunciation.assert_called_once_with()
+
+        add = self.make_app(query=mixed_query())
+        add._handle_key("a")
+        self.assertEqual(add._editor_controller.editor.kind, "add_section")
+
+        generate = self.make_app(query=mixed_query())
+        generate._operations.start_generation = Mock(return_value=())
+        generate._handle_key("g")
+        generate._operations.start_generation.assert_called_once_with(
+            generate.session,
+            take_count=generate.settings.take_count,
+            navigation_revision=generate._navigation.revision,
+        )
+
+        regenerate = self.make_app(
+            query=mixed_query(), candidates=(candidate(1),)
+        )
+        regenerate._operations.start_regenerate_all = Mock(return_value=())
+        regenerate._handle_key("g")
+        regenerate._operations.start_regenerate_all.assert_called_once_with(
+            regenerate.session,
+            take_count=regenerate.settings.take_count,
+            navigation_revision=regenerate._navigation.revision,
+        )
+
+        for removed in (curses.KEY_F5, "\x07", "R"):
+            with self.subTest(removed=removed):
+                legacy = self.make_app(query=mixed_query())
+                legacy._operations.start_generation = Mock(return_value=())
+                legacy._operations.start_regenerate_all = Mock(return_value=())
+                legacy._handle_key(removed)
+                legacy._operations.start_generation.assert_not_called()
+                legacy._operations.start_regenerate_all.assert_not_called()
 
     def test_navigation_shortcuts_open_the_same_visible_actions(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
