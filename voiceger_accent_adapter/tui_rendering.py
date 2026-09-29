@@ -607,19 +607,17 @@ class TuiRenderer:
             values = (
                 (
                     "style_id",
-                    "Style",
                     self.setting_display("style_id", draft["style_id"], state.voiceger_root),
                 ),
                 (
                     "speed",
-                    "Speed",
                     self.setting_display("speed", draft["speed"], state.voiceger_root),
                 ),
-                ("take_count", "Takes", str(draft["take_count"])),
-                ("output_dir", "Output", str(draft["output_dir"])),
-                ("save_text", "TXT", "ON" if draft["save_text"] else "OFF"),
+                ("take_count", str(draft["take_count"])),
+                ("output_dir", str(draft["output_dir"])),
+                ("save_text", "ON" if draft["save_text"] else "OFF"),
             )
-            for key, _label, value in values:
+            for key, value in values:
                 item = menu_item(editor.kind, key, editor.payload)
                 label = item.label
                 if editor.active_field == key:
@@ -636,7 +634,7 @@ class TuiRenderer:
                     )
                     lines.append((f"{marker}{label:<12}{value}{shortcut}", key))
             plain()
-            selectable("apply", "[ Apply and save ]")
+            selectable("apply")
             selectable("reset")
             selectable("back")
         elif editor.kind == "english_word":
