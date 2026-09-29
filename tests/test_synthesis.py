@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 import unittest
+import warnings
 from unittest.mock import Mock, patch
 
 from voiceger_accent_adapter.mixed_language import build_mixed_synthesis_plan
@@ -73,7 +74,7 @@ class SynthesisTests(unittest.TestCase):
         self.assertIs(result, result_mapping)
         self.adapter.synthesize_audio.assert_called_once()
 
-    def test_each_unsupported_control_is_rejected_with_its_field_name(self):
+    def test_each_unsupported_prosody_control_is_warned_and_ignored(self):
         changes = {
             "pitchScale": 0.5,
             "intonationScale": 0.5,
@@ -82,53 +83,108 @@ class SynthesisTests(unittest.TestCase):
             "postPhonemeLength": 0.2,
             "pauseLength": 0.2,
             "pauseLengthScale": 0.5,
-            "outputSamplingRate": 44100,
-            "outputStereo": True,
         }
 
         for field, value in changes.items():
             with self.subTest(field=field):
-                query = _query(**{field: value})
+                result_mapping = {"audio": object(), "sampling_rate": 32000}
                 adapter = FakeAdapter()
+                adapter.synthesize_audio.return_value = result_mapping
 
-                with self.assertRaises(ValueError) as raised:
-                    synthesize_audio_query(
+                with self.assertWarnsRegex(
+                    UserWarning,
+                    rf"ignored unsupported VOICEVOX AudioQuery fields: {field}",
+                ):
+                    result = synthesize_audio_query(
                         adapter=adapter,
-                        query=query,
+                        query=_query(**{field: value}),
                         style=self.style,
                     )
 
-                self.assertEqual(
-                    str(raised.exception),
-                    "currently unsupported AudioQuery fields were changed: "
-                    + field,
-                )
-                adapter.synthesize_audio.assert_not_called()
+                self.assertIs(result, result_mapping)
+                adapter.synthesize_audio.assert_called_once()
                 adapter.synthesize_mixed_audio.assert_not_called()
 
-    def test_multiple_unsupported_fields_keep_existing_message_order(self):
+    def test_multiple_ignored_fields_are_reported_together_in_stable_order(self):
+        result_mapping = {"audio": object(), "sampling_rate": 32000}
+        adapter = FakeAdapter()
+        adapter.synthesize_audio.return_value = result_mapping
         query = _query(
             pitchScale=0.5,
             volumeScale=0.5,
             prePhonemeLength=0.2,
             pauseLength=0.2,
-            outputSamplingRate=44100,
-            outputStereo=True,
+            pauseLengthScale=0.5,
         )
 
-        with self.assertRaises(ValueError) as raised:
-            synthesize_audio_query(
-                adapter=FakeAdapter(),
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = synthesize_audio_query(
+                adapter=adapter,
                 query=query,
                 style=self.style,
             )
 
+        self.assertIs(result, result_mapping)
+        self.assertEqual(len(caught), 1)
         self.assertEqual(
-            str(raised.exception),
-            "currently unsupported AudioQuery fields were changed: "
+            str(caught[0].message),
+            "ignored unsupported VOICEVOX AudioQuery fields: "
             "pitchScale, volumeScale, prePhonemeLength, pauseLength, "
-            "outputSamplingRate, outputStereo",
+            "pauseLengthScale",
         )
+
+    def test_output_sampling_rate_resamples_pcm_and_updates_result_rate(self):
+        import numpy as np
+
+        source = np.arange(320, dtype=np.int16)
+        self.adapter.synthesize_audio.return_value = {
+            "audio": source,
+            "sampling_rate": 32000,
+            "resolved_pronunciation": "ア'メ。",
+        }
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = synthesize_audio_query(
+                adapter=self.adapter,
+                query=_query(outputSamplingRate=16000),
+                style=self.style,
+            )
+
+        self.assertEqual(caught, [])
+        self.assertEqual(result["sampling_rate"], 16000)
+        self.assertEqual(result["audio"].dtype, source.dtype)
+        self.assertEqual(result["audio"].shape, (160,))
+        self.assertAlmostEqual(
+            len(result["audio"]) / result["sampling_rate"],
+            len(source) / 32000,
+            delta=1 / result["sampling_rate"],
+        )
+        self.assertEqual(result["resolved_pronunciation"], "ア'メ。")
+
+    def test_output_stereo_duplicates_mono_content(self):
+        import numpy as np
+
+        source = np.array([0, 1000, -1000, 500], dtype=np.int16)
+        self.adapter.synthesize_audio.return_value = {
+            "audio": source,
+            "sampling_rate": 32000,
+        }
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = synthesize_audio_query(
+                adapter=self.adapter,
+                query=_query(outputStereo=True),
+                style=self.style,
+            )
+
+        self.assertEqual(caught, [])
+        self.assertEqual(result["sampling_rate"], 32000)
+        self.assertEqual(result["audio"].shape, (4, 2))
+        np.testing.assert_array_equal(result["audio"][:, 0], source)
+        np.testing.assert_array_equal(result["audio"][:, 1], source)
 
     def test_pure_japanese_reconstructs_pronunciation_and_forwards_options(self):
         result_mapping = {"audio": object(), "sampling_rate": 32000}
