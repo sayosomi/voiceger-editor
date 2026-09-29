@@ -975,9 +975,9 @@ class TuiEditorController:
             if selected == "back":
                 return self.cancel()
         elif editor.kind == "settings":
-            if selected in {"style_id", "speed", "take_count", "save_text", "apply"}:
+            if selected in {"style_id", "speed", "save_text", "apply"}:
                 return self.apply(settings, query, current_caption)
-            if selected == "output_dir":
+            if selected in {"take_count", "output_dir"}:
                 value = editor.payload["draft_settings"][selected]
                 return self.begin_field(selected, str(value))
             if selected == "reset":
@@ -1371,6 +1371,21 @@ class TuiEditorController:
             return ()
         name = editor.active_field
         value = editor.input_value
+        if editor.kind == "settings" and name == "take_count":
+            try:
+                take_count = int(value)
+            except (TypeError, ValueError):
+                editor.error = (
+                    "Error: Take count must be an integer from 1 through 100."
+                )
+                return ()
+            if not 1 <= take_count <= 100:
+                editor.error = (
+                    "Error: Take count must be an integer from 1 through 100."
+                )
+                return ()
+            value = str(take_count)
+            editor.input_value = value
         if editor.kind == "settings":
             editor.payload["draft_settings"][name] = value
         else:

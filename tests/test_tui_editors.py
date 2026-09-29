@@ -1131,7 +1131,6 @@ class TuiEditorControllerTests(unittest.TestCase):
         drafts = (
             ("style_id", {"style_id": "2"}, Settings(style_id=2, output_dir=settings.output_dir)),
             ("speed", {"speed": "1.25"}, Settings(speed=1.25, output_dir=settings.output_dir)),
-            ("take_count", {"take_count": "3"}, Settings(take_count=3, output_dir=settings.output_dir)),
             ("save_text", {"save_text": True}, Settings(save_text=True, output_dir=settings.output_dir)),
         )
         for field, updates, expected in drafts:
@@ -1148,6 +1147,76 @@ class TuiEditorControllerTests(unittest.TestCase):
                 self.assertEqual(intents, (ApplySettingsIntent(expected),))
                 self.assertIs(controller.editor, editor)
                 self.assertIsNone(editor.active_field)
+
+    def test_settings_take_count_enter_edits_numeric_draft_before_explicit_apply(self):
+        settings = self.settings()
+        controller, _provider = self.make_controller()
+        controller.open_settings(settings, origin=("settings", None), busy=False)
+        editor = controller.editor
+        editor.selection = "take_count"
+
+        self.assertEqual(
+            controller.handle_key(
+                "\n", settings=settings, query=None, current_caption=None
+            ),
+            (ClearAdjustmentFeedbackIntent(),),
+        )
+        self.assertEqual(editor.active_field, "take_count")
+        self.assertEqual(editor.input_value, "4")
+
+        editor.input_value = "42"
+        editor.input_cursor = 2
+        self.assertEqual(
+            controller.handle_key(
+                "\n", settings=settings, query=None, current_caption=None
+            ),
+            (UpdateStatusIntent(""),),
+        )
+        self.assertIsNone(editor.active_field)
+        self.assertEqual(editor.payload["draft_settings"]["take_count"], "42")
+        self.assertIs(controller.editor, editor)
+
+        editor.selection = "apply"
+        self.assertEqual(
+            controller.handle_key(
+                "\n", settings=settings, query=None, current_caption=None
+            ),
+            (
+                ApplySettingsIntent(
+                    Settings(take_count=42, output_dir=settings.output_dir)
+                ),
+            ),
+        )
+
+    def test_settings_take_count_direct_edit_rejects_invalid_values_in_place(self):
+        settings = self.settings()
+        controller, _provider = self.make_controller()
+        controller.open_settings(settings, origin=("settings", None), busy=False)
+        editor = controller.editor
+        editor.selection = "take_count"
+        controller.handle_key(
+            "\n", settings=settings, query=None, current_caption=None
+        )
+
+        for value in ("101", "not-a-number"):
+            with self.subTest(value=value):
+                editor.input_value = value
+                editor.input_cursor = len(value)
+                self.assertEqual(
+                    controller.handle_key(
+                        "\n", settings=settings, query=None, current_caption=None
+                    ),
+                    (),
+                )
+                self.assertEqual(editor.active_field, "take_count")
+                self.assertEqual(
+                    editor.payload["draft_settings"]["take_count"],
+                    "4",
+                )
+                self.assertIn(
+                    "Take count must be an integer from 1 through 100",
+                    editor.error,
+                )
 
     def test_settings_validation_rejects_invalid_full_draft_before_emitting_apply(self):
         settings = self.settings()
