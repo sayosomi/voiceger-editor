@@ -341,6 +341,39 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertFalse(self.operations.busy)
         self.assertFalse(self.operations.cancellation_requested)
 
+    def test_shutdown_request_cancels_batch_and_join_retries_ctrl_c(self):
+        cancellation_event = Event()
+        worker = Mock()
+        worker.ident = 1
+        worker.is_alive.side_effect = [True, True, False]
+        worker.join.side_effect = [KeyboardInterrupt(), None]
+        self.operations.worker = worker
+        self.operations.busy = True
+        self.operations.worker_operation = "initial"
+        self.operations._cancellation_event = cancellation_event
+
+        self.assertEqual(
+            self.operations.request_shutdown(),
+            (UpdateStatusEffect("Cancelling current batch before cleanup…"),),
+        )
+        self.assertTrue(cancellation_event.is_set())
+
+        cancellation_event.clear()
+        self.operations.cancellation_requested = False
+        self.operations.join_worker()
+
+        self.assertTrue(cancellation_event.is_set())
+        self.assertTrue(self.operations.cancellation_requested)
+        self.assertEqual(worker.join.call_count, 2)
+
+    def test_shutdown_request_waits_for_non_cancellable_single_synthesis(self):
+        self.operations.busy = True
+        self.operations.worker_operation = "regenerate_one"
+        self.assertEqual(
+            self.operations.request_shutdown(),
+            (UpdateStatusEffect("Finishing the current synthesis before cleanup…"),),
+        )
+
     def test_initial_cancellation_before_first_take_discards_empty_batch(self):
         session = FakeSession()
         iterator_requested = Event()

@@ -13,10 +13,8 @@ from typing import Any, Sequence
 from .session import UtteranceSession
 from .settings import Settings, SettingsError, load_settings, save_settings
 from .styles import available_styles
-from .tui_display import (
-    _adjustable_value,
-    format_english_phonemes,
-)
+from .takes import cleanup_stale_take_directories
+from .tui_display import _adjustable_value, format_english_phonemes
 from .tui_rendering import (
     TuiRenderer,
     TuiRenderState,
@@ -198,6 +196,8 @@ class TuiApp:
                     break
                 self._render()
                 self._read_key()
+        except KeyboardInterrupt:
+            self._activate_quit()
         finally:
             try:
                 self._operations.join_worker()
@@ -517,8 +517,7 @@ class TuiApp:
 
     def _activate_quit(self) -> None:
         self._exit_requested = True
-        if self._operations.busy:
-            self._status = "Finishing the current sequential synthesis before cleanup…"
+        self._dispatch_operation_effects(self._operations.request_shutdown())
 
     def _segments(self) -> list[tuple[str, str, int | None]]:
         if self.session is None:
@@ -866,6 +865,7 @@ class TuiApp:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_argument_parser().parse_args(argv)
+    cleanup_stale_take_directories()
     try:
         persisted_settings = load_settings(args.config)
         settings = settings_for_invocation(args, persisted_settings)

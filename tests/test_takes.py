@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,7 +7,11 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from voiceger_accent_adapter.output import SavedOutput
-from voiceger_accent_adapter.takes import TakeBatch, TakeCandidate
+from voiceger_accent_adapter.takes import (
+    TakeBatch,
+    TakeCandidate,
+    cleanup_stale_take_directories,
+)
 
 
 class TakeBatchTests(unittest.TestCase):
@@ -130,7 +135,7 @@ class TakeBatchTests(unittest.TestCase):
 
             self.assertIs(raised.exception, write_failure)
             self.assertEqual(batch.candidates, ())
-            self.assertEqual(list(batch._temporary_path.iterdir()), [])
+            self.assertEqual(list(batch._temporary_path.glob("*.wav")), [])
             batch.close()
 
     def test_successful_single_regeneration_replaces_only_selected_take(self):
@@ -342,6 +347,69 @@ class TakeBatchTests(unittest.TestCase):
             self.assertEqual(batch.candidates, tuple(candidates))
             self.assertTrue(all(candidate.wav_path.is_file() for candidate in candidates))
             batch.close()
+
+    def test_take_directory_records_the_owner_process(self):
+        batch = self.make_batch(None)
+        marker = batch._temporary_path / ".owner-pid"
+        self.assertEqual(marker.read_text(encoding="ascii").strip(), str(os.getpid()))
+        batch.close()
+        self.assertFalse(marker.exists())
+
+    def test_stale_cleanup_preserves_live_and_recent_legacy_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            dead = root / "voiceger-takes-dead"
+            live = root / "voiceger-takes-live"
+            recent_legacy = root / "voiceger-takes-recent"
+            old_legacy = root / "voiceger-takes-old"
+            for path in (dead, live, recent_legacy, old_legacy):
+                path.mkdir()
+                (path / "take-1.wav").write_bytes(b"wav")
+            (dead / ".owner-pid").write_text("111\n", encoding="ascii")
+            (live / ".owner-pid").write_text("222\n", encoding="ascii")
+            now = 2_000_000.0
+            os.utime(recent_legacy, (now - 60, now - 60))
+            os.utime(old_legacy, (now - 90_000, now - 90_000))
+
+            with patch(
+                "voiceger_accent_adapter.takes._process_is_alive",
+                side_effect=lambda pid: pid == 222,
+            ):
+                removed = cleanup_stale_take_directories(
+                    temp_root=root,
+                    now=now,
+                    legacy_grace_seconds=86_400,
+                )
+
+            self.assertEqual(removed, 2)
+            self.assertFalse(dead.exists())
+            self.assertTrue(live.exists())
+            self.assertTrue(recent_legacy.exists())
+            self.assertFalse(old_legacy.exists())
+
+    def test_close_retries_cleanup_if_ctrl_c_interrupts_it(self):
+        batch = self.make_batch(None)
+        temporary_path = batch._temporary_path
+        actual_cleanup = batch._temporary_directory.cleanup
+        calls = 0
+
+        def interrupted_cleanup():
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise KeyboardInterrupt
+            actual_cleanup()
+
+        with patch.object(
+            batch._temporary_directory,
+            "cleanup",
+            side_effect=interrupted_cleanup,
+        ):
+            batch.close()
+
+        self.assertEqual(calls, 2)
+        self.assertFalse(temporary_path.exists())
+        self.assertEqual(batch.candidates, ())
 
     def test_close_is_idempotent_and_operations_after_close_fail(self):
         with tempfile.TemporaryDirectory() as directory:
