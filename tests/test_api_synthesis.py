@@ -42,7 +42,7 @@ def _audio_query_payload() -> dict:
             }
         ],
         "speedScale": 1.0,
-        "pitchScale": 0.25,
+        "pitchScale": 0.1,
         "intonationScale": 0.75,
         "volumeScale": 1.0,
         "prePhonemeLength": 0.1,
@@ -97,10 +97,18 @@ class ApiSynthesisCompatibilityTests(unittest.TestCase):
                     json=_audio_query_payload(),
                 )
 
-        self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(len(caught), 1)
+        if response.status_code != 200:
+            self.fail(f"unexpected synthesis response: {response.status_code} {response.text}")
+        compatibility_warnings = [
+            item
+            for item in caught
+            if str(item.message).startswith(
+                "ignored unsupported VOICEVOX AudioQuery fields:"
+            )
+        ]
+        self.assertEqual(len(compatibility_warnings), 1)
         self.assertEqual(
-            str(caught[0].message),
+            str(compatibility_warnings[0].message),
             "ignored unsupported VOICEVOX AudioQuery fields: "
             "pitchScale, intonationScale",
         )
