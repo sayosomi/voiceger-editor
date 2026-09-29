@@ -129,6 +129,7 @@ class ResolvePronunciationTests(unittest.TestCase):
     def test_pure_synthesis_original_japanese_g2p_holds_openjtalk_lock(self):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
+            (root / "GPT-SoVITS").mkdir()
             ref_wav = root / "ref.wav"
             ref_wav.write_bytes(b"test")
             adapter = VoicegerAdapter(voiceger_root=root)

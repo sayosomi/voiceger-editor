@@ -162,6 +162,11 @@ class QuitIntent:
     pass
 
 
+@dataclass(frozen=True)
+class ClearCandidatesIntent:
+    pass
+
+
 EditorIntent = Union[
     ReplaceQueryIntent,
     PreviewIntent,
@@ -174,6 +179,7 @@ EditorIntent = Union[
     ClearAdjustmentFeedbackIntent,
     OpenHelpIntent,
     QuitIntent,
+    ClearCandidatesIntent,
 ]
 
 
@@ -1046,6 +1052,17 @@ class TuiEditorController:
                 return self.delete_section(query)
             if selected == "cancel":
                 return self._restore_parent_editor("Section deletion cancelled.")
+        elif editor.kind == "clear_candidates_confirmation":
+            if selected == "clear":
+                origin = editor.origin
+                self.editor = None
+                return (
+                    ClearCandidatesIntent(),
+                    ClearAdjustmentFeedbackIntent(),
+                    CloseEditorIntent(origin, "Candidates cleared."),
+                )
+            if selected == "cancel":
+                return self._close_editor("Candidate clearing cancelled.")
         return ()
 
     @staticmethod
@@ -1207,6 +1224,24 @@ class TuiEditorController:
             payload={
                 "warning": "This section will be removed from the synthesized utterance.",
                 "parent_editor": deepcopy(editor),
+            },
+        )
+        return (ClearAdjustmentFeedbackIntent(), UpdateStatusIntent(""))
+
+    def open_clear_candidates_confirmation(
+        self,
+        *,
+        origin: tuple[str, int | None],
+    ) -> tuple[EditorIntent, ...]:
+        self.editor = EditorState(
+            kind="clear_candidates_confirmation",
+            title="CLEAR CANDIDATES?",
+            origin=origin,
+            selection="clear",
+            payload={
+                "warning": (
+                    "All generated candidate WAV files will be discarded."
+                ),
             },
         )
         return (ClearAdjustmentFeedbackIntent(), UpdateStatusIntent(""))
@@ -1552,6 +1587,7 @@ class TuiEditorController:
             "settings": "Settings draft discarded.",
             "english_word": "English word draft discarded.",
             "add_section": "New section draft discarded.",
+            "clear_candidates_confirmation": "Candidate clearing cancelled.",
         }.get(editor.kind, "Editor draft discarded.")
         return self._close_editor(status)
 
@@ -1632,9 +1668,9 @@ class TuiEditorController:
             try:
                 current = int(draft["take_count"])
             except (TypeError, ValueError):
-                editor.error = "Error: Take count must be an integer from 1 through 8."
+                editor.error = "Error: Take count must be an integer from 1 through 100."
                 return clear_feedback
-            updated = min(8, max(1, current + direction))
+            updated = min(100, max(1, current + direction))
             if updated == current:
                 editor.error = ""
                 return clear_feedback

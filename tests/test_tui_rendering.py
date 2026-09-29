@@ -96,7 +96,7 @@ class FakeSession:
 
 
 def candidate(number):
-    return SimpleNamespace(number=number, audio=[0.0] * 320, sampling_rate=32000)
+    return SimpleNamespace(number=number, frame_count=320, sampling_rate=32000)
 
 
 def rows_for(session=None):
@@ -393,6 +393,10 @@ class TuiRenderingTests(unittest.TestCase):
             "on EN: edit word phonemes",
             "b / a / g",
             "Build pronunciation / Add section / Generate or regenerate all",
+            "initial/regenerate-all",
+            "cooperatively",
+            "1-9",
+            "clear candidates through confirmation",
             "Menu mode: editor/modal action letters are active.",
             "Editing: Enter finishes; printable shortcut letters insert text.",
         ):
@@ -825,6 +829,28 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("This section will be removed from the synthesized utterance.", labels)
         self.assertEqual(labels[-2:], ["▶ [D] Delete", "  [B] Cancel"])
 
+    def test_clear_candidates_confirmation_names_discarded_wav_files(self):
+        editor = SimpleNamespace(
+            kind="clear_candidates_confirmation",
+            title="CLEAR CANDIDATES?",
+            selection="clear",
+            payload={
+                "warning": "All generated candidate WAV files will be discarded."
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        labels = [line for line, _key in document]
+        self.assertEqual(labels[0], "CLEAR CANDIDATES?")
+        self.assertIn("All generated candidate WAV files will be discarded.", labels)
+        self.assertEqual(labels[-2:], ["▶ [C] Clear candidates", "  [B] Cancel"])
+
     def test_settings_use_compact_rows_and_edit_the_current_field_in_place(self):
         editor = SimpleNamespace(
             kind="settings", title="EDIT SETTINGS", selection="speed",
@@ -918,15 +944,30 @@ class TuiRenderingTests(unittest.TestCase):
         labels = {line.key: line.text for line in lines if line.key is not None}
         self.assertEqual(labels[("build_pronunciation", None)], "  [B] Build pronunciation")
         self.assertEqual(labels[("add_section", None)], "  [A] Add section")
-        self.assertIn("[G] Regenerate all <<6 > takes", labels[("generate", None)])
+        self.assertEqual(labels[("generate", None)], "▶ [G] Regenerate all 2 takes")
         self.assertEqual(labels[("candidate", 1)], "  [1] Take 1  0.01s")
         self.assertEqual(labels[("candidate", 2)], "  [2] Take 2  0.01s")
+        self.assertEqual(labels[("clear_candidates", None)], "  [C] Clear candidates")
         self.assertEqual(labels[("settings", None)], "  [S] Settings")
         self.assertEqual(labels[("help", None)], "  [?] Help")
         self.assertEqual(labels[("quit", None)], "  [Q] Quit")
         caption = labels[("caption", None)]
         self.assertIn("Caption : ", caption)
         self.assertNotIn("[T]", caption)
+
+    def test_candidates_above_nine_have_no_direct_numeric_shortcut_label(self):
+        state = render_state(
+            session=FakeSession(candidates=(candidate(9), candidate(10))),
+            settings=Settings(take_count=100),
+        )
+        labels = {
+            line.key: line.text
+            for line in self.renderer.navigation_document(state, 100)
+            if line.key is not None
+        }
+
+        self.assertEqual(labels[("candidate", 9)], "  [9] Take 9  0.01s")
+        self.assertEqual(labels[("candidate", 10)], "  Take 10  0.01s")
 
     def test_unavailable_status_and_terminal_write_safety_remain(self):
         screen = FakeScreen()

@@ -104,8 +104,10 @@ def candidate(number):
     return SimpleNamespace(
         number=number,
         wav_path=Path(f"/tmp/take-{number}.wav"),
-        audio=[0.0] * 320,
         sampling_rate=32000,
+        frame_count=320,
+        source_text="candidate source",
+        style_name="Neutral",
     )
 
 
@@ -113,6 +115,7 @@ class FakeSession:
     def __init__(self, query=None, candidates=()):
         self.query = query or english_query(["AA1", "IY0", "ER1"])
         self.caption = "example"
+        self.settings = Settings()
         self._pure_japanese_utterance_text = "example"
         self.candidates = tuple(candidates)
         self.replace_query_calls = []
@@ -128,6 +131,10 @@ class FakeSession:
     @property
     def has_active_batch(self):
         return bool(self.candidates)
+
+    @property
+    def active_candidate_count(self):
+        return len(self.candidates)
 
     @property
     def pure_japanese_utterance_text(self):
@@ -161,7 +168,12 @@ class FakeSession:
 
     def replace_settings(self, settings):
         self.replace_settings_calls.append(settings)
-        self.candidates = ()
+        if (
+            settings.style_id != self.settings.style_id
+            or settings.speed != self.settings.speed
+        ):
+            self.candidates = ()
+        self.settings = settings
 
     def discard_takes(self):
         self.discard_calls += 1
@@ -450,6 +462,103 @@ class TuiTests(unittest.TestCase):
                 self.assertFalse(shortcut._help_open)
                 self.assertTrue(shortcut._exit_requested)
 
+    def test_help_and_cancelled_editor_leave_candidates_available(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
+        candidates_before = app.session.candidates
+
+        app._handle_key("?")
+        app._handle_key("\x1b")
+        app._open_settings_editor()
+        app._handle_key("\x1b")
+
+        self.assertEqual(app.session.candidates, candidates_before)
+        self.assertEqual(app.session.discard_calls, 0)
+
+    def test_escape_requests_batch_cancellation_before_help_and_repeats_safely(self):
+        for operation in ("initial", "regenerate_all"):
+            with self.subTest(operation=operation):
+                app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+                app._help_open = True
+                app._operations.busy = True
+                app._operations.worker_operation = operation
+                cancellation_event = Event()
+                app._operations._cancellation_event = cancellation_event
+
+                app._handle_key("\x1b")
+                self.assertTrue(cancellation_event.is_set())
+                self.assertTrue(app._help_open)
+                self.assertEqual(app._status, "Cancelling…")
+
+                app._handle_key("\x1b")
+                self.assertTrue(app._help_open)
+                self.assertEqual(app._status, "Cancelling…")
+
+                app._operations.busy = False
+                app._operations.worker_operation = None
+                app._handle_key("\x1b")
+                self.assertFalse(app._help_open)
+
+    def test_clear_candidates_confirmation_cancel_and_confirmed_clear(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
+        app._operations.current_take = 2
+        query_before = app.session.query.model_dump()
+        settings_before = app.settings
+        caption_before = app.session.caption
+        candidates_before = app.session.candidates
+        stop_playback = Mock()
+        app._operations.stop_playback = stop_playback
+
+        app._handle_key("c")
+        self.assertEqual(
+            app._editor_controller.editor.kind,
+            "clear_candidates_confirmation",
+        )
+        app._handle_key("b")
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app.session.candidates, candidates_before)
+        self.assertEqual(app.session.discard_calls, 0)
+        self.assertEqual(app._operations.current_take, 2)
+
+        app._handle_key("c")
+        app._handle_key("c")
+
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app.session.discard_calls, 1)
+        self.assertEqual(app.session.candidates, ())
+        self.assertIsNone(app._operations.current_take)
+        self.assertEqual(app.session.caption, caption_before)
+        self.assertEqual(app.session.query.model_dump(), query_before)
+        self.assertEqual(app.settings, settings_before)
+        self.assertEqual(stop_playback.call_count, 1)
+        self.assertEqual(app._status, "Candidates cleared.")
+
+    def test_clear_candidates_shortcut_is_blocked_while_synthesis_is_busy(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        app._operations.busy = True
+
+        app._handle_key("c")
+
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app.session.candidates, (candidate(1),))
+        self.assertEqual(app.session.discard_calls, 0)
+        self.assertIn("Finish or cancel synthesis before clearing", app._status)
+
+    def test_candidate_direct_jumps_cover_one_through_nine_and_arrows_reach_ten(self):
+        app = self.make_app(
+            query=mixed_query(),
+            candidates=tuple(candidate(number) for number in range(1, 11)),
+        )
+        app._operations.play_take = Mock(return_value=())
+
+        for number in range(1, 10):
+            app._handle_key(str(number))
+            self.assertEqual(app._navigation.focus_key, ("candidate", number))
+        app._handle_key(curses.KEY_DOWN)
+
+        self.assertEqual(app._navigation.focus_key, ("candidate", 10))
+        app._handle_key("0")
+        self.assertEqual(app._navigation.focus_key, ("candidate", 10))
+
     def test_main_only_generation_and_candidate_shortcuts_do_not_escape_editor(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
         app._open_settings_editor()
@@ -548,16 +657,16 @@ class TuiTests(unittest.TestCase):
             )
             self.assertIn("[G] Generate < 1 > takes", left_label)
 
-            app.settings = Settings(take_count=8)
+            app.settings = Settings(take_count=100)
             app._pressed_adjustment = ("navigation", "generate", -1)
             app._handle_key(curses.KEY_RIGHT)
-            self.assertEqual(app.settings.take_count, 8)
+            self.assertEqual(app.settings.take_count, 100)
             self.assertIsNone(app._pressed_adjustment)
             right_label = next(
                 line for line, key in navigation_document(app, 100)
                 if key == ("generate", None)
             )
-            self.assertIn("[G] Generate < 8 > takes", right_label)
+            self.assertIn("[G] Generate < 100 > takes", right_label)
 
             app._handle_key(curses.KEY_UP)
             app._handle_key(curses.KEY_DOWN)
@@ -566,7 +675,7 @@ class TuiTests(unittest.TestCase):
                 line for line, key in navigation_document(app, 100)
                 if key == ("generate", None)
             )
-            self.assertIn("[G] Generate < 8 > takes", idle_label)
+            self.assertIn("[G] Generate < 100 > takes", idle_label)
 
     def test_settings_feedback_requires_a_movable_change_and_clears_after_render(self):
         app = self.make_app(query=mixed_query())
@@ -677,16 +786,16 @@ class TuiTests(unittest.TestCase):
             self.assertIn("Takes       < 1 >", take_left)
 
             editor.selection = "take_count"
-            editor.payload["draft_settings"]["take_count"] = "8"
+            editor.payload["draft_settings"]["take_count"] = "100"
             app._pressed_adjustment = ("settings", "take_count", -1)
             app._handle_key(curses.KEY_RIGHT)
-            self.assertEqual(editor.payload["draft_settings"]["take_count"], "8")
+            self.assertEqual(editor.payload["draft_settings"]["take_count"], "100")
             self.assertIsNone(app._pressed_adjustment)
             take_right = next(
                 line for line, key in editor_document(app, 100)[0]
                 if key == "take_count"
             )
-            self.assertIn("Takes       < 8 >", take_right)
+            self.assertIn("Takes       < 100 >", take_right)
 
             editor.payload["draft_settings"]["take_count"] = "4"
             app._handle_key(curses.KEY_RIGHT)
@@ -1383,11 +1492,11 @@ class TuiTests(unittest.TestCase):
             self.assertEqual(editor.payload["draft_settings"]["speed"], "0.01")
 
             editor.selection = "take_count"
-            editor.payload["draft_settings"]["take_count"] = "8"
+            editor.payload["draft_settings"]["take_count"] = "100"
             app._handle_key(curses.KEY_RIGHT)
-            self.assertEqual(editor.payload["draft_settings"]["take_count"], "8")
+            self.assertEqual(editor.payload["draft_settings"]["take_count"], "100")
             app._handle_key(curses.KEY_LEFT)
-            self.assertEqual(editor.payload["draft_settings"]["take_count"], "7")
+            self.assertEqual(editor.payload["draft_settings"]["take_count"], "99")
 
             editor.selection = "save_text"
             app._handle_key(curses.KEY_LEFT)
@@ -1567,6 +1676,7 @@ class TuiTests(unittest.TestCase):
                 config_path=config_path,
             )
             app.session = FakeSession(query=mixed_query(), candidates=(candidate(1),))
+            app.session.settings = effective
             app._open_settings_editor()
             editor = app._editor_controller.editor
             editor.payload["draft_settings"]["output_dir"] = "/tmp/explicit-output"
@@ -1655,16 +1765,18 @@ class TuiTests(unittest.TestCase):
             self.assertIsNone(app._editor_controller.editor)
             self.assertEqual(app._status, "Settings saved.")
 
-    def test_generate_arrows_persist_count_clear_old_batch_and_respect_bounds_and_busy(self):
+    def test_generate_arrows_persist_count_preserve_batch_and_respect_bounds_and_busy(self):
         with tempfile.TemporaryDirectory() as directory:
             app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
             app.config_path = Path(directory) / "settings.json"
+            app._operations.current_take = 1
             set_navigation_focus(app, ("generate", None))
             app._status = ""
             app._handle_key(curses.KEY_LEFT)
             self.assertEqual(app.settings.take_count, 3)
             self.assertEqual(app.session.replace_settings_calls[-1].take_count, 3)
-            self.assertEqual(app.session.candidates, ())
+            self.assertEqual(app.session.candidates, (candidate(1),))
+            self.assertEqual(app._operations.current_take, 1)
             self.assertEqual(app._navigation.focus_key, ("generate", None))
             self.assertEqual(app._status, "")
             self.assertEqual(json.loads(app.config_path.read_text())["take_count"], 3)
@@ -1673,14 +1785,14 @@ class TuiTests(unittest.TestCase):
             app._persisted_settings = app.settings
             app._handle_key(curses.KEY_LEFT)
             self.assertEqual(app.settings.take_count, 1)
-            app.settings = Settings(take_count=8)
+            app.settings = Settings(take_count=100)
             app._persisted_settings = app.settings
             app._handle_key(curses.KEY_RIGHT)
-            self.assertEqual(app.settings.take_count, 8)
+            self.assertEqual(app.settings.take_count, 100)
 
             app._operations.busy = True
             app._handle_key(curses.KEY_LEFT)
-            self.assertEqual(app.settings.take_count, 8)
+            self.assertEqual(app.settings.take_count, 100)
             self.assertIn("Wait for the current synthesis operation to finish", app._status)
 
     def test_settings_escape_from_active_field_discards_the_entire_modal_draft(self):
@@ -2034,7 +2146,7 @@ class TuiTests(unittest.TestCase):
         regenerate._handle_key("g")
         regenerate._operations.start_regenerate_all.assert_called_once_with(
             regenerate.session,
-            take_count=regenerate.settings.take_count,
+            take_count=regenerate.session.active_candidate_count,
             navigation_revision=regenerate._navigation.revision,
         )
 
@@ -2172,7 +2284,7 @@ class TuiTests(unittest.TestCase):
             events = []
             app._operations.stop_playback = Mock(side_effect=lambda: events.append("stop"))
             app.session.replace_settings = Mock(side_effect=lambda settings: events.append("settings"))
-            app._change_settings(take_count=2)
+            app._change_settings(speed=0.9)
         self.assertEqual(events, ["stop", "settings"])
 
     def test_caption_replacement_does_not_stop_playback_or_clear_grouping(self):
