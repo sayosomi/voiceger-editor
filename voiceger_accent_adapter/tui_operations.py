@@ -116,7 +116,7 @@ class TuiOperations:
         if session.has_active_batch:
             return (
                 UpdateStatusEffect(
-                    "A take batch already exists; use R to regenerate all takes."
+                    "A take batch already exists; use g to regenerate all takes."
                 ),
             )
         try:
