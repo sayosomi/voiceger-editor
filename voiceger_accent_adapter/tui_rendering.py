@@ -629,10 +629,10 @@ class TuiRenderer:
                             self._adjustment_press_direction(state, "settings", key),
                         )
                     marker = "▶ " if editor.selection == key else "  "
-                    shortcut = (
-                        f" [{item.shortcut.upper()}]" if item.shortcut is not None else ""
+                    visible_label = (
+                        item.display_label if item.shortcut is not None else label
                     )
-                    lines.append((f"{marker}{label:<12}{value}{shortcut}", key))
+                    lines.append((f"{marker}{visible_label:<16}{value}", key))
             plain()
             selectable("apply")
             selectable("reset")
