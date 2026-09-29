@@ -836,7 +836,7 @@ class TuiRenderingTests(unittest.TestCase):
         ):
             document, _, _ = self.renderer.editor_document(render_state(editor=editor), 80)
         visible = "\n".join(line for line, _key in document)
-        self.assertIn("▶ Speed       < 1.00 >", visible)
+        self.assertIn("▶ [V] Speed       < 1.00 >", visible)
         self.assertIn("Style       < Neutral >", visible)
         self.assertIn("Takes       < 4 >", visible)
         self.assertIn("Output      /tmp/output", visible)
@@ -876,7 +876,7 @@ class TuiRenderingTests(unittest.TestCase):
             document, _, _ = self.renderer.editor_document(
                 render_state(editor=editor), 80
             )
-        self.assertIn("▶ Style       < 19 >", "\n".join(line for line, _key in document))
+        self.assertIn("▶ [S] Style       < 19 >", "\n".join(line for line, _key in document))
 
         with patch(
             "voiceger_accent_adapter.tui_rendering.available_styles",
