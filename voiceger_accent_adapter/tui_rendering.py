@@ -675,7 +675,9 @@ class TuiRenderer:
             marker = "▶ " if editor.selection == "language" else "  "
             plain()
             language_item = menu_item(editor.kind, "language", editor.payload)
-            plain(f"{marker}{language_item.label:<12}< {language} >")
+            lines.append(
+                (f"{marker}{language_item.label:<12}< {language} >", "language")
+            )
             if editor.active_field == "draft":
                 input_field("draft", "▶ " if editor.selection == "draft" else "  ")
             else:
