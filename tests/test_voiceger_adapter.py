@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from voiceger_accent_adapter.output import SavedOutput
 from voiceger_accent_adapter.pronunciation import AccentPhrase, Pronunciation
+from voiceger_accent_adapter.runtime_locks import OPENJTALK_LOCK
 from voiceger_accent_adapter.voiceger_adapter import (
     VoicegerAdapter,
     VoicegerAdapterError,
@@ -125,6 +126,56 @@ class ResolvePronunciationTests(unittest.TestCase):
             self.assertEqual(result["file_path"], str(wav_path))
             self.assertEqual(result["text_file_path"], str(text_path))
 
+    def test_pure_synthesis_original_japanese_g2p_holds_openjtalk_lock(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            ref_wav = root / "ref.wav"
+            ref_wav.write_bytes(b"test")
+            adapter = VoicegerAdapter(voiceger_root=root)
+
+            def original_g2p(text, with_prosody=True):
+                self.assertTrue(OPENJTALK_LOCK._is_owned())
+                return ["NATIVE_JA"]
+
+            japanese = SimpleNamespace(
+                g2p=original_g2p,
+                text_normalize=lambda text: text,
+            )
+
+            class FakeMhaPatched:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+            def fake_get_tts_wav(**kwargs):
+                self.assertEqual(
+                    japanese.g2p("fallback", True),
+                    ["NATIVE_JA"],
+                )
+                yield 32000, [0]
+
+            adapter._loaded = True
+            adapter._runtime = {
+                "MhaPatched": FakeMhaPatched,
+                "japanese": japanese,
+                "get_tts_wav": fake_get_tts_wav,
+            }
+
+            with patch(
+                "voiceger_accent_adapter.voiceger_adapter.pronunciation_to_voiceger_tokens",
+                return_value=["a"],
+            ):
+                result = adapter.synthesize_audio(
+                    text="雨",
+                    pronunciation="ア'メ。",
+                    ref_wav_path=ref_wav,
+                    prompt_text="prompt",
+                )
+
+            self.assertEqual(result["sampling_rate"], 32000)
+
     def test_mixed_synthesis_injects_and_restores_english_clean_text(self):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -138,9 +189,9 @@ class ResolvePronunciationTests(unittest.TestCase):
                 fromlist=["VoicegerAdapter"],
             ).VoicegerAdapter(voiceger_root=root)
 
-            original_japanese_g2p = (
-                lambda text, with_prosody=True: ["NATIVE_JA"]
-            )
+            def original_japanese_g2p(text, with_prosody=True):
+                self.assertTrue(OPENJTALK_LOCK._is_owned())
+                return ["NATIVE_JA"]
             english = SimpleNamespace(
                 text_normalize=lambda text: text,
             )
@@ -171,6 +222,10 @@ class ResolvePronunciationTests(unittest.TestCase):
                 self.assertEqual(
                     japanese.g2p("今日は", True),
                     ["k", "y", "o"],
+                )
+                self.assertEqual(
+                    japanese.g2p("fallback", True),
+                    ["NATIVE_JA"],
                 )
                 self.assertEqual(
                     inference_webui.clean_text_inf(

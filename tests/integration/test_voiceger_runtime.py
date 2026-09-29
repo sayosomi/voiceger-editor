@@ -380,7 +380,7 @@ class VoicegerIntegrationTests(unittest.TestCase):
             )
             after_live_reload = reading(text)
             self.assertNotEqual(before, after_live_reload)
-            self.assertTrue(after_live_reload.startswith("ズンダモン"))
+            self.assertTrue(after_live_reload.startswith("ズンダモンワ"))
 
             # Simulate the process-global dictionary reset performed by a
             # Voiceger Japanese runtime import, then verify _ensure_runtime
@@ -412,7 +412,7 @@ class VoicegerIntegrationTests(unittest.TestCase):
                 for phrase in session.query.accent_phrases
                 for mora in phrase.moras
             )
-            self.assertTrue(query_reading.startswith("ズンダモン"))
+            self.assertTrue(query_reading.startswith("ズンダモンワ"))
             self.assertEqual(query_reading, reading(text))
 
 

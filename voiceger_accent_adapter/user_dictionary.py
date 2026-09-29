@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from contextlib import contextmanager
 from enum import Enum
 import json
 import os
@@ -328,19 +329,32 @@ class UserDictionaryCore:
                 for word_uuid, word in self._japanese.items()
             }
 
+    def _ensure_japanese_active_locked(self, *, force: bool = False) -> None:
+        try:
+            self.openjtalk_dictionary.ensure_active(
+                self._japanese,
+                force=force,
+            )
+        except OpenJTalkDictionaryError:
+            raise
+        except Exception as exc:
+            raise OpenJTalkDictionaryError(
+                "Japanese user dictionary activation failed"
+            ) from exc
+
     def ensure_japanese_active(self, *, force: bool = False) -> None:
         with self._lock, OPENJTALK_LOCK:
+            self._ensure_japanese_active_locked(force=force)
+
+    @contextmanager
+    def voiceger_japanese_runtime_transition(self):
+        """Serialize Voiceger's OpenJTalk reset and merged-dictionary restore."""
+
+        with self._lock, OPENJTALK_LOCK:
             try:
-                self.openjtalk_dictionary.ensure_active(
-                    self._japanese,
-                    force=force,
-                )
-            except OpenJTalkDictionaryError:
-                raise
-            except Exception as exc:
-                raise OpenJTalkDictionaryError(
-                    "Japanese user dictionary activation failed"
-                ) from exc
+                yield
+            finally:
+                self._ensure_japanese_active_locked(force=True)
 
     def _create_word(
         self,
