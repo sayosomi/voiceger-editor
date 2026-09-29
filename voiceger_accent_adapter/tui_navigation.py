@@ -47,6 +47,11 @@ class EditPronunciationItem:
 
 
 @dataclass(frozen=True)
+class AddSectionEditor:
+    pass
+
+
+@dataclass(frozen=True)
 class StartGeneration:
     pass
 
@@ -92,6 +97,7 @@ NavigationAction = Union[
     OpenSettingsEditor,
     OpenCaptionEditor,
     EditPronunciationItem,
+    AddSectionEditor,
     StartGeneration,
     RegenerateAll,
     BuildPronunciation,
@@ -123,6 +129,7 @@ class TuiNavigation:
                 ("pronunciation", index)
                 for index in range(context.pronunciation_count)
             )
+            items.append(("add_section", None))
             items.append(("generate", None))
             items.extend(
                 ("candidate", number) for number in context.candidate_numbers
@@ -281,6 +288,14 @@ class TuiNavigation:
                     ),
                 )
             return (EditPronunciationItem(number),)
+        if name == "add_section":
+            if context.busy:
+                return (
+                    UpdateNavigationStatus(
+                        "Wait for synthesis to finish before adding a section."
+                    ),
+                )
+            return (AddSectionEditor(),)
         if name == "generate":
             return self.activate_generate(context)
         if name == "build_pronunciation":

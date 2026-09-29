@@ -101,6 +101,8 @@ def _active_input_prefix(editor: EditorRenderState) -> str:
         return "▶ "
     if editor.kind == "english_word":
         return "▶ "
+    if editor.kind in {"section_text", "add_section"}:
+        return "▶ "
     if editor.kind == "settings":
         labels = {
             "style_id": "Style",
@@ -445,6 +447,7 @@ class TuiRenderer:
             for index, item in enumerate(state.pronunciation_rows):
                 pronunciation_action(index, item)
             plain()
+            action(("add_section", None), "[ Add section ]")
             has_batch = session.has_active_batch
             if state.busy:
                 if state.worker_operation == "regenerate_one":
@@ -566,6 +569,7 @@ class TuiRenderer:
             plain()
             selectable("preview", "[ Preview ]")
             selectable("apply", "[ Apply ]")
+            selectable("edit_text", "[ Edit text ]")
             selectable("clear", "[ Clear ]")
             selectable("reset", "[ Reset ]")
             selectable("back", "[ Back ]")
@@ -611,9 +615,47 @@ class TuiRenderer:
             plain()
             selectable("preview", "[ Preview ]")
             selectable("apply", "[ Apply ]")
+            selectable("edit_text", "[ Edit text ]")
             selectable("clear", "[ Clear ]")
             selectable("reset", "[ Reset ]")
             selectable("back", "[ Back ]")
+        elif editor.kind == "section_text":
+            language = "Japanese" if editor.payload["language"] == "ja" else "English"
+            plain()
+            plain("Language")
+            plain(f"  {language}")
+            plain()
+            if editor.active_field == "draft":
+                input_field("draft", "▶ " if editor.selection == "draft" else "  ")
+            else:
+                selectable("draft", editor.payload["draft"])
+            plain()
+            selectable("preview", "[ Preview ]")
+            selectable("apply", "[ Apply ]")
+            selectable("reset", "[ Reset ]")
+            if editor.payload["can_delete"]:
+                selectable("delete_section", "[ Delete section ]")
+            selectable("back", "[ Back ]")
+        elif editor.kind == "add_section":
+            language = "Japanese" if editor.payload["language"] == "ja" else "English"
+            marker = "▶ " if editor.selection == "language" else "  "
+            plain()
+            plain(f"{marker}Language    < {language} >")
+            if editor.active_field == "draft":
+                input_field("draft", "▶ " if editor.selection == "draft" else "  ")
+            else:
+                selectable("draft", editor.payload["draft"])
+            plain()
+            selectable("add", "[ Add ]")
+            selectable("clear", "[ Clear ]")
+            selectable("reset", "[ Reset ]")
+            selectable("back", "[ Back ]")
+        elif editor.kind == "delete_confirmation":
+            plain()
+            wrap("", editor.payload["warning"])
+            plain()
+            selectable("delete", "[ Delete ]")
+            selectable("cancel", "[ Cancel ]")
         return lines, cursor_line, cursor_column
 
     @staticmethod

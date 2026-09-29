@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from voiceger_accent_adapter.english_stress import (
     EnglishPhonemeEditorState,
@@ -7,16 +8,25 @@ from voiceger_accent_adapter.english_stress import (
 from voiceger_accent_adapter.pronunciation import parse_pronunciation
 from voiceger_accent_adapter.query_editing import (
     english_editor_state,
+    english_section_text_preview_query,
     english_word_preview_query,
+    append_english_section,
+    append_japanese_section,
+    delete_utterance_section,
+    merge_english_section_text_groups,
     japanese_pronunciation,
     japanese_preview_query,
     move_english_primary_stress,
     move_japanese_accent,
     replace_english_base_phonemes,
     replace_english_editor_state,
+    replace_english_section_text,
     replace_english_phoneme_groups,
     replace_japanese_pronunciation,
+    replace_japanese_section_text,
     replace_japanese_accent_phrase,
+    japanese_section_text_preview_query,
+    retain_unchanged_english_word_phonemes,
 )
 from voiceger_accent_adapter.voicevox_api_models import (
     AccentPhrase,
@@ -761,6 +771,278 @@ class QueryEditingTests(unittest.TestCase):
     def test_english_editor_requires_mixed_query(self):
         with self.assertRaisesRegex(ValueError, "voicegerSegments"):
             english_editor_state(_pure_query(), segment_index=0)
+
+    def test_local_japanese_text_replacement_preserves_unrelated_segments_and_reindexes(self):
+        query = _mixed_query(
+            ["ア'メ", "サ'ク", "キョ'ウ"],
+            [
+                VoicegerSegment(
+                    language="ja", text="前", accentPhraseStart=0,
+                    accentPhraseCount=1, pronunciationTerminator="",
+                ),
+                VoicegerSegment(language="en", text="hello", phonemes=["HH", "AH1"]),
+                VoicegerSegment(
+                    language="ja", text="選択", accentPhraseStart=1,
+                    accentPhraseCount=1, pronunciationTerminator="。",
+                ),
+                VoicegerSegment(language="en", text="world", phonemes=["W", "ER0"]),
+                VoicegerSegment(
+                    language="ja", text="後", accentPhraseStart=2,
+                    accentPhraseCount=1, pronunciationTerminator="？",
+                ),
+            ],
+            speedScale=1.25,
+            outputSamplingRate=44100,
+        )
+        original = query.model_dump()
+        before_phrases = query.accent_phrases[0].model_dump()
+        after_phrases = query.accent_phrases[2].model_dump()
+        unrelated_segments = [
+            query.voicegerSegments[index].model_dump() for index in (0, 1, 3, 4)
+        ]
+
+        with patch(
+            "voiceger_accent_adapter.query_editing.text_to_pronunciation",
+            return_value=parse_pronunciation("ミ'ズ/サ'ク！"),
+        ):
+            updated = replace_japanese_section_text(
+                query,
+                "新しい文",
+                segment_index=2,
+            )
+
+        self.assertEqual(updated.voicegerSegments[2].text, "新しい文")
+        self.assertEqual(updated.voicegerSegments[2].accentPhraseStart, 1)
+        self.assertEqual(updated.voicegerSegments[2].accentPhraseCount, 2)
+        self.assertEqual(updated.voicegerSegments[2].pronunciationTerminator, "！")
+        self.assertEqual(updated.voicegerSegments[4].accentPhraseStart, 3)
+        self.assertEqual(updated.accent_phrases[0].model_dump(), before_phrases)
+        self.assertEqual(updated.accent_phrases[3].model_dump(), after_phrases)
+        self.assertEqual(
+            [updated.voicegerSegments[index].model_dump() for index in (0, 1, 3, 4)],
+            [
+                *unrelated_segments[:3],
+                {**unrelated_segments[3], "accentPhraseStart": 3},
+            ],
+        )
+        self.assertEqual(updated.speedScale, 1.25)
+        self.assertEqual(updated.outputSamplingRate, 44100)
+        self.assertEqual(query.model_dump(), original)
+
+    def test_pure_japanese_text_replacement_preserves_query_controls(self):
+        query = _pure_query("ア'メ。", speedScale=1.3, outputSamplingRate=44100)
+        original = query.model_dump()
+
+        with patch(
+            "voiceger_accent_adapter.query_editing.text_to_pronunciation",
+            return_value=parse_pronunciation("キョ'ウ！"),
+        ):
+            updated = replace_japanese_section_text(query, "今日はいい天気")
+
+        self.assertIsNone(updated.voicegerSegments)
+        self.assertEqual(japanese_pronunciation(updated), "キョ'ウ！")
+        self.assertEqual(updated.kana, "キョ'ウ！")
+        self.assertEqual(updated.speedScale, 1.3)
+        self.assertEqual(updated.outputSamplingRate, 44100)
+        self.assertEqual(query.model_dump(), original)
+
+    def test_japanese_text_preview_isolates_only_the_rebuilt_section(self):
+        query = _mixed_query(
+            ["ア'メ", "サ'ク", "キョ'ウ"],
+            [
+                VoicegerSegment(language="ja", text="前", accentPhraseStart=0, accentPhraseCount=1),
+                VoicegerSegment(language="en", text="hello", phonemes=["HH", "AH1"]),
+                VoicegerSegment(language="ja", text="選択", accentPhraseStart=1, accentPhraseCount=1),
+                VoicegerSegment(language="ja", text="後", accentPhraseStart=2, accentPhraseCount=1),
+            ],
+            speedScale=1.4,
+        )
+        original = query.model_dump()
+
+        with patch(
+            "voiceger_accent_adapter.query_editing.text_to_pronunciation",
+            return_value=parse_pronunciation("ミ'ズ/サ'ク？"),
+        ):
+            preview = japanese_section_text_preview_query(
+                query,
+                "新しい文",
+                segment_index=2,
+            )
+
+        self.assertIsNone(preview.voicegerSegments)
+        self.assertEqual(len(preview.accent_phrases), 2)
+        self.assertEqual(japanese_pronunciation(preview), "ミ'ズ/サ'ク？")
+        self.assertEqual(preview.speedScale, 1.4)
+        self.assertEqual(query.model_dump(), original)
+
+    def test_english_retention_keeps_manual_phonemes_after_insertions_and_deletions(self):
+        old = (
+            ("hello", ("HH", "AH2", "L", "OW0")),
+            ("sweet", ("S", "W", "IY2", "T")),
+            ("world", ("W", "ER1", "L", "D")),
+        )
+        inserted = retain_unchanged_english_word_phonemes(
+            old,
+            (
+                ("very", ("V", "EH1", "R", "IY0")),
+                ("HELLO", ("HH", "AH1", "L", "OW0")),
+                ("Sweet", ("S", "W", "IY1", "T")),
+                ("world", ("W", "ER0", "L", "D")),
+            ),
+        )
+        self.assertEqual(inserted[0][1], ("V", "EH1", "R", "IY0"))
+        self.assertEqual(inserted[1][1], old[0][1])
+        self.assertEqual(inserted[2][1], old[1][1])
+        self.assertEqual(inserted[3][1], old[2][1])
+
+        deleted = retain_unchanged_english_word_phonemes(
+            (
+                ("remove", ("R", "IY1", "M", "UW0", "V")),
+                ("sweet", old[1][1]),
+                ("world", old[2][1]),
+                ("later", ("L", "EY1", "T", "ER0")),
+            ),
+            (
+                ("sweet", ("S", "W", "IY1", "T")),
+                ("world", ("W", "ER0", "L", "D")),
+            ),
+        )
+        self.assertEqual(deleted, (old[1], old[2]))
+
+    def test_english_replacement_uses_new_g2p_for_replace_opcode_groups(self):
+        merged = retain_unchanged_english_word_phonemes(
+            (("color", ("K", "AH2", "L", "ER0")),),
+            (("colour", ("K", "AH1", "L", "ER0")),),
+        )
+        self.assertEqual(merged, (("colour", ("K", "AH1", "L", "ER0")),))
+
+    def test_english_repeated_word_retention_follows_sequence_matcher_order(self):
+        old = (
+            ("go", ("G", "OW1")),
+            ("go", ("G", "OW2")),
+        )
+        merged = retain_unchanged_english_word_phonemes(
+            old,
+            (
+                ("go", ("G", "OW0")),
+                ("GO", ("G", "OW0")),
+                ("go", ("G", "OW0")),
+            ),
+        )
+        self.assertEqual(
+            merged,
+            (
+                old[0],
+                ("GO", old[1][1]),
+                ("go", ("G", "OW0")),
+            ),
+        )
+
+    def test_english_text_preview_isolated_and_uses_retained_groups_without_mutation(self):
+        old_groups = (
+            ("hello", ("HH", "AH2", "L", "OW0")),
+            ("sweet", ("S", "W", "IY2", "T")),
+        )
+        query = _mixed_query(
+            ["ア'メ", "サ'ク"],
+            [
+                VoicegerSegment(language="ja", text="前", accentPhraseStart=0, accentPhraseCount=1),
+                VoicegerSegment(
+                    language="en", text="hello sweet",
+                    phonemes=[phone for _label, group in old_groups for phone in group],
+                ),
+                VoicegerSegment(language="ja", text="後", accentPhraseStart=1, accentPhraseCount=1),
+            ],
+            speedScale=1.2,
+        )
+        original = query.model_dump()
+        new_groups = (
+            ("very", ("V", "EH1", "R", "IY0")),
+            ("hello", ("HH", "AH1", "L", "OW0")),
+            ("sweet", ("S", "W", "IY1", "T")),
+        )
+
+        preview = english_section_text_preview_query(
+            query,
+            segment_index=1,
+            text="very hello sweet",
+            old_groups=old_groups,
+            new_groups=new_groups,
+        )
+
+        self.assertEqual(preview.accent_phrases, [])
+        self.assertIsNone(preview.kana)
+        self.assertEqual(len(preview.voicegerSegments), 1)
+        self.assertEqual(preview.voicegerSegments[0].text, "very hello sweet")
+        self.assertEqual(
+            preview.voicegerSegments[0].phonemes,
+            [*new_groups[0][1], *old_groups[0][1], *old_groups[1][1]],
+        )
+        self.assertEqual(preview.speedScale, 1.2)
+        self.assertEqual(query.model_dump(), original)
+
+    def test_append_from_pure_japanese_preserves_existing_manual_phrases(self):
+        query = _pure_query("アメ'/キョ'ウ？", speedScale=1.35)
+        original_phrases = [phrase.model_dump() for phrase in query.accent_phrases]
+
+        updated = append_english_section(
+            query,
+            "hello",
+            phoneme_groups=(("hello", ("HH", "AH1", "L", "OW0")),),
+            pure_japanese_utterance_text="今日はいい天気？",
+        )
+
+        self.assertEqual(len(updated.voicegerSegments), 2)
+        self.assertEqual(updated.voicegerSegments[0].text, "今日はいい天気？")
+        self.assertEqual(updated.voicegerSegments[0].accentPhraseStart, 0)
+        self.assertEqual(updated.voicegerSegments[0].accentPhraseCount, 2)
+        self.assertEqual(updated.voicegerSegments[0].pronunciationTerminator, "？")
+        self.assertEqual(updated.accent_phrases[0].model_dump(), original_phrases[0])
+        self.assertEqual(updated.accent_phrases[1].model_dump(), original_phrases[1])
+        self.assertIsNone(updated.kana)
+        self.assertEqual(updated.speedScale, 1.35)
+        self.assertEqual(query.voicegerSegments, None)
+
+    def test_delete_reindexes_japanese_and_normalizes_lone_japanese_section(self):
+        query = _mixed_query(
+            ["ア'メ", "サ'ク", "キョ'ウ"],
+            [
+                VoicegerSegment(
+                    language="ja", text="前", accentPhraseStart=0,
+                    accentPhraseCount=1, pronunciationTerminator="",
+                ),
+                VoicegerSegment(language="en", text="hello", phonemes=["HH", "AH1"]),
+                VoicegerSegment(
+                    language="ja", text="後", accentPhraseStart=1,
+                    accentPhraseCount=2, pronunciationTerminator="？",
+                ),
+            ],
+            speedScale=1.1,
+        )
+        original = query.model_dump()
+        surviving_phrases = [phrase.model_dump() for phrase in query.accent_phrases[1:]]
+
+        after_english, pure_text = delete_utterance_section(query, segment_index=1)
+        self.assertIsNone(pure_text)
+        self.assertEqual(after_english.voicegerSegments[1].accentPhraseStart, 1)
+        self.assertEqual(after_english.voicegerSegments[1].accentPhraseCount, 2)
+
+        pure, pure_text = delete_utterance_section(after_english, segment_index=0)
+
+        self.assertIsNone(pure.voicegerSegments)
+        self.assertEqual(pure_text, "後")
+        self.assertEqual([phrase.model_dump() for phrase in pure.accent_phrases], surviving_phrases)
+        self.assertEqual(pure.kana, "サ'ク/キョ'ウ？")
+        self.assertEqual(pure.speedScale, 1.1)
+        self.assertEqual(query.model_dump(), original)
+
+    def test_deleting_the_only_explicit_section_is_rejected(self):
+        query = _mixed_query(
+            ["ア'メ"],
+            [VoicegerSegment(language="ja", text="雨", accentPhraseStart=0, accentPhraseCount=1)],
+        )
+        with self.assertRaisesRegex(ValueError, "only utterance section"):
+            delete_utterance_section(query, segment_index=0)
 
 
 if __name__ == "__main__":
