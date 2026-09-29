@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 
 from .mixed_language import build_mixed_audio_query
 from .openjtalk_converter import OpenJTalkConversionError
+from .openjtalk_dictionary import OpenJTalkDictionaryError
 from .pronunciation import (
     PronunciationSyntaxError,
     parse_pronunciation,
@@ -23,6 +24,11 @@ from .voiceger_adapter import (
     VoicegerAdapterError,
 )
 from .voicevox_api_models import AccentPhrase, AudioQuery
+from .user_dictionary import (
+    JapaneseWordType,
+    UserDictWord,
+    UserDictionaryInputError,
+)
 from .voicevox_query import (
     build_audio_query,
     pronunciation_to_accent_phrases,
@@ -59,6 +65,11 @@ def root():
             "/audio_query",
             "/accent_phrases",
             "/synthesis",
+            "GET /user_dict",
+            "POST /user_dict_word",
+            "PUT /user_dict_word/{word_uuid}",
+            "DELETE /user_dict_word/{word_uuid}",
+            "POST /import_user_dict",
         ],
     }
 
@@ -107,11 +118,18 @@ def audio_query(
     _resolve_style(speaker)
 
     try:
+        adapter = get_adapter()
+        adapter.ensure_japanese_dictionary_active()
         return build_mixed_audio_query(
             text,
-            english_g2p=get_adapter().english_phonemes,
+            english_g2p=adapter.english_phonemes,
             output_sampling_rate=32000,
         )
+    except OpenJTalkDictionaryError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Japanese user dictionary could not be activated.",
+        ) from exc
     except (ValueError, OpenJTalkConversionError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -130,6 +148,7 @@ def accent_phrases(
         if is_kana:
             parsed = parse_pronunciation(text)
         else:
+            get_adapter().ensure_japanese_dictionary_active()
             return build_mixed_audio_query(text).accent_phrases
 
         return pronunciation_to_accent_phrases(parsed)
@@ -139,6 +158,11 @@ def accent_phrases(
         OpenJTalkConversionError,
     ) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OpenJTalkDictionaryError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Japanese user dictionary could not be activated.",
+        ) from exc
 
 
 @app.post(
@@ -206,3 +230,105 @@ def synthesis(
         media_type="audio/wav",
         background=background_tasks,
     )
+
+
+@app.get("/user_dict", response_model=dict[str, UserDictWord])
+def user_dict():
+    """Return the persistent UUID-keyed Japanese dictionary."""
+
+    try:
+        return get_adapter().user_dictionary.list_japanese_entries()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Japanese user dictionary could not be loaded.",
+        ) from exc
+
+
+@app.post("/user_dict_word")
+def add_user_dict_word(
+    surface: str,
+    pronunciation: str,
+    accent_type: int,
+    word_type: JapaneseWordType = Query(JapaneseWordType.PROPER_NOUN),
+    priority: int = Query(5, ge=0, le=10),
+):
+    """Add one VOICEVOX-compatible Japanese dictionary word."""
+
+    try:
+        return get_adapter().user_dictionary.add_japanese_word(
+            surface=surface,
+            pronunciation=pronunciation,
+            accent_type=accent_type,
+            word_type=word_type,
+            priority=priority,
+        )
+    except UserDictionaryInputError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Japanese user dictionary could not be updated.",
+        ) from exc
+
+
+@app.put("/user_dict_word/{word_uuid}", status_code=204)
+def update_user_dict_word(
+    word_uuid: str,
+    surface: str,
+    pronunciation: str,
+    accent_type: int,
+    word_type: JapaneseWordType = Query(JapaneseWordType.PROPER_NOUN),
+    priority: int = Query(5, ge=0, le=10),
+):
+    """Replace one existing word, applying VOICEVOX add/update defaults."""
+
+    try:
+        get_adapter().user_dictionary.update_japanese_word(
+            word_uuid,
+            surface=surface,
+            pronunciation=pronunciation,
+            accent_type=accent_type,
+            word_type=word_type,
+            priority=priority,
+        )
+    except UserDictionaryInputError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Japanese user dictionary could not be updated.",
+        ) from exc
+
+
+@app.delete("/user_dict_word/{word_uuid}", status_code=204)
+def delete_user_dict_word(word_uuid: str):
+    """Delete one existing Japanese dictionary word."""
+
+    try:
+        get_adapter().user_dictionary.delete_japanese_word(word_uuid)
+    except UserDictionaryInputError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Japanese user dictionary could not be updated.",
+        ) from exc
+
+
+@app.post("/import_user_dict", status_code=204)
+def import_user_dict(
+    entries: dict[str, UserDictWord],
+    override: bool = Query(...),
+):
+    """Import the UUID-keyed expanded VOICEVOX UserDictWord format."""
+
+    try:
+        get_adapter().user_dictionary.import_japanese(entries, override=override)
+    except UserDictionaryInputError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Japanese user dictionary could not be imported.",
+        ) from exc

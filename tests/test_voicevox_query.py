@@ -1,9 +1,14 @@
+import sys
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from voiceger_accent_adapter.pronunciation import parse_pronunciation
+from voiceger_accent_adapter.runtime_locks import OPENJTALK_LOCK
 from voiceger_accent_adapter.voicevox_query import (
     accent_phrases_to_pronunciation,
     build_audio_query,
+    _mora_phones,
 )
 
 
@@ -21,6 +26,15 @@ class VoicevoxQueryTests(unittest.TestCase):
             [m.text for m in query.accent_phrases[0].moras],
             ["ア", "メ"],
         )
+
+    def test_mora_g2p_holds_openjtalk_lock(self):
+        def g2p(text, *, kana, join):
+            self.assertTrue(OPENJTALK_LOCK._is_owned())
+            self.assertEqual((text, kana, join), ("ア", False, False))
+            return ["a"]
+
+        with patch.dict(sys.modules, {"pyopenjtalk": SimpleNamespace(g2p=g2p)}):
+            self.assertEqual(_mora_phones("ア", None), (None, "a"))
 
     def test_accent_phrase_edit_round_trips_to_pronunciation(self):
         pronunciation = parse_pronunciation("ア'メ")

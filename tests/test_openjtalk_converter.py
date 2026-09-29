@@ -5,6 +5,7 @@ from voiceger_accent_adapter.openjtalk_converter import (
     frontend_features_to_pronunciation,
     text_to_pronunciation_string,
 )
+from voiceger_accent_adapter.runtime_locks import OPENJTALK_LOCK
 
 
 def node(
@@ -109,6 +110,14 @@ class OpenJTalkConverterTests(unittest.TestCase):
         features = [node("*", acc=1, mora_size=1)]
         with self.assertRaises(OpenJTalkConversionError):
             frontend_features_to_pronunciation(features)
+
+    def test_run_frontend_uses_shared_openjtalk_lock(self):
+        def run_frontend(_):
+            self.assertTrue(OPENJTALK_LOCK._is_owned())
+            return [node("アメ", acc=1, mora_size=2)]
+
+        value = text_to_pronunciation_string("雨", run_frontend=run_frontend)
+        self.assertEqual(value, "ア'メ")
 
 
 if __name__ == "__main__":

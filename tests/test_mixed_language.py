@@ -128,6 +128,49 @@ class MixedLanguageTests(unittest.TestCase):
             ["OW1", "P", "AH0", "N", "EY1"],
         )
 
+    def test_mixed_query_keeps_dictionary_pronunciations_in_segment_order(self):
+        japanese_values = iter(
+            (
+                Pronunciation(
+                    phrases=(AccentPhrase(("ズ", "ン", "ダ", "モ", "ン"), 3),),
+                    terminator=None,
+                ),
+                Pronunciation(
+                    phrases=(AccentPhrase(("ア", "メ"), 1),),
+                    terminator="。",
+                ),
+            )
+        )
+        segments = (
+            DetectedSegment("ja", "ずんだもん"),
+            DetectedSegment("en", "Voiceger"),
+            DetectedSegment("ja", "雨。"),
+        )
+        with patch(
+            "voiceger_accent_adapter.mixed_language.text_to_pronunciation",
+            side_effect=lambda _text: next(japanese_values),
+        ):
+            query = build_mixed_audio_query(
+                "ずんだもんVoiceger雨。",
+                segments=segments,
+                english_g2p=lambda _text: ["V", "OY1", "AH0", "JH", "ER0"],
+            )
+
+        self.assertEqual(
+            [segment.language for segment in query.voicegerSegments],
+            ["ja", "en", "ja"],
+        )
+        self.assertEqual(
+            [segment.text for segment in query.voicegerSegments],
+            ["ずんだもん", "Voiceger", "雨。"],
+        )
+        self.assertEqual(query.voicegerSegments[1].phonemes[1], "OY1")
+        readings = [
+            "".join(mora.text for mora in phrase.moras)
+            for phrase in query.accent_phrases
+        ]
+        self.assertEqual(readings, ["ズンダモン", "アメ"])
+
     def test_new_mixed_japanese_segments_store_explicit_terminator_state(self):
         for terminator, expected in (
             (None, ""),
