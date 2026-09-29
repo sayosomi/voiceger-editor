@@ -21,6 +21,7 @@ from .tui_display import (
     _wrap_text,
 )
 from .tui_editors import PronunciationRow
+from .tui_shortcuts import menu_item
 
 
 _HELP_ITEMS = (
@@ -50,6 +51,12 @@ _HELP_ITEMS = (
     ("o", ": open Settings at output"),
     ("x", ": open Settings at TXT"),
     (None, "Build pronunciation: rebuild automatically from the current Caption"),
+    (None, "Editor/modal action letters work while no text field is active."),
+    (
+        None,
+        "While editing text, Enter finishes editing; printable shortcut letters "
+        "are inserted normally.",
+    ),
     ("?", ": open or close Help"),
     ("q", ": Quit"),
 )
@@ -236,7 +243,7 @@ class TuiRenderer:
             screen,
             back_row,
             0,
-            "▶ [ Back ]",
+            f"▶ {menu_item('help', 'back').display_label}",
             width,
             self._focus_attribute(),
         )
@@ -526,9 +533,10 @@ class TuiRenderer:
             for piece in pieces[1:]:
                 lines.append((" " * _display_width(prefix) + piece, key))
 
-        def selectable(key: str | tuple[str, int | None], label: str) -> None:
+        def selectable(key: str) -> None:
             marker = "▶ " if editor.selection == key else "  "
-            lines.append((marker + label, key))
+            item = menu_item(editor.kind, key, editor.payload)
+            lines.append((marker + item.display_label, key))
 
         def wrapped_selectable_text(
             key: str | tuple[str, int | None],
@@ -568,16 +576,16 @@ class TuiRenderer:
             else:
                 wrapped_selectable_text("draft", editor.payload["draft"])
             plain()
-            selectable("apply", "[ Apply ]")
-            selectable("clear", "[ Clear ]")
-            selectable("reset", "[ Reset ]")
-            selectable("back", "[ Back ]")
+            selectable("apply")
+            selectable("clear")
+            selectable("reset")
+            selectable("back")
         elif editor.kind == "build_confirmation":
             plain()
             wrap("", editor.payload["warning"])
             plain()
-            selectable("rebuild", "[ Rebuild ]")
-            selectable("cancel", "[ Cancel ]")
+            selectable("rebuild")
+            selectable("cancel")
         elif editor.kind == "japanese":
             plain()
             plain("Source")
@@ -588,12 +596,12 @@ class TuiRenderer:
                 "▶ " if editor.selection == "pronunciation" else "  ",
             )
             plain()
-            selectable("preview", "[ Preview ]")
-            selectable("apply", "[ Apply ]")
-            selectable("edit_text", "[ Edit text ]")
-            selectable("clear", "[ Clear ]")
-            selectable("reset", "[ Reset ]")
-            selectable("back", "[ Back ]")
+            selectable("preview")
+            selectable("apply")
+            selectable("edit_text")
+            selectable("clear")
+            selectable("reset")
+            selectable("back")
         elif editor.kind == "settings":
             draft = editor.payload["draft_settings"]
             values = (
@@ -611,7 +619,9 @@ class TuiRenderer:
                 ("output_dir", "Output", str(draft["output_dir"])),
                 ("save_text", "TXT", "ON" if draft["save_text"] else "OFF"),
             )
-            for key, label, value in values:
+            for key, _label, value in values:
+                item = menu_item(editor.kind, key, editor.payload)
+                label = item.label
                 if editor.active_field == key:
                     input_field(key, f"▶ {label:<12}")
                 else:
@@ -621,11 +631,14 @@ class TuiRenderer:
                             self._adjustment_press_direction(state, "settings", key),
                         )
                     marker = "▶ " if editor.selection == key else "  "
-                    lines.append((f"{marker}{label:<12}{value}", key))
+                    shortcut = (
+                        f" [{item.shortcut.upper()}]" if item.shortcut is not None else ""
+                    )
+                    lines.append((f"{marker}{label:<12}{value}{shortcut}", key))
             plain()
             selectable("apply", "[ Apply and save ]")
-            selectable("reset", "[ Reset ]")
-            selectable("back", "[ Back ]")
+            selectable("reset")
+            selectable("back")
         elif editor.kind == "english_word":
             plain()
             plain("Word")
@@ -636,12 +649,12 @@ class TuiRenderer:
                 "▶ " if editor.selection == "phonemes" else "  ",
             )
             plain()
-            selectable("preview", "[ Preview ]")
-            selectable("apply", "[ Apply ]")
-            selectable("edit_text", "[ Edit text ]")
-            selectable("clear", "[ Clear ]")
-            selectable("reset", "[ Reset ]")
-            selectable("back", "[ Back ]")
+            selectable("preview")
+            selectable("apply")
+            selectable("edit_text")
+            selectable("clear")
+            selectable("reset")
+            selectable("back")
         elif editor.kind == "section_text":
             language = "Japanese" if editor.payload["language"] == "ja" else "English"
             plain()
@@ -653,32 +666,33 @@ class TuiRenderer:
             else:
                 wrapped_selectable_text("draft", editor.payload["draft"])
             plain()
-            selectable("preview", "[ Preview ]")
-            selectable("apply", "[ Apply ]")
-            selectable("reset", "[ Reset ]")
+            selectable("preview")
+            selectable("apply")
+            selectable("reset")
             if editor.payload["can_delete"]:
-                selectable("delete_section", "[ Delete section ]")
-            selectable("back", "[ Back ]")
+                selectable("delete_section")
+            selectable("back")
         elif editor.kind == "add_section":
             language = "Japanese" if editor.payload["language"] == "ja" else "English"
             marker = "▶ " if editor.selection == "language" else "  "
             plain()
-            plain(f"{marker}Language    < {language} >")
+            language_item = menu_item(editor.kind, "language", editor.payload)
+            plain(f"{marker}{language_item.label:<12}< {language} >")
             if editor.active_field == "draft":
                 input_field("draft", "▶ " if editor.selection == "draft" else "  ")
             else:
                 wrapped_selectable_text("draft", editor.payload["draft"])
             plain()
-            selectable("add", "[ Add ]")
-            selectable("clear", "[ Clear ]")
-            selectable("reset", "[ Reset ]")
-            selectable("back", "[ Back ]")
+            selectable("add")
+            selectable("clear")
+            selectable("reset")
+            selectable("back")
         elif editor.kind == "delete_confirmation":
             plain()
             wrap("", editor.payload["warning"])
             plain()
-            selectable("delete", "[ Delete ]")
-            selectable("cancel", "[ Cancel ]")
+            selectable("delete")
+            selectable("cancel")
         return lines, cursor_line, cursor_column
 
     @staticmethod
