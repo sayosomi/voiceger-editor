@@ -272,6 +272,31 @@ class TuiNavigationTests(unittest.TestCase):
             ),
             (),
         )
+        busy = context(busy=True)
+        self.assertEqual(
+            self.navigation.activate_item(busy, ("build_pronunciation", None)),
+            (
+                UpdateNavigationStatus(
+                    "Wait for the current synthesis operation to finish."
+                ),
+            ),
+        )
+        self.assertEqual(
+            self.navigation.activate_item(busy, ("add_section", None)),
+            (
+                UpdateNavigationStatus(
+                    "Wait for synthesis to finish before adding a section."
+                ),
+            ),
+        )
+        self.assertEqual(
+            self.navigation.activate_item(busy, ("generate", None)),
+            (
+                UpdateNavigationStatus(
+                    "A sequential take operation is already running."
+                ),
+            ),
+        )
 
     def test_generate_regenerate_and_candidate_regeneration_behavior(self):
         self.navigation.focus_key = ("generate", None)
