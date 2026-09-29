@@ -250,6 +250,29 @@ class TuiNavigationTests(unittest.TestCase):
             (UpdateNavigationStatus("Wait for synthesis to finish before adding a section."),),
         )
 
+    def test_direct_main_actions_share_focused_activation_semantics(self):
+        for focus_key in (
+            ("build_pronunciation", None),
+            ("add_section", None),
+            ("generate", None),
+        ):
+            with self.subTest(focus_key=focus_key):
+                state = context()
+                focused = TuiNavigation()
+                focused.focus_key = focus_key
+                expected = focused.activate_focused_item(state)
+
+                direct = TuiNavigation()
+                self.assertEqual(direct.activate_item(state, focus_key), expected)
+
+        self.assertEqual(
+            self.navigation.activate_item(
+                context(has_session=False),
+                ("generate", None),
+            ),
+            (),
+        )
+
     def test_generate_regenerate_and_candidate_regeneration_behavior(self):
         self.navigation.focus_key = ("generate", None)
         self.assertEqual(
