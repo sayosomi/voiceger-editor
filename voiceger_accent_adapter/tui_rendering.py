@@ -36,7 +36,7 @@ _HELP_ITEMS = (
         "otherwise activate the focused action",
     ),
     ("Space", ": replay a focused candidate"),
-    ("Esc", ": return from candidate review; cancel editor draft"),
+    ("Esc", ": return from Help/candidate review; cancel editor draft"),
     ("Tab", ": move to the next major section/action"),
     ("Shift+Tab", ": move to the previous major section/action"),
     ("F5 / Ctrl+G", ": activate Generate / Regenerate all"),
@@ -50,7 +50,7 @@ _HELP_ITEMS = (
     ("o", ": open Settings at output"),
     ("x", ": open Settings at TXT"),
     (None, "Build pronunciation: rebuild automatically from the current Caption"),
-    ("?", ": open Help"),
+    ("?", ": open or close Help"),
     ("q", ": Quit"),
 )
 
@@ -183,20 +183,21 @@ class TuiRenderer:
 
     def render_help(self, screen: Any, width: int) -> None:
         safe_add = self._safe_add
-        safe_add(screen, 0, 0, "HELP", width, self._attribute("A_BOLD"))
-        safe_add(screen, 1, 0, "Navigation and action shortcuts", width)
         height = screen.getmaxyx()[0]
-        row = 2
+        back_row = max(0, height - 1)
+        if back_row > 0:
+            safe_add(screen, 0, 0, "HELP", width, self._attribute("A_BOLD"))
+        row = 1
         column = 1
         available = max(1, width - column - 1)
         bold = self._attribute("A_BOLD")
         for shortcut, suffix in _HELP_ITEMS:
-            if row >= height:
+            if row >= back_row:
                 break
             if shortcut is None:
                 pieces = _wrap_text(suffix, available) or [""]
                 for piece in pieces:
-                    if row >= height:
+                    if row >= back_row:
                         break
                     safe_add(screen, row, column, piece, width)
                     row += 1
@@ -206,13 +207,13 @@ class TuiRenderer:
             if key_width >= available:
                 key_pieces = _wrap_text(shortcut, available) or [""]
                 for piece in key_pieces:
-                    if row >= height:
+                    if row >= back_row:
                         break
                     safe_add(screen, row, column, piece, width, bold)
                     row += 1
                 explanation_pieces = _wrap_text(suffix, available)
                 for piece in explanation_pieces:
-                    if row >= height:
+                    if row >= back_row:
                         break
                     safe_add(screen, row, column, piece, width)
                     row += 1
@@ -227,10 +228,18 @@ class TuiRenderer:
                 )
             row += 1
             for piece in explanation_pieces[1:]:
-                if row >= height:
+                if row >= back_row:
                     break
                 safe_add(screen, row, column + key_width, piece, width)
                 row += 1
+        safe_add(
+            screen,
+            back_row,
+            0,
+            "▶ [ Back ]",
+            width,
+            self._focus_attribute(),
+        )
 
     def render_navigation(
         self,
@@ -603,6 +612,8 @@ class TuiRenderer:
                     lines.append((f"{marker}{label:<12}{value}", key))
             plain()
             selectable("apply", "[ Apply and save ]")
+            selectable("reset", "[ Reset ]")
+            selectable("back", "[ Back ]")
         elif editor.kind == "english_word":
             plain()
             plain("Word")
@@ -665,11 +676,19 @@ class TuiRenderer:
                 style_id = int(value)
             except (TypeError, ValueError):
                 return str(value)
-            style = next(
-                (item for item in available_styles(voiceger_root) if item.id == style_id),
-                None,
-            )
-            return f"{value} {style.name}" if style is not None else str(value)
+            try:
+                style = next(
+                    (
+                        item
+                        for item in available_styles(voiceger_root)
+                        if item.id == style_id
+                    ),
+                    None,
+                )
+                style_name = str(style.name) if style is not None else ""
+            except Exception:
+                return str(style_id)
+            return style_name or str(style_id)
         if name == "speed":
             try:
                 return f"{Decimal(str(value)):.2f}"

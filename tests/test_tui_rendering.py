@@ -378,6 +378,21 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertNotIn("Return to Navigation", visible)
         self.assertNotIn("| q Quit", visible)
         self.assertIn("q", [text for _row, _column, text, _attr in screen.drawn])
+        back = next(item for item in screen.drawn if item[2] == "▶ [ Back ]")
+        self.assertEqual(back[0], screen.rows - 1)
+        self.assertTrue(back[3] & curses.A_REVERSE)
+
+    def test_help_back_stays_visible_when_help_content_exceeds_short_terminal(self):
+        for height in (24, 8, 4, 2):
+            with self.subTest(height=height):
+                screen = FakeScreen(rows=height, columns=80)
+                self.renderer.render_help(screen, screen.columns)
+                back = next(item for item in screen.drawn if item[2] == "▶ [ Back ]")
+                self.assertEqual(back[0], height - 1)
+                self.assertTrue(back[3] & curses.A_REVERSE)
+                self.assertFalse(
+                    any(row >= height for row, _column, _text, _attr in screen.drawn)
+                )
 
     def test_help_shortcut_emphasis_does_not_bold_explanations(self):
         screen = FakeScreen(rows=30, columns=60)
@@ -596,11 +611,17 @@ class TuiRenderingTests(unittest.TestCase):
             document, _, _ = self.renderer.editor_document(render_state(editor=editor), 80)
         visible = "\n".join(line for line, _key in document)
         self.assertIn("▶ Speed       < 1.00 >", visible)
-        self.assertIn("Style       < 1 Neutral >", visible)
+        self.assertIn("Style       < Neutral >", visible)
         self.assertIn("Takes       < 4 >", visible)
         self.assertIn("Output      /tmp/output", visible)
         self.assertIn("TXT         < ON >", visible)
         self.assertIn("[ Apply and save ]", visible)
+        self.assertIn("[ Reset ]", visible)
+        self.assertIn("[ Back ]", visible)
+        self.assertEqual(
+            [key for _line, key in document if key is not None],
+            ["style_id", "speed", "take_count", "output_dir", "save_text", "apply", "reset", "back"],
+        )
         self.assertNotIn("input:", visible)
 
         editor.active_field = "speed"
@@ -612,6 +633,31 @@ class TuiRenderingTests(unittest.TestCase):
         ):
             active, _, _ = self.renderer.editor_document(render_state(editor=editor), 80)
         self.assertIn(("▶ Speed       1.25", "speed"), active)
+
+    def test_settings_style_display_falls_back_to_id_when_unresolved(self):
+        editor = SimpleNamespace(
+            kind="settings", title="EDIT SETTINGS", selection="style_id",
+            payload={"draft_settings": {
+                "style_id": "19", "speed": "1.00", "take_count": "4",
+                "output_dir": "/tmp/output", "save_text": False,
+            }},
+            active_field=None, input_value="", input_cursor=0, error="", scroll=0,
+        )
+        with patch(
+            "voiceger_accent_adapter.tui_rendering.available_styles",
+            return_value=(),
+        ):
+            document, _, _ = self.renderer.editor_document(
+                render_state(editor=editor), 80
+            )
+        self.assertIn("▶ Style       < 19 >", "\n".join(line for line, _key in document))
+
+        with patch(
+            "voiceger_accent_adapter.tui_rendering.available_styles",
+            side_effect=RuntimeError("styles unavailable"),
+        ):
+            value = self.renderer.setting_display("style_id", "19", Path("/missing"))
+        self.assertEqual(value, "19")
 
     def test_no_per_page_footer_and_status_only_when_present(self):
         session = FakeSession(candidates=(candidate(1),))
