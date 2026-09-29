@@ -33,6 +33,8 @@ from .tui_editors import (
     ClearAdjustmentFeedbackIntent,
     CloseEditorIntent,
     EditorIntent,
+    OpenHelpIntent,
+    QuitIntent,
     PreviewIntent,
     QueryApplicationResult,
     PronunciationRow,
@@ -51,6 +53,7 @@ from .tui_operations import (
     TuiOperations,
     UpdateStatusEffect,
 )
+from .tui_shortcuts import resolve_shortcut
 from .tui_navigation import (
     AcceptCandidate,
     AddSectionEditor,
@@ -224,6 +227,17 @@ class TuiApp:
         )
 
     def _handle_key(self, key: Any) -> None:
+        if self._help_open:
+            if key in ("q", "Q", "\x03"):
+                self._help_open = False
+                self._activate_quit()
+                return
+            if (
+                key in {_ESCAPE, "?", *_ENTER_KEYS}
+                or resolve_shortcut("help", key) is not None
+            ):
+                self._help_open = False
+            return
         if self._editor_controller.editor is not None:
             intents = self._editor_controller.handle_key(
                 key,
@@ -241,14 +255,6 @@ class TuiApp:
                 ),
             )
             self._dispatch_editor_intents(intents)
-            return
-        if self._help_open:
-            if key in ("q", "Q", "\x03"):
-                self._help_open = False
-                self._activate_quit()
-                return
-            if key in {_ESCAPE, "?", *_ENTER_KEYS}:
-                self._help_open = False
             return
 
         if key == _ESCAPE:
@@ -622,6 +628,10 @@ class TuiApp:
                 self._mark_adjustment_pressed(
                     intent.area, intent.control, intent.direction
                 )
+            elif isinstance(intent, OpenHelpIntent):
+                self._help_open = True
+            elif isinstance(intent, QuitIntent):
+                self._activate_quit()
             elif isinstance(intent, CloseEditorIntent):
                 self._pressed_adjustment = None
                 self._dispatch_navigation_actions(
@@ -794,15 +804,17 @@ class TuiApp:
         screen.erase()
         try:
             editor = self._editor_controller.editor
-            curses.curs_set(1 if editor and editor.active_field else 0)
+            curses.curs_set(
+                0 if self._help_open else 1 if editor and editor.active_field else 0
+            )
         except curses.error:
             pass
-        if self._editor_controller.editor is not None:
+        if self._help_open:
+            self._renderer.render_help(screen, width)
+        elif self._editor_controller.editor is not None:
             self._renderer.render_editor(
                 screen, self._render_state(segments=()), height, width
             )
-        elif self._help_open:
-            self._renderer.render_help(screen, width)
         else:
             self._dispatch_navigation_actions(
                 self._navigation.set_focus_key(

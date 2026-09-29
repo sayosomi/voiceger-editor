@@ -450,6 +450,53 @@ class TuiTests(unittest.TestCase):
                 self.assertFalse(shortcut._help_open)
                 self.assertTrue(shortcut._exit_requested)
 
+    def test_main_only_generation_and_candidate_shortcuts_do_not_escape_editor(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        app._open_settings_editor()
+        editor = app._editor_controller.editor
+        app._navigation.activate_generate = Mock(return_value=())
+        app._navigation.focus_candidate = Mock(return_value=())
+        app._navigation.activate_regenerate_focused = Mock(return_value=())
+
+        for key in (curses.KEY_F5, "\x07", "1", "R"):
+            app._handle_key(key)
+
+        app._navigation.activate_generate.assert_not_called()
+        app._navigation.focus_candidate.assert_not_called()
+        app._navigation.activate_regenerate_focused.assert_not_called()
+        self.assertIs(app._editor_controller.editor, editor)
+
+        app._handle_key("r")
+        app._navigation.activate_regenerate_focused.assert_not_called()
+        self.assertIs(app._editor_controller.editor, editor)
+
+    def test_help_from_editor_restores_exact_editor_state_and_focus(self):
+        app = self.make_app(query=mixed_query())
+        app._open_settings_editor()
+        editor = app._editor_controller.editor
+        editor.selection = "output_dir"
+        editor.payload["draft_settings"]["output_dir"] = "/tmp/custom"
+        snapshot = dict(editor.payload["draft_settings"])
+
+        app._handle_key("?")
+        self.assertTrue(app._help_open)
+        self.assertIs(app._editor_controller.editor, editor)
+
+        screen = FakeScreen()
+        app._screen = screen
+        app._render()
+        self.assertIn("HELP", self.rendered(screen))
+        self.assertNotIn("EDIT SETTINGS", self.rendered(screen))
+
+        app._handle_key("b")
+        self.assertFalse(app._help_open)
+        self.assertIs(app._editor_controller.editor, editor)
+        self.assertEqual(editor.selection, "output_dir")
+        self.assertEqual(editor.payload["draft_settings"], snapshot)
+
+        app._handle_key("q")
+        self.assertTrue(app._exit_requested)
+
     def test_pressed_generate_feedback_requires_a_movable_change(self):
         with tempfile.TemporaryDirectory() as directory:
             app = self.make_app(query=mixed_query())
@@ -827,10 +874,10 @@ class TuiTests(unittest.TestCase):
         app._render()
         rendered = self.rendered(screen)
         self.assertIn("EDIT CAPTION TEXT", rendered)
-        self.assertIn("[ Apply ]", rendered)
-        self.assertIn("[ Clear ]", rendered)
-        self.assertIn("[ Reset ]", rendered)
-        self.assertIn("[ Back ]", rendered)
+        self.assertIn("[A] Apply", rendered)
+        self.assertIn("[C] Clear", rendered)
+        self.assertIn("[R] Reset", rendered)
+        self.assertIn("[B] Back", rendered)
         self.assertNotIn("NAVIGATION", rendered)
         self.assertIn("▶ ", rendered)
         for removed in ("Draft source", "Input:", "[Enter: Edit]", "Enter applies", "Enter Apply", "Esc Cancel"):
@@ -1364,7 +1411,7 @@ class TuiTests(unittest.TestCase):
             rendered = self.rendered(screen)
             for label in ("Style       <", "Speed       <", "Takes       <", "Output      ", "TXT         <"):
                 self.assertIn(label, rendered)
-            self.assertIn("[ Apply and save ]", rendered)
+            self.assertIn("[A] Apply and save", rendered)
             self.assertNotIn("input:", rendered)
             self.assertNotIn("[Enter: Edit]", rendered)
             self.assertNotIn("Cancel", rendered)
