@@ -660,12 +660,9 @@ class TuiApp:
                     BuildPronunciationResult(error=error)
                 )
             elif isinstance(intent, ApplySettingsIntent):
-                self._change_settings(**intent.changes.as_dict())
-                error_status = (
-                    self._status if self._status.startswith("Error:") else None
-                )
+                result = self._apply_settings_target(intent.settings)
                 pending[0:0] = self._editor_controller.complete_settings_application(
-                    SettingsApplicationResult(error_status=error_status)
+                    result
                 )
 
     def _change_settings(self, *, report_success: bool = True, **changes: Any) -> None:
@@ -692,6 +689,34 @@ class TuiApp:
         else:
             if report_success:
                 self._status = "Settings saved. Existing temporary takes were cleared."
+
+    def _apply_settings_target(self, target: Settings) -> SettingsApplicationResult:
+        runtime_changed = target != self.settings
+        if runtime_changed:
+            try:
+                self._operations.stop_playback()
+                if self.session is not None:
+                    self.session.replace_settings(target)
+            except (SettingsError, ValueError) as exc:
+                self._status = f"Error: Settings were not changed: {exc}"
+                return SettingsApplicationResult(error_status=self._status)
+            self.settings = target
+            self._operations.clear_current_take()
+
+        try:
+            save_settings(target, self.config_path)
+        except (OSError, SettingsError) as exc:
+            failure = (
+                "Settings changed for this run but could not be saved"
+                if runtime_changed
+                else "Settings could not be saved"
+            )
+            self._status = f"Error: {failure}: {exc}"
+            return SettingsApplicationResult(error_status=self._status)
+
+        self._persisted_settings = target
+        self._status = "Settings saved."
+        return SettingsApplicationResult()
 
     def _consume_events(self) -> None:
         effects = self._operations.consume_pending_events(
