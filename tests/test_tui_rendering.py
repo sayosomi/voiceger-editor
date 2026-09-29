@@ -391,8 +391,8 @@ class TuiRenderingTests(unittest.TestCase):
             "on EN: primary stress by one vowel",
             "on JA: edit segment pronunciation",
             "on EN: edit word phonemes",
-            "Editor/modal action letters work while no text field is active.",
-            "printable shortcut letters are inserted normally.",
+            "Menu mode: editor/modal action letters are active.",
+            "Editing: Enter finishes; printable shortcut letters insert text.",
         ):
             self.assertIn(text, visible)
         settings_shortcuts = (("s", "style"), ("v", "speed"), ("n", "takes"), ("o", "output"), ("x", "TXT"))
