@@ -1,4 +1,5 @@
 import curses
+from pathlib import Path
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
@@ -10,6 +11,7 @@ from voiceger_accent_adapter.tui_editors import (
     QuitIntent,
     TuiEditorController,
 )
+from voiceger_accent_adapter.tui_rendering import TuiRenderer, TuiRenderState
 from voiceger_accent_adapter.tui_shortcuts import (
     menu_definitions,
     menu_items,
@@ -145,6 +147,100 @@ class TuiShortcutTests(unittest.TestCase):
                     controller._activate_selection.assert_called_once_with(
                         settings, None, "opening"
                     )
+
+    def test_rendered_selectable_order_and_shortcut_hints_follow_declarations(self):
+        renderer = TuiRenderer()
+        samples = {
+            "caption": ("draft", {"draft": "hello"}, "hello"),
+            "build_confirmation": (
+                "rebuild",
+                {"warning": "warning"},
+                "",
+            ),
+            "japanese": (
+                "pronunciation",
+                {"source_text": "雨"},
+                "ア メ",
+            ),
+            "english_word": (
+                "phonemes",
+                {"label": "hello"},
+                "HH AH1",
+            ),
+            "section_text": (
+                "draft",
+                {"language": "ja", "draft": "雨", "can_delete": True},
+                "雨",
+            ),
+            "add_section": (
+                "language",
+                {"language": "ja", "draft": "雨"},
+                "雨",
+            ),
+            "settings": (
+                "style_id",
+                {
+                    "draft_settings": {
+                        "style_id": "1",
+                        "speed": "1.0",
+                        "take_count": "4",
+                        "output_dir": ".",
+                        "save_text": False,
+                    }
+                },
+                "",
+            ),
+            "delete_confirmation": (
+                "delete",
+                {"warning": "warning"},
+                "",
+            ),
+        }
+        for screen_kind, (selection, payload, input_value) in samples.items():
+            with self.subTest(screen_kind=screen_kind):
+                editor = SimpleNamespace(
+                    kind=screen_kind,
+                    title=screen_kind,
+                    selection=selection,
+                    payload=payload,
+                    active_field=None,
+                    input_value=input_value,
+                    input_cursor=len(input_value),
+                    error="",
+                )
+                state = TuiRenderState(
+                    voiceger_root=Path("/nonexistent/voiceger"),
+                    settings=Settings(),
+                    session=None,
+                    focus_key=("settings", None),
+                    status="",
+                    segments=(),
+                    pronunciation_rows=(),
+                    busy=False,
+                    worker_operation=None,
+                    worker_target=None,
+                    operation_completed=0,
+                    operation_total=0,
+                    pressed_adjustment=None,
+                    editor=editor,
+                )
+                document, _cursor_line, _cursor_column = renderer.editor_document(
+                    state, 120
+                )
+                rendered_items = [
+                    (text, key) for text, key in document if key is not None
+                ]
+                self.assertEqual(
+                    [key for _text, key in rendered_items],
+                    [item.key for item in menu_items(screen_kind, payload)],
+                )
+                text_by_key = {key: text for text, key in rendered_items}
+                for item in menu_items(screen_kind, payload):
+                    if item.shortcut is not None:
+                        self.assertIn(
+                            f"[{item.shortcut.upper()}]",
+                            text_by_key[item.key],
+                        )
 
     def test_dynamic_delete_shortcut_exists_only_when_delete_is_selectable(self):
         hidden = menu_items("section_text", {"can_delete": False})
