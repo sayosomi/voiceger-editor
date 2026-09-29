@@ -34,6 +34,7 @@ from .query_editing import (
 )
 from .settings import Settings, SettingsError
 from .tui_display import _display_width, _move_wrapped_cursor
+from .tui_shortcuts import menu_items, resolve_shortcut
 from .voicevox_api_models import AudioQuery
 
 
@@ -151,6 +152,16 @@ class ClearAdjustmentFeedbackIntent:
     pass
 
 
+@dataclass(frozen=True)
+class OpenHelpIntent:
+    pass
+
+
+@dataclass(frozen=True)
+class QuitIntent:
+    pass
+
+
 EditorIntent = Union[
     ReplaceQueryIntent,
     PreviewIntent,
@@ -161,6 +172,8 @@ EditorIntent = Union[
     UpdateStatusIntent,
     AdjustmentPressedIntent,
     ClearAdjustmentFeedbackIntent,
+    OpenHelpIntent,
+    QuitIntent,
 ]
 
 
@@ -744,38 +757,11 @@ class TuiEditorController:
         editor.error = ""
         return (ClearAdjustmentFeedbackIntent(),)
 
-    def selection_keys(self) -> list[str | tuple[str, int | None]]:
+    def selection_keys(self) -> list[str]:
         editor = self.editor
         if editor is None:
             return []
-        if editor.kind == "caption":
-            return ["draft", "apply", "clear", "reset", "back"]
-        if editor.kind == "build_confirmation":
-            return ["rebuild", "cancel"]
-        if editor.kind == "japanese":
-            return [
-                "pronunciation", "preview", "apply", "edit_text", "clear", "reset", "back"
-            ]
-        if editor.kind == "settings":
-            return [
-                "style_id", "speed", "take_count", "output_dir", "save_text",
-                "apply", "reset", "back",
-            ]
-        if editor.kind == "english_word":
-            return [
-                "phonemes", "preview", "apply", "edit_text", "clear", "reset", "back"
-            ]
-        if editor.kind == "section_text":
-            keys = ["draft", "preview", "apply", "reset"]
-            if editor.payload["can_delete"]:
-                keys.append("delete_section")
-            keys.append("back")
-            return keys
-        if editor.kind == "add_section":
-            return ["language", "draft", "add", "clear", "reset", "back"]
-        if editor.kind == "delete_confirmation":
-            return ["delete", "cancel"]
-        return []
+        return [item.key for item in menu_items(editor.kind, editor.payload)]
 
     def move_selection(self, delta: int) -> tuple[EditorIntent, ...]:
         editor = self.editor
@@ -883,6 +869,18 @@ class TuiEditorController:
             }:
                 editor.error = ""
             return ()
+
+        if key in ("q", "Q", "\x03"):
+            return (QuitIntent(),)
+        if key == "?":
+            return (OpenHelpIntent(),)
+        shortcut = resolve_shortcut(editor.kind, key, editor.payload)
+        if shortcut is not None:
+            editor.selection = shortcut.key
+            editor.error = ""
+            if shortcut.shortcut_mode == "focus":
+                return (ClearAdjustmentFeedbackIntent(),)
+            return self._activate_selection(settings, query, current_caption)
 
         if editor.kind == "settings" and key in (curses.KEY_LEFT, curses.KEY_RIGHT):
             return self.adjust_settings(-1 if key == curses.KEY_LEFT else 1)

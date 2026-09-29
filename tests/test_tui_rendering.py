@@ -391,6 +391,8 @@ class TuiRenderingTests(unittest.TestCase):
             "on EN: primary stress by one vowel",
             "on JA: edit segment pronunciation",
             "on EN: edit word phonemes",
+            "Menu mode: editor/modal action letters are active.",
+            "Editing: Enter finishes; printable shortcut letters insert text.",
         ):
             self.assertIn(text, visible)
         settings_shortcuts = (("s", "style"), ("v", "speed"), ("n", "takes"), ("o", "output"), ("x", "TXT"))
@@ -403,7 +405,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertNotIn("Return to Navigation", visible)
         self.assertNotIn("| q Quit", visible)
         self.assertIn("q", [text for _row, _column, text, _attr in screen.drawn])
-        back = next(item for item in screen.drawn if item[2] == "▶ [ Back ]")
+        back = next(item for item in screen.drawn if item[2] == "▶ [B] Back")
         self.assertEqual(back[0], screen.rows - 1)
         self.assertTrue(back[3] & curses.A_REVERSE)
 
@@ -412,7 +414,7 @@ class TuiRenderingTests(unittest.TestCase):
             with self.subTest(height=height):
                 screen = FakeScreen(rows=height, columns=80)
                 self.renderer.render_help(screen, screen.columns)
-                back = next(item for item in screen.drawn if item[2] == "▶ [ Back ]")
+                back = next(item for item in screen.drawn if item[2] == "▶ [B] Back")
                 self.assertEqual(back[0], height - 1)
                 self.assertTrue(back[3] & curses.A_REVERSE)
                 self.assertFalse(
@@ -444,7 +446,7 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line for line, _key in document]
         self.assertEqual(document[0][0], "EDIT CAPTION TEXT")
         self.assertEqual(
-            labels[-4:], ["  [ Apply ]", "  [ Clear ]", "  [ Reset ]", "  [ Back ]"]
+            labels[-4:], ["  [A] Apply", "  [C] Clear", "  [R] Reset", "  [B] Back"]
         )
         self.assertEqual(labels.index(""), 1)
         self.assertEqual(labels.index("", 2), labels.index("▶ hello") + 1)
@@ -533,7 +535,7 @@ class TuiRenderingTests(unittest.TestCase):
         )
 
         apply_line = next(
-            item for item in screen.drawn if item[2] == "▶ [ Apply ]"
+            item for item in screen.drawn if item[2] == "▶ [A] Apply"
         )
         self.assertLess(apply_line[0], screen.rows - 1)
         self.assertTrue(apply_line[3] & curses.A_REVERSE)
@@ -671,7 +673,7 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line for line, _key in document]
         self.assertEqual(document[0][0], "REBUILD PRONUNCIATION?")
         self.assertIn("Manual pronunciation or utterance edits will be replaced.", labels)
-        self.assertEqual(labels[-2:], ["▶ [ Rebuild ]", "  [ Cancel ]"])
+        self.assertEqual(labels[-2:], ["▶ [R] Rebuild", "  [B] Cancel"])
         self.assertIsNone(cursor_line)
 
     def test_japanese_editor_shows_wrapped_source_and_active_direct_notation(self):
@@ -699,12 +701,12 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(
             [line for line, _key in document[-6:]],
             [
-                "  [ Preview ]",
-                "  [ Apply ]",
-                "  [ Edit text ]",
-                "  [ Clear ]",
-                "  [ Reset ]",
-                "  [ Back ]",
+                "  [P] Preview",
+                "  [A] Apply",
+                "  [E] Edit text",
+                "  [C] Clear",
+                "  [R] Reset",
+                "  [B] Back",
             ],
         )
 
@@ -731,12 +733,12 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(
             [line for line, _key in document[-6:]],
             [
-                "  [ Preview ]",
-                "  [ Apply ]",
-                "  [ Edit text ]",
-                "  [ Clear ]",
-                "  [ Reset ]",
-                "  [ Back ]",
+                "  [P] Preview",
+                "  [A] Apply",
+                "  [E] Edit text",
+                "  [C] Clear",
+                "  [R] Reset",
+                "  [B] Back",
             ],
         )
 
@@ -766,11 +768,11 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(
             labels[-5:],
             [
-                "  [ Preview ]",
-                "  [ Apply ]",
-                "  [ Reset ]",
-                "  [ Delete section ]",
-                "  [ Back ]",
+                "  [P] Preview",
+                "  [A] Apply",
+                "  [R] Reset",
+                "  [D] Delete section",
+                "  [B] Back",
             ],
         )
         self.assertIsNotNone(cursor_line)
@@ -796,7 +798,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("▶ ", labels)
         self.assertEqual(
             labels[-4:],
-            ["  [ Add ]", "  [ Clear ]", "  [ Reset ]", "  [ Back ]"],
+            ["  [A] Add", "  [C] Clear", "  [R] Reset", "  [B] Back"],
         )
 
     def test_delete_confirmation_document_uses_required_warning_and_choices(self):
@@ -817,7 +819,7 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line for line, _key in document]
         self.assertEqual(labels[0], "DELETE SECTION?")
         self.assertIn("This section will be removed from the synthesized utterance.", labels)
-        self.assertEqual(labels[-2:], ["▶ [ Delete ]", "  [ Cancel ]"])
+        self.assertEqual(labels[-2:], ["▶ [D] Delete", "  [B] Cancel"])
 
     def test_settings_use_compact_rows_and_edit_the_current_field_in_place(self):
         editor = SimpleNamespace(
@@ -834,14 +836,14 @@ class TuiRenderingTests(unittest.TestCase):
         ):
             document, _, _ = self.renderer.editor_document(render_state(editor=editor), 80)
         visible = "\n".join(line for line, _key in document)
-        self.assertIn("▶ Speed       < 1.00 >", visible)
+        self.assertIn("▶ [V] Speed       < 1.00 >", visible)
         self.assertIn("Style       < Neutral >", visible)
         self.assertIn("Takes       < 4 >", visible)
         self.assertIn("Output      /tmp/output", visible)
         self.assertIn("TXT         < ON >", visible)
-        self.assertIn("[ Apply and save ]", visible)
-        self.assertIn("[ Reset ]", visible)
-        self.assertIn("[ Back ]", visible)
+        self.assertIn("[A] Apply and save", visible)
+        self.assertIn("[R] Reset", visible)
+        self.assertIn("[B] Back", visible)
         self.assertEqual(
             [key for _line, key in document if key is not None],
             ["style_id", "speed", "take_count", "output_dir", "save_text", "apply", "reset", "back"],
@@ -874,7 +876,7 @@ class TuiRenderingTests(unittest.TestCase):
             document, _, _ = self.renderer.editor_document(
                 render_state(editor=editor), 80
             )
-        self.assertIn("▶ Style       < 19 >", "\n".join(line for line, _key in document))
+        self.assertIn("▶ [S] Style       < 19 >", "\n".join(line for line, _key in document))
 
         with patch(
             "voiceger_accent_adapter.tui_rendering.available_styles",
