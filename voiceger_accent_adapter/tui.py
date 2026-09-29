@@ -53,7 +53,7 @@ from .tui_operations import (
     TuiOperations,
     UpdateStatusEffect,
 )
-from .tui_shortcuts import resolve_shortcut
+from .tui_shortcuts import resolve_main_shortcut, resolve_shortcut
 from .tui_navigation import (
     AcceptCandidate,
     AddSectionEditor,
@@ -266,17 +266,16 @@ class TuiApp:
             else:
                 self._dispatch_navigation_actions(actions)
             return
-        if key in ("q", "Q", "\x03"):
+        if key in ("Q", "\x03"):
             self._activate_quit()
             return
-        if key == "?":
+        main_shortcut = resolve_main_shortcut(key)
+        if main_shortcut is not None:
             self._dispatch_navigation_actions(
-                self._navigation.open_help(self._navigation_context())
-            )
-            return
-        if key == curses.KEY_F5 or key == "\x07":
-            self._dispatch_navigation_actions(
-                self._navigation.activate_generate(self._navigation_context())
+                self._navigation.activate_item(
+                    self._navigation_context(),
+                    (main_shortcut.navigation_key, None),
+                )
             )
             return
         if key == "\t":
@@ -294,7 +293,6 @@ class TuiApp:
             self._open_caption_editor()
             return
         setting_shortcuts = {
-            "s": "style_id",
             "v": "speed",
             "n": "take_count",
             "o": "output_dir",
@@ -336,11 +334,6 @@ class TuiApp:
                 self._navigation.activate_regenerate_focused(
                     self._navigation_context()
                 )
-            )
-            return
-        if key == "R":
-            self._dispatch_navigation_actions(
-                self._navigation.activate_generate(self._navigation_context())
             )
             return
         if key == curses.KEY_UP:
