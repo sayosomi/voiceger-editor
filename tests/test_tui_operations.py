@@ -124,7 +124,7 @@ class TuiOperationsTests(unittest.TestCase):
             self.operations.start_generation(existing, take_count=4, navigation_revision=0),
             (
                 UpdateStatusEffect(
-                    "A take batch already exists; use R to regenerate all takes."
+                    "A take batch already exists; use g to regenerate all takes."
                 ),
             ),
         )
