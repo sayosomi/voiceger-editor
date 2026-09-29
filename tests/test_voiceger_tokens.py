@@ -1,8 +1,13 @@
+import sys
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from voiceger_accent_adapter.pronunciation import parse_pronunciation
+from voiceger_accent_adapter.runtime_locks import OPENJTALK_LOCK
 from voiceger_accent_adapter.voiceger_tokens import (
     VoicegerTokenConversionError,
+    _default_mora_g2p,
     pronunciation_to_voiceger_tokens,
 )
 
@@ -29,6 +34,15 @@ def fake_g2p(mora):
 
 
 class VoicegerTokenTests(unittest.TestCase):
+    def test_default_mora_g2p_holds_openjtalk_lock(self):
+        def g2p(mora, *, kana, join):
+            self.assertTrue(OPENJTALK_LOCK._is_owned())
+            self.assertEqual((mora, kana, join), ("あ", False, False))
+            return ["a"]
+
+        with patch.dict(sys.modules, {"pyopenjtalk": SimpleNamespace(g2p=g2p)}):
+            self.assertEqual(tuple(_default_mora_g2p("あ")), ("a",))
+
     def test_rain(self):
         value = parse_pronunciation("あ'め")
         self.assertEqual(

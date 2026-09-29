@@ -299,10 +299,9 @@ class VoicegerAdapter:
             with _pushd(self.sovits_dir):
                 from AR.modules.activation import MhaPatched
                 import text.english as english
-                with OPENJTALK_LOCK:
+                with self.user_dictionary.voiceger_japanese_runtime_transition():
                     import text.japanese as japanese
                     import GPT_SoVITS.inference_webui as inference_webui
-                    self.user_dictionary.ensure_japanese_active(force=True)
 
                 with MhaPatched():
                     inference_webui.change_gpt_weights(
@@ -379,7 +378,8 @@ class VoicegerAdapter:
             def controlled_g2p(norm_text: str, with_prosody: bool = True):
                 if norm_text == normalized_target and with_prosody:
                     return list(tokens)
-                return original_g2p(norm_text, with_prosody)
+                with OPENJTALK_LOCK:
+                    return original_g2p(norm_text, with_prosody)
 
             try:
                 japanese.g2p = controlled_g2p
@@ -489,7 +489,8 @@ class VoicegerAdapter:
                     queue = japanese_override_queues.get(norm_text)
                     if queue:
                         return queue.popleft()
-                return original_japanese_g2p(norm_text, with_prosody)
+                with OPENJTALK_LOCK:
+                    return original_japanese_g2p(norm_text, with_prosody)
 
             def controlled_clean_text_inf(
                 value: str,

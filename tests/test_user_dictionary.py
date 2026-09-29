@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from threading import Event, Thread
 import unittest
 from unittest.mock import patch
 
@@ -352,6 +353,49 @@ class UserDictionaryTests(unittest.TestCase):
         self.assertIn(word_uuid, self.core.list_japanese_entries())
         ensure_events = [event for event in self.backend.events if event[0] == "ensure"]
         self.assertTrue(ensure_events[-1][2])
+
+    def test_voiceger_runtime_transition_and_mutation_do_not_deadlock(self):
+        entered = Event()
+        mutation_started = Event()
+        release = Event()
+        errors = []
+
+        def runtime_transition():
+            try:
+                with self.core.voiceger_japanese_runtime_transition():
+                    entered.set()
+                    if not release.wait(2):
+                        raise AssertionError("runtime transition release timed out")
+            except BaseException as exc:
+                errors.append(exc)
+
+        def mutate():
+            try:
+                if not entered.wait(2):
+                    raise AssertionError("runtime transition did not start")
+                mutation_started.set()
+                self.add_word(
+                    surface="並行更新",
+                    pronunciation="ヘイコウコウシン",
+                    accent_type=0,
+                )
+            except BaseException as exc:
+                errors.append(exc)
+
+        runtime_thread = Thread(target=runtime_transition)
+        mutation_thread = Thread(target=mutate)
+        runtime_thread.start()
+        mutation_thread.start()
+        self.assertTrue(entered.wait(2))
+        self.assertTrue(mutation_started.wait(2))
+        release.set()
+        runtime_thread.join(2)
+        mutation_thread.join(2)
+
+        self.assertFalse(runtime_thread.is_alive())
+        self.assertFalse(mutation_thread.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(self.backend.active, self.core.list_japanese_entries())
 
     def test_mutation_activates_candidate_for_subsequent_queries(self):
         word_uuid = self.add_word(surface="新語", pronunciation="シンゴ", accent_type=2)
