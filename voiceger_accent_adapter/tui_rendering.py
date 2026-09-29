@@ -51,12 +51,8 @@ _HELP_ITEMS = (
     ("o", ": open Settings at output"),
     ("x", ": open Settings at TXT"),
     (None, "Build pronunciation: rebuild automatically from the current Caption"),
-    (None, "Editor/modal action letters work while no text field is active."),
-    (
-        None,
-        "While editing text, Enter finishes editing; printable shortcut letters "
-        "are inserted normally.",
-    ),
+    (None, "Menu mode: editor/modal action letters are active."),
+    (None, "Editing: Enter finishes; printable shortcut letters insert text."),
     ("?", ": open or close Help"),
     ("q", ": Quit"),
 )
