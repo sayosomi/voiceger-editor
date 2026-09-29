@@ -89,8 +89,6 @@ def _mono_pcm_array(audio: Any):
 
 
 def _resample_mono_pcm(audio: Any, source_rate: int, target_rate: int):
-    import numpy as np
-
     if source_rate <= 0:
         raise VoicegerAdapterError(
             f"Voiceger synthesis returned invalid sampling rate: {source_rate}"
@@ -99,6 +97,8 @@ def _resample_mono_pcm(audio: Any, source_rate: int, target_rate: int):
         raise ValueError("outputSamplingRate must be positive")
 
     values = _mono_pcm_array(audio)
+    import numpy as np
+
     if source_rate == target_rate:
         return values
     if values.size == 0:
