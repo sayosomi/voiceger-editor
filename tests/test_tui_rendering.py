@@ -391,10 +391,14 @@ class TuiRenderingTests(unittest.TestCase):
             "on EN: primary stress by one vowel",
             "on JA: edit segment pronunciation",
             "on EN: edit word phonemes",
+            "b / a / g",
+            "Build pronunciation / Add section / Generate or regenerate all",
             "Menu mode: editor/modal action letters are active.",
             "Editing: Enter finishes; printable shortcut letters insert text.",
         ):
             self.assertIn(text, visible)
+        self.assertNotIn("F5", visible)
+        self.assertNotIn("Ctrl+G", visible)
         settings_shortcuts = (("s", "style"), ("v", "speed"), ("n", "takes"), ("o", "output"), ("x", "TXT"))
         rows = []
         for shortcut, label in settings_shortcuts:
