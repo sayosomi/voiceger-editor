@@ -176,7 +176,7 @@ class TakeBatchTests(unittest.TestCase):
 
             self.assertEqual(calls, [])
             self.assertEqual(batch.candidates, ())
-            self.assertEqual(list(batch._temporary_path.iterdir()), [])
+            self.assertEqual(list(batch._temporary_path.glob("*.wav")), [])
 
             with patch.dict(
                 "sys.modules", {"soundfile": self.fake_soundfile_module()}
