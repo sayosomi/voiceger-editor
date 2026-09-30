@@ -125,6 +125,9 @@ def _active_input_prefix(editor: EditorRenderState) -> str:
             "take_count": "Takes",
             "output_dir": "Output",
             "save_text": "TXT",
+            "top_k": "Top K",
+            "top_p": "Top P",
+            "temperature": "Temperature",
         }
         label = labels.get(editor.active_field or "", "Setting")
         return f"▶ {label:<12}"
@@ -656,14 +659,24 @@ class TuiRenderer:
                     f"{float(draft.get('temperature', VOICEGER_DEFAULT_TEMPERATURE)):.2f}",
                 ),
             )
+            section_headers = {
+                "style_id": "Voice",
+                "take_count": "Generation",
+                "output_dir": "Output",
+                "top_k": "Sampling",
+            }
+            candidate_clearing = {
+                "style_id", "speed", "top_k", "top_p", "temperature"
+            }
             for key, value in values:
-                if key == "top_k":
+                heading = section_headers.get(key)
+                if heading is not None:
                     plain()
-                    plain("Sampling")
+                    plain(heading)
                 item = menu_item(editor.kind, key, editor.payload)
-                label = item.label
+                label = item.label + (" *" if key in candidate_clearing else "")
                 if editor.active_field == key:
-                    input_field(key, f"▶ {label:<12}")
+                    input_field(key, f"▶ {label:<16}")
                 else:
                     if key in {
                         "style_id", "speed", "take_count", "save_text",
@@ -675,14 +688,19 @@ class TuiRenderer:
                         )
                     marker = "▶ " if editor.selection == key else "  "
                     visible_label = (
-                        item.display_label if item.shortcut is not None else label
+                        f"[{item.shortcut.upper()}] {label}"
+                        if item.shortcut is not None
+                        else label
                     )
-                    lines.append((f"{marker}{visible_label:<16}{value}", key))
+                    lines.append((f"{marker}{visible_label:<20}{value}", key))
             selectable("reset_sampling")
             plain()
+            plain("Actions")
             selectable("apply")
             selectable("reset")
             selectable("back")
+            plain()
+            plain("* Applying this setting clears existing candidates.")
         elif editor.kind == "english_word":
             plain()
             plain("Word")
