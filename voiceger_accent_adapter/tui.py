@@ -730,26 +730,18 @@ class TuiApp:
                 )
 
     def _apply_settings_target(self, target: Settings) -> SettingsApplicationResult:
-        synthesis_fields = ("style_id", "speed", "top_k", "top_p", "temperature")
-        session_changed = self.session is not None and target != self.session.settings
-        runtime_changed = target != self.settings or session_changed
+        baseline = self.session.settings if self.session is not None else self.settings
+        runtime_changed = target != self.settings or target != baseline
         synthesis_changed = any(
-            getattr(target, name) != getattr(self.settings, name)
-            for name in synthesis_fields
+            getattr(target, name) != getattr(baseline, name)
+            for name in ("style_id", "speed", "top_k", "top_p", "temperature")
         )
-        if self.session is not None:
-            synthesis_changed = synthesis_changed or any(
-                getattr(target, name) != getattr(self.session.settings, name)
-                for name in synthesis_fields
-            )
         if runtime_changed:
             try:
                 if synthesis_changed:
                     self._operations.stop_playback()
                 if self.session is not None:
                     self.session.replace_settings(target)
-                    if synthesis_changed:
-                        self.session.discard_takes()
             except (SettingsError, ValueError) as exc:
                 self._status = f"Error: Settings were not changed: {exc}"
                 return SettingsApplicationResult(error_status=self._status)
