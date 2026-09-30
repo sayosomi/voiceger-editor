@@ -520,7 +520,7 @@ class TuiEditorControllerTests(unittest.TestCase):
                 direct_japanese_query(),
                 (("hello", ("HH", "AH1")),),
                 0,
-                ["pronunciation", "preview", "apply", "edit_text", "clear", "reset", "back"],
+                ["pronunciation", "preview", "apply", "save_dictionary", "dictionary", "edit_text", "clear", "reset", "back"],
                 "ナ' ノダ'！",
                 "pronunciation",
             ),
@@ -534,7 +534,7 @@ class TuiEditorControllerTests(unittest.TestCase):
                     )
                 },
                 2,
-                ["phonemes", "preview", "apply", "edit_text", "clear", "reset", "back"],
+                ["phonemes", "preview", "apply", "save_dictionary", "dictionary", "edit_text", "clear", "reset", "back"],
                 "HH AE1 L OW0",
                 "phonemes",
             ),
@@ -797,7 +797,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(editor.payload["label"], "hello")
         self.assertEqual(
             controller.selection_keys(),
-            ["phonemes", "preview", "apply", "edit_text", "clear", "reset", "back"],
+            ["phonemes", "preview", "apply", "save_dictionary", "dictionary", "edit_text", "clear", "reset", "back"],
         )
         self.assertEqual(editor.active_field, "phonemes")
         self.assertEqual(editor.input_value, "HH AH1 L OW2")
