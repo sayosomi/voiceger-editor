@@ -1671,6 +1671,9 @@ class TuiTests(unittest.TestCase):
                     "take_count": 42,
                     "style_id": target.style_id,
                     "speed": target.speed,
+                    "top_k": target.top_k,
+                    "top_p": target.top_p,
+                    "temperature": target.temperature,
                     "save_text": target.save_text,
                 },
             )
