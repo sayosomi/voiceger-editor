@@ -99,8 +99,15 @@ class TuiDictionaryController:
     def active(self) -> bool:
         return self.editor is not None
 
-    def open_menu(self) -> tuple[EditorIntent, ...]:
-        self._stack.clear()
+    def open_menu(
+        self,
+        *,
+        preserve_current: bool = False,
+    ) -> tuple[EditorIntent, ...]:
+        if preserve_current and self.editor is not None:
+            self._stack.append(deepcopy(self.editor))
+        else:
+            self._stack.clear()
         self.editor = self._menu_state()
         return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
 
@@ -701,8 +708,7 @@ class TuiDictionaryController:
                 self._stack.append(deepcopy(editor))
                 self.editor = self._english_list_state()
             elif selected == "back":
-                self.editor = None
-                self._stack.clear()
+                self._restore_parent()
             return (UpdateStatusIntent(""),)
         if editor.kind == "dictionary_japanese_list":
             if selected == "add":
@@ -765,7 +771,7 @@ class TuiDictionaryController:
             if selected == "save":
                 return self._save()
             if selected == "dictionary":
-                return self.open_menu()
+                return self.open_menu(preserve_current=True)
             if selected == "back":
                 return self._back_from_entry()
         if editor.kind == "dictionary_english_entry":
@@ -780,7 +786,7 @@ class TuiDictionaryController:
             if selected == "save":
                 return self._save()
             if selected == "dictionary":
-                return self.open_menu()
+                return self.open_menu(preserve_current=True)
             if selected == "back":
                 return self._back_from_entry()
         if editor.kind == "dictionary_delete_confirmation":
