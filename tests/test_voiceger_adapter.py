@@ -371,6 +371,39 @@ class EnglishDictionaryAdapterTests(unittest.TestCase):
                 ],
             )
 
+    def test_dictionary_word_does_not_replace_substrings(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            adapter = self.make_adapter(root, root / "adapter-state")
+            adapter.user_dictionary.set_english_entry(
+                "record",
+                ["R", "IH0", "K", "AO1", "R", "D"],
+            )
+            baseline = ["R", "IH0", "K", "AO1", "R", "D", "ER0"]
+            english = SimpleNamespace(
+                text_normalize=lambda value: value,
+                g2p=lambda value: list(baseline),
+                word_tokenize=lambda value: ["recorder"],
+                _g2p=lambda value: list(baseline),
+                replace_phs=lambda values: list(values),
+            )
+            text_package = ModuleType("text")
+            text_package.__path__ = []
+            text_package.english = english
+
+            with patch.dict(
+                sys.modules,
+                {"text": text_package, "text.english": english},
+            ), patch.object(adapter, "_require_text_paths"), patch.object(
+                adapter, "_ensure_import_paths"
+            ), patch(
+                "voiceger_accent_adapter.voiceger_adapter._pushd",
+                return_value=nullcontext(),
+            ):
+                groups = adapter.english_word_phoneme_groups("recorder")
+
+            self.assertEqual(groups, (("recorder", tuple(baseline)),))
+
     def test_dictionary_miss_uses_existing_voiceger_g2p_and_grouping(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
