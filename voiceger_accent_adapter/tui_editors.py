@@ -1821,10 +1821,6 @@ class TuiEditorController:
                 return clear_feedback
             draft[selected] = f"{updated:.2f}"
         elif selected == "save_text":
-            updated = direction > 0
-            if draft["save_text"] == updated:
-                editor.error = ""
-                return clear_feedback
-            draft["save_text"] = updated
+            draft["save_text"] = not bool(draft["save_text"])
         editor.error = ""
         return (feedback,)
