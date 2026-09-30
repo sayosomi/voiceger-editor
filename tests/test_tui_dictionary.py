@@ -70,6 +70,20 @@ class FakeDictionaryCore:
         self.english[surface] = entry
         return entry
 
+    def update_english_entry(self, original_surface, *, surface, phonemes):
+        original_key = original_surface.strip().casefold()
+        if not any(
+            old_surface.strip().casefold() == original_key
+            for old_surface in self.english
+        ):
+            raise ValueError("not found")
+        for old_surface in tuple(self.english):
+            if old_surface.strip().casefold() == original_key:
+                del self.english[old_surface]
+        entry = en_word(surface, phonemes)
+        self.english[surface] = entry
+        return entry
+
     def delete_english_entry(self, surface):
         key = surface.strip().casefold()
         for old_surface in tuple(self.english):
