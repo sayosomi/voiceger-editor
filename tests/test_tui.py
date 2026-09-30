@@ -1634,6 +1634,27 @@ class TuiTests(unittest.TestCase):
             )
             app._operations.stop_playback.assert_called_once_with()
 
+    def test_settings_apply_reconciles_session_state_before_candidate_invalidation(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        target = Settings(
+            top_p=0.95,
+            output_dir=app.settings.output_dir,
+        )
+        app.settings = target
+        app._persisted_settings = target
+        app._operations.current_take = 1
+        app._operations.stop_playback = Mock()
+        app._open_settings_editor()
+
+        with patch("voiceger_accent_adapter.tui.save_settings") as save:
+            app._handle_key("a")
+
+        save.assert_called_once_with(target, app.config_path)
+        self.assertEqual(app.session.replace_settings_calls, [target])
+        self.assertEqual(app.session.candidates, ())
+        self.assertIsNone(app._operations.current_take)
+        app._operations.stop_playback.assert_called_once_with()
+
     def test_take_count_enter_edits_then_apply_shortcut_saves_the_full_draft(self):
         with tempfile.TemporaryDirectory() as directory:
             app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
