@@ -172,12 +172,12 @@ class TuiDictionaryControllerTests(unittest.TestCase):
 
         self.key("b")
         self.key("b")
-        self.key("e")
         self.core.english["hello"] = en_word(
             "hello", ["HH", "AH0", "L", "OW1"]
         )
-        self.controller.editor = self.controller._english_list_state()
+        self.key("e")
 
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_list")
         self.assertEqual(self.controller.editor.selection, ("entry", 0))
         self.key(curses.KEY_DOWN)
         self.assertEqual(self.controller.editor.selection, "add")
@@ -192,6 +192,11 @@ class TuiDictionaryControllerTests(unittest.TestCase):
 
         self.assertEqual(self.controller.editor.kind, "dictionary_japanese_list")
         self.assertEqual(self.controller.editor.payload["entries"], ())
+        self.assertEqual(self.controller.editor.selection, "add")
+
+        self.key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.selection, "back")
+        self.key(curses.KEY_UP)
         self.assertEqual(self.controller.editor.selection, "add")
 
         self.key("a")
