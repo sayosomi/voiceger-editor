@@ -115,6 +115,10 @@ For technical details about Japanese pronunciation and accent handling, see:
 
 [`docs/japanese-pronunciation.md`](docs/japanese-pronunciation.md)
 
+The planned production LAB sidecar behavior is specified in:
+
+[`docs/lab-output.md`](docs/lab-output.md)
+
 ## Voiceger Styles
 
 Voiceger's local reference audio files are available as selectable styles.
