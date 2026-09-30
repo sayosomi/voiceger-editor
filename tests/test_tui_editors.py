@@ -1223,6 +1223,35 @@ class TuiEditorControllerTests(unittest.TestCase):
                 self.assertIs(controller.editor, editor)
                 self.assertIsNone(editor.active_field)
 
+    def test_settings_txt_left_and_right_each_toggle_continuously(self):
+        settings = self.settings()
+        controller, _provider = self.make_controller()
+        controller.open_settings(settings, origin=("settings", None), busy=False)
+        editor = controller.editor
+        editor.selection = "save_text"
+        editor.payload["draft_settings"]["save_text"] = False
+
+        self.assertEqual(
+            controller.adjust_settings(-1),
+            (AdjustmentPressedIntent("settings", "save_text", -1),),
+        )
+        self.assertTrue(editor.payload["draft_settings"]["save_text"])
+        self.assertEqual(
+            controller.adjust_settings(-1),
+            (AdjustmentPressedIntent("settings", "save_text", -1),),
+        )
+        self.assertFalse(editor.payload["draft_settings"]["save_text"])
+        self.assertEqual(
+            controller.adjust_settings(1),
+            (AdjustmentPressedIntent("settings", "save_text", 1),),
+        )
+        self.assertTrue(editor.payload["draft_settings"]["save_text"])
+        self.assertEqual(
+            controller.adjust_settings(1),
+            (AdjustmentPressedIntent("settings", "save_text", 1),),
+        )
+        self.assertFalse(editor.payload["draft_settings"]["save_text"])
+
     def test_settings_tab_and_backtab_move_between_section_starts_and_wrap(self):
         settings = self.settings()
         controller, _provider = self.make_controller()
