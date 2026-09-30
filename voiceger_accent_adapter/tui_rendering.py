@@ -8,7 +8,12 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol, Sequence
 
 from .session import UtteranceSession
-from .settings import Settings
+from .settings import (
+    Settings,
+    VOICEGER_DEFAULT_TEMPERATURE,
+    VOICEGER_DEFAULT_TOP_K,
+    VOICEGER_DEFAULT_TOP_P,
+)
 from .styles import available_styles
 from .tui_display import (
     _adjustable_value,
@@ -641,14 +646,29 @@ class TuiRenderer:
                 ("take_count", str(draft["take_count"])),
                 ("output_dir", str(draft["output_dir"])),
                 ("save_text", "ON" if draft["save_text"] else "OFF"),
+                ("top_k", str(draft.get("top_k", VOICEGER_DEFAULT_TOP_K))),
+                (
+                    "top_p",
+                    f"{float(draft.get('top_p', VOICEGER_DEFAULT_TOP_P)):.2f}",
+                ),
+                (
+                    "temperature",
+                    f"{float(draft.get('temperature', VOICEGER_DEFAULT_TEMPERATURE)):.2f}",
+                ),
             )
             for key, value in values:
+                if key == "top_k":
+                    plain()
+                    plain("Sampling")
                 item = menu_item(editor.kind, key, editor.payload)
                 label = item.label
                 if editor.active_field == key:
                     input_field(key, f"▶ {label:<12}")
                 else:
-                    if key in {"style_id", "speed", "take_count", "save_text"}:
+                    if key in {
+                        "style_id", "speed", "take_count", "save_text",
+                        "top_k", "top_p", "temperature",
+                    }:
                         value = _adjustable_value(
                             value,
                             self._adjustment_press_direction(state, "settings", key),
@@ -658,6 +678,7 @@ class TuiRenderer:
                         item.display_label if item.shortcut is not None else label
                     )
                     lines.append((f"{marker}{visible_label:<16}{value}", key))
+            selectable("reset_sampling")
             plain()
             selectable("apply")
             selectable("reset")
