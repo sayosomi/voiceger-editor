@@ -720,6 +720,29 @@ class TuiRenderingTests(unittest.TestCase):
             ],
         )
 
+    def test_empty_dictionary_list_renders_add_and_back(self):
+        editor = SimpleNamespace(
+            kind="dictionary_japanese_list",
+            title="JAPANESE DICTIONARY",
+            selection="add",
+            payload={"entries": ()},
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+
+        self.assertTrue(
+            any("No Japanese dictionary words." in line for line, _key in document)
+        )
+        self.assertIn(("▶ [A] Add", "add"), document)
+        self.assertTrue(any("[B] Back" in line for line, _key in document))
+
     def test_japanese_dictionary_list_uses_main_mora_accent_display(self):
         word = SimpleNamespace(
             surface="ずんだもん",
