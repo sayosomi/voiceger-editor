@@ -409,7 +409,13 @@ class TuiRenderingTests(unittest.TestCase):
             found = next(item for item in screen.drawn if item[2] == shortcut and item[3] & curses.A_BOLD)
             rows.append(found[0])
             self.assertIn(label, next(text for row, _column, text, _attr in screen.drawn if row == found[0] and text.startswith(": open Settings")))
-        self.assertEqual(rows, list(range(rows[0], rows[0] + 5)))
+        dictionary = next(
+            item
+            for item in screen.drawn
+            if item[2] == "d" and item[3] & curses.A_BOLD
+        )
+        self.assertEqual(dictionary[0], rows[0] + 1)
+        self.assertEqual(rows[1:], list(range(rows[0] + 2, rows[0] + 6)))
         self.assertNotIn("Return to Navigation", visible)
         self.assertNotIn("| q Quit", visible)
         self.assertIn("q", [text for _row, _column, text, _attr in screen.drawn])
