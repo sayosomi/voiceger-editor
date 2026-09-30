@@ -364,6 +364,45 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_menu")
         self.assertIsNone(app._editor_controller.editor)
 
+    def test_pronunciation_editor_dictionary_actions_preserve_editor_state(self):
+        app = self.make_app(query=mixed_query())
+        app._edit_selected_pronunciation(0)
+        pronunciation_editor = app._editor_controller.editor
+        self.assertEqual(pronunciation_editor.kind, "japanese")
+        app._handle_key("\n")
+        opening_draft = pronunciation_editor.input_value
+
+        app._handle_key("s")
+
+        self.assertEqual(
+            app._dictionary_controller.editor.kind,
+            "dictionary_japanese_entry",
+        )
+        self.assertEqual(
+            app._dictionary_controller.editor.payload["surface"],
+            "雨",
+        )
+        self.assertEqual(
+            app._dictionary_controller.editor.payload["pronunciation"],
+            "ア",
+        )
+        self.assertIs(app._editor_controller.editor, pronunciation_editor)
+        self.assertEqual(pronunciation_editor.input_value, opening_draft)
+
+        app._handle_key("s")
+
+        app.adapter.user_dictionary.add_japanese_word.assert_called_once()
+        self.assertFalse(app._dictionary_controller.active)
+        self.assertIs(app._editor_controller.editor, pronunciation_editor)
+        self.assertEqual(pronunciation_editor.input_value, opening_draft)
+
+        app._handle_key("d")
+        self.assertEqual(
+            app._dictionary_controller.editor.kind,
+            "dictionary_menu",
+        )
+        self.assertIs(app._editor_controller.editor, pronunciation_editor)
+
     def test_settings_summary_opens_style_and_output_opens_path_input(self):
         app = self.make_app(query=mixed_query())
         set_navigation_focus(app, ("settings_summary", None))
