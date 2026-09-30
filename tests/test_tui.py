@@ -169,9 +169,9 @@ class FakeSession:
 
     def replace_settings(self, settings):
         self.replace_settings_calls.append(settings)
-        if (
-            settings.style_id != self.settings.style_id
-            or settings.speed != self.settings.speed
+        if any(
+            getattr(settings, name) != getattr(self.settings, name)
+            for name in ("style_id", "speed", "top_k", "top_p", "temperature")
         ):
             self.candidates = ()
         self.settings = settings
@@ -1598,9 +1598,41 @@ class TuiTests(unittest.TestCase):
                         "take_count": target.take_count,
                         "style_id": target.style_id,
                         "speed": target.speed,
+                        "top_k": target.top_k,
+                        "top_p": target.top_p,
+                        "temperature": target.temperature,
                         "save_text": target.save_text,
                     },
                 )
+
+    def test_sampling_draft_only_applies_and_invalidates_candidates_on_apply(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+            app.config_path = Path(directory) / "config.json"
+            app._operations.current_take = 1
+            app._operations.stop_playback = Mock()
+            app._open_settings_editor()
+            editor = app._editor_controller.editor
+            editor.selection = "top_p"
+
+            app._handle_key(curses.KEY_LEFT)
+
+            self.assertEqual(editor.payload["draft_settings"]["top_p"], "0.95")
+            self.assertEqual(app.settings.top_p, 1.0)
+            self.assertEqual(app.session.candidates, (candidate(1),))
+            self.assertFalse(app.config_path.exists())
+
+            app._handle_key("a")
+
+            self.assertEqual(app.settings.top_p, 0.95)
+            self.assertEqual(app.session.replace_settings_calls[-1].top_p, 0.95)
+            self.assertEqual(app.session.candidates, ())
+            self.assertIsNone(app._operations.current_take)
+            self.assertEqual(
+                json.loads(app.config_path.read_text())["top_p"],
+                0.95,
+            )
+            app._operations.stop_playback.assert_called_once_with()
 
     def test_take_count_enter_edits_then_apply_shortcut_saves_the_full_draft(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1681,6 +1713,9 @@ class TuiTests(unittest.TestCase):
                 "take_count": "6",
                 "output_dir": "/tmp/opening-settings",
                 "save_text": True,
+                "top_k": "20",
+                "top_p": "1.00",
+                "temperature": "1.00",
             },
         )
         self.assertIs(app._editor_controller.editor, editor)
@@ -1752,6 +1787,9 @@ class TuiTests(unittest.TestCase):
                 "take_count": 7,
                 "style_id": 2,
                 "speed": 1.25,
+                "top_k": 20,
+                "top_p": 1.0,
+                "temperature": 1.0,
                 "save_text": True,
             })
 
