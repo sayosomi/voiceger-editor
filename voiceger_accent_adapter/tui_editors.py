@@ -162,6 +162,11 @@ class QuitIntent:
     pass
 
 
+@dataclass(frozen=True)
+class ClearCandidatesIntent:
+    pass
+
+
 EditorIntent = Union[
     ReplaceQueryIntent,
     PreviewIntent,
@@ -174,6 +179,7 @@ EditorIntent = Union[
     ClearAdjustmentFeedbackIntent,
     OpenHelpIntent,
     QuitIntent,
+    ClearCandidatesIntent,
 ]
 
 
@@ -969,9 +975,9 @@ class TuiEditorController:
             if selected == "back":
                 return self.cancel()
         elif editor.kind == "settings":
-            if selected in {"style_id", "speed", "take_count", "save_text", "apply"}:
+            if selected in {"style_id", "speed", "save_text", "apply"}:
                 return self.apply(settings, query, current_caption)
-            if selected == "output_dir":
+            if selected in {"take_count", "output_dir"}:
                 value = editor.payload["draft_settings"][selected]
                 return self.begin_field(selected, str(value))
             if selected == "reset":
@@ -1046,6 +1052,17 @@ class TuiEditorController:
                 return self.delete_section(query)
             if selected == "cancel":
                 return self._restore_parent_editor("Section deletion cancelled.")
+        elif editor.kind == "clear_candidates_confirmation":
+            if selected == "clear":
+                origin = editor.origin
+                self.editor = None
+                return (
+                    ClearCandidatesIntent(),
+                    ClearAdjustmentFeedbackIntent(),
+                    CloseEditorIntent(origin, "Candidates cleared."),
+                )
+            if selected == "cancel":
+                return self._close_editor("Candidate clearing cancelled.")
         return ()
 
     @staticmethod
@@ -1211,6 +1228,24 @@ class TuiEditorController:
         )
         return (ClearAdjustmentFeedbackIntent(), UpdateStatusIntent(""))
 
+    def open_clear_candidates_confirmation(
+        self,
+        *,
+        origin: tuple[str, int | None],
+    ) -> tuple[EditorIntent, ...]:
+        self.editor = EditorState(
+            kind="clear_candidates_confirmation",
+            title="CLEAR CANDIDATES?",
+            origin=origin,
+            selection="clear",
+            payload={
+                "warning": (
+                    "All generated candidate WAV files will be discarded."
+                ),
+            },
+        )
+        return (ClearAdjustmentFeedbackIntent(), UpdateStatusIntent(""))
+
     def delete_section(
         self,
         query: AudioQuery | None,
@@ -1336,6 +1371,21 @@ class TuiEditorController:
             return ()
         name = editor.active_field
         value = editor.input_value
+        if editor.kind == "settings" and name == "take_count":
+            try:
+                take_count = int(value)
+            except (TypeError, ValueError):
+                editor.error = (
+                    "Error: Take count must be an integer from 1 through 100."
+                )
+                return ()
+            if not 1 <= take_count <= 100:
+                editor.error = (
+                    "Error: Take count must be an integer from 1 through 100."
+                )
+                return ()
+            value = str(take_count)
+            editor.input_value = value
         if editor.kind == "settings":
             editor.payload["draft_settings"][name] = value
         else:
@@ -1552,6 +1602,7 @@ class TuiEditorController:
             "settings": "Settings draft discarded.",
             "english_word": "English word draft discarded.",
             "add_section": "New section draft discarded.",
+            "clear_candidates_confirmation": "Candidate clearing cancelled.",
         }.get(editor.kind, "Editor draft discarded.")
         return self._close_editor(status)
 
@@ -1632,9 +1683,9 @@ class TuiEditorController:
             try:
                 current = int(draft["take_count"])
             except (TypeError, ValueError):
-                editor.error = "Error: Take count must be an integer from 1 through 8."
+                editor.error = "Error: Take count must be an integer from 1 through 100."
                 return clear_feedback
-            updated = min(8, max(1, current + direction))
+            updated = min(100, max(1, current + direction))
             if updated == current:
                 editor.error = ""
                 return clear_feedback

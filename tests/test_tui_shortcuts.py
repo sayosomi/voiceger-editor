@@ -63,6 +63,7 @@ class TuiShortcutTests(unittest.TestCase):
                 "a": "apply", "r": "reset", "b": "back",
             },
             "delete_confirmation": {"d": "delete", "b": "cancel"},
+            "clear_candidates_confirmation": {"c": "clear", "b": "cancel"},
             "help": {"b": "back"},
         }
         for screen_kind, mapping in expected.items():
@@ -80,6 +81,7 @@ class TuiShortcutTests(unittest.TestCase):
             "b": "build_pronunciation",
             "a": "add_section",
             "g": "generate",
+            "c": "clear_candidates",
             "s": "settings",
             "?": "help",
             "q": "quit",

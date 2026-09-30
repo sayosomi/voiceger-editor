@@ -37,7 +37,10 @@ _HELP_ITEMS = (
         "otherwise activate the focused action",
     ),
     ("Space", ": replay a focused candidate"),
-    ("Esc", ": return from Help/candidate review; cancel editor draft"),
+    (
+        "Esc",
+        ": initial/regenerate-all cancels cooperatively; otherwise back/editor",
+    ),
     ("Tab / Shift+Tab", ": move to next / previous major section/action"),
     (
         " / ".join(
@@ -46,7 +49,8 @@ _HELP_ITEMS = (
         ),
         ": Build pronunciation / Add section / Generate or regenerate all",
     ),
-    ("1-8", ": focus and play an available candidate"),
+    ("1-9", ": focus and play an available candidate"),
+    (main_shortcut("clear_candidates").shortcut, ": clear candidates through confirmation"),
     ("r", ": regenerate the focused candidate"),
     ("t", ": edit Caption"),
     (main_shortcut("settings").shortcut, ": open Settings at style"),
@@ -122,9 +126,9 @@ def _active_input_prefix(editor: EditorRenderState) -> str:
     return "▶ Input: "
 
 
-def _duration_seconds(audio: Any, sampling_rate: int) -> float:
+def _duration_seconds(frame_count: int, sampling_rate: int) -> float:
     try:
-        return len(audio) / float(sampling_rate)
+        return frame_count / float(sampling_rate)
     except (TypeError, ValueError, ZeroDivisionError):
         return 0.0
 
@@ -490,7 +494,7 @@ class TuiRenderer:
                     self._adjustment_press_direction(state, "navigation", "generate"),
                 )
                 generate_label = (
-                    f"Regenerate all {adjustable_count} takes"
+                    f"Regenerate all {len(session.candidates)} takes"
                     if has_batch
                     else f"Generate {adjustable_count} takes"
                 )
@@ -504,10 +508,23 @@ class TuiRenderer:
             else:
                 plain("Candidates")
             for candidate in session.candidates:
-                duration = _duration_seconds(candidate.audio, candidate.sampling_rate)
+                duration = _duration_seconds(
+                    candidate.frame_count,
+                    candidate.sampling_rate,
+                )
+                label = (
+                    f"[{candidate.number}] Take {candidate.number}  {duration:.2f}s"
+                    if candidate.number <= 9
+                    else f"Take {candidate.number}  {duration:.2f}s"
+                )
                 action(
                     ("candidate", candidate.number),
-                    f"[{candidate.number}] Take {candidate.number}  {duration:.2f}s",
+                    label,
+                )
+            if session.candidates:
+                action(
+                    ("clear_candidates", None),
+                    main_shortcut("clear_candidates").display_label,
                 )
             plain()
 
@@ -700,6 +717,12 @@ class TuiRenderer:
             wrap("", editor.payload["warning"])
             plain()
             selectable("delete")
+            selectable("cancel")
+        elif editor.kind == "clear_candidates_confirmation":
+            plain()
+            wrap("", editor.payload["warning"])
+            plain()
+            selectable("clear")
             selectable("cancel")
         return lines, cursor_line, cursor_column
 

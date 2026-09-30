@@ -7,7 +7,7 @@ from types import ModuleType
 from unittest.mock import patch
 
 from voiceger_accent_adapter.filename import build_output_filename
-from voiceger_accent_adapter.output import save_output
+from voiceger_accent_adapter.output import save_output, save_output_wav
 
 
 class OutputSaveTests(unittest.TestCase):
@@ -115,6 +115,64 @@ class OutputSaveTests(unittest.TestCase):
 
             self.assertEqual(raised.exception.errno, errno.ENAMETOOLONG)
             self.assertEqual(list(root.iterdir()), [])
+
+    def test_disk_backed_save_copies_exact_wav_and_uses_provenance_for_name_and_txt(self):
+        source_text = "生成時の source"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate_wav = root / "candidate.wav"
+            candidate_bytes = b"selected candidate wav bytes\x00\x01"
+            candidate_wav.write_bytes(candidate_bytes)
+
+            saved = save_output_wav(
+                wav_source=candidate_wav,
+                source_text=source_text,
+                style_name="Sweet",
+                output_dir=root / "output",
+                save_text=True,
+                timestamp=self.timestamp,
+            )
+
+            expected_name = build_output_filename(
+                style_name="Sweet",
+                text=source_text,
+                timestamp=self.timestamp,
+            )
+            self.assertEqual(saved.wav_path.name, expected_name)
+            self.assertEqual(saved.wav_path.read_bytes(), candidate_bytes)
+            self.assertEqual(saved.text_path.name, Path(expected_name).with_suffix(".txt").name)
+            self.assertEqual(saved.text_path.read_text(encoding="utf-8"), source_text)
+
+    def test_disk_backed_save_collision_reservation_and_failure_cleanup(self):
+        source_text = "同じ basename"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate_wav = root / "candidate.wav"
+            candidate_wav.write_bytes(b"wav")
+            output_dir = root / "output"
+            output_dir.mkdir()
+            initial_name = build_output_filename(
+                style_name="Neutral",
+                text=source_text,
+                timestamp=self.timestamp,
+            )
+            existing = output_dir / initial_name
+            existing.write_bytes(b"keep")
+
+            with patch("voiceger_accent_adapter.output.shutil.copyfile") as copyfile:
+                copyfile.side_effect = OSError("copy failed")
+                with self.assertRaisesRegex(OSError, "copy failed"):
+                    save_output_wav(
+                        wav_source=candidate_wav,
+                        source_text=source_text,
+                        style_name="Neutral",
+                        output_dir=output_dir,
+                        save_text=True,
+                        timestamp=self.timestamp,
+                    )
+
+            self.assertEqual(existing.read_bytes(), b"keep")
+            self.assertEqual(list(output_dir.iterdir()), [existing])
 
 
 if __name__ == "__main__":

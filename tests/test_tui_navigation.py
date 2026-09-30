@@ -7,6 +7,7 @@ from voiceger_accent_adapter.tui_navigation import (
     ClearAdjustmentFeedback,
     EditPronunciationItem,
     NavigationContext,
+    OpenClearCandidatesConfirmation,
     OpenHelp,
     OpenSettingsEditor,
     OpenCaptionEditor,
@@ -24,7 +25,7 @@ def context(
     *,
     has_session=True,
     pronunciation_count=4,
-    candidate_numbers=(1, 2),
+    candidate_numbers=(),
     busy=False,
     has_active_batch=False,
 ):
@@ -59,6 +60,7 @@ class TuiNavigationTests(unittest.TestCase):
                 ("generate", None),
                 ("candidate", 5),
                 ("candidate", 2),
+                ("clear_candidates", None),
                 ("settings", None),
                 ("help", None),
                 ("quit", None),
@@ -94,6 +96,7 @@ class TuiNavigationTests(unittest.TestCase):
                 ("add_section", None),
                 ("generate", None),
                 ("candidate", 5),
+                ("clear_candidates", None),
                 ("settings", None),
                 ("help", None),
                 ("quit", None),
@@ -173,7 +176,7 @@ class TuiNavigationTests(unittest.TestCase):
             self.navigation.move_section(state, 1),
             (ClearAdjustmentFeedback(),),
         )
-        self.assertEqual(self.navigation.focus_key, ("settings", None))
+        self.assertEqual(self.navigation.focus_key, ("clear_candidates", None))
 
     def test_focus_fallback_prefers_remembered_child_then_build_then_caption(self):
         available = context(pronunciation_count=4)
@@ -229,6 +232,7 @@ class TuiNavigationTests(unittest.TestCase):
             (("generate", None), StartGeneration()),
             (("build_pronunciation", None), BuildPronunciation()),
             (("candidate", 1), AcceptCandidate(1)),
+            (("clear_candidates", None), OpenClearCandidatesConfirmation()),
             (("settings", None), OpenSettingsEditor("style_id")),
             (("help", None), OpenHelp()),
             (("quit", None), Quit()),
@@ -280,6 +284,22 @@ class TuiNavigationTests(unittest.TestCase):
                     "Wait for the current synthesis operation to finish."
                 ),
             ),
+        )
+        self.navigation.focus_key = ("clear_candidates", None)
+        self.assertEqual(
+            self.navigation.activate_focused_item(context(candidate_numbers=(1,), busy=True)),
+            (UpdateNavigationStatus("Finish or cancel synthesis before clearing candidates."),),
+        )
+        self.assertEqual(
+            self.navigation.activate_item(context(), ("clear_candidates", None)),
+            (),
+        )
+        self.assertEqual(
+            self.navigation.activate_item(
+                context(candidate_numbers=(), busy=True),
+                ("clear_candidates", None),
+            ),
+            (UpdateNavigationStatus("Finish or cancel synthesis before clearing candidates."),),
         )
         self.assertEqual(
             self.navigation.activate_item(busy, ("add_section", None)),
