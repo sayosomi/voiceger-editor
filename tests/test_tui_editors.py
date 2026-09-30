@@ -1223,6 +1223,59 @@ class TuiEditorControllerTests(unittest.TestCase):
                 self.assertIs(controller.editor, editor)
                 self.assertIsNone(editor.active_field)
 
+    def test_settings_tab_and_backtab_move_between_section_starts_and_wrap(self):
+        settings = self.settings()
+        controller, _provider = self.make_controller()
+        controller.open_settings(settings, origin=("settings", None), busy=False)
+        editor = controller.editor
+
+        for expected in ("take_count", "output_dir", "top_k", "apply", "style_id"):
+            intents = controller.handle_key(
+                "\t", settings=settings, query=None, current_caption=None
+            )
+            self.assertEqual(intents, (ClearAdjustmentFeedbackIntent(),))
+            self.assertEqual(editor.selection, expected)
+
+        backtab = getattr(curses, "KEY_BTAB")
+        for expected in ("apply", "top_k", "output_dir", "take_count", "style_id"):
+            intents = controller.handle_key(
+                backtab, settings=settings, query=None, current_caption=None
+            )
+            self.assertEqual(intents, (ClearAdjustmentFeedbackIntent(),))
+            self.assertEqual(editor.selection, expected)
+
+    def test_sampling_shortcuts_focus_rows_and_reset_only_the_draft(self):
+        settings = self.settings()
+        controller, _provider = self.make_controller()
+        controller.open_settings(settings, origin=("settings", None), busy=False)
+        editor = controller.editor
+
+        for shortcut, expected in (("k", "top_k"), ("p", "top_p"), ("t", "temperature")):
+            with self.subTest(shortcut=shortcut):
+                intents = controller.handle_key(
+                    shortcut, settings=settings, query=None, current_caption=None
+                )
+                self.assertEqual(intents, (ClearAdjustmentFeedbackIntent(),))
+                self.assertEqual(editor.selection, expected)
+
+        editor.payload["draft_settings"].update(
+            {"top_k": "37", "top_p": "0.45", "temperature": "0.80"}
+        )
+        intents = controller.handle_key(
+            "d", settings=settings, query=None, current_caption=None
+        )
+        self.assertEqual(editor.selection, "reset_sampling")
+        self.assertEqual(editor.payload["draft_settings"]["top_k"], "20")
+        self.assertEqual(editor.payload["draft_settings"]["top_p"], "1.00")
+        self.assertEqual(editor.payload["draft_settings"]["temperature"], "1.00")
+        self.assertEqual(settings.top_k, 20)
+        self.assertEqual(settings.top_p, 1.0)
+        self.assertEqual(settings.temperature, 1.0)
+        self.assertEqual(
+            intents[-1],
+            UpdateStatusIntent("Sampling reset to Voiceger defaults."),
+        )
+
     def test_settings_take_count_enter_edits_numeric_draft_before_explicit_apply(self):
         settings = self.settings()
         controller, _provider = self.make_controller()
