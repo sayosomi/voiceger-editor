@@ -132,10 +132,13 @@ class TuiApp:
                 pass
 
             caption = self._initial_caption
-            if caption is None:
-                self._open_caption_editor("")
-            elif not caption.strip():
-                self._open_caption_editor(caption)
+            if caption is None or not caption.strip():
+                self._dispatch_navigation_actions(
+                    self._navigation.set_focus_key(
+                        self._navigation_context(),
+                        ("caption", None),
+                    )
+                )
             else:
                 try:
                     self.session = UtteranceSession.from_text(
