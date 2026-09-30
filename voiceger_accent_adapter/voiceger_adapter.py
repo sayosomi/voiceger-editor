@@ -19,7 +19,7 @@ from typing import Any, Optional
 from .english_stress import normalize_english_phonemes
 from .openjtalk_converter import text_to_pronunciation
 from .output import save_output
-from .pronunciation import Pronunciation, format_pronunciation, parse_pronunciation
+from .pronunciation import AccentPhrase, Pronunciation, format_pronunciation, parse_pronunciation
 from .runtime_locks import LANGSEGMENT_LOCK, OPENJTALK_LOCK
 from .user_dictionary import UserDictionaryCore
 from .voiceger_tokens import pronunciation_to_voiceger_tokens
@@ -147,6 +147,26 @@ class VoicegerAdapter:
 
         self.user_dictionary.ensure_japanese_active(force=force)
 
+    def japanese_dictionary_pronunciation(self, text: str) -> Pronunciation:
+        """Return one editable dictionary-word pronunciation for Japanese text."""
+
+        self.ensure_japanese_dictionary_active()
+        parsed = resolve_pronunciation(text)[1]
+        morae = tuple(
+            mora
+            for phrase in parsed.phrases
+            for mora in phrase.morae
+        )
+        final_phrase_offset = sum(
+            len(phrase.morae)
+            for phrase in parsed.phrases[:-1]
+        )
+        accent = final_phrase_offset + parsed.phrases[-1].accent
+        return Pronunciation(
+            phrases=(AccentPhrase(morae=morae, accent=accent),),
+            terminator=None,
+        )
+
     def _require_paths(self) -> None:
         required = [
             self.sovits_dir,
@@ -186,14 +206,8 @@ class VoicegerAdapter:
         if dictionary_hit is not None:
             return dictionary_hit
 
-        with self._lock:
-            self._require_text_paths()
-            self._ensure_import_paths()
-            with _pushd(self.sovits_dir):
-                import text.english as english
-
-            normalized = english.text_normalize(text)
-            return normalize_english_phonemes(english.g2p(normalized))
+        groups = self.english_word_phoneme_groups(text)
+        return [phoneme for _label, group in groups for phoneme in group]
 
     def english_word_phoneme_groups(
         self, text: str
@@ -268,13 +282,31 @@ class VoicegerAdapter:
                     "canonical whole-segment G2P output"
                 )
 
-            # The TUI consumes the same strict token validation as the normal
-            # English editor. Empty groups are preserved for fixed punctuation
-            # tokenizer entries that Voiceger's post-processor removes.
+            # Prove the baseline grouping reproduces Voiceger before applying
+            # user-dictionary overrides. Dictionary words are then resolved
+            # independently, so an exact word hit works inside a larger segment
+            # without substring replacement.
             for _label, group in groups:
                 if group:
                     normalize_english_phonemes(group)
-            return groups
+
+            resolved: list[tuple[str, tuple[str, ...]]] = []
+            for label, group in groups:
+                dictionary_word = (
+                    self.user_dictionary.lookup_english_entry(label)
+                    if any(character.isalpha() for character in label)
+                    else None
+                )
+                if dictionary_word is None:
+                    resolved.append((label, group))
+                else:
+                    resolved.append(
+                        (
+                            label,
+                            tuple(normalize_english_phonemes(dictionary_word)),
+                        )
+                    )
+            return tuple(resolved)
 
     def _ensure_runtime(self) -> None:
         if self._loaded:

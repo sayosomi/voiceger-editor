@@ -92,6 +92,11 @@ class OpenHelp:
 
 
 @dataclass(frozen=True)
+class OpenDictionary:
+    pass
+
+
+@dataclass(frozen=True)
 class Quit:
     pass
 
@@ -111,6 +116,7 @@ NavigationAction = Union[
     OpenClearCandidatesConfirmation,
     PlayCandidate,
     OpenHelp,
+    OpenDictionary,
     Quit,
 ]
 
@@ -142,7 +148,9 @@ class TuiNavigation:
             )
             if context.candidate_numbers:
                 items.append(("clear_candidates", None))
-        items.extend((("settings", None), ("help", None), ("quit", None)))
+        items.extend(
+            (("settings", None), ("dictionary", None), ("help", None), ("quit", None))
+        )
         return tuple(items)
 
     def major_navigation_stops(
@@ -341,6 +349,8 @@ class TuiNavigation:
             return (OpenClearCandidatesConfirmation(),)
         if name == "settings":
             return (OpenSettingsEditor("style_id"),)
+        if name == "dictionary":
+            return (OpenDictionary(),)
         if name == "help":
             return self.open_help(context)
         if name == "quit":

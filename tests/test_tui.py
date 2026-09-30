@@ -269,6 +269,8 @@ class TuiTests(unittest.TestCase):
     def make_app(*, query=None, candidates=(), groups=None):
         adapter = Mock()
         adapter.voiceger_root = Path("/nonexistent/voiceger")
+        adapter.user_dictionary.list_japanese_entries.return_value = {}
+        adapter.user_dictionary.list_english_entries.return_value = {}
         query = query or english_query(["AA1", "IY0", "ER1"])
         if groups is None:
             segment = next(
@@ -344,9 +346,87 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(output[3] & curses.A_REVERSE)
         self.assertIn(("settings", None), navigation_items(app))
         self.assertEqual(
-            navigation_items(app)[-3:],
-            [("settings", None), ("help", None), ("quit", None)],
+            navigation_items(app)[-4:],
+            [
+                ("settings", None),
+                ("dictionary", None),
+                ("help", None),
+                ("quit", None),
+            ],
         )
+
+    def test_main_dictionary_shortcut_opens_dictionary_menu(self):
+        app = self.make_app(query=mixed_query())
+
+        app._handle_key("d")
+
+        self.assertTrue(app._dictionary_controller.active)
+        self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_menu")
+        self.assertIsNone(app._editor_controller.editor)
+
+    def test_pronunciation_editor_dictionary_actions_preserve_editor_state(self):
+        app = self.make_app(query=mixed_query())
+        app._edit_selected_pronunciation(0)
+        pronunciation_editor = app._editor_controller.editor
+        self.assertEqual(pronunciation_editor.kind, "japanese")
+        app._handle_key("\n")
+        opening_draft = pronunciation_editor.input_value
+
+        app._handle_key("s")
+
+        self.assertEqual(
+            app._dictionary_controller.editor.kind,
+            "dictionary_japanese_entry",
+        )
+        self.assertEqual(
+            app._dictionary_controller.editor.payload["surface"],
+            "雨",
+        )
+        self.assertEqual(
+            app._dictionary_controller.editor.payload["pronunciation"],
+            "ア",
+        )
+        self.assertIs(app._editor_controller.editor, pronunciation_editor)
+        self.assertEqual(pronunciation_editor.input_value, opening_draft)
+
+        app._handle_key("s")
+
+        app.adapter.user_dictionary.add_japanese_word.assert_called_once()
+        self.assertFalse(app._dictionary_controller.active)
+        self.assertIs(app._editor_controller.editor, pronunciation_editor)
+        self.assertEqual(pronunciation_editor.input_value, opening_draft)
+        self.assertEqual(app.session.replace_query_calls, [])
+        self.assertEqual(app.session.build_calls, 0)
+
+        app._handle_key("d")
+        self.assertEqual(
+            app._dictionary_controller.editor.kind,
+            "dictionary_menu",
+        )
+        self.assertIs(app._editor_controller.editor, pronunciation_editor)
+
+    def test_english_pronunciation_editor_save_prefills_dictionary_entry(self):
+        app = self.make_app(
+            query=english_query(["R", "EH1", "K", "ER0", "D"], text="record"),
+            groups=(("record", ("R", "EH1", "K", "ER0", "D")),),
+        )
+        set_navigation_focus(app, ("pronunciation", 0))
+        app._handle_key("\n")
+        pronunciation_editor = app._editor_controller.editor
+        self.assertEqual(pronunciation_editor.kind, "english_word")
+        app._handle_key("\n")
+
+        app._handle_key("s")
+
+        dictionary_editor = app._dictionary_controller.editor
+        self.assertEqual(dictionary_editor.kind, "dictionary_english_entry")
+        self.assertEqual(dictionary_editor.payload["surface"], "record")
+        self.assertEqual(
+            dictionary_editor.payload["phonemes"],
+            ("R", "EH1", "K", "ER0", "D"),
+        )
+        self.assertIs(app._editor_controller.editor, pronunciation_editor)
+        self.assertEqual(app.session.replace_query_calls, [])
 
     def test_settings_summary_opens_style_and_output_opens_path_input(self):
         app = self.make_app(query=mixed_query())
@@ -902,6 +982,24 @@ class TuiTests(unittest.TestCase):
             self.assertIn("< 0.51 >", rendered)
             self.assertNotIn("<<", rendered)
             self.assertNotIn(">>", rendered)
+
+    def test_run_without_initial_caption_starts_on_main_with_caption_focused(self):
+        for initial_caption in (None, "", "   "):
+            with self.subTest(initial_caption=initial_caption):
+                app = self.make_app()
+                app.session = None
+                app._initial_caption = initial_caption
+                screen = FakeScreen(keys=("q",))
+                with patch("voiceger_accent_adapter.tui.curses.set_escdelay"):
+                    app.run(screen)
+
+                self.assertIsNone(app.session)
+                self.assertIsNone(app._editor_controller.editor)
+                self.assertEqual(app._navigation.focus_key, ("caption", None))
+                rendered = self.rendered(screen)
+                self.assertIn("Voiceger Accent Adapter", rendered)
+                self.assertIn("Caption :", rendered)
+                self.assertNotIn("EDIT CAPTION TEXT", rendered)
 
     def test_run_sets_fast_escape_delay_and_keeps_100ms_polling_with_blank_ready_status(self):
         app = self.make_app()
@@ -2126,7 +2224,7 @@ class TuiTests(unittest.TestCase):
         self.assertNotIn("english_segment", app._editor_controller.selection_keys())
         self.assertEqual(
             app._editor_controller.selection_keys(),
-            ["phonemes", "preview", "apply", "edit_text", "clear", "reset", "back"],
+            ["phonemes", "preview", "apply", "save_dictionary", "dictionary", "edit_text", "clear", "reset", "back"],
         )
 
     @staticmethod

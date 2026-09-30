@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol, Sequence
 
+from .pronunciation import parse_pronunciation
 from .session import UtteranceSession
 from .settings import (
     Settings,
@@ -33,8 +34,7 @@ _HELP_ITEMS = (
     ("Up/Down", ": move one selectable item"),
     (
         "Left/Right",
-        ": on JA: accent by one mora; on EN: primary stress by one vowel; "
-        "Generate/Settings: adjust",
+        ": on JA: accent by one mora; on EN: primary stress by one vowel",
     ),
     (
         "Enter",
@@ -46,7 +46,7 @@ _HELP_ITEMS = (
         "Esc",
         ": initial/regenerate-all cancels cooperatively; otherwise back/editor",
     ),
-    ("Tab / Shift+Tab", ": move to next / previous major section/action"),
+    ("Tab / Shift+Tab", ": next / previous major section/action"),
     (
         " / ".join(
             main_shortcut(name).shortcut
@@ -59,6 +59,7 @@ _HELP_ITEMS = (
     ("r", ": regenerate the focused candidate"),
     ("t", ": edit Caption"),
     (main_shortcut("settings").shortcut, ": open Settings at style"),
+    (main_shortcut("dictionary").shortcut, ": open Dictionary"),
     ("v", ": open Settings at speed"),
     ("n", ": open Settings at takes"),
     ("o", ": open Settings at output"),
@@ -118,6 +119,9 @@ def _active_input_prefix(editor: EditorRenderState) -> str:
         return "▶ "
     if editor.kind in {"section_text", "add_section"}:
         return "▶ "
+    if editor.kind in {"dictionary_japanese_entry", "dictionary_english_entry"}:
+        label = "Surface" if editor.active_field == "surface" else "Pronunciation"
+        return f"▶ {label:<15}"
     if editor.kind == "settings":
         labels = {
             "style_id": "Style",
@@ -537,6 +541,7 @@ class TuiRenderer:
             plain()
 
         action(("settings", None), main_shortcut("settings").display_label)
+        action(("dictionary", None), main_shortcut("dictionary").display_label)
         action(("help", None), main_shortcut("help").display_label)
         action(("quit", None), main_shortcut("quit").display_label)
         return lines
@@ -631,6 +636,8 @@ class TuiRenderer:
             plain()
             selectable("preview")
             selectable("apply")
+            selectable("save_dictionary")
+            selectable("dictionary")
             selectable("edit_text")
             selectable("clear")
             selectable("reset")
@@ -710,10 +717,162 @@ class TuiRenderer:
             plain()
             selectable("preview")
             selectable("apply")
+            selectable("save_dictionary")
+            selectable("dictionary")
             selectable("edit_text")
             selectable("clear")
             selectable("reset")
             selectable("back")
+        elif editor.kind == "dictionary_menu":
+            plain()
+            for key, count_name in (
+                ("japanese", "japanese_count"),
+                ("english", "english_count"),
+            ):
+                marker = "▶ " if editor.selection == key else "  "
+                item = menu_item(editor.kind, key, editor.payload)
+                count = editor.payload[count_name]
+                lines.append((f"{marker}{item.display_label:<18}{count} words", key))
+            plain()
+            selectable("back")
+        elif editor.kind == "dictionary_japanese_list":
+            plain()
+            entries = editor.payload["entries"]
+            if not entries:
+                plain("  No Japanese dictionary words.")
+            for index, (_word_uuid, word) in enumerate(entries):
+                parsed = parse_pronunciation(word.pronunciation + "'")
+                display = " ".join(
+                    _japanese_mora_tokens(
+                        parsed.phrases[0].morae,
+                        word.accent_type or len(parsed.phrases[0].morae),
+                    )
+                )
+                key = ("entry", index)
+                wrapped_selectable_text(
+                    key,
+                    f"{word.surface}      {display}",
+                )
+            plain()
+            selectable("add")
+            if entries:
+                selectable("delete")
+            selectable("back")
+        elif editor.kind == "dictionary_english_list":
+            plain()
+            entries = editor.payload["entries"]
+            if not entries:
+                plain("  No English dictionary words.")
+            for index, entry in enumerate(entries):
+                key = ("entry", index)
+                wrapped_selectable_text(
+                    key,
+                    f"{entry.surface}      {' '.join(entry.phonemes)}",
+                )
+            plain()
+            selectable("add")
+            if entries:
+                selectable("delete")
+            selectable("back")
+        elif editor.kind == "dictionary_japanese_duplicates":
+            plain()
+            plain("Multiple existing words have this Surface. Choose one to update.")
+            plain()
+            for index, (_word_uuid, word) in enumerate(editor.payload["matches"]):
+                parsed = parse_pronunciation(word.pronunciation + "'")
+                display = " ".join(
+                    _japanese_mora_tokens(
+                        parsed.phrases[0].morae,
+                        word.accent_type or len(parsed.phrases[0].morae),
+                    )
+                )
+                key = ("entry", index)
+                wrapped_selectable_text(key, f"{word.surface}      {display}")
+            plain()
+            plain("Enter Open")
+            plain(menu_item(editor.kind, "back", editor.payload).display_label)
+        elif editor.kind == "dictionary_japanese_entry":
+            plain()
+            if editor.active_field == "surface":
+                input_field("surface", "▶ Surface        ")
+            else:
+                marker = "▶ " if editor.selection == "surface" else "  "
+                wrap(marker + "Surface        ", editor.payload["surface"], "surface")
+            if editor.active_field == "pronunciation":
+                input_field("pronunciation", "▶ Pronunciation  ")
+            else:
+                display = " ".join(
+                    _japanese_mora_tokens(
+                        editor.payload["moras"],
+                        editor.payload["accent"] or len(editor.payload["moras"]),
+                    )
+                )
+                marker = "▶ " if editor.selection == "pronunciation" else "  "
+                lines.append((f"{marker}Pronunciation  {display}", "pronunciation"))
+            marker = "▶ " if editor.selection == "word_type" else "  "
+            lines.append(
+                (
+                    f"{marker}Word type      < {editor.payload['word_type'].value} >",
+                    "word_type",
+                )
+            )
+            marker = "▶ " if editor.selection == "priority" else "  "
+            lines.append(
+                (
+                    f"{marker}Priority       < {editor.payload['priority']} >",
+                    "priority",
+                )
+            )
+            plain()
+            selectable("generate_pronunciation")
+            selectable("preview")
+            selectable("save")
+            selectable("dictionary")
+            selectable("back")
+        elif editor.kind == "dictionary_english_entry":
+            plain()
+            if editor.active_field == "surface":
+                input_field("surface", "▶ Surface        ")
+            else:
+                marker = "▶ " if editor.selection == "surface" else "  "
+                wrap(marker + "Surface        ", editor.payload["surface"], "surface")
+            if editor.active_field == "phonemes":
+                input_field("phonemes", "▶ Pronunciation  ")
+            else:
+                marker = "▶ " if editor.selection == "phonemes" else "  "
+                wrap(
+                    marker + "Pronunciation  ",
+                    " ".join(editor.payload["phonemes"]),
+                    "phonemes",
+                )
+            plain()
+            selectable("generate_pronunciation")
+            selectable("preview")
+            selectable("save")
+            selectable("dictionary")
+            selectable("back")
+        elif editor.kind == "dictionary_delete_confirmation":
+            plain()
+            plain(editor.payload["surface"])
+            if editor.payload["language"] == "ja":
+                display = " ".join(
+                    _japanese_mora_tokens(
+                        editor.payload["moras"],
+                        editor.payload["accent"] or len(editor.payload["moras"]),
+                    )
+                )
+            else:
+                display = " ".join(editor.payload["phonemes"])
+            wrap("  ", display)
+            plain()
+            selectable("delete")
+            selectable("cancel")
+        elif editor.kind == "dictionary_discard_confirmation":
+            plain()
+            wrap("", "Unsaved dictionary changes will be discarded.")
+            plain()
+            selectable("discard")
+            selectable("cancel")
         elif editor.kind == "section_text":
             language = "Japanese" if editor.payload["language"] == "ja" else "English"
             plain()

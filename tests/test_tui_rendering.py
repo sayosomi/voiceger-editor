@@ -409,7 +409,13 @@ class TuiRenderingTests(unittest.TestCase):
             found = next(item for item in screen.drawn if item[2] == shortcut and item[3] & curses.A_BOLD)
             rows.append(found[0])
             self.assertIn(label, next(text for row, _column, text, _attr in screen.drawn if row == found[0] and text.startswith(": open Settings")))
-        self.assertEqual(rows, list(range(rows[0], rows[0] + 5)))
+        dictionary = next(
+            item
+            for item in screen.drawn
+            if item[2] == "d" and item[3] & curses.A_BOLD
+        )
+        self.assertEqual(dictionary[0], rows[0] + 1)
+        self.assertEqual(rows[1:], list(range(rows[0] + 2, rows[0] + 6)))
         self.assertNotIn("Return to Navigation", visible)
         self.assertNotIn("| q Quit", visible)
         self.assertIn("q", [text for _row, _column, text, _attr in screen.drawn])
@@ -707,16 +713,124 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("'", visible)
         self.assertNotIn("[Enter: Edit]", visible)
         self.assertEqual(
-            [line for line, _key in document[-6:]],
+            [line for line, _key in document[-8:]],
             [
                 "  [P] Preview",
                 "  [A] Apply",
+                "  [S] Save to dictionary",
+                "  [D] Dictionary menu",
                 "  [E] Edit text",
                 "  [C] Clear",
                 "  [R] Reset",
                 "  [B] Back",
             ],
         )
+
+    def test_dictionary_menu_renders_language_shortcuts(self):
+        editor = SimpleNamespace(
+            kind="dictionary_menu",
+            title="DICTIONARY",
+            selection="japanese",
+            payload={"japanese_count": 2, "english_count": 1},
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+
+        self.assertIn(("▶ [J] Japanese      2 words", "japanese"), document)
+        self.assertIn(("  [E] English       1 words", "english"), document)
+        self.assertIn(("  [B] Back", "back"), document)
+
+    def test_empty_dictionary_list_renders_add_and_back(self):
+        editor = SimpleNamespace(
+            kind="dictionary_japanese_list",
+            title="JAPANESE DICTIONARY",
+            selection="add",
+            payload={"entries": ()},
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+
+        self.assertTrue(
+            any("No Japanese dictionary words." in line for line, _key in document)
+        )
+        self.assertIn(("▶ [A] Add", "add"), document)
+        self.assertIn(("  [B] Back", "back"), document)
+        self.assertFalse(any("[X] Delete" in line for line, _key in document))
+
+    def test_japanese_dictionary_list_uses_main_mora_accent_display(self):
+        word = SimpleNamespace(
+            surface="ずんだもん",
+            pronunciation="ズンダモン",
+            accent_type=3,
+        )
+        editor = SimpleNamespace(
+            kind="dictionary_japanese_list",
+            title="JAPANESE DICTIONARY",
+            selection=("entry", 0),
+            payload={"entries": (("uuid", word),)},
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+
+        entry = next(
+            line for line, key in document if key == ("entry", 0)
+        )
+        self.assertIn("ずんだもん", entry)
+        self.assertIn("ズ ン [ダ] モ ン", entry)
+        visible = "\n".join(line for line, _key in document)
+        self.assertNotIn("accent_type", visible)
+        self.assertNotIn("Enter Edit", visible)
+        self.assertIn(("  [A] Add", "add"), document)
+        self.assertIn(("  [X] Delete", "delete"), document)
+        self.assertIn(("  [B] Back", "back"), document)
+
+    def test_english_dictionary_list_renders_selectable_actions(self):
+        entry = SimpleNamespace(
+            surface="hello",
+            phonemes=("HH", "AH0", "L", "OW1"),
+        )
+        editor = SimpleNamespace(
+            kind="dictionary_english_list",
+            title="ENGLISH DICTIONARY",
+            selection="add",
+            payload={"entries": (entry,), "entry_index": 0},
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        visible = "\n".join(line for line, _key in document)
+
+        self.assertIn(("▶ [A] Add", "add"), document)
+        self.assertIn(("  [X] Delete", "delete"), document)
+        self.assertIn(("  [B] Back", "back"), document)
+        self.assertNotIn("Enter Edit", visible)
 
     def test_english_word_editor_opens_on_full_stressed_phoneme_input(self):
         editor = SimpleNamespace(
@@ -739,10 +853,12 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertNotIn("Primary stress", visible)
         self.assertNotIn("Done", visible)
         self.assertEqual(
-            [line for line, _key in document[-6:]],
+            [line for line, _key in document[-8:]],
             [
                 "  [P] Preview",
                 "  [A] Apply",
+                "  [S] Save to dictionary",
+                "  [D] Dictionary menu",
                 "  [E] Edit text",
                 "  [C] Clear",
                 "  [R] Reset",
@@ -964,6 +1080,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(labels[("candidate", 2)], "  [2] Take 2  0.01s")
         self.assertEqual(labels[("clear_candidates", None)], "  [C] Clear candidates")
         self.assertEqual(labels[("settings", None)], "  [S] Settings")
+        self.assertEqual(labels[("dictionary", None)], "  [D] Dictionary")
         self.assertEqual(labels[("help", None)], "  [?] Help")
         self.assertEqual(labels[("quit", None)], "  [Q] Quit")
         caption = labels[("caption", None)]

@@ -7,6 +7,7 @@ their VOICEVOX-compatible OpenJTalk representation and the Voiceger merge.
 from __future__ import annotations
 
 import csv
+from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
 import json
@@ -166,6 +167,34 @@ _ACTIVE_MANAGER: Any = None
 _BASELINE_JTALK_MANAGER: Any = None
 
 
+@contextmanager
+def _suppress_native_output():
+    """Keep native dictionary compiler progress from corrupting terminal UIs."""
+
+    saved_fds: list[tuple[int, int]] = []
+    null_fd = os.open(os.devnull, os.O_WRONLY)
+    try:
+        for fd in (1, 2):
+            try:
+                saved_fd = os.dup(fd)
+            except OSError:
+                continue
+            try:
+                os.dup2(null_fd, fd)
+            except Exception:
+                os.close(saved_fd)
+                raise
+            saved_fds.append((fd, saved_fd))
+        yield
+    finally:
+        for fd, saved_fd in reversed(saved_fds):
+            try:
+                os.dup2(saved_fd, fd)
+            finally:
+                os.close(saved_fd)
+        os.close(null_fd)
+
+
 class OpenJTalkDictionary:
     """Compile and apply Voiceger plus adapter-owned Japanese entries."""
 
@@ -261,7 +290,13 @@ class OpenJTalkDictionary:
         compiled_path = root / "merged-user-dictionary.dic"
         try:
             csv_path.write_text(self._merged_csv(entries), encoding="utf-8")
-            self._pyopenjtalk().mecab_dict_index(str(csv_path), str(compiled_path))
+            # pyopenjtalk's native MeCab compiler writes progress directly to
+            # process stdout/stderr, bypassing curses and Python stream
+            # redirection. Suppress only that native compilation call.
+            with OPENJTALK_LOCK, _suppress_native_output():
+                self._pyopenjtalk().mecab_dict_index(
+                    str(csv_path), str(compiled_path)
+                )
             if not compiled_path.is_file():
                 raise OpenJTalkDictionaryError(
                     "OpenJTalk dictionary compilation produced no dictionary file"

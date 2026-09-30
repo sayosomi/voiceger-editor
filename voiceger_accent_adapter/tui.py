@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import argparse
 import curses
 from dataclasses import replace
 import os
-from pathlib import Path
 import sys
 from typing import Any, Sequence
 
@@ -14,7 +12,9 @@ from .session import UtteranceSession
 from .settings import Settings, SettingsError, load_settings, save_settings
 from .styles import available_styles
 from .takes import cleanup_stale_take_directories
+from .tui_cli import build_argument_parser, settings_for_invocation
 from .tui_display import _adjustable_value, format_english_phonemes
+from .tui_dictionary import TuiDictionaryController
 from .tui_rendering import (
     TuiRenderer,
     TuiRenderState,
@@ -33,6 +33,8 @@ from .tui_editors import (
     CloseEditorIntent,
     EditorIntent,
     OpenHelpIntent,
+    OpenDictionaryIntent,
+    SaveToDictionaryIntent,
     QuitIntent,
     PreviewIntent,
     QueryApplicationResult,
@@ -63,6 +65,7 @@ from .tui_navigation import (
     NavigationContext,
     OpenClearCandidatesConfirmation,
     OpenHelp,
+    OpenDictionary,
     OpenSettingsEditor,
     OpenCaptionEditor,
     PlayCandidate,
@@ -78,48 +81,6 @@ from .voiceger_adapter import VoicegerAdapter
 
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
 _ESCAPE = "\x1b"
-
-
-def build_argument_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="voiceger-accent-adapter",
-        description="Keyboard-first local pronunciation editing and take review.",
-    )
-    parser.add_argument("text", nargs="?", help="one utterance to edit and synthesize")
-    parser.add_argument("--voiceger-root", type=Path, help="Voiceger installation path")
-    parser.add_argument("--config", type=Path, help="settings file path")
-    parser.add_argument("--output-dir", type=Path, help="override output directory")
-    parser.add_argument("--take-count", type=int, help="override take count (1–100)")
-    parser.add_argument("--style", type=int, help="override reference style ID")
-    parser.add_argument("--speed", type=float, help="override speech speed")
-    save_group = parser.add_mutually_exclusive_group()
-    save_group.add_argument(
-        "--save-text", dest="save_text", action="store_true",
-        help="save an exact source-text sidecar",
-    )
-    save_group.add_argument(
-        "--no-save-text", dest="save_text", action="store_false",
-        help="disable source-text sidecars",
-    )
-    parser.set_defaults(save_text=None)
-    return parser
-
-
-def settings_for_invocation(args: argparse.Namespace, base: Settings) -> Settings:
-    """Apply command-line overrides without writing them to persisted settings."""
-
-    overrides = {
-        name: value
-        for name, value in (
-            ("output_dir", args.output_dir),
-            ("take_count", args.take_count),
-            ("style_id", args.style),
-            ("speed", args.speed),
-            ("save_text", args.save_text),
-        )
-        if value is not None
-    }
-    return replace(base, **overrides)
 
 
 class TuiApp:
@@ -151,6 +112,12 @@ class TuiApp:
             available_styles=lambda: available_styles(self.adapter.voiceger_root),
             input_prefix=_active_input_prefix,
         )
+        self._dictionary_controller = TuiDictionaryController(
+            self.adapter.user_dictionary,
+            input_prefix=_active_input_prefix,
+            japanese_pronunciation=self.adapter.japanese_dictionary_pronunciation,
+            english_word_groups=self.adapter.english_word_phoneme_groups,
+        )
         self._pressed_adjustment: tuple[str, str, int] | None = None
         self._renderer = TuiRenderer()
 
@@ -167,10 +134,8 @@ class TuiApp:
                 pass
 
             caption = self._initial_caption
-            if caption is None:
-                self._open_caption_editor("")
-            elif not caption.strip():
-                self._open_caption_editor(caption)
+            if caption is None or not caption.strip():
+                self._navigation.focus_key = ("caption", None)
             else:
                 try:
                     self.session = UtteranceSession.from_text(
@@ -243,6 +208,19 @@ class TuiApp:
                 or resolve_shortcut("help", key) is not None
             ):
                 self._help_open = False
+            return
+        if self._dictionary_controller.active:
+            intents = self._dictionary_controller.handle_key(
+                key,
+                screen_width=(
+                    self._screen.getmaxyx()[1] if self._screen is not None else 80
+                ),
+                preview_busy=(
+                    self._operations.busy
+                    and self._operations.worker_operation == "preview"
+                ),
+            )
+            self._dispatch_editor_intents(intents)
             return
         if self._editor_controller.editor is not None:
             intents = self._editor_controller.handle_key(
@@ -464,6 +442,8 @@ class TuiApp:
                 self._dispatch_operation_effects(
                     self._operations.play_take(self.session, action.number)
                 )
+            elif isinstance(action, OpenDictionary):
+                self._dispatch_editor_intents(self._dictionary_controller.open_menu())
             elif isinstance(action, OpenHelp):
                 self._help_open = True
             elif isinstance(action, Quit):
@@ -641,6 +621,19 @@ class TuiApp:
                 )
             elif isinstance(intent, OpenHelpIntent):
                 self._help_open = True
+            elif isinstance(intent, OpenDictionaryIntent):
+                pending[0:0] = self._dictionary_controller.open_menu()
+            elif isinstance(intent, SaveToDictionaryIntent):
+                if intent.language == "ja":
+                    pending[0:0] = self._dictionary_controller.open_quick_save_japanese(
+                        surface=intent.surface,
+                        pronunciation=intent.pronunciation,
+                    )
+                else:
+                    pending[0:0] = self._dictionary_controller.open_quick_save_english(
+                        surface=intent.surface,
+                        phonemes=intent.pronunciation,
+                    )
             elif isinstance(intent, QuitIntent):
                 self._activate_quit()
             elif isinstance(intent, ClearCandidatesIntent):
@@ -829,7 +822,7 @@ class TuiApp:
             operation_completed=self._operations.operation_completed,
             operation_total=self._operations.operation_total,
             pressed_adjustment=self._pressed_adjustment,
-            editor=self._editor_controller.editor,
+            editor=self._dictionary_controller.editor if self._dictionary_controller.active else self._editor_controller.editor,
         )
 
     def _render(self) -> None:
@@ -839,7 +832,11 @@ class TuiApp:
         height, width = screen.getmaxyx()
         screen.erase()
         try:
-            editor = self._editor_controller.editor
+            editor = (
+                self._dictionary_controller.editor
+                if self._dictionary_controller.active
+                else self._editor_controller.editor
+            )
             curses.curs_set(
                 0 if self._help_open else 1 if editor and editor.active_field else 0
             )
@@ -847,7 +844,10 @@ class TuiApp:
             pass
         if self._help_open:
             self._renderer.render_help(screen, width)
-        elif self._editor_controller.editor is not None:
+        elif (
+            self._dictionary_controller.active
+            or self._editor_controller.editor is not None
+        ):
             self._renderer.render_editor(
                 screen, self._render_state(segments=()), height, width
             )

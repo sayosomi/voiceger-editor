@@ -78,6 +78,32 @@ class ResolvePronunciationTests(unittest.TestCase):
         self.assertEqual(text, "雨。")
         self.assertEqual(resolved, "ア'メ。")
 
+    def test_dictionary_pronunciation_flattens_multiple_openjtalk_phrases(self):
+        with TemporaryDirectory() as temp_dir:
+            adapter = VoicegerAdapter(voiceger_root=Path(temp_dir))
+            parsed = Pronunciation(
+                phrases=(
+                    AccentPhrase(("ズ", "ン", "ダ"), 2),
+                    AccentPhrase(("モ", "ン"), 1),
+                ),
+                terminator="。",
+            )
+            with patch.object(
+                adapter,
+                "ensure_japanese_dictionary_active",
+            ) as ensure_active, patch(
+                "voiceger_accent_adapter.voiceger_adapter.resolve_pronunciation",
+                return_value=("ずんだもん。", parsed, "ズン'ダ/モ'ン。"),
+            ):
+                result = adapter.japanese_dictionary_pronunciation("ずんだもん")
+
+        ensure_active.assert_called_once_with()
+        self.assertEqual(result.terminator, None)
+        self.assertEqual(
+            result.phrases,
+            (AccentPhrase(("ズ", "ン", "ダ", "モ", "ン"), 4),),
+        )
+
     def test_pronunciation_rebuilds_spoken_text_for_synthesis(self):
         value = Pronunciation(
             phrases=(
@@ -313,6 +339,96 @@ class EnglishDictionaryAdapterTests(unittest.TestCase):
                     adapter.english_word_phoneme_groups("voiceger"),
                     (("voiceger", tuple(expected)),),
                 )
+
+    def test_dictionary_hit_applies_to_one_word_inside_larger_segment(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            adapter = self.make_adapter(root, root / "adapter-state")
+            adapter.user_dictionary.set_english_entry(
+                "record",
+                ["R", "IH0", "K", "AO1", "R", "D"],
+            )
+            baseline = [
+                "S", "EY1",
+                "R", "EH1", "K", "ER0", "D",
+                "N", "AW1",
+            ]
+            english = SimpleNamespace(
+                text_normalize=lambda value: value,
+                g2p=lambda value: list(baseline),
+                word_tokenize=lambda value: ["say", "record", "now"],
+                _g2p=lambda value: [
+                    "S", "EY1", " ",
+                    "R", "EH1", "K", "ER0", "D", " ",
+                    "N", "AW1",
+                ],
+                replace_phs=lambda values: list(values),
+            )
+            text_package = ModuleType("text")
+            text_package.__path__ = []
+            text_package.english = english
+
+            with patch.dict(
+                sys.modules,
+                {"text": text_package, "text.english": english},
+            ), patch.object(adapter, "_require_text_paths"), patch.object(
+                adapter, "_ensure_import_paths"
+            ), patch(
+                "voiceger_accent_adapter.voiceger_adapter._pushd",
+                return_value=nullcontext(),
+            ):
+                groups = adapter.english_word_phoneme_groups("say record now")
+                flattened = adapter.english_phonemes("say record now")
+
+            self.assertEqual(
+                groups,
+                (
+                    ("say", ("S", "EY1")),
+                    ("record", ("R", "IH0", "K", "AO1", "R", "D")),
+                    ("now", ("N", "AW1")),
+                ),
+            )
+            self.assertEqual(
+                flattened,
+                [
+                    "S", "EY1",
+                    "R", "IH0", "K", "AO1", "R", "D",
+                    "N", "AW1",
+                ],
+            )
+
+    def test_dictionary_word_does_not_replace_substrings(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            adapter = self.make_adapter(root, root / "adapter-state")
+            adapter.user_dictionary.set_english_entry(
+                "record",
+                ["R", "IH0", "K", "AO1", "R", "D"],
+            )
+            baseline = ["R", "IH0", "K", "AO1", "R", "D", "ER0"]
+            english = SimpleNamespace(
+                text_normalize=lambda value: value,
+                g2p=lambda value: list(baseline),
+                word_tokenize=lambda value: ["recorder"],
+                _g2p=lambda value: list(baseline),
+                replace_phs=lambda values: list(values),
+            )
+            text_package = ModuleType("text")
+            text_package.__path__ = []
+            text_package.english = english
+
+            with patch.dict(
+                sys.modules,
+                {"text": text_package, "text.english": english},
+            ), patch.object(adapter, "_require_text_paths"), patch.object(
+                adapter, "_ensure_import_paths"
+            ), patch(
+                "voiceger_accent_adapter.voiceger_adapter._pushd",
+                return_value=nullcontext(),
+            ):
+                groups = adapter.english_word_phoneme_groups("recorder")
+
+            self.assertEqual(groups, (("recorder", tuple(baseline)),))
 
     def test_dictionary_miss_uses_existing_voiceger_g2p_and_grouping(self):
         with TemporaryDirectory() as temporary:
