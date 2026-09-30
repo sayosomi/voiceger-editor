@@ -13,7 +13,19 @@ from typing import Any
 
 _APP_DIRECTORY = "voiceger-accent-adapter"
 _CONFIG_FILENAME = "config.json"
-_SETTING_NAMES = {"output_dir", "take_count", "style_id", "speed", "save_text"}
+VOICEGER_DEFAULT_TOP_K = 20
+VOICEGER_DEFAULT_TOP_P = 1.0
+VOICEGER_DEFAULT_TEMPERATURE = 1.0
+_SETTING_NAMES = {
+    "output_dir",
+    "take_count",
+    "style_id",
+    "speed",
+    "top_k",
+    "top_p",
+    "temperature",
+    "save_text",
+}
 
 
 class SettingsError(ValueError):
@@ -33,6 +45,9 @@ class Settings:
     take_count: int = 4
     style_id: int = 1
     speed: float = 1.0
+    top_k: int = VOICEGER_DEFAULT_TOP_K
+    top_p: float = VOICEGER_DEFAULT_TOP_P
+    temperature: float = VOICEGER_DEFAULT_TEMPERATURE
     save_text: bool = False
 
     def __post_init__(self) -> None:
@@ -75,6 +90,31 @@ class Settings:
         if not math.isfinite(speed) or speed <= 0:
             raise SettingsError("speed must be a positive finite number")
         object.__setattr__(self, "speed", speed)
+
+        if (
+            isinstance(self.top_k, bool)
+            or not isinstance(self.top_k, int)
+            or not 1 <= self.top_k <= 100
+        ):
+            raise SettingsError("top_k must be an integer from 1 through 100")
+
+        for name in ("top_p", "temperature"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise SettingsError(
+                    f"{name} must be a finite number from 0.00 through 1.00"
+                )
+            try:
+                value = float(value)
+            except OverflowError as exc:
+                raise SettingsError(
+                    f"{name} must be a finite number from 0.00 through 1.00"
+                ) from exc
+            if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+                raise SettingsError(
+                    f"{name} must be a finite number from 0.00 through 1.00"
+                )
+            object.__setattr__(self, name, value)
 
         if not isinstance(self.save_text, bool):
             raise SettingsError("save_text must be a boolean")
@@ -170,6 +210,9 @@ def save_settings(
         "take_count": settings.take_count,
         "style_id": settings.style_id,
         "speed": settings.speed,
+        "top_k": settings.top_k,
+        "top_p": settings.top_p,
+        "temperature": settings.temperature,
         "save_text": settings.save_text,
     }
     serialized = json.dumps(
