@@ -2395,7 +2395,8 @@ class TuiTests(unittest.TestCase):
         self.assertIn("Cancelling current batch before cleanup…", rendered_statuses)
         self.assertEqual(app._status, "Generation cancelled. 0 take(s) ready.")
         app._operations.join_worker.assert_called_once_with()
-        app._operations.stop_playback.assert_called_once_with()
+        self.assertEqual(app._operations.stop_playback.call_count, 2)
+        app._operations.stop_playback.assert_has_calls([call(), call()])
         self.assertEqual(app.session.close_calls, 1)
 
     def test_main_sweeps_stale_take_directories_before_starting_tui(self):
