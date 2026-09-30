@@ -60,6 +60,8 @@ class TuiShortcutTests(unittest.TestCase):
             "settings": {
                 "s": "style_id", "v": "speed", "n": "take_count",
                 "o": "output_dir", "x": "save_text",
+                "k": "top_k", "p": "top_p", "t": "temperature",
+                "d": "reset_sampling",
                 "a": "apply", "r": "reset", "b": "back",
             },
             "delete_confirmation": {"d": "delete", "b": "cancel"},

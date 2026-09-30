@@ -167,8 +167,8 @@ def synthesize_audio_query(
     query: AudioQuery,
     style: VoicegerStyle,
     top_k: int = 20,
-    top_p: float = 0.6,
-    temperature: float = 0.6,
+    top_p: float = 1.0,
+    temperature: float = 1.0,
 ) -> dict[str, Any]:
     """Synthesize an AudioQuery through the selected Voiceger style."""
 

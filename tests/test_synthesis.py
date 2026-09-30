@@ -213,6 +213,23 @@ class SynthesisTests(unittest.TestCase):
         )
         self.adapter.synthesize_mixed_audio.assert_not_called()
 
+    def test_shared_sampling_defaults_match_voiceger(self):
+        self.adapter.synthesize_audio.return_value = {
+            "audio": object(),
+            "sampling_rate": 32000,
+        }
+
+        synthesize_audio_query(
+            adapter=self.adapter,
+            query=_query(),
+            style=self.style,
+        )
+
+        call = self.adapter.synthesize_audio.call_args.kwargs
+        self.assertEqual(call["top_k"], 20)
+        self.assertEqual(call["top_p"], 1.0)
+        self.assertEqual(call["temperature"], 1.0)
+
     def test_pure_query_terminator_preserves_kana_and_interrogative_rules(self):
         cases = (
             ("文末。", True, "。"),

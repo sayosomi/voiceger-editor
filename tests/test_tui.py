@@ -169,9 +169,9 @@ class FakeSession:
 
     def replace_settings(self, settings):
         self.replace_settings_calls.append(settings)
-        if (
-            settings.style_id != self.settings.style_id
-            or settings.speed != self.settings.speed
+        if any(
+            getattr(settings, name) != getattr(self.settings, name)
+            for name in ("style_id", "speed", "top_k", "top_p", "temperature")
         ):
             self.candidates = ()
         self.settings = settings
@@ -714,7 +714,8 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "style_id"
             )
-            self.assertIn("Style       < Neutral >", style_left)
+            self.assertIn("[S] Style *", style_left)
+            self.assertIn("< Neutral >", style_left)
             value_column = style_left.index("Neutral")
 
             editor.selection = "style_id"
@@ -725,7 +726,8 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "style_id"
             )
-            self.assertIn("Style       < Sweet>>", style_right)
+            self.assertIn("[S] Style *", style_right)
+            self.assertIn("< Sweet>>", style_right)
             self.assertEqual(style_right.index("Sweet"), value_column)
 
             app._handle_key(curses.KEY_LEFT)
@@ -734,7 +736,8 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "style_id"
             )
-            self.assertIn("Style       <<Neutral >", style_left_moved)
+            self.assertIn("[S] Style *", style_left_moved)
+            self.assertIn("<<Neutral >", style_left_moved)
 
             app._handle_key(curses.KEY_RIGHT)
             self.assertEqual(editor.payload["draft_settings"]["style_id"], "2")
@@ -747,7 +750,8 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "style_id"
             )
-            self.assertIn("Style       < Sweet >", style_right)
+            self.assertIn("[S] Style *", style_right)
+            self.assertIn("< Sweet >", style_right)
 
             editor.selection = "speed"
             editor.payload["draft_settings"]["speed"] = "0.01"
@@ -759,7 +763,8 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "speed"
             )
-            self.assertIn("Speed       < 0.01 >", speed_left)
+            self.assertIn("[V] Speed *", speed_left)
+            self.assertIn("< 0.01 >", speed_left)
 
             editor.payload["draft_settings"]["speed"] = "0.50"
             app._handle_key(curses.KEY_LEFT)
@@ -768,7 +773,8 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "speed"
             )
-            self.assertIn("Speed       <<0.49 >", speed_moved_left)
+            self.assertIn("[V] Speed *", speed_moved_left)
+            self.assertIn("<<0.49 >", speed_moved_left)
 
             editor.payload["draft_settings"]["speed"] = "0.50"
             app._handle_key(curses.KEY_RIGHT)
@@ -778,14 +784,15 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "speed"
             )
-            self.assertIn("Speed       < 0.51>>", speed_right)
+            self.assertIn("[V] Speed *", speed_right)
+            self.assertIn("< 0.51>>", speed_right)
             speed_screen = FakeScreen(columns=100)
             app._screen = speed_screen
             app._render()
-            self.assertTrue(any("Speed       < 0.51>>" in text for _row, _column, text, _attr in speed_screen.drawn))
+            self.assertTrue(any("[V] Speed *" in text and "< 0.51>>" in text for _row, _column, text, _attr in speed_screen.drawn))
             self.assertIsNone(app._pressed_adjustment)
             app._render()
-            self.assertTrue(any("Speed       < 0.51 >" in text for _row, _column, text, _attr in speed_screen.drawn))
+            self.assertTrue(any("[V] Speed *" in text and "< 0.51 >" in text for _row, _column, text, _attr in speed_screen.drawn))
 
             editor.selection = "take_count"
             editor.payload["draft_settings"]["take_count"] = "1"
@@ -797,7 +804,8 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "take_count"
             )
-            self.assertIn("Takes       < 1 >", take_left)
+            self.assertIn("[N] Takes", take_left)
+            self.assertIn("< 1 >", take_left)
 
             editor.selection = "take_count"
             editor.payload["draft_settings"]["take_count"] = "100"
@@ -809,7 +817,8 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "take_count"
             )
-            self.assertIn("Takes       < 100 >", take_right)
+            self.assertIn("[N] Takes", take_right)
+            self.assertIn("< 100 >", take_right)
 
             editor.payload["draft_settings"]["take_count"] = "4"
             app._handle_key(curses.KEY_RIGHT)
@@ -819,54 +828,59 @@ class TuiTests(unittest.TestCase):
                 line for line, key in editor_document(app, 100)[0]
                 if key == "take_count"
             )
-            self.assertIn("Takes       < 5>>", take_moved)
+            self.assertIn("[N] Takes", take_moved)
+            self.assertIn("< 5>>", take_moved)
             app._handle_key(curses.KEY_LEFT)
             self.assertEqual(editor.payload["draft_settings"]["take_count"], "4")
             take_moved_left = next(
                 line for line, key in editor_document(app, 100)[0]
                 if key == "take_count"
             )
-            self.assertIn("Takes       <<4 >", take_moved_left)
+            self.assertIn("[N] Takes", take_moved_left)
+            self.assertIn("<<4 >", take_moved_left)
 
             editor.selection = "save_text"
             editor.payload["draft_settings"]["save_text"] = False
             app._pressed_adjustment = ("settings", "take_count", 1)
             app._handle_key(curses.KEY_LEFT)
-            self.assertFalse(editor.payload["draft_settings"]["save_text"])
-            self.assertIsNone(app._pressed_adjustment)
+            self.assertTrue(editor.payload["draft_settings"]["save_text"])
+            self.assertEqual(app._pressed_adjustment, ("settings", "save_text", -1))
             txt_left = next(
                 line for line, key in editor_document(app, 100)[0]
                 if key == "save_text"
             )
-            self.assertIn("TXT         < OFF >", txt_left)
-            editor.selection = "save_text"
-            editor.payload["draft_settings"]["save_text"] = True
-            app._pressed_adjustment = ("settings", "save_text", -1)
+            self.assertIn("[X] TXT", txt_left)
+            self.assertIn("<<ON >", txt_left)
+
+            app._handle_key(curses.KEY_LEFT)
+            self.assertFalse(editor.payload["draft_settings"]["save_text"])
+            self.assertEqual(app._pressed_adjustment, ("settings", "save_text", -1))
+            txt_left_again = next(
+                line for line, key in editor_document(app, 100)[0]
+                if key == "save_text"
+            )
+            self.assertIn("[X] TXT", txt_left_again)
+            self.assertIn("<<OFF >", txt_left_again)
+
             app._handle_key(curses.KEY_RIGHT)
             self.assertTrue(editor.payload["draft_settings"]["save_text"])
-            self.assertIsNone(app._pressed_adjustment)
+            self.assertEqual(app._pressed_adjustment, ("settings", "save_text", 1))
             txt_right = next(
                 line for line, key in editor_document(app, 100)[0]
                 if key == "save_text"
             )
-            self.assertIn("TXT         < ON >", txt_right)
+            self.assertIn("[X] TXT", txt_right)
+            self.assertIn("< ON>>", txt_right)
 
-            editor.payload["draft_settings"]["save_text"] = False
             app._handle_key(curses.KEY_RIGHT)
-            self.assertTrue(editor.payload["draft_settings"]["save_text"])
-            self.assertEqual(app._pressed_adjustment, ("settings", "save_text", 1))
-            txt_moved = next(
-                line for line, key in editor_document(app, 100)[0]
-                if key == "save_text"
-            )
-            self.assertIn("TXT         < ON>>", txt_moved)
-            app._handle_key(curses.KEY_LEFT)
             self.assertFalse(editor.payload["draft_settings"]["save_text"])
-            txt_moved_left = next(
+            self.assertEqual(app._pressed_adjustment, ("settings", "save_text", 1))
+            txt_right_again = next(
                 line for line, key in editor_document(app, 100)[0]
                 if key == "save_text"
             )
-            self.assertIn("TXT         <<OFF >", txt_moved_left)
+            self.assertIn("[X] TXT", txt_right_again)
+            self.assertIn("< OFF>>", txt_right_again)
 
             editor.selection = "style_id"
             app._handle_key(curses.KEY_RIGHT)
@@ -874,7 +888,8 @@ class TuiTests(unittest.TestCase):
             self.assertEqual(editor.selection, "speed")
             document, _cursor_line, _cursor_column = editor_document(app, 100)
             speed = next(line for line, key in document if key == "speed")
-            self.assertIn("Speed       < 0.51 >", speed)
+            self.assertIn("[V] Speed *", speed)
+            self.assertIn("< 0.51 >", speed)
 
             screen = FakeScreen(columns=100)
             app._screen = screen
@@ -883,7 +898,8 @@ class TuiTests(unittest.TestCase):
             self.assertIsNone(app._pressed_adjustment)
             app._render()
             rendered = self.rendered(screen)
-            self.assertIn("Speed       < 0.51 >", rendered)
+            self.assertIn("[V] Speed *", rendered)
+            self.assertIn("< 0.51 >", rendered)
             self.assertNotIn("<<", rendered)
             self.assertNotIn(">>", rendered)
 
@@ -1514,9 +1530,9 @@ class TuiTests(unittest.TestCase):
 
             editor.selection = "save_text"
             app._handle_key(curses.KEY_LEFT)
-            self.assertFalse(editor.payload["draft_settings"]["save_text"])
-            app._handle_key(curses.KEY_RIGHT)
             self.assertTrue(editor.payload["draft_settings"]["save_text"])
+            app._handle_key(curses.KEY_RIGHT)
+            self.assertFalse(editor.payload["draft_settings"]["save_text"])
             self.assertEqual(app.settings, original_settings)
             self.assertEqual(app.session.replace_settings_calls, [])
             self.assertEqual(app.session.candidates, (candidate(1),))
@@ -1532,8 +1548,17 @@ class TuiTests(unittest.TestCase):
             app._screen = screen
             app._render()
             rendered = self.rendered(screen)
-            for label in ("Style       <", "Speed       <", "Takes       <", "Output      ", "TXT         <"):
+            for label in (
+                "[S] Style *", "[V] Speed *", "[N] Takes",
+                "[O] Output", "[X] TXT",
+            ):
                 self.assertIn(label, rendered)
+            for heading in ("Voice", "Generation", "Output", "Sampling", "Actions"):
+                self.assertIn(heading, rendered)
+            self.assertIn(
+                "* Applying this setting clears existing candidates.",
+                rendered,
+            )
             self.assertIn("[A] Apply and save", rendered)
             self.assertNotIn("input:", rendered)
             self.assertNotIn("[Enter: Edit]", rendered)
@@ -1598,9 +1623,62 @@ class TuiTests(unittest.TestCase):
                         "take_count": target.take_count,
                         "style_id": target.style_id,
                         "speed": target.speed,
+                        "top_k": target.top_k,
+                        "top_p": target.top_p,
+                        "temperature": target.temperature,
                         "save_text": target.save_text,
                     },
                 )
+
+    def test_sampling_draft_only_applies_and_invalidates_candidates_on_apply(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+            app.config_path = Path(directory) / "config.json"
+            app._operations.current_take = 1
+            app._operations.stop_playback = Mock()
+            app._open_settings_editor()
+            editor = app._editor_controller.editor
+            editor.selection = "top_p"
+
+            app._handle_key(curses.KEY_LEFT)
+
+            self.assertEqual(editor.payload["draft_settings"]["top_p"], "0.95")
+            self.assertEqual(app.settings.top_p, 1.0)
+            self.assertEqual(app.session.candidates, (candidate(1),))
+            self.assertFalse(app.config_path.exists())
+
+            app._handle_key("a")
+
+            self.assertEqual(app.settings.top_p, 0.95)
+            self.assertEqual(app.session.replace_settings_calls[-1].top_p, 0.95)
+            self.assertEqual(app.session.candidates, ())
+            self.assertIsNone(app._operations.current_take)
+            self.assertEqual(
+                json.loads(app.config_path.read_text())["top_p"],
+                0.95,
+            )
+            app._operations.stop_playback.assert_called_once_with()
+
+    def test_settings_apply_reconciles_session_state_before_candidate_invalidation(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        target = Settings(
+            top_p=0.95,
+            output_dir=app.settings.output_dir,
+        )
+        app.settings = target
+        app._persisted_settings = target
+        app._operations.current_take = 1
+        app._operations.stop_playback = Mock()
+        app._open_settings_editor()
+
+        with patch("voiceger_accent_adapter.tui.save_settings") as save:
+            app._handle_key("a")
+
+        save.assert_called_once_with(target, app.config_path)
+        self.assertEqual(app.session.replace_settings_calls, [target])
+        self.assertEqual(app.session.candidates, ())
+        self.assertIsNone(app._operations.current_take)
+        app._operations.stop_playback.assert_called_once_with()
 
     def test_take_count_enter_edits_then_apply_shortcut_saves_the_full_draft(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1639,6 +1717,9 @@ class TuiTests(unittest.TestCase):
                     "take_count": 42,
                     "style_id": target.style_id,
                     "speed": target.speed,
+                    "top_k": target.top_k,
+                    "top_p": target.top_p,
+                    "temperature": target.temperature,
                     "save_text": target.save_text,
                 },
             )
@@ -1681,6 +1762,9 @@ class TuiTests(unittest.TestCase):
                 "take_count": "6",
                 "output_dir": "/tmp/opening-settings",
                 "save_text": True,
+                "top_k": "20",
+                "top_p": "1.00",
+                "temperature": "1.00",
             },
         )
         self.assertIs(app._editor_controller.editor, editor)
@@ -1752,6 +1836,9 @@ class TuiTests(unittest.TestCase):
                 "take_count": 7,
                 "style_id": 2,
                 "speed": 1.25,
+                "top_k": 20,
+                "top_p": 1.0,
+                "temperature": 1.0,
                 "save_text": True,
             })
 

@@ -597,10 +597,13 @@ class UtteranceSessionTests(unittest.TestCase):
         self.assertFalse(session.has_active_batch)
         self.assertEqual(session.candidates, ())
 
-    def test_style_and_speed_changes_each_invalidate_the_active_batch(self):
+    def test_synthesis_setting_changes_each_invalidate_the_active_batch(self):
         changes = (
             ({"style_id": 2}, self.other_style),
             ({"speed": 0.9}, self.style),
+            ({"top_k": 37}, self.style),
+            ({"top_p": 0.45}, self.style),
+            ({"temperature": 0.80}, self.style),
         )
         for settings_changes, resolved_style in changes:
             with self.subTest(settings_changes=settings_changes):
@@ -711,6 +714,37 @@ class UtteranceSessionTests(unittest.TestCase):
             self.assertEqual(call.kwargs["top_p"], 0.42)
             self.assertEqual(call.kwargs["temperature"], 0.83)
 
+    def test_generate_takes_uses_active_sampling_settings_when_not_overridden(self):
+        session = self.make_session(caption="sampling source")
+        sampling_settings = replace(
+            session.settings,
+            top_k=37,
+            top_p=0.45,
+            temperature=0.80,
+        )
+        with patch(
+            "voiceger_accent_adapter.session.get_style",
+            return_value=self.style,
+        ):
+            session.replace_settings(sampling_settings)
+
+        batch_instance = Mock()
+        batch_instance.generate_all.return_value = iter(())
+        with patch(
+            "voiceger_accent_adapter.session.TakeBatch",
+            return_value=batch_instance,
+        ) as take_batch, patch(
+            "voiceger_accent_adapter.session.synthesize_audio_query",
+            return_value={"audio": object(), "sampling_rate": 32000},
+        ) as synthesize:
+            session.generate_takes()
+            take_batch.call_args.kwargs["synthesize_one"]()
+
+        call = synthesize.call_args.kwargs
+        self.assertEqual(call["top_k"], 37)
+        self.assertEqual(call["top_p"], 0.45)
+        self.assertEqual(call["temperature"], 0.80)
+
     def test_preview_synthesis_success_preserves_session_and_candidates(self):
         session = self.make_session(caption="Caption")
         session.replace_query(_query(mora_text="手動"))
@@ -745,8 +779,8 @@ class UtteranceSessionTests(unittest.TestCase):
         self.assertIsNot(call["query"], preview)
         self.assertEqual(call["style"], self.style)
         self.assertEqual(call["top_k"], 20)
-        self.assertEqual(call["top_p"], 0.6)
-        self.assertEqual(call["temperature"], 0.6)
+        self.assertEqual(call["top_p"], 1.0)
+        self.assertEqual(call["temperature"], 1.0)
         self.assertEqual(preview.model_dump(), preview_before)
         self.assertEqual(session.query.model_dump(), canonical_before)
         self.assertEqual(session.caption, "Caption")
