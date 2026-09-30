@@ -720,6 +720,35 @@ class TuiRenderingTests(unittest.TestCase):
             ],
         )
 
+    def test_japanese_dictionary_list_uses_main_mora_accent_display(self):
+        word = SimpleNamespace(
+            surface="ずんだもん",
+            pronunciation="ズンダモン",
+            accent_type=3,
+        )
+        editor = SimpleNamespace(
+            kind="dictionary_japanese_list",
+            title="JAPANESE DICTIONARY",
+            selection=("entry", 0),
+            payload={"entries": (("uuid", word),)},
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+
+        entry = next(
+            line for line, key in document if key == ("entry", 0)
+        )
+        self.assertIn("ずんだもん", entry)
+        self.assertIn("ズ ン [ダ] モ ン", entry)
+        self.assertNotIn("accent_type", "\n".join(line for line, _key in document))
+
     def test_english_word_editor_opens_on_full_stressed_phoneme_input(self):
         editor = SimpleNamespace(
             kind="english_word", title="EDIT PRONUNCIATION",
