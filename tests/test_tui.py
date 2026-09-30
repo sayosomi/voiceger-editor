@@ -2181,7 +2181,7 @@ class TuiTests(unittest.TestCase):
         self.assertNotIn("english_segment", app._editor_controller.selection_keys())
         self.assertEqual(
             app._editor_controller.selection_keys(),
-            ["phonemes", "preview", "apply", "edit_text", "clear", "reset", "back"],
+            ["phonemes", "preview", "apply", "save_dictionary", "dictionary", "edit_text", "clear", "reset", "back"],
         )
 
     @staticmethod
