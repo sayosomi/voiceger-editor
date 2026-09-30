@@ -120,6 +120,9 @@ def _active_input_prefix(editor: EditorRenderState) -> str:
         return "▶ "
     if editor.kind in {"section_text", "add_section"}:
         return "▶ "
+    if editor.kind in {"dictionary_japanese_entry", "dictionary_english_entry"}:
+        label = "Surface" if editor.active_field == "surface" else "Pronunciation"
+        return f"▶ {label:<15}"
     if editor.kind == "settings":
         labels = {
             "style_id": "Style",
