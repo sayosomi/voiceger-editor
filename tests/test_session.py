@@ -733,22 +733,6 @@ class UtteranceSessionTests(unittest.TestCase):
         with patch(
             "voiceger_accent_adapter.session.TakeBatch",
             return_value=batch_instance,
-        ), patch(
-            "voiceger_accent_adapter.session.synthesize_audio_query",
-            return_value={"audio": object(), "sampling_rate": 32000},
-        ) as synthesize:
-            session.generate_takes()
-            batch_instance.call_args if hasattr(batch_instance, "call_args") else None
-            synthesize_one = batch_instance.generate_all
-            take_batch_call = None
-
-        # Recreate with a constructor mock so the batch's synthesis closure can be exercised.
-        session.discard_takes()
-        batch_instance = Mock()
-        batch_instance.generate_all.return_value = iter(())
-        with patch(
-            "voiceger_accent_adapter.session.TakeBatch",
-            return_value=batch_instance,
         ) as take_batch, patch(
             "voiceger_accent_adapter.session.synthesize_audio_query",
             return_value={"audio": object(), "sampling_rate": 32000},
