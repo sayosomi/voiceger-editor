@@ -218,9 +218,10 @@ class UtteranceSession:
         replacement_query = deepcopy(self._query)
         replacement_query.speedScale = settings.speed
 
-        if (
-            settings.style_id != self._settings.style_id
-            or settings.speed != self._settings.speed
+        synthesis_fields = ("style_id", "speed", "top_k", "top_p", "temperature")
+        if any(
+            getattr(settings, name) != getattr(self._settings, name)
+            for name in synthesis_fields
         ):
             self.discard_takes()
         self._settings = settings
@@ -240,17 +241,17 @@ class UtteranceSession:
             adapter=adapter,
             query=query_snapshot,
             style=style_snapshot,
-            top_k=20,
-            top_p=0.6,
-            temperature=0.6,
+            top_k=settings_snapshot.top_k,
+            top_p=settings_snapshot.top_p,
+            temperature=settings_snapshot.temperature,
         )
 
     def generate_takes(
         self,
         *,
-        top_k: int = 20,
-        top_p: float = 0.6,
-        temperature: float = 0.6,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        temperature: float | None = None,
     ) -> Iterator[TakeCandidate]:
         """Start a take batch using a fixed snapshot of synthesis conditions."""
 
@@ -262,15 +263,20 @@ class UtteranceSession:
         settings_snapshot = deepcopy(self._settings)
         source_text_snapshot = self.synthesis_source_text
         adapter = self._adapter
+        resolved_top_k = settings_snapshot.top_k if top_k is None else top_k
+        resolved_top_p = settings_snapshot.top_p if top_p is None else top_p
+        resolved_temperature = (
+            settings_snapshot.temperature if temperature is None else temperature
+        )
 
         def synthesize_one():
             return synthesize_audio_query(
                 adapter=adapter,
                 query=deepcopy(query_snapshot),
                 style=style_snapshot,
-                top_k=top_k,
-                top_p=top_p,
-                temperature=temperature,
+                top_k=resolved_top_k,
+                top_p=resolved_top_p,
+                temperature=resolved_temperature,
             )
 
         batch = TakeBatch(
