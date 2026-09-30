@@ -32,7 +32,13 @@ from .query_editing import (
     replace_japanese_section_text,
     japanese_section_text_preview_query,
 )
-from .settings import Settings, SettingsError
+from .settings import (
+    Settings,
+    SettingsError,
+    VOICEGER_DEFAULT_TEMPERATURE,
+    VOICEGER_DEFAULT_TOP_K,
+    VOICEGER_DEFAULT_TOP_P,
+)
 from .tui_display import _display_width, _move_wrapped_cursor
 from .tui_shortcuts import menu_items, resolve_shortcut
 from .voicevox_api_models import AudioQuery
@@ -302,6 +308,9 @@ class TuiEditorController:
             "take_count": str(settings.take_count),
             "output_dir": str(settings.output_dir),
             "save_text": settings.save_text,
+            "top_k": str(settings.top_k),
+            "top_p": f"{settings.top_p:.2f}",
+            "temperature": f"{settings.temperature:.2f}",
         }
 
     def open_add_section(
@@ -977,9 +986,21 @@ class TuiEditorController:
         elif editor.kind == "settings":
             if selected in {"style_id", "speed", "save_text", "apply"}:
                 return self.apply(settings, query, current_caption)
-            if selected in {"take_count", "output_dir"}:
+            if selected in {
+                "take_count", "output_dir", "top_k", "top_p", "temperature"
+            }:
                 value = editor.payload["draft_settings"][selected]
                 return self.begin_field(selected, str(value))
+            if selected == "reset_sampling":
+                draft = editor.payload["draft_settings"]
+                draft["top_k"] = str(VOICEGER_DEFAULT_TOP_K)
+                draft["top_p"] = f"{VOICEGER_DEFAULT_TOP_P:.2f}"
+                draft["temperature"] = f"{VOICEGER_DEFAULT_TEMPERATURE:.2f}"
+                editor.error = ""
+                return (
+                    ClearAdjustmentFeedbackIntent(),
+                    UpdateStatusIntent("Sampling reset to Voiceger defaults."),
+                )
             if selected == "reset":
                 editor.payload["draft_settings"] = self._settings_draft(
                     editor.payload["opening_settings"]
@@ -1386,6 +1407,33 @@ class TuiEditorController:
                 return ()
             value = str(take_count)
             editor.input_value = value
+        elif editor.kind == "settings" and name == "top_k":
+            try:
+                top_k = int(value)
+            except (TypeError, ValueError):
+                editor.error = "Error: Top K must be an integer from 1 through 100."
+                return ()
+            if not 1 <= top_k <= 100:
+                editor.error = "Error: Top K must be an integer from 1 through 100."
+                return ()
+            value = str(top_k)
+            editor.input_value = value
+        elif editor.kind == "settings" and name in {"top_p", "temperature"}:
+            label = "Top P" if name == "top_p" else "Temperature"
+            try:
+                numeric = Decimal(value)
+            except (InvalidOperation, TypeError, ValueError):
+                editor.error = (
+                    f"Error: {label} must be a finite number from 0.00 through 1.00."
+                )
+                return ()
+            if not numeric.is_finite() or not Decimal("0") <= numeric <= Decimal("1"):
+                editor.error = (
+                    f"Error: {label} must be a finite number from 0.00 through 1.00."
+                )
+                return ()
+            value = f"{numeric:.2f}"
+            editor.input_value = value
         if editor.kind == "settings":
             editor.payload["draft_settings"][name] = value
         else:
@@ -1497,6 +1545,9 @@ class TuiEditorController:
                 take_count=int(draft["take_count"]),
                 output_dir=Path(draft["output_dir"]),
                 save_text=draft["save_text"],
+                top_k=int(draft["top_k"]),
+                top_p=float(draft["top_p"]),
+                temperature=float(draft["temperature"]),
             )
         except (TypeError, ValueError, SettingsError) as exc:
             editor.error = f"Error: Settings were not changed: {exc}"
@@ -1630,7 +1681,10 @@ class TuiEditorController:
             return ()
         draft = editor.payload["draft_settings"]
         selected = editor.selection
-        if selected not in {"style_id", "speed", "take_count", "save_text"}:
+        if selected not in {
+            "style_id", "speed", "take_count", "save_text",
+            "top_k", "top_p", "temperature",
+        }:
             return ()
         clear_feedback = (ClearAdjustmentFeedbackIntent(),)
         feedback = AdjustmentPressedIntent("settings", selected, direction)
@@ -1690,6 +1744,43 @@ class TuiEditorController:
                 editor.error = ""
                 return clear_feedback
             draft["take_count"] = str(updated)
+        elif selected == "top_k":
+            try:
+                current = int(draft["top_k"])
+            except (TypeError, ValueError):
+                editor.error = "Error: Top K must be an integer from 1 through 100."
+                return clear_feedback
+            if not 1 <= current <= 100:
+                editor.error = "Error: Top K must be an integer from 1 through 100."
+                return clear_feedback
+            updated = min(100, max(1, current + direction))
+            if updated == current:
+                editor.error = ""
+                return clear_feedback
+            draft["top_k"] = str(updated)
+        elif selected in {"top_p", "temperature"}:
+            label = "Top P" if selected == "top_p" else "Temperature"
+            try:
+                current = Decimal(str(draft[selected]))
+            except (InvalidOperation, TypeError, ValueError):
+                editor.error = (
+                    f"Error: {label} must be a finite number from 0.00 through 1.00."
+                )
+                return clear_feedback
+            if (
+                not current.is_finite()
+                or not Decimal("0") <= current <= Decimal("1")
+            ):
+                editor.error = (
+                    f"Error: {label} must be a finite number from 0.00 through 1.00."
+                )
+                return clear_feedback
+            updated = current + Decimal("0.05") * direction
+            updated = min(Decimal("1.00"), max(Decimal("0.00"), updated))
+            if updated == current:
+                editor.error = ""
+                return clear_feedback
+            draft[selected] = f"{updated:.2f}"
         elif selected == "save_text":
             updated = direction > 0
             if draft["save_text"] == updated:
