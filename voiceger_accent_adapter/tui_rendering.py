@@ -671,7 +671,6 @@ class TuiRenderer:
             for key, value in values:
                 heading = section_headers.get(key)
                 if heading is not None:
-                    plain()
                     plain(heading)
                 item = menu_item(editor.kind, key, editor.payload)
                 label = item.label + (" *" if key in candidate_clearing else "")
@@ -694,12 +693,10 @@ class TuiRenderer:
                     )
                     lines.append((f"{marker}{visible_label:<20}{value}", key))
             selectable("reset_sampling")
-            plain()
             plain("Actions")
             selectable("apply")
             selectable("reset")
             selectable("back")
-            plain()
             plain("* Applying this setting clears existing candidates.")
         elif editor.kind == "english_word":
             plain()
