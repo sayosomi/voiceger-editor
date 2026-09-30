@@ -172,6 +172,18 @@ class OpenHelpIntent:
 
 
 @dataclass(frozen=True)
+class OpenDictionaryIntent:
+    pass
+
+
+@dataclass(frozen=True)
+class SaveToDictionaryIntent:
+    language: str
+    surface: str
+    pronunciation: str
+
+
+@dataclass(frozen=True)
 class QuitIntent:
     pass
 
@@ -192,6 +204,8 @@ EditorIntent = Union[
     AdjustmentPressedIntent,
     ClearAdjustmentFeedbackIntent,
     OpenHelpIntent,
+    OpenDictionaryIntent,
+    SaveToDictionaryIntent,
     QuitIntent,
     ClearCandidatesIntent,
 ]
@@ -1000,6 +1014,16 @@ class TuiEditorController:
                 return self.preview(query)
             if selected == "apply":
                 return self.apply(settings, query, current_caption)
+            if selected == "save_dictionary":
+                return (
+                    SaveToDictionaryIntent(
+                        language="ja",
+                        surface=editor.payload["source_text"],
+                        pronunciation=editor.input_value,
+                    ),
+                )
+            if selected == "dictionary":
+                return (OpenDictionaryIntent(),)
             if selected == "edit_text":
                 return self.open_section_text(
                     query,
@@ -1058,6 +1082,16 @@ class TuiEditorController:
                 return self.preview(query)
             if selected == "apply":
                 return self.apply(settings, query, current_caption)
+            if selected == "save_dictionary":
+                return (
+                    SaveToDictionaryIntent(
+                        language="en",
+                        surface=editor.payload["label"],
+                        pronunciation=editor.input_value,
+                    ),
+                )
+            if selected == "dictionary":
+                return (OpenDictionaryIntent(),)
             if selected == "edit_text":
                 return self.open_section_text(
                     query,
