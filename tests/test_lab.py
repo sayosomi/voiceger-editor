@@ -2,7 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from voiceger_accent_adapter.lab import (
     LabSidecarResult,
@@ -105,7 +105,7 @@ class LabCoreTests(unittest.TestCase):
                 VoicegerSegment(language="en", text="rain", phonemes=["R", "EY1", "N"]),
             ],
         )
-        aligner = unittest.mock.Mock()
+        aligner = Mock()
         result = save_lab_sidecar(
             wav_path=Path("/not/read.wav"),
             query=query,
