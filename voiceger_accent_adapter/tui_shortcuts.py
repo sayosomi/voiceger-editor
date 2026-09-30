@@ -174,7 +174,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         ),
         MenuItem(
             "reset_sampling",
-            "Reset sampling",
+            "Reset sampling to Voiceger defaults",
             None,
             "action",
             no_shortcut_reason="Enter restores Voiceger sampling defaults.",
