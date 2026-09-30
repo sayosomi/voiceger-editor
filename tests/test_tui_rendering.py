@@ -875,7 +875,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("Top K           < 20 >", visible)
         self.assertIn("Top P           < 1.00 >", visible)
         self.assertIn("Temperature     < 1.00 >", visible)
-        self.assertIn("Reset sampling", visible)
+        self.assertIn("Reset sampling to Voiceger defaults", visible)
         self.assertIn("[A] Apply and save", visible)
         self.assertIn("[R] Reset", visible)
         self.assertIn("[B] Back", visible)
