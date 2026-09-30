@@ -45,11 +45,13 @@ class TuiShortcutTests(unittest.TestCase):
             "caption": {"a": "apply", "c": "clear", "r": "reset", "b": "back"},
             "build_confirmation": {"r": "rebuild", "b": "cancel"},
             "japanese": {
-                "p": "preview", "a": "apply", "e": "edit_text",
+                "p": "preview", "a": "apply", "s": "save_dictionary",
+                "d": "dictionary", "e": "edit_text",
                 "c": "clear", "r": "reset", "b": "back",
             },
             "english_word": {
-                "p": "preview", "a": "apply", "e": "edit_text",
+                "p": "preview", "a": "apply", "s": "save_dictionary",
+                "d": "dictionary", "e": "edit_text",
                 "c": "clear", "r": "reset", "b": "back",
             },
             "section_text": {
@@ -64,6 +66,18 @@ class TuiShortcutTests(unittest.TestCase):
                 "d": "reset_sampling",
                 "a": "apply", "r": "reset", "b": "back",
             },
+            "dictionary_menu": {"b": "back"},
+            "dictionary_japanese_list": {"a": "add", "x": "delete", "b": "back"},
+            "dictionary_english_list": {"a": "add", "x": "delete", "b": "back"},
+            "dictionary_japanese_duplicates": {"b": "back"},
+            "dictionary_japanese_entry": {
+                "p": "preview", "s": "save", "d": "dictionary", "b": "back",
+            },
+            "dictionary_english_entry": {
+                "p": "preview", "s": "save", "d": "dictionary", "b": "back",
+            },
+            "dictionary_delete_confirmation": {"d": "delete", "b": "cancel"},
+            "dictionary_discard_confirmation": {"d": "discard", "b": "cancel"},
             "delete_confirmation": {"d": "delete", "b": "cancel"},
             "clear_candidates_confirmation": {"c": "clear", "b": "cancel"},
             "help": {"b": "back"},
@@ -85,6 +99,7 @@ class TuiShortcutTests(unittest.TestCase):
             "g": "generate",
             "c": "clear_candidates",
             "s": "settings",
+            "d": "dictionary",
             "?": "help",
             "q": "quit",
         }
@@ -147,7 +162,7 @@ class TuiShortcutTests(unittest.TestCase):
         controller = self.make_controller()
         settings = Settings()
         for screen_kind, definitions in menu_definitions().items():
-            if screen_kind == "help":
+            if screen_kind == "help" or screen_kind.startswith("dictionary_"):
                 continue
             payload = {
                 item.condition_key: True
