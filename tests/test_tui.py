@@ -395,6 +395,8 @@ class TuiTests(unittest.TestCase):
         self.assertFalse(app._dictionary_controller.active)
         self.assertIs(app._editor_controller.editor, pronunciation_editor)
         self.assertEqual(pronunciation_editor.input_value, opening_draft)
+        self.assertEqual(app.session.replace_query_calls, [])
+        self.assertEqual(app.session.build_calls, 0)
 
         app._handle_key("d")
         self.assertEqual(
@@ -402,6 +404,29 @@ class TuiTests(unittest.TestCase):
             "dictionary_menu",
         )
         self.assertIs(app._editor_controller.editor, pronunciation_editor)
+
+    def test_english_pronunciation_editor_save_prefills_dictionary_entry(self):
+        app = self.make_app(
+            query=english_query(["R", "EH1", "K", "ER0", "D"], text="record"),
+            groups=(("record", ("R", "EH1", "K", "ER0", "D")),),
+        )
+        set_navigation_focus(app, ("pronunciation", 0))
+        app._handle_key("\n")
+        pronunciation_editor = app._editor_controller.editor
+        self.assertEqual(pronunciation_editor.kind, "english_word")
+        app._handle_key("\n")
+
+        app._handle_key("s")
+
+        dictionary_editor = app._dictionary_controller.editor
+        self.assertEqual(dictionary_editor.kind, "dictionary_english_entry")
+        self.assertEqual(dictionary_editor.payload["surface"], "record")
+        self.assertEqual(
+            dictionary_editor.payload["phonemes"],
+            ("R", "EH1", "K", "ER0", "D"),
+        )
+        self.assertIs(app._editor_controller.editor, pronunciation_editor)
+        self.assertEqual(app.session.replace_query_calls, [])
 
     def test_settings_summary_opens_style_and_output_opens_path_input(self):
         app = self.make_app(query=mixed_query())
