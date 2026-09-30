@@ -15,6 +15,7 @@ from .settings import Settings, SettingsError, load_settings, save_settings
 from .styles import available_styles
 from .takes import cleanup_stale_take_directories
 from .tui_display import _adjustable_value, format_english_phonemes
+from .tui_dictionary import TuiDictionaryController
 from .tui_rendering import (
     TuiRenderer,
     TuiRenderState,
@@ -33,6 +34,8 @@ from .tui_editors import (
     CloseEditorIntent,
     EditorIntent,
     OpenHelpIntent,
+    OpenDictionaryIntent,
+    SaveToDictionaryIntent,
     QuitIntent,
     PreviewIntent,
     QueryApplicationResult,
@@ -63,6 +66,7 @@ from .tui_navigation import (
     NavigationContext,
     OpenClearCandidatesConfirmation,
     OpenHelp,
+    OpenDictionary,
     OpenSettingsEditor,
     OpenCaptionEditor,
     PlayCandidate,
@@ -149,6 +153,10 @@ class TuiApp:
         self._editor_controller = TuiEditorController(
             english_word_groups=self.adapter.english_word_phoneme_groups,
             available_styles=lambda: available_styles(self.adapter.voiceger_root),
+            input_prefix=_active_input_prefix,
+        )
+        self._dictionary_controller = TuiDictionaryController(
+            self.adapter.user_dictionary,
             input_prefix=_active_input_prefix,
         )
         self._pressed_adjustment: tuple[str, str, int] | None = None
@@ -243,6 +251,19 @@ class TuiApp:
                 or resolve_shortcut("help", key) is not None
             ):
                 self._help_open = False
+            return
+        if self._dictionary_controller.active:
+            intents = self._dictionary_controller.handle_key(
+                key,
+                screen_width=(
+                    self._screen.getmaxyx()[1] if self._screen is not None else 80
+                ),
+                preview_busy=(
+                    self._operations.busy
+                    and self._operations.worker_operation == "preview"
+                ),
+            )
+            self._dispatch_editor_intents(intents)
             return
         if self._editor_controller.editor is not None:
             intents = self._editor_controller.handle_key(
@@ -464,6 +485,8 @@ class TuiApp:
                 self._dispatch_operation_effects(
                     self._operations.play_take(self.session, action.number)
                 )
+            elif isinstance(action, OpenDictionary):
+                self._dispatch_editor_intents(self._dictionary_controller.open_menu())
             elif isinstance(action, OpenHelp):
                 self._help_open = True
             elif isinstance(action, Quit):
@@ -641,6 +664,19 @@ class TuiApp:
                 )
             elif isinstance(intent, OpenHelpIntent):
                 self._help_open = True
+            elif isinstance(intent, OpenDictionaryIntent):
+                pending[0:0] = self._dictionary_controller.open_menu()
+            elif isinstance(intent, SaveToDictionaryIntent):
+                if intent.language == "ja":
+                    pending[0:0] = self._dictionary_controller.open_quick_save_japanese(
+                        surface=intent.surface,
+                        pronunciation=intent.pronunciation,
+                    )
+                else:
+                    pending[0:0] = self._dictionary_controller.open_quick_save_english(
+                        surface=intent.surface,
+                        phonemes=intent.pronunciation,
+                    )
             elif isinstance(intent, QuitIntent):
                 self._activate_quit()
             elif isinstance(intent, ClearCandidatesIntent):
@@ -829,7 +865,11 @@ class TuiApp:
             operation_completed=self._operations.operation_completed,
             operation_total=self._operations.operation_total,
             pressed_adjustment=self._pressed_adjustment,
-            editor=self._editor_controller.editor,
+            editor=(
+                self._dictionary_controller.editor
+                if self._dictionary_controller.active
+                else self._editor_controller.editor
+            ),
         )
 
     def _render(self) -> None:
@@ -839,7 +879,11 @@ class TuiApp:
         height, width = screen.getmaxyx()
         screen.erase()
         try:
-            editor = self._editor_controller.editor
+            editor = (
+                self._dictionary_controller.editor
+                if self._dictionary_controller.active
+                else self._editor_controller.editor
+            )
             curses.curs_set(
                 0 if self._help_open else 1 if editor and editor.active_field else 0
             )
@@ -847,7 +891,10 @@ class TuiApp:
             pass
         if self._help_open:
             self._renderer.render_help(screen, width)
-        elif self._editor_controller.editor is not None:
+        elif (
+            self._dictionary_controller.active
+            or self._editor_controller.editor is not None
+        ):
             self._renderer.render_editor(
                 screen, self._render_state(segments=()), height, width
             )
