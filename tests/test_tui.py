@@ -983,6 +983,24 @@ class TuiTests(unittest.TestCase):
             self.assertNotIn("<<", rendered)
             self.assertNotIn(">>", rendered)
 
+    def test_run_without_initial_caption_starts_on_main_with_caption_focused(self):
+        for initial_caption in (None, "", "   "):
+            with self.subTest(initial_caption=initial_caption):
+                app = self.make_app()
+                app.session = None
+                app._initial_caption = initial_caption
+                screen = FakeScreen(keys=("q",))
+                with patch("voiceger_accent_adapter.tui.curses.set_escdelay"):
+                    app.run(screen)
+
+                self.assertIsNone(app.session)
+                self.assertIsNone(app._editor_controller.editor)
+                self.assertEqual(app._navigation.focus_key, ("caption", None))
+                rendered = self.rendered(screen)
+                self.assertIn("Voiceger Accent Adapter", rendered)
+                self.assertIn("Caption :", rendered)
+                self.assertNotIn("EDIT CAPTION TEXT", rendered)
+
     def test_run_sets_fast_escape_delay_and_keeps_100ms_polling_with_blank_ready_status(self):
         app = self.make_app()
         app._initial_caption = "example"
