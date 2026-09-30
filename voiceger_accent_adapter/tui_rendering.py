@@ -756,9 +756,12 @@ class TuiRenderer:
                     f"{marker[2:]}{word.surface}      {display}",
                 )
             plain()
-            plain(menu_item(editor.kind, "add", editor.payload).display_label)
-            plain("Enter Edit")
-            plain(menu_item(editor.kind, "delete", editor.payload).display_label)
+            if entries:
+                plain(menu_item(editor.kind, "add", editor.payload).display_label)
+                plain("Enter Edit")
+                plain(menu_item(editor.kind, "delete", editor.payload).display_label)
+            else:
+                selectable("add")
             plain(menu_item(editor.kind, "back", editor.payload).display_label)
         elif editor.kind == "dictionary_english_list":
             plain()
@@ -773,9 +776,12 @@ class TuiRenderer:
                     f"{marker[2:]}{entry.surface}      {' '.join(entry.phonemes)}",
                 )
             plain()
-            plain(menu_item(editor.kind, "add", editor.payload).display_label)
-            plain("Enter Edit")
-            plain(menu_item(editor.kind, "delete", editor.payload).display_label)
+            if entries:
+                plain(menu_item(editor.kind, "add", editor.payload).display_label)
+                plain("Enter Edit")
+                plain(menu_item(editor.kind, "delete", editor.payload).display_label)
+            else:
+                selectable("add")
             plain(menu_item(editor.kind, "back", editor.payload).display_label)
         elif editor.kind == "dictionary_japanese_duplicates":
             plain()
