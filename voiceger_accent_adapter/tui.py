@@ -822,11 +822,7 @@ class TuiApp:
             operation_completed=self._operations.operation_completed,
             operation_total=self._operations.operation_total,
             pressed_adjustment=self._pressed_adjustment,
-            editor=(
-                self._dictionary_controller.editor
-                if self._dictionary_controller.active
-                else self._editor_controller.editor
-            ),
+            editor=self._dictionary_controller.editor if self._dictionary_controller.active else self._editor_controller.editor,
         )
 
     def _render(self) -> None:
