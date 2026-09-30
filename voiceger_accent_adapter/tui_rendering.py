@@ -64,6 +64,7 @@ _HELP_ITEMS = (
     ("n", ": open Settings at takes"),
     ("o", ": open Settings at output"),
     ("x", ": open Settings at TXT"),
+    ("l", ": open Settings at LAB"),
     (None, "Menu mode: editor/modal action letters are active."),
     (None, "Editing: Enter finishes; printable shortcut letters insert text."),
     (main_shortcut("help").shortcut, ": open or close Help"),
@@ -129,6 +130,7 @@ def _active_input_prefix(editor: EditorRenderState) -> str:
             "take_count": "Takes",
             "output_dir": "Output",
             "save_text": "TXT",
+            "save_lab": "LAB",
             "top_k": "Top K",
             "top_p": "Top P",
             "temperature": "Temperature",
@@ -656,6 +658,7 @@ class TuiRenderer:
                 ("take_count", str(draft["take_count"])),
                 ("output_dir", str(draft["output_dir"])),
                 ("save_text", "ON" if draft["save_text"] else "OFF"),
+                ("save_lab", "ON" if draft.get("save_lab", False) else "OFF"),
                 ("top_k", str(draft.get("top_k", VOICEGER_DEFAULT_TOP_K))),
                 (
                     "top_p",
@@ -685,7 +688,7 @@ class TuiRenderer:
                     input_field(key, f"▶ {label:<16}")
                 else:
                     if key in {
-                        "style_id", "speed", "take_count", "save_text",
+                        "style_id", "speed", "take_count", "save_text", "save_lab",
                         "top_k", "top_p", "temperature",
                     }:
                         value = _adjustable_value(

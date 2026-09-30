@@ -33,6 +33,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.top_p, 1.0)
         self.assertEqual(settings.temperature, 1.0)
         self.assertFalse(settings.save_text)
+        self.assertFalse(settings.save_lab)
 
     def test_save_creates_parent_directories_and_round_trips(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -46,6 +47,7 @@ class SettingsTests(unittest.TestCase):
                 top_p=0.45,
                 temperature=0.80,
                 save_text=True,
+                save_lab=True,
             )
 
             saved_path = save_settings(settings, config_path)
@@ -66,6 +68,7 @@ class SettingsTests(unittest.TestCase):
                     "top_p": 0.45,
                     "temperature": 0.8,
                     "save_text": True,
+                    "save_lab": True,
                 },
             )
             self.assertTrue(first_contents.endswith(b"\n"))
@@ -125,6 +128,7 @@ class SettingsTests(unittest.TestCase):
             {"temperature": float("inf")},
             {"temperature": True},
             {"save_text": 1},
+            {"save_lab": 1},
             {"output_dir": ""},
             {"output_dir": "invalid\x00path"},
         ]
@@ -148,6 +152,7 @@ class SettingsTests(unittest.TestCase):
             '{"top_p": 1.01}',
             '{"temperature": -0.01}',
             '{"save_text": "yes"}',
+            '{"save_lab": "yes"}',
             '{"future_setting": true}',
         ]
         with tempfile.TemporaryDirectory() as directory:

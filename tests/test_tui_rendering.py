@@ -403,7 +403,7 @@ class TuiRenderingTests(unittest.TestCase):
             self.assertIn(text, visible)
         self.assertNotIn("F5", visible)
         self.assertNotIn("Ctrl+G", visible)
-        settings_shortcuts = (("s", "style"), ("v", "speed"), ("n", "takes"), ("o", "output"), ("x", "TXT"))
+        settings_shortcuts = (("s", "style"), ("v", "speed"), ("n", "takes"), ("o", "output"), ("x", "TXT"), ("l", "LAB"))
         rows = []
         for shortcut, label in settings_shortcuts:
             found = next(item for item in screen.drawn if item[2] == shortcut and item[3] & curses.A_BOLD)
@@ -990,7 +990,7 @@ class TuiRenderingTests(unittest.TestCase):
             "[P] Top P *", "[T] Temperature *",
         ):
             self.assertIn(marked, visible)
-        for unmarked in ("[N] Takes", "[O] Output", "[X] TXT"):
+        for unmarked in ("[N] Takes", "[O] Output", "[X] TXT", "[L] LAB"):
             self.assertIn(unmarked, visible)
         self.assertIn("[D] Reset sampling to Voiceger defaults", visible)
         self.assertIn("[A] Apply and save", visible)
@@ -1003,7 +1003,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(
             [key for _line, key in document if key is not None],
             [
-                "style_id", "speed", "take_count", "output_dir", "save_text",
+                "style_id", "speed", "take_count", "output_dir", "save_text", "save_lab",
                 "top_k", "top_p", "temperature", "reset_sampling",
                 "apply", "reset", "back",
             ],
