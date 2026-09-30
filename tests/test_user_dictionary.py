@@ -1,6 +1,7 @@
 import json
+import os
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from tempfile import TemporaryDirectory, TemporaryFile
 from threading import Event, Thread
 import unittest
 from unittest.mock import patch
@@ -436,6 +437,40 @@ class UserDictionaryTests(unittest.TestCase):
         self.assertEqual(row[1:4], ["1348", "1348", str(WORD_TYPE_DATA["PROPER_NOUN"].cost_candidates[5])])
         self.assertEqual(row[13], "3/5")
 
+    def test_openjtalk_compile_suppresses_native_stdout_and_stderr(self):
+        class NoisyPyOpenJTalk:
+            def __init__(self):
+                self._global_jtalk = object()
+
+            def mecab_dict_index(self, _source, target):
+                os.write(1, b"emitting double-array: 100%\n")
+                os.write(2, b"native dictionary progress\n")
+                Path(target).write_bytes(b"compiled")
+
+        engine = NoisyPyOpenJTalk()
+        backend = OpenJTalkDictionary(
+            self.voiceger_root,
+            pyopenjtalk_module=engine,
+        )
+
+        with TemporaryFile() as captured:
+            saved_stdout = os.dup(1)
+            saved_stderr = os.dup(2)
+            try:
+                os.dup2(captured.fileno(), 1)
+                os.dup2(captured.fileno(), 2)
+                compiled = backend._compile({}, "test-signature")
+            finally:
+                os.dup2(saved_stdout, 1)
+                os.dup2(saved_stderr, 2)
+                os.close(saved_stdout)
+                os.close(saved_stderr)
+
+            captured.seek(0)
+            self.assertEqual(captured.read(), b"")
+
+        compiled.close()
+
     def test_openjtalk_compile_apply_uses_shared_lock_and_restores_on_failure(self):
         class FakePyOpenJTalk:
             def __init__(self):
@@ -508,6 +543,42 @@ class UserDictionaryTests(unittest.TestCase):
             self.assertIs(engine._global_jtalk, last_known_good)
             self.assertIs(openjtalk_dictionary._ACTIVE_COMPILATION, compiled)
             compiled.close()
+
+    def test_english_update_atomically_renames_and_rejects_collisions(self):
+        self.core.set_english_entry("record", ["R", "EH1", "K", "ER0", "D"])
+        self.core.set_english_entry("other", ["AH1", "DH", "ER0"])
+
+        updated = self.core.update_english_entry(
+            "RECORD",
+            surface="recording",
+            phonemes=["R", "IH0", "K", "AO1", "R", "D", "IH0", "NG"],
+        )
+
+        self.assertEqual(updated.surface, "recording")
+        self.assertIsNone(self.core.lookup_english_entry("record"))
+        self.assertEqual(
+            self.core.lookup_english_entry("RECORDING"),
+            ["R", "IH0", "K", "AO1", "R", "D", "IH0", "NG"],
+        )
+        reloaded = UserDictionaryCore(
+            self.voiceger_root,
+            data_directory=self.data_dir,
+            openjtalk_dictionary=FakeBackend(),
+        )
+        self.assertIsNone(reloaded.lookup_english_entry("record"))
+        self.assertEqual(
+            reloaded.lookup_english_entry("recording"),
+            ["R", "IH0", "K", "AO1", "R", "D", "IH0", "NG"],
+        )
+
+        with self.assertRaises(UserDictionaryInputError):
+            self.core.update_english_entry(
+                "recording",
+                surface="other",
+                phonemes=["AH1"],
+            )
+        self.assertIsNotNone(self.core.lookup_english_entry("recording"))
+        self.assertIsNotNone(self.core.lookup_english_entry("other"))
 
     def test_english_persistence_lookup_and_validation(self):
         entry = self.core.set_english_entry(

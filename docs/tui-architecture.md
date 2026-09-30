@@ -7,6 +7,8 @@ The TUI is split between a composition root and focused owners. The composition 
 | Module | Responsibility |
 | --- | --- |
 | `voiceger_accent_adapter/tui.py` | TUI composition root; curses run loop and cleanup lifecycle; top-level mode/key dispatch; shared session/settings application orchestration; dispatch between focused subsystems; CLI entrypoint. |
+| `voiceger_accent_adapter/tui_cli.py` | CLI argument declarations and per-invocation settings overrides, re-exported by the composition root for compatibility. |
+| `voiceger_accent_adapter/tui_dictionary.py` | User-dictionary modal state, keyboard interaction, quick-save resolution, CRUD drafts, confirmation policy, and dictionary preview intents. |
 | `voiceger_accent_adapter/tui_navigation.py` | Selectable item ordering; focus state; remembered pronunciation segment; navigation revision; Up/Down and major-section movement; navigation action interpretation. |
 | `voiceger_accent_adapter/tui_editors.py` | Editor state and drafts; text, Japanese, English, and settings interaction policy; English grouping cache; editor validation; typed editor intents and results. |
 | `voiceger_accent_adapter/tui_shortcuts.py` | Declarative Main primary-action shortcuts plus editor/modal selectable-item metadata; visible shortcut labels and dispatch share the same declarations, while editor/modal declarations also own selection order, shortcut behavior, conditions, and explicit no-shortcut exceptions. |
