@@ -732,7 +732,7 @@ class TuiRenderer:
                 marker = "▶ " if editor.selection == key else "  "
                 item = menu_item(editor.kind, key, editor.payload)
                 count = editor.payload[count_name]
-                lines.append((f"{marker}{item.label:<14}{count} words", key))
+                lines.append((f"{marker}{item.display_label:<18}{count} words", key))
             plain()
             selectable("back")
         elif editor.kind == "dictionary_japanese_list":
@@ -749,19 +749,15 @@ class TuiRenderer:
                     )
                 )
                 key = ("entry", index)
-                marker = "▶ " if editor.selection == key else "  "
                 wrapped_selectable_text(
                     key,
-                    f"{marker[2:]}{word.surface}      {display}",
+                    f"{word.surface}      {display}",
                 )
             plain()
+            selectable("add")
             if entries:
-                plain(menu_item(editor.kind, "add", editor.payload).display_label)
-                plain("Enter Edit")
-                plain(menu_item(editor.kind, "delete", editor.payload).display_label)
-            else:
-                selectable("add")
-            plain(menu_item(editor.kind, "back", editor.payload).display_label)
+                selectable("delete")
+            selectable("back")
         elif editor.kind == "dictionary_english_list":
             plain()
             entries = editor.payload["entries"]
@@ -769,19 +765,15 @@ class TuiRenderer:
                 plain("  No English dictionary words.")
             for index, entry in enumerate(entries):
                 key = ("entry", index)
-                marker = "▶ " if editor.selection == key else "  "
                 wrapped_selectable_text(
                     key,
-                    f"{marker[2:]}{entry.surface}      {' '.join(entry.phonemes)}",
+                    f"{entry.surface}      {' '.join(entry.phonemes)}",
                 )
             plain()
+            selectable("add")
             if entries:
-                plain(menu_item(editor.kind, "add", editor.payload).display_label)
-                plain("Enter Edit")
-                plain(menu_item(editor.kind, "delete", editor.payload).display_label)
-            else:
-                selectable("add")
-            plain(menu_item(editor.kind, "back", editor.payload).display_label)
+                selectable("delete")
+            selectable("back")
         elif editor.kind == "dictionary_japanese_duplicates":
             plain()
             plain("Multiple existing words have this Surface. Choose one to update.")

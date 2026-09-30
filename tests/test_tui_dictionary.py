@@ -130,6 +130,62 @@ class TuiDictionaryControllerTests(unittest.TestCase):
             ["Apple", "zebra"],
         )
 
+    def test_menu_language_shortcuts_open_each_dictionary(self):
+        self.controller.open_menu()
+
+        self.key("e")
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_list")
+
+        self.key("b")
+        self.assertEqual(self.controller.editor.kind, "dictionary_menu")
+
+        self.key("j")
+        self.assertEqual(self.controller.editor.kind, "dictionary_japanese_list")
+
+    def test_dictionary_lists_use_one_vertical_navigation_list(self):
+        self.core.japanese["first"] = ja_word("あめ", "アメ", 1)
+        self.core.japanese["second"] = ja_word("ぶどう")
+        self.controller.open_menu()
+        self.key("j")
+
+        self.assertEqual(self.controller.editor.selection, ("entry", 0))
+        self.key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.selection, ("entry", 1))
+        self.key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.selection, "add")
+        self.key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.selection, "delete")
+        self.key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.selection, "back")
+        self.key(curses.KEY_UP)
+        self.assertEqual(self.controller.editor.selection, "delete")
+
+        self.key("\n")
+        self.assertEqual(
+            self.controller.editor.kind,
+            "dictionary_delete_confirmation",
+        )
+        self.assertEqual(
+            self.controller.editor.payload["surface"],
+            normalize_surface("ぶどう"),
+        )
+
+        self.key("b")
+        self.key("b")
+        self.key("e")
+        self.core.english["hello"] = en_word(
+            "hello", ["HH", "AH0", "L", "OW1"]
+        )
+        self.controller.editor = self.controller._english_list_state()
+
+        self.assertEqual(self.controller.editor.selection, ("entry", 0))
+        self.key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.selection, "add")
+        self.key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.selection, "delete")
+        self.key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.selection, "back")
+
     def test_empty_list_still_exposes_add_and_back(self):
         self.controller.open_menu()
         self.key("\n")
