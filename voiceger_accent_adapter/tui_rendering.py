@@ -824,6 +824,7 @@ class TuiRenderer:
                 )
             )
             plain()
+            selectable("generate_pronunciation")
             selectable("preview")
             selectable("save")
             selectable("dictionary")
@@ -845,6 +846,7 @@ class TuiRenderer:
                     "phonemes",
                 )
             plain()
+            selectable("generate_pronunciation")
             selectable("preview")
             selectable("save")
             selectable("dictionary")

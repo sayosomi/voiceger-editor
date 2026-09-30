@@ -147,6 +147,12 @@ class VoicegerAdapter:
 
         self.user_dictionary.ensure_japanese_active(force=force)
 
+    def japanese_pronunciation(self, text: str) -> Pronunciation:
+        """Return editable Japanese pronunciation with the user dictionary active."""
+
+        self.ensure_japanese_dictionary_active()
+        return resolve_pronunciation(text)[1]
+
     def _require_paths(self) -> None:
         required = [
             self.sovits_dir,

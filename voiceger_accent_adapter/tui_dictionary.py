@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import curses
 from copy import deepcopy
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from .english_stress import (
     editor_state_to_english_phonemes,
@@ -89,11 +89,15 @@ class TuiDictionaryController:
         core: UserDictionaryCore,
         *,
         input_prefix,
+        japanese_pronunciation: Callable[[str], Any] | None = None,
+        english_word_groups: Callable[[str], Sequence[tuple[str, Sequence[str]]]] | None = None,
     ) -> None:
         self.core = core
         self.editor: EditorState | None = None
         self._stack: list[EditorState] = []
         self._input_prefix = input_prefix
+        self._japanese_pronunciation = japanese_pronunciation
+        self._english_word_groups = english_word_groups
 
     @property
     def active(self) -> bool:
@@ -447,13 +451,22 @@ class TuiDictionaryController:
                 "pronunciation",
                 "word_type",
                 "priority",
+                "generate_pronunciation",
                 "preview",
                 "save",
                 "dictionary",
                 "back",
             ]
         elif editor.kind == "dictionary_english_entry":
-            keys = ["surface", "phonemes", "preview", "save", "dictionary", "back"]
+            keys = [
+                "surface",
+                "phonemes",
+                "generate_pronunciation",
+                "preview",
+                "save",
+                "dictionary",
+                "back",
+            ]
         else:
             return ()
         try:
@@ -470,10 +483,16 @@ class TuiDictionaryController:
             return ()
         name = editor.active_field
         value = editor.input_value
+        auto_generate = False
         try:
             if editor.kind == "dictionary_japanese_entry":
                 if name == "surface":
                     editor.payload["surface"] = value
+                    auto_generate = (
+                        editor.payload["word_uuid"] is None
+                        and not editor.payload["quick_save"]
+                        and not editor.payload["pronunciation"]
+                    )
                 elif name == "pronunciation":
                     moras = _reading_morae(value)
                     editor.payload["pronunciation"] = value
@@ -484,6 +503,11 @@ class TuiDictionaryController:
             elif editor.kind == "dictionary_english_entry":
                 if name == "surface":
                     editor.payload["surface"] = value
+                    auto_generate = (
+                        editor.payload["original_surface"] is None
+                        and not editor.payload["quick_save"]
+                        and not editor.payload["phonemes"]
+                    )
                 elif name == "phonemes":
                     normalized = normalize_english_phonemes(value.split())
                     editor.payload["phonemes"] = tuple(normalized)
@@ -494,6 +518,8 @@ class TuiDictionaryController:
         editor.active_field = None
         editor.input_original = editor.input_value
         editor.error = ""
+        if auto_generate:
+            return self._generate_pronunciation()
         return (UpdateStatusIntent(""),)
 
     def _adjust_japanese(self, direction: int) -> tuple[EditorIntent, ...]:
@@ -547,6 +573,47 @@ class TuiDictionaryController:
         except Exception as exc:
             editor.error = f"Error: Stress was not changed: {exc}"
         return ()
+
+    def _generate_pronunciation(self) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        assert editor is not None
+        surface = editor.payload["surface"]
+        if not surface.strip():
+            editor.error = "Error: Surface must not be empty."
+            return ()
+        try:
+            if editor.kind == "dictionary_japanese_entry":
+                if self._japanese_pronunciation is None:
+                    raise RuntimeError("Japanese pronunciation analysis is unavailable")
+                parsed = self._japanese_pronunciation(surface)
+                if len(parsed.phrases) != 1:
+                    raise ValueError(
+                        "Japanese dictionary Surface must resolve to exactly one accent phrase"
+                    )
+                phrase = parsed.phrases[0]
+                editor.payload["pronunciation"] = phrase.reading
+                editor.payload["moras"] = tuple(phrase.morae)
+                editor.payload["accent"] = phrase.accent
+            else:
+                if self._english_word_groups is None:
+                    raise RuntimeError("English pronunciation analysis is unavailable")
+                groups = tuple(self._english_word_groups(surface))
+                if len(groups) != 1:
+                    raise ValueError(
+                        "English dictionary Surface must resolve to exactly one word"
+                    )
+                _label, phonemes = groups[0]
+                editor.payload["phonemes"] = tuple(
+                    normalize_english_phonemes(phonemes)
+                )
+        except Exception as exc:
+            editor.error = f"Error: Pronunciation was not generated: {exc}"
+            return ()
+        editor.error = ""
+        return (
+            UpdateStatusIntent("Pronunciation generated from Surface."),
+            ClearAdjustmentFeedbackIntent(),
+        )
 
     def _preview(self) -> tuple[EditorIntent, ...]:
         editor = self.editor
@@ -794,6 +861,8 @@ class TuiDictionaryController:
                 return self._begin_field(
                     "pronunciation", editor.payload["pronunciation"]
                 )
+            if selected == "generate_pronunciation":
+                return self._generate_pronunciation()
             if selected == "preview":
                 return self._preview()
             if selected == "save":
@@ -809,6 +878,8 @@ class TuiDictionaryController:
                 return self._begin_field(
                     "phonemes", " ".join(editor.payload["phonemes"])
                 )
+            if selected == "generate_pronunciation":
+                return self._generate_pronunciation()
             if selected == "preview":
                 return self._preview()
             if selected == "save":
