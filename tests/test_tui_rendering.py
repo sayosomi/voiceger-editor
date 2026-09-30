@@ -707,10 +707,12 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("'", visible)
         self.assertNotIn("[Enter: Edit]", visible)
         self.assertEqual(
-            [line for line, _key in document[-6:]],
+            [line for line, _key in document[-8:]],
             [
                 "  [P] Preview",
                 "  [A] Apply",
+                "  [S] Save to dictionary",
+                "  [D] Dictionary menu",
                 "  [E] Edit text",
                 "  [C] Clear",
                 "  [R] Reset",
@@ -739,10 +741,12 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertNotIn("Primary stress", visible)
         self.assertNotIn("Done", visible)
         self.assertEqual(
-            [line for line, _key in document[-6:]],
+            [line for line, _key in document[-8:]],
             [
                 "  [P] Preview",
                 "  [A] Apply",
+                "  [S] Save to dictionary",
+                "  [D] Dictionary menu",
                 "  [E] Edit text",
                 "  [C] Clear",
                 "  [R] Reset",
@@ -964,6 +968,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(labels[("candidate", 2)], "  [2] Take 2  0.01s")
         self.assertEqual(labels[("clear_candidates", None)], "  [C] Clear candidates")
         self.assertEqual(labels[("settings", None)], "  [S] Settings")
+        self.assertEqual(labels[("dictionary", None)], "  [D] Dictionary")
         self.assertEqual(labels[("help", None)], "  [?] Help")
         self.assertEqual(labels[("quit", None)], "  [Q] Quit")
         caption = labels[("caption", None)]
