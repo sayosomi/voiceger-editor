@@ -298,6 +298,8 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.assertEqual(self.core.japanese, {})
 
         self.key("b")
+        self.assertEqual(self.controller.editor.kind, "dictionary_menu")
+        self.assertEqual(self.controller.editor.payload["japanese_count"], 0)
         self.key(curses.KEY_DOWN)
         self.key("\n")
         self.key("a")
