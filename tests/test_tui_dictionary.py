@@ -315,6 +315,40 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.key("d")
         self.assertEqual(self.core.english, {})
 
+    def test_management_edit_existing_entries_for_both_languages(self):
+        self.core.japanese["existing-ja"] = ja_word("雨", "アメ", 1)
+        self.core.english["hello"] = en_word("hello", ["HH", "AH0", "L", "OW1"])
+
+        self.controller.open_menu()
+        self.key("\n")
+        self.key("\n")
+        self.assertEqual(self.controller.editor.kind, "dictionary_japanese_entry")
+
+        self.key("\n")
+        self.controller.editor.input_value = "飴"
+        self.controller.editor.input_cursor = 1
+        self.key("\n")
+        self.key("s")
+
+        self.assertEqual(self.controller.editor.kind, "dictionary_japanese_list")
+        self.assertEqual(self.core.japanese["existing-ja"].surface, normalize_surface("飴"))
+
+        self.key("b")
+        self.key(curses.KEY_DOWN)
+        self.key("\n")
+        self.key("\n")
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_entry")
+
+        self.key("\n")
+        self.controller.editor.input_value = "hello2"
+        self.controller.editor.input_cursor = len("hello2")
+        self.key("\n")
+        self.key("s")
+
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_list")
+        self.assertNotIn("hello", self.core.english)
+        self.assertIn("hello2", self.core.english)
+
     def test_dictionary_shortcut_from_entry_opens_top_level_menu_and_back_restores_draft(self):
         self.controller.open_quick_save_english(
             surface="hello",
