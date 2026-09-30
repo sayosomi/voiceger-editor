@@ -469,10 +469,11 @@ class TuiDictionaryController:
             if not count:
                 return ()
             accent = editor.payload["accent"]
+            visual_accent = count if accent == 0 else accent
             if direction < 0:
-                updated = 0 if accent == 0 else max(1, accent - 1)
+                updated = max(1, visual_accent - 1)
             else:
-                updated = min(count, accent + 1)
+                updated = min(count, visual_accent + 1)
             if updated != accent:
                 editor.payload["accent"] = updated
             return ()
