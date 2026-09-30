@@ -78,6 +78,32 @@ class ResolvePronunciationTests(unittest.TestCase):
         self.assertEqual(text, "雨。")
         self.assertEqual(resolved, "ア'メ。")
 
+    def test_dictionary_pronunciation_flattens_multiple_openjtalk_phrases(self):
+        with TemporaryDirectory() as temp_dir:
+            adapter = VoicegerAdapter(voiceger_root=Path(temp_dir))
+            parsed = Pronunciation(
+                phrases=(
+                    AccentPhrase(("ズ", "ン", "ダ"), 2),
+                    AccentPhrase(("モ", "ン"), 1),
+                ),
+                terminator="。",
+            )
+            with patch.object(
+                adapter,
+                "ensure_japanese_dictionary_active",
+            ) as ensure_active, patch(
+                "voiceger_accent_adapter.voiceger_adapter.resolve_pronunciation",
+                return_value=("ずんだもん。", parsed, "ズン'ダ/モ'ン。"),
+            ):
+                result = adapter.japanese_dictionary_pronunciation("ずんだもん")
+
+        ensure_active.assert_called_once_with()
+        self.assertEqual(result.terminator, None)
+        self.assertEqual(
+            result.phrases,
+            (AccentPhrase(("ズ", "ン", "ダ", "モ", "ン"), 4),),
+        )
+
     def test_pronunciation_rebuilds_spoken_text_for_synthesis(self):
         value = Pronunciation(
             phrases=(

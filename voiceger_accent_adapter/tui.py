@@ -115,7 +115,7 @@ class TuiApp:
         self._dictionary_controller = TuiDictionaryController(
             self.adapter.user_dictionary,
             input_prefix=_active_input_prefix,
-            japanese_pronunciation=self.adapter.japanese_pronunciation,
+            japanese_pronunciation=self.adapter.japanese_dictionary_pronunciation,
             english_word_groups=self.adapter.english_word_phoneme_groups,
         )
         self._pressed_adjustment: tuple[str, str, int] | None = None
