@@ -19,7 +19,7 @@ from typing import Any, Optional
 from .english_stress import normalize_english_phonemes
 from .openjtalk_converter import text_to_pronunciation
 from .output import save_output
-from .pronunciation import Pronunciation, format_pronunciation, parse_pronunciation
+from .pronunciation import AccentPhrase, Pronunciation, format_pronunciation, parse_pronunciation
 from .runtime_locks import LANGSEGMENT_LOCK, OPENJTALK_LOCK
 from .user_dictionary import UserDictionaryCore
 from .voiceger_tokens import pronunciation_to_voiceger_tokens
@@ -147,11 +147,25 @@ class VoicegerAdapter:
 
         self.user_dictionary.ensure_japanese_active(force=force)
 
-    def japanese_pronunciation(self, text: str) -> Pronunciation:
-        """Return editable Japanese pronunciation with the user dictionary active."""
+    def japanese_dictionary_pronunciation(self, text: str) -> Pronunciation:
+        """Return one editable dictionary-word pronunciation for Japanese text."""
 
         self.ensure_japanese_dictionary_active()
-        return resolve_pronunciation(text)[1]
+        parsed = resolve_pronunciation(text)[1]
+        morae = tuple(
+            mora
+            for phrase in parsed.phrases
+            for mora in phrase.morae
+        )
+        final_phrase_offset = sum(
+            len(phrase.morae)
+            for phrase in parsed.phrases[:-1]
+        )
+        accent = final_phrase_offset + parsed.phrases[-1].accent
+        return Pronunciation(
+            phrases=(AccentPhrase(morae=morae, accent=accent),),
+            terminator=None,
+        )
 
     def _require_paths(self) -> None:
         required = [
