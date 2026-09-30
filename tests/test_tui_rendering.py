@@ -851,7 +851,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("All generated candidate WAV files will be discarded.", labels)
         self.assertEqual(labels[-2:], ["▶ [C] Clear candidates", "  [B] Cancel"])
 
-    def test_settings_use_compact_rows_and_edit_the_current_field_in_place(self):
+    def test_settings_use_sections_shortcuts_and_candidate_clearing_markers(self):
         editor = SimpleNamespace(
             kind="settings", title="EDIT SETTINGS", selection="speed",
             payload={"draft_settings": {
@@ -866,19 +866,24 @@ class TuiRenderingTests(unittest.TestCase):
         ):
             document, _, _ = self.renderer.editor_document(render_state(editor=editor), 80)
         visible = "\n".join(line for line, _key in document)
-        self.assertIn("▶ [V] Speed       < 1.00 >", visible)
-        self.assertIn("Style       < Neutral >", visible)
-        self.assertIn("Takes       < 4 >", visible)
-        self.assertIn("Output      /tmp/output", visible)
-        self.assertIn("TXT         < ON >", visible)
-        self.assertIn("Sampling", visible)
-        self.assertIn("Top K           < 20 >", visible)
-        self.assertIn("Top P           < 1.00 >", visible)
-        self.assertIn("Temperature     < 1.00 >", visible)
-        self.assertIn("Reset sampling to Voiceger defaults", visible)
+
+        for heading in ("Voice", "Generation", "Output", "Sampling", "Actions"):
+            self.assertIn(heading, visible)
+        for marked in (
+            "[S] Style *", "[V] Speed *", "[K] Top K *",
+            "[P] Top P *", "[T] Temperature *",
+        ):
+            self.assertIn(marked, visible)
+        for unmarked in ("[N] Takes", "[O] Output", "[X] TXT"):
+            self.assertIn(unmarked, visible)
+        self.assertIn("[D] Reset sampling to Voiceger defaults", visible)
         self.assertIn("[A] Apply and save", visible)
         self.assertIn("[R] Reset", visible)
         self.assertIn("[B] Back", visible)
+        self.assertIn(
+            "* Applying this setting clears existing candidates.",
+            visible,
+        )
         self.assertEqual(
             [key for _line, key in document if key is not None],
             [
@@ -897,7 +902,8 @@ class TuiRenderingTests(unittest.TestCase):
             return_value=(SimpleNamespace(id=1, name="Neutral"),),
         ):
             active, _, _ = self.renderer.editor_document(render_state(editor=editor), 80)
-        self.assertIn(("▶ Speed       1.25", "speed"), active)
+        speed_lines = [line for line, key in active if key == "speed"]
+        self.assertTrue(any(line.startswith("▶ Speed *") and "1.25" in line for line in speed_lines))
 
     def test_settings_style_display_falls_back_to_id_when_unresolved(self):
         editor = SimpleNamespace(
@@ -915,7 +921,7 @@ class TuiRenderingTests(unittest.TestCase):
             document, _, _ = self.renderer.editor_document(
                 render_state(editor=editor), 80
             )
-        self.assertIn("▶ [S] Style       < 19 >", "\n".join(line for line, _key in document))
+        self.assertIn("▶ [S] Style *", "\n".join(line for line, _key in document))
 
         with patch(
             "voiceger_accent_adapter.tui_rendering.available_styles",
