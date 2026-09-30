@@ -144,6 +144,9 @@ class SettingsTests(unittest.TestCase):
     def test_invalid_persisted_values_are_not_discarded(self):
         invalid_documents = [
             '{"take_count": 101}',
+            '{"top_k": 0}',
+            '{"top_p": 1.01}',
+            '{"temperature": -0.01}',
             '{"save_text": "yes"}',
             '{"future_setting": true}',
         ]
