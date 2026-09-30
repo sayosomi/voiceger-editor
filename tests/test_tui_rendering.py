@@ -871,12 +871,21 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("Takes       < 4 >", visible)
         self.assertIn("Output      /tmp/output", visible)
         self.assertIn("TXT         < ON >", visible)
+        self.assertIn("Sampling", visible)
+        self.assertIn("Top K           < 20 >", visible)
+        self.assertIn("Top P           < 1.00 >", visible)
+        self.assertIn("Temperature     < 1.00 >", visible)
+        self.assertIn("Reset sampling", visible)
         self.assertIn("[A] Apply and save", visible)
         self.assertIn("[R] Reset", visible)
         self.assertIn("[B] Back", visible)
         self.assertEqual(
             [key for _line, key in document if key is not None],
-            ["style_id", "speed", "take_count", "output_dir", "save_text", "apply", "reset", "back"],
+            [
+                "style_id", "speed", "take_count", "output_dir", "save_text",
+                "top_k", "top_p", "temperature", "reset_sampling",
+                "apply", "reset", "back",
+            ],
         )
         self.assertNotIn("input:", visible)
 
