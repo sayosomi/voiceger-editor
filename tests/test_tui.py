@@ -2375,6 +2375,14 @@ class TuiTests(unittest.TestCase):
                 raise curses.error("input timed out")
 
         screen = InterruptScreen()
+        rendered_statuses = []
+        original_render = app._render
+
+        def record_render():
+            rendered_statuses.append(app._status)
+            original_render()
+
+        app._render = Mock(side_effect=record_render)
         with patch(
             "voiceger_accent_adapter.tui.UtteranceSession.from_text",
             return_value=app.session,
@@ -2384,7 +2392,8 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(app._exit_requested)
         self.assertTrue(cancellation_event.is_set())
         self.assertGreaterEqual(screen.refresh_count, 2)
-        self.assertEqual(app._status, "Cancelling current batch before cleanup…")
+        self.assertIn("Cancelling current batch before cleanup…", rendered_statuses)
+        self.assertEqual(app._status, "Generation cancelled. 0 take(s) ready.")
         app._operations.join_worker.assert_called_once_with()
         app._operations.stop_playback.assert_called_once_with()
         self.assertEqual(app.session.close_calls, 1)
