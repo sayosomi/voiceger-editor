@@ -509,6 +509,42 @@ class UserDictionaryTests(unittest.TestCase):
             self.assertIs(openjtalk_dictionary._ACTIVE_COMPILATION, compiled)
             compiled.close()
 
+    def test_english_update_atomically_renames_and_rejects_collisions(self):
+        self.core.set_english_entry("record", ["R", "EH1", "K", "ER0", "D"])
+        self.core.set_english_entry("other", ["AH1", "DH", "ER0"])
+
+        updated = self.core.update_english_entry(
+            "RECORD",
+            surface="recording",
+            phonemes=["R", "IH0", "K", "AO1", "R", "D", "IH0", "NG"],
+        )
+
+        self.assertEqual(updated.surface, "recording")
+        self.assertIsNone(self.core.lookup_english_entry("record"))
+        self.assertEqual(
+            self.core.lookup_english_entry("RECORDING"),
+            ["R", "IH0", "K", "AO1", "R", "D", "IH0", "NG"],
+        )
+        reloaded = UserDictionaryCore(
+            self.voiceger_root,
+            data_directory=self.data_dir,
+            openjtalk_dictionary=FakeBackend(),
+        )
+        self.assertIsNone(reloaded.lookup_english_entry("record"))
+        self.assertEqual(
+            reloaded.lookup_english_entry("recording"),
+            ["R", "IH0", "K", "AO1", "R", "D", "IH0", "NG"],
+        )
+
+        with self.assertRaises(UserDictionaryInputError):
+            self.core.update_english_entry(
+                "recording",
+                surface="other",
+                phonemes=["AH1"],
+            )
+        self.assertIsNotNone(self.core.lookup_english_entry("recording"))
+        self.assertIsNotNone(self.core.lookup_english_entry("other"))
+
     def test_english_persistence_lookup_and_validation(self):
         entry = self.core.set_english_entry(
             "Voiceger",
