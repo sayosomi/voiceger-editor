@@ -2,6 +2,7 @@ import io
 from pathlib import Path
 import subprocess
 import sys
+from threading import Event
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -44,6 +45,10 @@ class FakeSession:
             wav_path=Path("/tmp/saved.wav"),
             text_path=Path("/tmp/saved.txt"),
         )
+
+    @property
+    def active_candidate_count(self):
+        return len(self.candidates)
 
     def generate_takes(self):
         if self.generate_error is not None:
@@ -227,6 +232,20 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertIsNone(self.operations.current_take)
         self.operations.join_worker()
 
+    def test_regenerate_all_progress_uses_existing_candidate_slots(self):
+        session = FakeSession((candidate(1), candidate(2), candidate(3)))
+
+        effects = self.operations.start_regenerate_all(
+            session,
+            take_count=100,
+            navigation_revision=2,
+        )
+
+        self.assertEqual(effects, (UpdateStatusEffect("Regenerating 1/3"),))
+        self.assertEqual(self.operations.operation_total, 3)
+        self.operations.join_worker()
+        self.consume(session)
+
     def test_worker_suppresses_output_and_posts_candidate_then_done(self):
         stdout = io.StringIO()
         stderr = io.StringIO()
@@ -274,6 +293,170 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(self.operations.events.get_nowait()[0], "candidate")
         self.assertEqual(self.operations.events.get_nowait(), ("error", error))
         self.assertEqual(self.operations.events.get_nowait(), ("done", None))
+
+    def test_initial_cancellation_finishes_in_flight_take_and_starts_no_next_take(self):
+        session = FakeSession()
+        first = candidate(1)
+        synthesis_started = Event()
+        finish_synthesis = Event()
+        second_started = Event()
+
+        def values():
+            synthesis_started.set()
+            self.assertTrue(finish_synthesis.wait(timeout=5))
+            session.candidates.append(first)
+            yield first
+            second_started.set()
+            replacement = candidate(2)
+            session.candidates.append(replacement)
+            yield replacement
+
+        session.generate_takes = lambda: values()
+        self.operations.start_generation(
+            session,
+            take_count=100,
+            navigation_revision=0,
+        )
+        self.assertTrue(synthesis_started.wait(timeout=5))
+
+        self.assertEqual(
+            self.operations.request_batch_cancellation(),
+            (UpdateStatusEffect("Cancelling…"),),
+        )
+        self.assertEqual(
+            self.operations.request_batch_cancellation(),
+            (UpdateStatusEffect("Cancelling…"),),
+        )
+        finish_synthesis.set()
+        self.operations.join_worker()
+
+        effects = self.consume(session)
+        self.assertIn(
+            UpdateStatusEffect("Generation cancelled. 1 take(s) ready."),
+            effects,
+        )
+        self.assertFalse(any(isinstance(effect, DiscardInitialBatchEffect) for effect in effects))
+        self.assertEqual(session.candidates, [first])
+        self.assertFalse(second_started.is_set())
+        self.assertFalse(self.operations.busy)
+        self.assertFalse(self.operations.cancellation_requested)
+
+    def test_shutdown_request_cancels_batch_and_join_retries_ctrl_c(self):
+        cancellation_event = Event()
+        worker = Mock()
+        worker.ident = 1
+        worker.is_alive.side_effect = [True, True, False]
+        worker.join.side_effect = [KeyboardInterrupt(), None]
+        self.operations.worker = worker
+        self.operations.busy = True
+        self.operations.worker_operation = "initial"
+        self.operations._cancellation_event = cancellation_event
+
+        self.assertEqual(
+            self.operations.request_shutdown(),
+            (UpdateStatusEffect("Cancelling current batch before cleanup…"),),
+        )
+        self.assertTrue(cancellation_event.is_set())
+
+        cancellation_event.clear()
+        self.operations.cancellation_requested = False
+        self.operations.join_worker()
+
+        self.assertTrue(cancellation_event.is_set())
+        self.assertTrue(self.operations.cancellation_requested)
+        self.assertEqual(worker.join.call_count, 2)
+
+    def test_shutdown_request_waits_for_non_cancellable_single_synthesis(self):
+        self.operations.busy = True
+        self.operations.worker_operation = "regenerate_one"
+        self.assertEqual(
+            self.operations.request_shutdown(),
+            (UpdateStatusEffect("Finishing the current synthesis before cleanup…"),),
+        )
+
+    def test_initial_cancellation_before_first_take_discards_empty_batch(self):
+        session = FakeSession()
+        iterator_requested = Event()
+        release_iterator = Event()
+        synthesized = []
+
+        class DelayedIterable:
+            def __iter__(self):
+                iterator_requested.set()
+                self.assert_released()
+                return self
+
+            def __next__(self):
+                synthesized.append(1)
+                raise StopIteration
+
+            @staticmethod
+            def assert_released():
+                if not release_iterator.wait(timeout=5):
+                    raise AssertionError("iterator release timed out")
+
+        session.generate_takes = lambda: DelayedIterable()
+        effects = self.operations.start_generation(
+            session,
+            take_count=100,
+            navigation_revision=0,
+        )
+        self.assertEqual(effects, (UpdateStatusEffect("Generating 1/100"),))
+        self.assertTrue(iterator_requested.wait(timeout=5))
+        self.operations.request_batch_cancellation()
+        release_iterator.set()
+        self.operations.join_worker()
+
+        completed = self.consume(session)
+        self.assertIn(
+            UpdateStatusEffect("Generation cancelled. 0 take(s) ready."),
+            completed,
+        )
+        self.assertIn(DiscardInitialBatchEffect(), completed)
+        self.assertEqual(session.candidates, [])
+        self.assertEqual(synthesized, [])
+
+    def test_regenerate_all_cancellation_keeps_replacements_and_starts_no_next(self):
+        old_first, old_second = candidate(1), candidate(2)
+        session = FakeSession((old_first, old_second))
+        synthesis_started = Event()
+        finish_synthesis = Event()
+        second_started = Event()
+        replacement = candidate(1)
+
+        def values():
+            synthesis_started.set()
+            self.assertTrue(finish_synthesis.wait(timeout=5))
+            session.candidates[0] = replacement
+            yield replacement
+            second_started.set()
+            session.candidates[1] = candidate(2)
+            yield session.candidates[1]
+
+        session.regenerate_all_takes = lambda: values()
+        effects = self.operations.start_regenerate_all(
+            session,
+            take_count=100,
+            navigation_revision=0,
+        )
+        self.assertEqual(effects, (UpdateStatusEffect("Regenerating 1/2"),))
+        self.assertTrue(synthesis_started.wait(timeout=5))
+        self.assertEqual(
+            self.operations.request_batch_cancellation(),
+            (UpdateStatusEffect("Cancelling…"),),
+        )
+        finish_synthesis.set()
+        self.operations.join_worker()
+
+        completed = self.consume(session)
+        self.assertIn(
+            UpdateStatusEffect("Regeneration cancelled after 1 replacement(s)."),
+            completed,
+        )
+        self.assertFalse(any(isinstance(effect, DiscardInitialBatchEffect) for effect in completed))
+        self.assertEqual(session.candidates, [replacement, old_second])
+        self.assertFalse(second_started.is_set())
+        self.assertEqual(session.discard_calls, 0)
 
     def test_first_initial_candidate_returns_progress_focus_and_play_effects(self):
         first = candidate(1)
@@ -464,7 +647,7 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(
             self.operations.start_regenerate_all(
                 session,
-                take_count=4,
+                take_count=session.active_candidate_count,
                 navigation_revision=2,
             ),
             (

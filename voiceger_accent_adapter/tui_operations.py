@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from threading import Thread
+from threading import Event, Thread
 from typing import Any, Callable, Iterable, Union
 
 from .session import UtteranceSession
@@ -94,6 +94,8 @@ class TuiOperations:
         self.operation_completed = 0
         self.operation_total = 0
         self.operation_focus_revision = 0
+        self._cancellation_event: Event | None = None
+        self.cancellation_requested = False
         self.current_take: int | None = None
         self.playback_process: subprocess.Popen[Any] | None = None
         self._preview_temporary_directory: (
@@ -164,6 +166,7 @@ class TuiOperations:
     ) -> tuple[OperationEffect, ...]:
         if session is None:
             return ()
+        take_count = session.active_candidate_count
         try:
             values = session.regenerate_all_takes()
         except Exception as exc:
@@ -247,12 +250,20 @@ class TuiOperations:
         self.operation_focus_revision = navigation_revision
         self.operation_completed = 0
         self.operation_total = 1 if operation == "regenerate_one" else take_count
+        cancellation_event = Event()
+        self._cancellation_event = cancellation_event
+        self.cancellation_requested = False
 
         def work() -> None:
             try:
                 with open(os.devnull, "w", encoding="utf-8") as sink:
                     with redirect_stdout(sink), redirect_stderr(sink):
-                        for candidate in make_values():
+                        values = iter(make_values())
+                        while not cancellation_event.is_set():
+                            try:
+                                candidate = next(values)
+                            except StopIteration:
+                                break
                             self.events.put(("candidate", candidate))
             except BaseException as exc:
                 self.events.put(("error", exc))
@@ -266,6 +277,33 @@ class TuiOperations:
         )
         self.worker.start()
         return (UpdateStatusEffect(status),)
+
+    @property
+    def can_cancel_batch(self) -> bool:
+        """Whether the active worker is an initial or all-takes operation."""
+
+        return self.busy and self.worker_operation in {"initial", "regenerate_all"}
+
+    def request_batch_cancellation(self) -> tuple[OperationEffect, ...]:
+        """Request cancellation at the next take boundary."""
+
+        if not self.can_cancel_batch:
+            return ()
+        cancellation_event = self._cancellation_event
+        if cancellation_event is not None:
+            cancellation_event.set()
+        self.cancellation_requested = True
+        return (UpdateStatusEffect("Cancelling…"),)
+
+    def request_shutdown(self) -> tuple[OperationEffect, ...]:
+        """Prepare a safe shutdown without forcibly terminating Voiceger."""
+
+        if self.can_cancel_batch:
+            self.request_batch_cancellation()
+            return (UpdateStatusEffect("Cancelling current batch before cleanup…"),)
+        if self.busy:
+            return (UpdateStatusEffect("Finishing the current synthesis before cleanup…"),)
+        return ()
 
     def consume_pending_events(
         self,
@@ -340,7 +378,10 @@ class TuiOperations:
                     effects.append(
                         UpdateStatusEffect(f"Error: Generation failed: {value}")
                     )
-                if self.worker_operation == "initial":
+                if (
+                    self.worker_operation == "initial"
+                    and not self.cancellation_requested
+                ):
                     effects.append(StopPlaybackEffect())
                     effects.append(DiscardInitialBatchEffect())
                     self.current_take = None
@@ -348,9 +389,25 @@ class TuiOperations:
 
             elif kind == "done":
                 operation = self.worker_operation
+                cancelled = self.cancellation_requested
                 self.busy = False
                 if operation == "preview":
                     status = None
+                elif cancelled and operation == "initial":
+                    ready = len(session.candidates) if session is not None else 0
+                    status = f"Generation cancelled. {ready} take(s) ready."
+                    if ready == 0:
+                        effects.append(StopPlaybackEffect())
+                        effects.append(DiscardInitialBatchEffect())
+                        self.current_take = None
+                        effects.append(
+                            FocusEffect(("pronunciation", pronunciation_index))
+                        )
+                elif cancelled and operation == "regenerate_all":
+                    status = (
+                        "Regeneration cancelled after "
+                        f"{self.operation_completed} replacement(s)."
+                    )
                 elif self.worker_error is not None:
                     status = f"Error: Generation failed: {self.worker_error}"
                 elif (
@@ -369,6 +426,8 @@ class TuiOperations:
                     effects.append(UpdateStatusEffect(status))
                 self.worker_operation = None
                 self.worker_target = None
+                self._cancellation_event = None
+                self.cancellation_requested = False
 
     def play_take(
         self,
@@ -521,8 +580,13 @@ class TuiOperations:
 
     def join_worker(self) -> None:
         worker = self.worker
-        if worker is not None and worker.ident is not None:
-            worker.join()
+        if worker is None or worker.ident is None:
+            return
+        while worker.is_alive():
+            try:
+                worker.join(timeout=0.1)
+            except KeyboardInterrupt:
+                self.request_batch_cancellation()
 
     def worker_is_alive(self) -> bool:
         return self.worker is not None and self.worker.is_alive()

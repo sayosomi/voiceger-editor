@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import errno
 from pathlib import Path
+import shutil
 from typing import Any, Optional
 
 from .filename import build_output_filename
@@ -34,36 +35,15 @@ def _remove_reservations(paths: list[Path]) -> None:
             pass
 
 
-def save_output(
+def _reserve_output_paths(
     *,
-    audio: Any,
-    sampling_rate: int,
-    source_text: str,
-    style_name: str,
     output_dir: Path,
-    save_text: bool = False,
-    timestamp: Optional[datetime] = None,
-    filename_text: Optional[str] = None,
-) -> SavedOutput:
-    """Write a WAV and optionally its exact source text using a free basename.
+    initial_name: str,
+    save_text: bool,
+) -> tuple[Path, Path | None, list[Path]]:
+    """Reserve a collision-safe WAV/TXT basename and return owned paths."""
 
-    Files are exclusively reserved before writing, so an existing output is
-    never replaced. Paired WAV/TXT output reserves both paths before either is
-    written. ``filename_text`` can preserve an adapter's established naming
-    text while ``source_text`` remains byte-for-byte the text saved to TXT.
-    """
-
-    import soundfile as sf
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    initial_name = build_output_filename(
-        style_name=style_name,
-        text=filename_text if filename_text is not None else source_text,
-        timestamp=timestamp,
-    )
     stem = initial_name[:-4]
-
     collision_number = 1
     while True:
         suffix = "" if collision_number == 1 else f"-{collision_number}"
@@ -94,10 +74,81 @@ def save_output(
             _remove_reservations(reserved)
             raise
 
-        break
+        return wav_path, text_path, reserved
+
+
+def save_output(
+    *,
+    audio: Any,
+    sampling_rate: int,
+    source_text: str,
+    style_name: str,
+    output_dir: Path,
+    save_text: bool = False,
+    timestamp: Optional[datetime] = None,
+    filename_text: Optional[str] = None,
+) -> SavedOutput:
+    """Write a WAV and optionally its exact source text using a free basename.
+
+    Files are exclusively reserved before writing, so an existing output is
+    never replaced. Paired WAV/TXT output reserves both paths before either is
+    written. ``filename_text`` can preserve an adapter's established naming
+    text while ``source_text`` remains byte-for-byte the text saved to TXT.
+    """
+
+    import soundfile as sf
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    initial_name = build_output_filename(
+        style_name=style_name,
+        text=filename_text if filename_text is not None else source_text,
+        timestamp=timestamp,
+    )
+    wav_path, text_path, reserved = _reserve_output_paths(
+        output_dir=output_dir,
+        initial_name=initial_name,
+        save_text=save_text,
+    )
 
     try:
         sf.write(wav_path, audio, sampling_rate)
+        if text_path is not None:
+            with text_path.open("w", encoding="utf-8", newline="") as text_file:
+                text_file.write(source_text)
+    except BaseException:
+        _remove_reservations(reserved)
+        raise
+
+    return SavedOutput(wav_path=wav_path, text_path=text_path)
+
+
+def save_output_wav(
+    *,
+    wav_source: Path,
+    source_text: str,
+    style_name: str,
+    output_dir: Path,
+    save_text: bool = False,
+    timestamp: Optional[datetime] = None,
+) -> SavedOutput:
+    """Copy an existing WAV to a reserved output path without decoding it."""
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    initial_name = build_output_filename(
+        style_name=style_name,
+        text=source_text,
+        timestamp=timestamp,
+    )
+    wav_path, text_path, reserved = _reserve_output_paths(
+        output_dir=output_dir,
+        initial_name=initial_name,
+        save_text=save_text,
+    )
+
+    try:
+        shutil.copyfile(wav_source, wav_path)
         if text_path is not None:
             with text_path.open("w", encoding="utf-8", newline="") as text_file:
                 text_file.write(source_text)

@@ -103,7 +103,7 @@ class UtteranceSession:
 
     @property
     def caption(self) -> str:
-        """The current user-facing Caption used for accepted output text."""
+        """The current editable Caption, which may differ from the query."""
 
         return self._caption
 
@@ -114,6 +114,16 @@ class UtteranceSession:
         if self._query.voicegerSegments is not None:
             return None
         return self._pure_japanese_utterance_text
+
+    @property
+    def synthesis_source_text(self) -> str:
+        """Return the source text represented by the current synthesis query."""
+
+        if self._query.voicegerSegments is not None:
+            return "".join(
+                segment.text for segment in self._query.voicegerSegments
+            )
+        return self._pure_japanese_utterance_text or ""
 
     @property
     def utterance_manually_edited(self) -> bool:
@@ -136,6 +146,12 @@ class UtteranceSession:
         if self._active_batch is None:
             return ()
         return self._active_batch.candidates
+
+    @property
+    def active_candidate_count(self) -> int:
+        """Return the number of generated slots in the active batch."""
+
+        return len(self.candidates)
 
     @property
     def query(self) -> AudioQuery:
@@ -202,7 +218,11 @@ class UtteranceSession:
         replacement_query = deepcopy(self._query)
         replacement_query.speedScale = settings.speed
 
-        self.discard_takes()
+        if (
+            settings.style_id != self._settings.style_id
+            or settings.speed != self._settings.speed
+        ):
+            self.discard_takes()
         self._settings = settings
         self._style = style
         self._query = replacement_query
@@ -240,6 +260,7 @@ class UtteranceSession:
         query_snapshot = deepcopy(self._query)
         style_snapshot = self._style
         settings_snapshot = deepcopy(self._settings)
+        source_text_snapshot = self.synthesis_source_text
         adapter = self._adapter
 
         def synthesize_one():
@@ -256,8 +277,7 @@ class UtteranceSession:
             take_count=settings_snapshot.take_count,
             synthesize_one=synthesize_one,
             style_name=style_snapshot.name,
-            output_dir=settings_snapshot.output_dir,
-            save_text=settings_snapshot.save_text,
+            source_text=source_text_snapshot,
         )
         try:
             iterator = batch.generate_all()
@@ -278,8 +298,8 @@ class UtteranceSession:
         batch = self._require_active_batch()
         saved = batch.accept(
             take_number,
-            source_text=self._caption,
-            filename_text=self._caption,
+            output_dir=self._settings.output_dir,
+            save_text=self._settings.save_text,
         )
         self._active_batch = None
         return saved

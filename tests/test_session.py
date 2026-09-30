@@ -1,5 +1,8 @@
 import unittest
+from dataclasses import replace
 from pathlib import Path
+import tempfile
+from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock, patch
 
 from voiceger_accent_adapter.output import SavedOutput
@@ -63,6 +66,17 @@ def _mixed_pronunciation_query():
     )
 
 
+def _candidate(number, wav_path):
+    return TakeCandidate(
+        number=number,
+        wav_path=Path(wav_path),
+        sampling_rate=32000,
+        frame_count=1280,
+        source_text="candidate source",
+        style_name="Neutral",
+    )
+
+
 class FakeAdapter:
     def __init__(self):
         self.voiceger_root = Path("/voiceger")
@@ -98,8 +112,10 @@ class FakeTakeBatch:
             candidate = TakeCandidate(
                 number=number,
                 wav_path=Path(f"/tmp/take-{number}.wav"),
-                audio=object(),
                 sampling_rate=32000,
+                frame_count=1280,
+                source_text=self.kwargs["source_text"],
+                style_name=self.kwargs["style_name"],
             )
             self._candidates.append(candidate)
             yield candidate
@@ -114,16 +130,18 @@ class FakeTakeBatch:
         return TakeCandidate(
             number=take_number,
             wav_path=Path(f"/tmp/replacement-{take_number}.wav"),
-            audio=object(),
             sampling_rate=32000,
+            frame_count=1280,
+            source_text=self.kwargs["source_text"],
+            style_name=self.kwargs["style_name"],
         )
 
     def regenerate_all(self):
         self.regenerate_all_calls += 1
         return iter(("regenerated",))
 
-    def accept(self, take_number, **acceptance_text):
-        self.accept_calls.append((take_number, acceptance_text))
+    def accept(self, take_number, **save_settings):
+        self.accept_calls.append((take_number, save_settings))
         if self.accept_error is not None:
             raise self.accept_error
         self.close()
@@ -233,7 +251,7 @@ class UtteranceSessionTests(unittest.TestCase):
         old_query = session.query.model_dump()
         batch = self.activate_batch(session)
         batch._candidates.append(
-            TakeCandidate(1, Path("/tmp/existing.wav"), object(), 32000)
+            _candidate(1, "/tmp/existing.wav")
         )
         candidates_before = session.candidates
 
@@ -261,12 +279,95 @@ class UtteranceSessionTests(unittest.TestCase):
         self.assertEqual(session.pure_japanese_utterance_text, "Caption A")
         self.assertEqual(session.query.model_dump(), old_query)
         self.assertFalse(session.utterance_manually_edited)
+        self.assertEqual(session.synthesis_source_text, "Caption A")
+
+    def test_synthesis_source_text_comes_from_current_mixed_query_not_caption(self):
+        session = self.make_session(
+            caption="Caption before query rebuild",
+            query=_mixed_pronunciation_query(),
+        )
+
+        self.assertEqual(
+            session.synthesis_source_text,
+            "old-jaold-enold-end",
+        )
+        session.replace_caption("Later Caption")
+        self.assertEqual(session.synthesis_source_text, "old-jaold-enold-end")
+
+    def test_accept_uses_query_provenance_and_current_output_settings(self):
+        fake_soundfile = ModuleType("soundfile")
+        fake_soundfile.write = lambda path, _audio, _sampling_rate: Path(path).write_bytes(
+            b"candidate wav bytes"
+        )
+        fake_soundfile.info = lambda _path: SimpleNamespace(frames=1280)
+        synthesis_result = {"audio": [0.0, 0.5], "sampling_rate": 32000}
+
+        with tempfile.TemporaryDirectory() as directory:
+            output_dir = Path(directory) / "current-output"
+            session = self.make_session(
+                caption="caption at batch creation",
+                query=_mixed_pronunciation_query(),
+            )
+            with patch(
+                "voiceger_accent_adapter.session.synthesize_audio_query",
+                return_value=synthesis_result,
+            ), patch.dict("sys.modules", {"soundfile": fake_soundfile}):
+                candidate = next(session.generate_takes())
+                candidate_wav = candidate.wav_path
+                session.replace_caption("later Caption")
+                with patch(
+                    "voiceger_accent_adapter.session.get_style",
+                    return_value=self.style,
+                ):
+                    session.replace_settings(
+                        replace(
+                            self.settings,
+                            output_dir=output_dir,
+                            save_text=True,
+                            take_count=20,
+                        )
+                    )
+
+                self.assertTrue(session.has_active_batch)
+                self.assertTrue(candidate_wav.is_file())
+                self.assertEqual(candidate.source_text, "old-jaold-enold-end")
+                saved = session.accept_take(candidate.number)
+
+            self.assertFalse(candidate_wav.exists())
+            self.assertEqual(saved.wav_path.read_bytes(), b"candidate wav bytes")
+            self.assertIn("_Neutral_old-jaold-enold-end.wav", saved.wav_path.name)
+            self.assertNotIn("later Caption", saved.wav_path.name)
+            self.assertEqual(
+                saved.text_path.read_text(encoding="utf-8"), "old-jaold-enold-end"
+            )
+            self.assertEqual(saved.wav_path.parent, output_dir)
+            self.assertFalse(session.has_active_batch)
+
+    def test_final_session_close_removes_real_candidate_temporary_wav(self):
+        fake_soundfile = ModuleType("soundfile")
+        fake_soundfile.write = lambda path, _audio, _sampling_rate: Path(path).write_bytes(
+            b"temporary wav bytes"
+        )
+        fake_soundfile.info = lambda _path: SimpleNamespace(frames=1280)
+        session = self.make_session(query=_query())
+
+        with patch(
+            "voiceger_accent_adapter.session.synthesize_audio_query",
+            return_value={"audio": [0.0], "sampling_rate": 32000},
+        ), patch.dict("sys.modules", {"soundfile": fake_soundfile}):
+            candidate = next(session.generate_takes())
+            candidate_wav = candidate.wav_path
+            self.assertTrue(candidate_wav.is_file())
+            session.close()
+
+        self.assertFalse(candidate_wav.exists())
+        self.assertFalse(session.has_active_batch)
 
     def test_invalid_caption_preserves_session_and_active_batch(self):
         session = self.make_session(caption="old", query=_query())
         batch = self.activate_batch(session)
         batch._candidates.append(
-            TakeCandidate(1, Path("/tmp/existing.wav"), object(), 32000)
+            _candidate(1, "/tmp/existing.wav")
         )
         old_query = session.query.model_dump()
         old_candidates = session.candidates
@@ -364,7 +465,7 @@ class UtteranceSessionTests(unittest.TestCase):
         session.replace_query(_query(mora_text="edited"))
         batch = self.activate_batch(session)
         batch._candidates.append(
-            TakeCandidate(1, Path("/tmp/existing.wav"), object(), 32000)
+            _candidate(1, "/tmp/existing.wav")
         )
         candidates = session.candidates
         old_query = session.query
@@ -457,7 +558,7 @@ class UtteranceSessionTests(unittest.TestCase):
         batch = self.activate_batch(session)
         # Seed an existing completed candidate without synthesizing audio.
         batch._candidates.append(
-            TakeCandidate(1, Path("/tmp/existing.wav"), object(), 32000)
+            _candidate(1, "/tmp/existing.wav")
         )
         candidates_before = session.candidates
 
@@ -496,11 +597,59 @@ class UtteranceSessionTests(unittest.TestCase):
         self.assertFalse(session.has_active_batch)
         self.assertEqual(session.candidates, ())
 
+    def test_style_and_speed_changes_each_invalidate_the_active_batch(self):
+        changes = (
+            ({"style_id": 2}, self.other_style),
+            ({"speed": 0.9}, self.style),
+        )
+        for settings_changes, resolved_style in changes:
+            with self.subTest(settings_changes=settings_changes):
+                session = self.make_session()
+                batch = self.activate_batch(session)
+                batch._candidates.append(_candidate(1, "/tmp/existing.wav"))
+
+                with patch(
+                    "voiceger_accent_adapter.session.get_style",
+                    return_value=resolved_style,
+                ):
+                    session.replace_settings(
+                        replace(session.settings, **settings_changes)
+                    )
+
+                self.assertTrue(batch.closed)
+                self.assertFalse(session.has_active_batch)
+                self.assertEqual(session.candidates, ())
+
+    def test_output_text_preference_and_take_count_changes_preserve_batch(self):
+        session = self.make_session()
+        batch = self.activate_batch(session)
+        existing = _candidate(1, "/tmp/existing.wav")
+        batch._candidates.append(existing)
+        replacement_settings = Settings(
+            output_dir=Path("/new-output"),
+            take_count=100,
+            style_id=self.settings.style_id,
+            speed=self.settings.speed,
+            save_text=False,
+        )
+
+        with patch(
+            "voiceger_accent_adapter.session.get_style",
+            return_value=self.style,
+        ):
+            session.replace_settings(replacement_settings)
+
+        self.assertFalse(batch.closed)
+        self.assertTrue(session.has_active_batch)
+        self.assertEqual(session.candidates, (existing,))
+        self.assertEqual(session.active_candidate_count, 1)
+        self.assertEqual(session.settings, replacement_settings)
+
     def test_failed_style_resolution_preserves_settings_style_query_and_batch(self):
         session = self.make_session()
         batch = self.activate_batch(session)
         batch._candidates.append(
-            TakeCandidate(1, Path("/tmp/existing.wav"), object(), 32000)
+            _candidate(1, "/tmp/existing.wav")
         )
         old_settings = session.settings
         old_style = session.style
@@ -544,10 +693,8 @@ class UtteranceSessionTests(unittest.TestCase):
             take_batch.assert_called_once()
             kwargs = take_batch.call_args.kwargs
             self.assertEqual(kwargs["take_count"], self.settings.take_count)
-            self.assertEqual(kwargs["output_dir"], self.settings.output_dir)
-            self.assertEqual(kwargs["save_text"], self.settings.save_text)
             self.assertEqual(kwargs["style_name"], session.style.name)
-            self.assertNotIn("source_text", kwargs)
+            self.assertEqual(kwargs["source_text"], "  filename/source  ")
             self.assertNotIn("filename_text", kwargs)
             self.assertIs(kwargs["synthesize_one"](), synthesize.return_value)
             self.assertIs(kwargs["synthesize_one"](), synthesize.return_value)
@@ -569,10 +716,12 @@ class UtteranceSessionTests(unittest.TestCase):
         session.replace_query(_query(mora_text="手動"))
         batch = self.activate_batch(session)
         candidate = TakeCandidate(
-            1,
-            Path("/tmp/current-take.wav"),
-            object(),
-            32000,
+            number=1,
+            wav_path=Path("/tmp/current-take.wav"),
+            sampling_rate=32000,
+            frame_count=1280,
+            source_text="source",
+            style_name="Neutral",
         )
         batch._candidates.append(candidate)
         canonical_before = session.query.model_dump()
@@ -611,10 +760,12 @@ class UtteranceSessionTests(unittest.TestCase):
         session.replace_query(_query(mora_text="手動"))
         batch = self.activate_batch(session)
         candidate = TakeCandidate(
-            1,
-            Path("/tmp/current-take.wav"),
-            object(),
-            32000,
+            number=1,
+            wav_path=Path("/tmp/current-take.wav"),
+            sampling_rate=32000,
+            frame_count=1280,
+            source_text="source",
+            style_name="Neutral",
         )
         batch._candidates.append(candidate)
         canonical_before = session.query.model_dump()
@@ -690,28 +841,54 @@ class UtteranceSessionTests(unittest.TestCase):
         self.assertIs(result, saved)
         self.assertEqual(
             batch.accept_calls,
-            [(2, {"source_text": session.caption, "filename_text": session.caption})],
+            [
+                (
+                    2,
+                    {
+                        "output_dir": session.settings.output_dir,
+                        "save_text": session.settings.save_text,
+                    },
+                )
+            ],
         )
         self.assertFalse(session.has_active_batch)
         self.assertEqual(session.candidates, ())
 
-    def test_acceptance_supplies_latest_caption_after_generation(self):
+    def test_acceptance_uses_current_save_preferences_without_caption_provenance(self):
         session = self.make_session(caption="old caption")
         batch = self.activate_batch(session)
         session.replace_caption("new caption")
+        replacement_settings = replace(
+            session.settings,
+            output_dir=Path("/latest-output"),
+            save_text=False,
+        )
+        with patch(
+            "voiceger_accent_adapter.session.get_style",
+            return_value=self.style,
+        ):
+            session.replace_settings(replacement_settings)
 
         session.accept_take(2)
 
         self.assertEqual(
             batch.accept_calls,
-            [(2, {"source_text": "new caption", "filename_text": "new caption"})],
+            [
+                (
+                    2,
+                    {
+                        "output_dir": Path("/latest-output"),
+                        "save_text": False,
+                    },
+                )
+            ],
         )
 
     def test_failed_acceptance_preserves_active_batch_and_candidates(self):
         session = self.make_session()
         batch = self.activate_batch(session)
         batch._candidates.append(
-            TakeCandidate(1, Path("/tmp/existing.wav"), object(), 32000)
+            _candidate(1, "/tmp/existing.wav")
         )
         candidates_before = session.candidates
         failure = OSError("cannot save output")
@@ -729,7 +906,7 @@ class UtteranceSessionTests(unittest.TestCase):
         session = self.make_session()
         batch = self.activate_batch(session)
         batch._candidates.append(
-            TakeCandidate(1, Path("/tmp/existing.wav"), object(), 32000)
+            _candidate(1, "/tmp/existing.wav")
         )
 
         session.discard_takes()

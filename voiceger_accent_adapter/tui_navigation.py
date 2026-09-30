@@ -77,6 +77,11 @@ class RegenerateCandidate:
 
 
 @dataclass(frozen=True)
+class OpenClearCandidatesConfirmation:
+    pass
+
+
+@dataclass(frozen=True)
 class PlayCandidate:
     number: int
 
@@ -103,6 +108,7 @@ NavigationAction = Union[
     BuildPronunciation,
     AcceptCandidate,
     RegenerateCandidate,
+    OpenClearCandidatesConfirmation,
     PlayCandidate,
     OpenHelp,
     Quit,
@@ -134,6 +140,8 @@ class TuiNavigation:
             items.extend(
                 ("candidate", number) for number in context.candidate_numbers
             )
+            if context.candidate_numbers:
+                items.append(("clear_candidates", None))
         items.extend((("settings", None), ("help", None), ("quit", None)))
         return tuple(items)
 
@@ -274,6 +282,12 @@ class TuiNavigation:
         context: NavigationContext,
         key: FocusKey,
     ) -> tuple[NavigationAction, ...]:
+        if key == ("clear_candidates", None) and context.busy:
+            return (
+                UpdateNavigationStatus(
+                    "Finish or cancel synthesis before clearing candidates."
+                ),
+            )
         if key not in self.navigation_items(context):
             return ()
         name, number = key
@@ -323,6 +337,8 @@ class TuiNavigation:
                     ),
                 )
             return (AcceptCandidate(number),)
+        if name == "clear_candidates":
+            return (OpenClearCandidatesConfirmation(),)
         if name == "settings":
             return (OpenSettingsEditor("style_id"),)
         if name == "help":

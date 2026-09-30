@@ -73,7 +73,7 @@ class SettingsTests(unittest.TestCase):
     def test_validation_rejects_invalid_settings_values(self):
         invalid_values = [
             {"take_count": 0},
-            {"take_count": 9},
+            {"take_count": 101},
             {"take_count": 1.5},
             {"take_count": True},
             {"style_id": 0},
@@ -93,9 +93,17 @@ class SettingsTests(unittest.TestCase):
                 with self.assertRaises(SettingsError):
                     Settings(**values)
 
+    def test_take_count_accepts_inclusive_one_to_hundred_bounds(self):
+        self.assertEqual(Settings(take_count=1).take_count, 1)
+        self.assertEqual(Settings(take_count=100).take_count, 100)
+        for invalid in (0, 101, True, False):
+            with self.subTest(take_count=invalid):
+                with self.assertRaises(SettingsError):
+                    Settings(take_count=invalid)
+
     def test_invalid_persisted_values_are_not_discarded(self):
         invalid_documents = [
-            '{"take_count": 9}',
+            '{"take_count": 101}',
             '{"save_text": "yes"}',
             '{"future_setting": true}',
         ]
