@@ -115,6 +115,8 @@ class TuiApp:
         self._dictionary_controller = TuiDictionaryController(
             self.adapter.user_dictionary,
             input_prefix=_active_input_prefix,
+            japanese_pronunciation=self.adapter.japanese_pronunciation,
+            english_word_groups=self.adapter.english_word_phoneme_groups,
         )
         self._pressed_adjustment: tuple[str, str, int] | None = None
         self._renderer = TuiRenderer()
@@ -133,12 +135,7 @@ class TuiApp:
 
             caption = self._initial_caption
             if caption is None or not caption.strip():
-                self._dispatch_navigation_actions(
-                    self._navigation.set_focus_key(
-                        self._navigation_context(),
-                        ("caption", None),
-                    )
-                )
+                self._navigation.focus_key = ("caption", None)
             else:
                 try:
                     self.session = UtteranceSession.from_text(

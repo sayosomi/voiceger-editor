@@ -3,6 +3,7 @@ import unittest
 from types import SimpleNamespace
 
 from voiceger_accent_adapter.openjtalk_dictionary import expand_word_type, normalize_surface
+from voiceger_accent_adapter.pronunciation import parse_pronunciation
 from voiceger_accent_adapter.tui_dictionary import TuiDictionaryController
 from voiceger_accent_adapter.tui_editors import PreviewIntent
 from voiceger_accent_adapter.user_dictionary import JapaneseWordType
@@ -202,6 +203,89 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.key("a")
         self.assertEqual(self.controller.editor.kind, "dictionary_japanese_entry")
         self.assertEqual(self.controller.editor.title, "ADD JAPANESE DICTIONARY WORD")
+
+    def test_direct_japanese_add_generates_from_surface_without_overwriting_manual_reading(self):
+        generated = [
+            parse_pronunciation("ズン'ダモン"),
+            parse_pronunciation("ズンダ'モン"),
+        ]
+        calls = []
+
+        def japanese_pronunciation(surface):
+            calls.append(surface)
+            return generated[len(calls) - 1]
+
+        controller = TuiDictionaryController(
+            self.core,
+            input_prefix=lambda _editor: "▶ ",
+            japanese_pronunciation=japanese_pronunciation,
+        )
+        controller.open_menu()
+        controller.handle_key("j")
+        controller.handle_key("a")
+        controller.handle_key("\n")
+        controller.handle_key("ずんだもん")
+        intents = controller.handle_key("\n")
+
+        editor = controller.editor
+        self.assertEqual(calls, ["ずんだもん"])
+        self.assertEqual(editor.payload["pronunciation"], "ズンダモン")
+        self.assertEqual(editor.payload["accent"], 2)
+        self.assertEqual(editor.payload["moras"], ("ズ", "ン", "ダ", "モ", "ン"))
+        self.assertEqual(intents[0].status, "Pronunciation generated from Surface.")
+
+        editor.payload["pronunciation"] = "マニュアル"
+        editor.payload["moras"] = ("マ", "ニュ", "ア", "ル")
+        editor.payload["accent"] = 1
+        editor.selection = "surface"
+        controller.handle_key("\n")
+        controller.handle_key("\n")
+        self.assertEqual(calls, ["ずんだもん"])
+        self.assertEqual(editor.payload["pronunciation"], "マニュアル")
+
+        controller.handle_key("g")
+        self.assertEqual(calls, ["ずんだもん", "ずんだもん"])
+        self.assertEqual(editor.payload["pronunciation"], "ズンダモン")
+        self.assertEqual(editor.payload["accent"], 3)
+        self.assertEqual(self.core.japanese, {})
+
+    def test_direct_english_add_generates_one_word_and_preserves_draft_on_generation_error(self):
+        calls = []
+
+        def english_word_groups(surface):
+            calls.append(surface)
+            if surface == "two words":
+                return (
+                    ("two", ("T", "UW1")),
+                    ("words", ("W", "ER1", "D", "Z")),
+                )
+            return ((surface, ("V", "OY1", "AH0", "JH", "ER0")),)
+
+        controller = TuiDictionaryController(
+            self.core,
+            input_prefix=lambda _editor: "▶ ",
+            english_word_groups=english_word_groups,
+        )
+        controller.open_menu()
+        controller.handle_key("e")
+        controller.handle_key("a")
+        controller.handle_key("\n")
+        controller.handle_key("Voiceger")
+        controller.handle_key("\n")
+
+        editor = controller.editor
+        self.assertEqual(calls, ["Voiceger"])
+        self.assertEqual(
+            editor.payload["phonemes"],
+            ("V", "OY1", "AH0", "JH", "ER0"),
+        )
+
+        previous = editor.payload["phonemes"]
+        editor.payload["surface"] = "two words"
+        controller.handle_key("g")
+        self.assertEqual(editor.payload["phonemes"], previous)
+        self.assertIn("exactly one word", editor.error)
+        self.assertEqual(self.core.english, {})
 
     def test_japanese_quick_save_prefills_current_edit_and_updates_existing(self):
         self.core.japanese["existing"] = ja_word(
