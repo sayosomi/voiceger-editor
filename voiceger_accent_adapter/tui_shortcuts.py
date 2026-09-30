@@ -171,20 +171,8 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("back", "Back", "b", "action", "activate"),
     ),
     "dictionary_menu": (
-        MenuItem(
-            "japanese",
-            "Japanese",
-            None,
-            "action",
-            no_shortcut_reason="Enter opens the focused dictionary.",
-        ),
-        MenuItem(
-            "english",
-            "English",
-            None,
-            "action",
-            no_shortcut_reason="Enter opens the focused dictionary.",
-        ),
+        MenuItem("japanese", "Japanese", "j", "action", "activate"),
+        MenuItem("english", "English", "e", "action", "activate"),
         MenuItem("back", "Back", "b", "action", "activate"),
     ),
     "dictionary_japanese_list": (

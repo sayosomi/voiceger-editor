@@ -231,7 +231,7 @@ class TuiDictionaryController:
             title="JAPANESE DICTIONARY",
             origin=("dictionary", None),
             selection=("entry", 0) if entries else "add",
-            payload={"entries": entries},
+            payload={"entries": entries, "entry_index": 0 if entries else None},
         )
 
     def _english_list_state(self) -> EditorState:
@@ -246,7 +246,7 @@ class TuiDictionaryController:
             title="ENGLISH DICTIONARY",
             origin=("dictionary", None),
             selection=("entry", 0) if entries else "add",
-            payload={"entries": entries},
+            payload={"entries": entries, "entry_index": 0 if entries else None},
         )
 
     def _japanese_entry_state(
@@ -399,15 +399,29 @@ class TuiDictionaryController:
         if editor.kind in {
             "dictionary_japanese_list",
             "dictionary_english_list",
-            "dictionary_japanese_duplicates",
         }:
-            entries = (
-                editor.payload["matches"]
-                if editor.kind == "dictionary_japanese_duplicates"
-                else editor.payload["entries"]
-            )
+            entries = editor.payload["entries"]
+            entry_keys = [("entry", index) for index in range(len(entries))]
+            action_keys = ["add"]
+            if entries:
+                action_keys.append("delete")
+            action_keys.append("back")
+            keys = [*entry_keys, *action_keys]
+            try:
+                index = keys.index(editor.selection)
+            except ValueError:
+                index = 0
+            editor.selection = keys[min(max(index + delta, 0), len(keys) - 1)]
+            if (
+                isinstance(editor.selection, tuple)
+                and editor.selection[0] == "entry"
+                and editor.selection[1] is not None
+            ):
+                editor.payload["entry_index"] = editor.selection[1]
+            return ()
+        if editor.kind == "dictionary_japanese_duplicates":
+            entries = editor.payload["matches"]
             if not entries:
-                editor.selection = "add"
                 return ()
             index = (
                 editor.selection[1]
@@ -636,13 +650,17 @@ class TuiDictionaryController:
     def _open_delete_confirmation(self) -> tuple[EditorIntent, ...]:
         editor = self.editor
         assert editor is not None
-        if not (
+        if (
             isinstance(editor.selection, tuple)
             and editor.selection[0] == "entry"
             and editor.selection[1] is not None
         ):
+            index = editor.selection[1]
+            editor.payload["entry_index"] = index
+        else:
+            index = editor.payload.get("entry_index")
+        if index is None:
             return (UpdateStatusIntent("Select a dictionary word to delete."),)
-        index = editor.selection[1]
         if editor.kind == "dictionary_japanese_list":
             entries = editor.payload["entries"]
             if not 0 <= index < len(entries):
@@ -715,6 +733,11 @@ class TuiDictionaryController:
                 self._stack.append(deepcopy(editor))
                 self.editor = self._japanese_entry_state(word_uuid=None, word=None)
                 return ()
+            if selected == "delete":
+                return self._open_delete_confirmation()
+            if selected == "back":
+                self._restore_parent()
+                return (UpdateStatusIntent(""),)
             if isinstance(selected, tuple) and selected[0] == "entry":
                 index = selected[1]
                 entries = editor.payload["entries"]
@@ -731,6 +754,11 @@ class TuiDictionaryController:
                 self._stack.append(deepcopy(editor))
                 self.editor = self._english_entry_state()
                 return ()
+            if selected == "delete":
+                return self._open_delete_confirmation()
+            if selected == "back":
+                self._restore_parent()
+                return (UpdateStatusIntent(""),)
             if isinstance(selected, tuple) and selected[0] == "entry":
                 index = selected[1]
                 entries = editor.payload["entries"]
@@ -899,14 +927,15 @@ class TuiDictionaryController:
         }:
             shortcut = resolve_shortcut(editor.kind, key, editor.payload)
             if shortcut is not None:
-                if shortcut.key == "add":
-                    editor.selection = "add"
-                    return self._activate()
-                if shortcut.key == "delete":
-                    return self._open_delete_confirmation()
-                if shortcut.key == "back":
-                    self._restore_parent()
-                    return (UpdateStatusIntent(""),)
+                if (
+                    isinstance(editor.selection, tuple)
+                    and editor.selection[0] == "entry"
+                    and editor.selection[1] is not None
+                ):
+                    editor.payload["entry_index"] = editor.selection[1]
+                editor.selection = shortcut.key
+                editor.error = ""
+                return self._activate()
         if editor.kind == "dictionary_japanese_duplicates":
             shortcut = resolve_shortcut(editor.kind, key, editor.payload)
             if shortcut is not None and shortcut.key == "back":

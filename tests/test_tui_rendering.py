@@ -726,6 +726,27 @@ class TuiRenderingTests(unittest.TestCase):
             ],
         )
 
+    def test_dictionary_menu_renders_language_shortcuts(self):
+        editor = SimpleNamespace(
+            kind="dictionary_menu",
+            title="DICTIONARY",
+            selection="japanese",
+            payload={"japanese_count": 2, "english_count": 1},
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+
+        self.assertIn(("▶ [J] Japanese      2 words", "japanese"), document)
+        self.assertIn(("  [E] English       1 words", "english"), document)
+        self.assertIn(("  [B] Back", "back"), document)
+
     def test_empty_dictionary_list_renders_add_and_back(self):
         editor = SimpleNamespace(
             kind="dictionary_japanese_list",
@@ -747,7 +768,8 @@ class TuiRenderingTests(unittest.TestCase):
             any("No Japanese dictionary words." in line for line, _key in document)
         )
         self.assertIn(("▶ [A] Add", "add"), document)
-        self.assertTrue(any("[B] Back" in line for line, _key in document))
+        self.assertIn(("  [B] Back", "back"), document)
+        self.assertFalse(any("[X] Delete" in line for line, _key in document))
 
     def test_japanese_dictionary_list_uses_main_mora_accent_display(self):
         word = SimpleNamespace(
@@ -776,7 +798,39 @@ class TuiRenderingTests(unittest.TestCase):
         )
         self.assertIn("ずんだもん", entry)
         self.assertIn("ズ ン [ダ] モ ン", entry)
-        self.assertNotIn("accent_type", "\n".join(line for line, _key in document))
+        visible = "\n".join(line for line, _key in document)
+        self.assertNotIn("accent_type", visible)
+        self.assertNotIn("Enter Edit", visible)
+        self.assertIn(("  [A] Add", "add"), document)
+        self.assertIn(("  [X] Delete", "delete"), document)
+        self.assertIn(("  [B] Back", "back"), document)
+
+    def test_english_dictionary_list_renders_selectable_actions(self):
+        entry = SimpleNamespace(
+            surface="hello",
+            phonemes=("HH", "AH0", "L", "OW1"),
+        )
+        editor = SimpleNamespace(
+            kind="dictionary_english_list",
+            title="ENGLISH DICTIONARY",
+            selection="add",
+            payload={"entries": (entry,), "entry_index": 0},
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        visible = "\n".join(line for line, _key in document)
+
+        self.assertIn(("▶ [A] Add", "add"), document)
+        self.assertIn(("  [X] Delete", "delete"), document)
+        self.assertIn(("  [B] Back", "back"), document)
+        self.assertNotIn("Enter Edit", visible)
 
     def test_english_word_editor_opens_on_full_stressed_phoneme_input(self):
         editor = SimpleNamespace(
