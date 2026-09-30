@@ -554,14 +554,14 @@ class TuiDictionaryController:
                 original_surface = editor.payload["original_surface"]
                 surface = editor.payload["surface"]
                 phonemes = editor.payload["phonemes"]
-                renamed = (
-                    original_surface is not None
-                    and original_surface.strip().casefold()
-                    != surface.strip().casefold()
-                )
-                self.core.set_english_entry(surface, phonemes)
-                if renamed:
-                    self.core.delete_english_entry(original_surface)
+                if original_surface is None:
+                    self.core.set_english_entry(surface, phonemes)
+                else:
+                    self.core.update_english_entry(
+                        original_surface,
+                        surface=surface,
+                        phonemes=phonemes,
+                    )
                 message = "English dictionary word saved."
         except Exception as exc:
             editor.error = f"Error: Dictionary word was not saved: {exc}"
