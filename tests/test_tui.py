@@ -269,6 +269,8 @@ class TuiTests(unittest.TestCase):
     def make_app(*, query=None, candidates=(), groups=None):
         adapter = Mock()
         adapter.voiceger_root = Path("/nonexistent/voiceger")
+        adapter.user_dictionary.list_japanese_entries.return_value = {}
+        adapter.user_dictionary.list_english_entries.return_value = {}
         query = query or english_query(["AA1", "IY0", "ER1"])
         if groups is None:
             segment = next(
@@ -344,9 +346,23 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(output[3] & curses.A_REVERSE)
         self.assertIn(("settings", None), navigation_items(app))
         self.assertEqual(
-            navigation_items(app)[-3:],
-            [("settings", None), ("help", None), ("quit", None)],
+            navigation_items(app)[-4:],
+            [
+                ("settings", None),
+                ("dictionary", None),
+                ("help", None),
+                ("quit", None),
+            ],
         )
+
+    def test_main_dictionary_shortcut_opens_dictionary_menu(self):
+        app = self.make_app(query=mixed_query())
+
+        app._handle_key("d")
+
+        self.assertTrue(app._dictionary_controller.active)
+        self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_menu")
+        self.assertIsNone(app._editor_controller.editor)
 
     def test_settings_summary_opens_style_and_output_opens_path_input(self):
         app = self.make_app(query=mixed_query())
