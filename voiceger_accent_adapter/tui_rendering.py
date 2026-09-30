@@ -746,7 +746,7 @@ class TuiRenderer:
                 display = " ".join(
                     _japanese_mora_tokens(
                         parsed.phrases[0].morae,
-                        word.accent_type,
+                        word.accent_type or len(parsed.phrases[0].morae),
                     )
                 )
                 key = ("entry", index)
@@ -786,7 +786,7 @@ class TuiRenderer:
                 display = " ".join(
                     _japanese_mora_tokens(
                         parsed.phrases[0].morae,
-                        word.accent_type,
+                        word.accent_type or len(parsed.phrases[0].morae),
                     )
                 )
                 key = ("entry", index)
@@ -807,7 +807,7 @@ class TuiRenderer:
                 display = " ".join(
                     _japanese_mora_tokens(
                         editor.payload["moras"],
-                        editor.payload["accent"],
+                        editor.payload["accent"] or len(editor.payload["moras"]),
                     )
                 )
                 marker = "▶ " if editor.selection == "pronunciation" else "  "
@@ -859,7 +859,7 @@ class TuiRenderer:
                 display = " ".join(
                     _japanese_mora_tokens(
                         editor.payload["moras"],
-                        editor.payload["accent"],
+                        editor.payload["accent"] or len(editor.payload["moras"]),
                     )
                 )
             else:
