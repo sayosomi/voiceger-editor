@@ -470,7 +470,7 @@ class TuiDictionaryController:
                 return ()
             accent = editor.payload["accent"]
             if direction < 0:
-                updated = max(0, accent - 1)
+                updated = 0 if accent == 0 else max(1, accent - 1)
             else:
                 updated = min(count, accent + 1)
             if updated != accent:
@@ -478,7 +478,7 @@ class TuiDictionaryController:
             return ()
         if editor.selection == "word_type":
             current = _WORD_TYPES.index(editor.payload["word_type"])
-            target = min(max(current + direction, 0), len(_WORD_TYPES) - 1)
+            target = (current + direction) % len(_WORD_TYPES)
             editor.payload["word_type"] = _WORD_TYPES[target]
             return ()
         if editor.selection == "priority":
