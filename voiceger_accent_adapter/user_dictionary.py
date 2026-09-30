@@ -599,6 +599,56 @@ class UserDictionaryCore:
     ) -> EnglishUserDictionaryEntry:
         return self.set_english_entry(surface, phonemes)
 
+    def update_english_entry(
+        self,
+        original_surface: str,
+        *,
+        surface: str,
+        phonemes: Sequence[str],
+    ) -> EnglishUserDictionaryEntry:
+        original_key = self._english_key(original_surface)
+        target_key = self._english_key(surface)
+        if isinstance(phonemes, (str, bytes)) or not isinstance(phonemes, Sequence):
+            raise UserDictionaryInputError("English phonemes must be a token sequence")
+        try:
+            entry = EnglishUserDictionaryEntry(
+                surface=surface,
+                phonemes=list(phonemes),
+            )
+        except (ValueError, TypeError, ValidationError) as exc:
+            raise UserDictionaryInputError(str(exc)) from exc
+
+        with self._lock:
+            matching_surfaces = [
+                old_surface
+                for old_surface in self._english
+                if self._english_key(old_surface) == original_key
+            ]
+            if not matching_surfaces:
+                raise UserDictionaryInputError("English dictionary entry was not found")
+            if target_key != original_key and any(
+                self._english_key(old_surface) == target_key
+                for old_surface in self._english
+            ):
+                raise UserDictionaryInputError(
+                    "English dictionary target surface already exists"
+                )
+
+            candidate = {
+                old_surface: old_entry
+                for old_surface, old_entry in self._english.items()
+                if self._english_key(old_surface) != original_key
+            }
+            candidate[surface] = entry
+            try:
+                _atomic_write(self.english_path, self._serialize_english(candidate))
+            except Exception as exc:
+                raise UserDictionaryStorageError(
+                    "English dictionary could not be persisted"
+                ) from exc
+            self._english = candidate
+        return entry.model_copy(deep=True)
+
     def delete_english_entry(self, surface: str) -> None:
         key = self._english_key(surface)
         with self._lock:
