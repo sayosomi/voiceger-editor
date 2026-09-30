@@ -1197,7 +1197,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(
             controller.selection_keys(),
             [
-                "style_id", "speed", "take_count", "output_dir", "save_text",
+                "style_id", "speed", "take_count", "output_dir", "save_text", "save_lab",
                 "top_k", "top_p", "temperature", "reset_sampling",
                 "apply", "reset", "back",
             ],
@@ -1207,6 +1207,7 @@ class TuiEditorControllerTests(unittest.TestCase):
             ("style_id", {"style_id": "2"}, Settings(style_id=2, output_dir=settings.output_dir)),
             ("speed", {"speed": "1.25"}, Settings(speed=1.25, output_dir=settings.output_dir)),
             ("save_text", {"save_text": True}, Settings(save_text=True, output_dir=settings.output_dir)),
+            ("save_lab", {"save_lab": True}, Settings(save_lab=True, output_dir=settings.output_dir)),
         )
         for field, updates, expected in drafts:
             with self.subTest(field=field):
@@ -1422,6 +1423,7 @@ class TuiEditorControllerTests(unittest.TestCase):
                 "take_count": "6",
                 "output_dir": "/tmp/opening-output",
                 "save_text": True,
+                "save_lab": False,
                 "top_k": "20",
                 "top_p": "1.00",
                 "temperature": "1.00",

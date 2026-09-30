@@ -55,6 +55,18 @@ The TUI is still under active development.
 
 Its layout, controls, and shortcuts may change. Detailed TUI documentation will be added after the interface becomes more stable.
 
+Optional LAB sidecars for accepted pure-Japanese and pure-English takes require
+the LAB extra:
+
+```bash
+"$VOICEGER_ROOT/.venv/bin/python" -m pip install -e '.[tui,lab]'
+```
+
+Japanese LAB output also requires a `julius` executable. The adapter uses the
+pinned segmentation-kit model documented in
+[`docs/lab-output.md`](docs/lab-output.md) and caches it outside the output
+directory. English LAB output uses the pinned PocketSphinx 5.1.1 dependency.
+
 ## API
 
 This project also provides a VOICEVOX-style HTTP API.
@@ -115,7 +127,7 @@ For technical details about Japanese pronunciation and accent handling, see:
 
 [`docs/japanese-pronunciation.md`](docs/japanese-pronunciation.md)
 
-The planned production LAB sidecar behavior is specified in:
+Production LAB sidecar behavior is specified in:
 
 [`docs/lab-output.md`](docs/lab-output.md)
 

@@ -18,6 +18,8 @@ class SavedOutput:
 
     wav_path: Path
     text_path: Optional[Path]
+    lab_path: Optional[Path] = None
+    lab_warning: Optional[str] = None
 
 
 def _reserve(path: Path) -> None:
@@ -40,6 +42,7 @@ def _reserve_output_paths(
     output_dir: Path,
     initial_name: str,
     save_text: bool,
+    avoid_lab_collision: bool = False,
 ) -> tuple[Path, Path | None, list[Path]]:
     """Reserve a collision-safe WAV/TXT basename and return owned paths."""
 
@@ -49,7 +52,12 @@ def _reserve_output_paths(
         suffix = "" if collision_number == 1 else f"-{collision_number}"
         wav_path = output_dir / f"{stem}{suffix}.wav"
         text_path = output_dir / f"{stem}{suffix}.txt" if save_text else None
+        lab_path = output_dir / f"{stem}{suffix}.lab"
         reserved: list[Path] = []
+
+        if avoid_lab_collision and lab_path.exists():
+            collision_number += 1
+            continue
 
         try:
             _reserve(wav_path)
@@ -57,6 +65,8 @@ def _reserve_output_paths(
             if text_path is not None:
                 _reserve(text_path)
                 reserved.append(text_path)
+            if avoid_lab_collision and lab_path.exists():
+                raise FileExistsError(str(lab_path))
         except FileExistsError:
             _remove_reservations(reserved)
             collision_number += 1
@@ -131,6 +141,7 @@ def save_output_wav(
     output_dir: Path,
     save_text: bool = False,
     timestamp: Optional[datetime] = None,
+    avoid_lab_collision: bool = False,
 ) -> SavedOutput:
     """Copy an existing WAV to a reserved output path without decoding it."""
 
@@ -145,6 +156,7 @@ def save_output_wav(
         output_dir=output_dir,
         initial_name=initial_name,
         save_text=save_text,
+        avoid_lab_collision=avoid_lab_collision,
     )
 
     try:

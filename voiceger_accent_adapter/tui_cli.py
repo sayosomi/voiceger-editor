@@ -34,7 +34,20 @@ def build_argument_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="disable source-text sidecars",
     )
-    parser.set_defaults(save_text=None)
+    lab_group = parser.add_mutually_exclusive_group()
+    lab_group.add_argument(
+        "--save-lab",
+        dest="save_lab",
+        action="store_true",
+        help="generate a LAB phoneme-timing sidecar for accepted pure-language takes",
+    )
+    lab_group.add_argument(
+        "--no-save-lab",
+        dest="save_lab",
+        action="store_false",
+        help="disable LAB sidecars",
+    )
+    parser.set_defaults(save_text=None, save_lab=None)
     return parser
 
 
@@ -49,6 +62,7 @@ def settings_for_invocation(args: argparse.Namespace, base: Settings) -> Setting
             ("style_id", args.style),
             ("speed", args.speed),
             ("save_text", args.save_text),
+            ("save_lab", getattr(args, "save_lab", None)),
         )
         if value is not None
     }

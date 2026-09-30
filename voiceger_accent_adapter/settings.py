@@ -25,6 +25,7 @@ _SETTING_NAMES = {
     "top_p",
     "temperature",
     "save_text",
+    "save_lab",
 }
 
 
@@ -49,6 +50,7 @@ class Settings:
     top_p: float = VOICEGER_DEFAULT_TOP_P
     temperature: float = VOICEGER_DEFAULT_TEMPERATURE
     save_text: bool = False
+    save_lab: bool = False
 
     def __post_init__(self) -> None:
         try:
@@ -118,6 +120,8 @@ class Settings:
 
         if not isinstance(self.save_text, bool):
             raise SettingsError("save_text must be a boolean")
+        if not isinstance(self.save_lab, bool):
+            raise SettingsError("save_lab must be a boolean")
 
 
 def default_config_path() -> Path:
@@ -214,6 +218,7 @@ def save_settings(
         "top_p": settings.top_p,
         "temperature": settings.temperature,
         "save_text": settings.save_text,
+        "save_lab": settings.save_lab,
     }
     serialized = json.dumps(
         payload,

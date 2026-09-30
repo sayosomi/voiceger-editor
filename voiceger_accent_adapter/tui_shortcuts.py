@@ -156,6 +156,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("take_count", "Takes", "n", "adjustable", "focus"),
         MenuItem("output_dir", "Output", "o", "editable", "focus"),
         MenuItem("save_text", "TXT", "x", "adjustable", "focus"),
+        MenuItem("save_lab", "LAB", "l", "adjustable", "focus"),
         MenuItem("top_k", "Top K", "k", "adjustable", "focus"),
         MenuItem("top_p", "Top P", "p", "adjustable", "focus"),
         MenuItem("temperature", "Temperature", "t", "adjustable", "focus"),
