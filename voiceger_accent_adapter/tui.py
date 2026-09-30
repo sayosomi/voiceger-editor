@@ -196,8 +196,6 @@ class TuiApp:
                     break
                 self._render()
                 self._read_key()
-        except KeyboardInterrupt:
-            self._activate_quit()
         finally:
             try:
                 self._operations.join_worker()
@@ -213,6 +211,9 @@ class TuiApp:
     def _read_key(self) -> Any:
         try:
             key = self._screen.get_wch()
+        except KeyboardInterrupt:
+            self._activate_quit()
+            return None
         except curses.error:
             return None
         if key == -1:
