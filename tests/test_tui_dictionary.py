@@ -315,15 +315,23 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.key("d")
         self.assertEqual(self.core.english, {})
 
-    def test_dictionary_shortcut_from_entry_opens_top_level_menu(self):
+    def test_dictionary_shortcut_from_entry_opens_top_level_menu_and_back_restores_draft(self):
         self.controller.open_quick_save_english(
             surface="hello",
             phonemes="HH AH0 L OW1",
         )
+        entry = self.controller.editor
+        entry.payload["surface"] = "hello-draft"
 
         self.key("d")
 
         self.assertEqual(self.controller.editor.kind, "dictionary_menu")
+
+        self.key("b")
+
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_entry")
+        self.assertEqual(self.controller.editor.payload["surface"], "hello-draft")
+        self.assertTrue(self.controller.editor.payload["quick_save"])
 
 
 if __name__ == "__main__":
