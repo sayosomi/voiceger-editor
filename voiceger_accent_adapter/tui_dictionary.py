@@ -200,6 +200,18 @@ class TuiDictionaryController:
         )
         return (UpdateStatusIntent(""),)
 
+    def _restore_parent(self) -> None:
+        if not self._stack:
+            self.editor = None
+            return
+        parent = self._stack.pop()
+        if parent.kind == "dictionary_menu":
+            refreshed = self._menu_state()
+            refreshed.selection = parent.selection
+            self.editor = refreshed
+        else:
+            self.editor = parent
+
     def _japanese_list_state(self) -> EditorState:
         entries = tuple(
             sorted(
@@ -887,10 +899,7 @@ class TuiDictionaryController:
                 if shortcut.key == "delete":
                     return self._open_delete_confirmation()
                 if shortcut.key == "back":
-                    if self._stack:
-                        self.editor = self._stack.pop()
-                    else:
-                        self.editor = None
+                    self._restore_parent()
                     return (UpdateStatusIntent(""),)
         if editor.kind == "dictionary_japanese_duplicates":
             shortcut = resolve_shortcut(editor.kind, key, editor.payload)
@@ -910,10 +919,7 @@ class TuiDictionaryController:
             }:
                 self.editor = editor.payload["parent_editor"]
                 return (UpdateStatusIntent(""),)
-            if self._stack:
-                self.editor = self._stack.pop()
-            else:
-                self.editor = None
+            self._restore_parent()
             return (UpdateStatusIntent(""),)
 
         if key == curses.KEY_UP:
