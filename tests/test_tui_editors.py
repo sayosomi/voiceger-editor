@@ -1141,18 +1141,27 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(editor.payload["draft_settings"]["temperature"], "0.95")
         self.assertEqual(settings.temperature, 1.0)
 
-        editor.selection = "top_p"
-        controller.handle_key(
-            "\n", settings=settings, query=None, current_caption=None
-        )
-        self.assertEqual(editor.active_field, "top_p")
-        editor.input_value = "0.35"
-        editor.input_cursor = len(editor.input_value)
-        controller.handle_key(
-            "\n", settings=settings, query=None, current_caption=None
-        )
-        self.assertIsNone(editor.active_field)
-        self.assertEqual(editor.payload["draft_settings"]["top_p"], "0.35")
+        for field, value, expected in (
+            ("top_k", "37", "37"),
+            ("top_p", "0.35", "0.35"),
+            ("temperature", "0.65", "0.65"),
+        ):
+            with self.subTest(direct_edit=field):
+                editor.selection = field
+                controller.handle_key(
+                    "\n", settings=settings, query=None, current_caption=None
+                )
+                self.assertEqual(editor.active_field, field)
+                editor.input_value = value
+                editor.input_cursor = len(editor.input_value)
+                controller.handle_key(
+                    "\n", settings=settings, query=None, current_caption=None
+                )
+                self.assertIsNone(editor.active_field)
+                self.assertEqual(
+                    editor.payload["draft_settings"][field],
+                    expected,
+                )
 
         editor.payload["draft_settings"]["take_count"] = "9"
         editor.selection = "reset_sampling"
