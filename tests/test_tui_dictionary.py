@@ -189,6 +189,16 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         editor.selection = "word_type"
         self.key(curses.KEY_RIGHT)
         self.assertEqual(editor.payload["word_type"], JapaneseWordType.COMMON_NOUN)
+        editor.payload["word_type"] = JapaneseWordType.SUFFIX
+        self.key(curses.KEY_RIGHT)
+        self.assertEqual(editor.payload["word_type"], JapaneseWordType.PROPER_NOUN)
+        self.key(curses.KEY_LEFT)
+        self.assertEqual(editor.payload["word_type"], JapaneseWordType.SUFFIX)
+
+        editor.selection = "pronunciation"
+        editor.payload["accent"] = 1
+        self.key(curses.KEY_LEFT)
+        self.assertEqual(editor.payload["accent"], 1)
 
         editor.selection = "priority"
         editor.payload["priority"] = 10
