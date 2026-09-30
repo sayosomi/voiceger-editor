@@ -2354,7 +2354,7 @@ class TuiTests(unittest.TestCase):
         self.assertIs(app.session, session)
         self.assertIn(1, app._editor_controller.grouping_cache)
 
-    def test_keyboard_interrupt_requests_cancellation_then_cleans_session(self):
+    def test_keyboard_interrupt_enters_visible_shutdown_drain_then_cleans_session(self):
         app = self.make_app()
         app._initial_caption = "example"
         app._operations.busy = True
@@ -2365,17 +2365,26 @@ class TuiTests(unittest.TestCase):
         app._operations.stop_playback = Mock()
 
         class InterruptScreen(FakeScreen):
-            def get_wch(self):
-                raise KeyboardInterrupt
+            reads = 0
 
+            def get_wch(self):
+                self.reads += 1
+                if self.reads == 1:
+                    raise KeyboardInterrupt
+                app._operations.events.put(("done", None))
+                raise curses.error("input timed out")
+
+        screen = InterruptScreen()
         with patch(
             "voiceger_accent_adapter.tui.UtteranceSession.from_text",
             return_value=app.session,
         ), patch("voiceger_accent_adapter.tui.curses.set_escdelay"):
-            app.run(InterruptScreen())
+            app.run(screen)
 
         self.assertTrue(app._exit_requested)
         self.assertTrue(cancellation_event.is_set())
+        self.assertGreaterEqual(screen.refresh_count, 2)
+        self.assertEqual(app._status, "Cancelling current batch before cleanup…")
         app._operations.join_worker.assert_called_once_with()
         app._operations.stop_playback.assert_called_once_with()
         self.assertEqual(app.session.close_calls, 1)
