@@ -47,7 +47,7 @@ _HELP_ITEMS = (
         "Esc",
         ": initial/regenerate-all cancels cooperatively; otherwise back/editor",
     ),
-    ("Tab / Shift+Tab", ": move to next / previous major section/action"),
+    ("Tab / Shift+Tab", ": next / previous major section/action"),
     (
         " / ".join(
             main_shortcut(name).shortcut
