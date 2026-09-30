@@ -13,7 +13,7 @@ from .english_stress import (
     normalize_english_phonemes,
 )
 from .openjtalk_dictionary import expand_word_type, normalize_surface
-from .pronunciation import AccentPhrase as CoreAccentPhrase, Pronunciation, parse_pronunciation
+from .pronunciation import parse_pronunciation
 from .tui_display import _display_width, _move_wrapped_cursor
 from .tui_editors import (
     ClearAdjustmentFeedbackIntent,
@@ -66,6 +66,8 @@ def _japanese_preview_query(morae: Sequence[str], accent: int) -> AudioQuery:
 
 
 def _english_preview_query(surface: str, phonemes: Sequence[str]) -> AudioQuery:
+    if not surface.strip():
+        raise ValueError("English dictionary Surface must not be empty")
     normalized = normalize_english_phonemes(phonemes)
     return AudioQuery(
         accent_phrases=[],
