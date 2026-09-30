@@ -258,8 +258,13 @@ class TuiDictionaryControllerTests(unittest.TestCase):
             phonemes="R EH1 K ER0 D",
         )
         editor = self.controller.editor
-        editor.selection = "phonemes"
+        before = dict(self.core.english)
+        editor.selection = "preview"
+        intents = self.key("\n")
+        self.assertIsInstance(intents[0], PreviewIntent)
+        self.assertEqual(self.core.english, before)
 
+        editor.selection = "phonemes"
         self.key(curses.KEY_RIGHT)
 
         self.assertEqual(
