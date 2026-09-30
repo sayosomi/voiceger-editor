@@ -47,6 +47,14 @@ from .voicevox_api_models import AudioQuery
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
 _ESCAPE = "\x1b"
 
+_SETTINGS_SECTIONS = (
+    ("style_id", "speed"),
+    ("take_count",),
+    ("output_dir", "save_text"),
+    ("top_k", "top_p", "temperature", "reset_sampling"),
+    ("apply", "reset", "back"),
+)
+
 
 @dataclass(frozen=True)
 class EnglishWordGroup:
@@ -796,6 +804,31 @@ class TuiEditorController:
         editor.error = ""
         return (ClearAdjustmentFeedbackIntent(),)
 
+    def move_settings_section(self, direction: int) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        if editor is None or editor.kind != "settings" or editor.active_field is not None:
+            return ()
+        keys = set(self.selection_keys())
+        sections = tuple(
+            tuple(key for key in section if key in keys)
+            for section in _SETTINGS_SECTIONS
+        )
+        sections = tuple(section for section in sections if section)
+        if not sections:
+            return ()
+        current = next(
+            (
+                index
+                for index, section in enumerate(sections)
+                if editor.selection in section
+            ),
+            0,
+        )
+        target = (current + (1 if direction > 0 else -1)) % len(sections)
+        editor.selection = sections[target][0]
+        editor.error = ""
+        return (ClearAdjustmentFeedbackIntent(),)
+
     def handle_key(
         self,
         key: Any,
@@ -889,6 +922,12 @@ class TuiEditorController:
             return (QuitIntent(),)
         if key == "?":
             return (OpenHelpIntent(),)
+        if editor.kind == "settings":
+            if key == "\t":
+                return self.move_settings_section(1)
+            backtab = getattr(curses, "KEY_BTAB", None)
+            if backtab is not None and key == backtab:
+                return self.move_settings_section(-1)
         shortcut = resolve_shortcut(editor.kind, key, editor.payload)
         if shortcut is not None:
             editor.selection = shortcut.key
