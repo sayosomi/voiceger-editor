@@ -843,45 +843,44 @@ class TuiTests(unittest.TestCase):
             editor.payload["draft_settings"]["save_text"] = False
             app._pressed_adjustment = ("settings", "take_count", 1)
             app._handle_key(curses.KEY_LEFT)
-            self.assertFalse(editor.payload["draft_settings"]["save_text"])
-            self.assertIsNone(app._pressed_adjustment)
+            self.assertTrue(editor.payload["draft_settings"]["save_text"])
+            self.assertEqual(app._pressed_adjustment, ("settings", "save_text", -1))
             txt_left = next(
                 line for line, key in editor_document(app, 100)[0]
                 if key == "save_text"
             )
             self.assertIn("[X] TXT", txt_left)
-            self.assertIn("< OFF >", txt_left)
-            editor.selection = "save_text"
-            editor.payload["draft_settings"]["save_text"] = True
-            app._pressed_adjustment = ("settings", "save_text", -1)
+            self.assertIn("<<ON >", txt_left)
+
+            app._handle_key(curses.KEY_LEFT)
+            self.assertFalse(editor.payload["draft_settings"]["save_text"])
+            self.assertEqual(app._pressed_adjustment, ("settings", "save_text", -1))
+            txt_left_again = next(
+                line for line, key in editor_document(app, 100)[0]
+                if key == "save_text"
+            )
+            self.assertIn("[X] TXT", txt_left_again)
+            self.assertIn("<<OFF >", txt_left_again)
+
             app._handle_key(curses.KEY_RIGHT)
             self.assertTrue(editor.payload["draft_settings"]["save_text"])
-            self.assertIsNone(app._pressed_adjustment)
+            self.assertEqual(app._pressed_adjustment, ("settings", "save_text", 1))
             txt_right = next(
                 line for line, key in editor_document(app, 100)[0]
                 if key == "save_text"
             )
             self.assertIn("[X] TXT", txt_right)
-            self.assertIn("< ON >", txt_right)
+            self.assertIn("< ON>>", txt_right)
 
-            editor.payload["draft_settings"]["save_text"] = False
             app._handle_key(curses.KEY_RIGHT)
-            self.assertTrue(editor.payload["draft_settings"]["save_text"])
-            self.assertEqual(app._pressed_adjustment, ("settings", "save_text", 1))
-            txt_moved = next(
-                line for line, key in editor_document(app, 100)[0]
-                if key == "save_text"
-            )
-            self.assertIn("[X] TXT", txt_moved)
-            self.assertIn("< ON>>", txt_moved)
-            app._handle_key(curses.KEY_LEFT)
             self.assertFalse(editor.payload["draft_settings"]["save_text"])
-            txt_moved_left = next(
+            self.assertEqual(app._pressed_adjustment, ("settings", "save_text", 1))
+            txt_right_again = next(
                 line for line, key in editor_document(app, 100)[0]
                 if key == "save_text"
             )
-            self.assertIn("[X] TXT", txt_moved_left)
-            self.assertIn("<<OFF >", txt_moved_left)
+            self.assertIn("[X] TXT", txt_right_again)
+            self.assertIn("< OFF>>", txt_right_again)
 
             editor.selection = "style_id"
             app._handle_key(curses.KEY_RIGHT)
@@ -1531,9 +1530,9 @@ class TuiTests(unittest.TestCase):
 
             editor.selection = "save_text"
             app._handle_key(curses.KEY_LEFT)
-            self.assertFalse(editor.payload["draft_settings"]["save_text"])
-            app._handle_key(curses.KEY_RIGHT)
             self.assertTrue(editor.payload["draft_settings"]["save_text"])
+            app._handle_key(curses.KEY_RIGHT)
+            self.assertFalse(editor.payload["draft_settings"]["save_text"])
             self.assertEqual(app.settings, original_settings)
             self.assertEqual(app.session.replace_settings_calls, [])
             self.assertEqual(app.session.candidates, (candidate(1),))
