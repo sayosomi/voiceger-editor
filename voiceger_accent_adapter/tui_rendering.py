@@ -8,7 +8,12 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol, Sequence
 
 from .session import UtteranceSession
-from .settings import Settings
+from .settings import (
+    Settings,
+    VOICEGER_DEFAULT_TEMPERATURE,
+    VOICEGER_DEFAULT_TOP_K,
+    VOICEGER_DEFAULT_TOP_P,
+)
 from .styles import available_styles
 from .tui_display import (
     _adjustable_value,
@@ -120,6 +125,9 @@ def _active_input_prefix(editor: EditorRenderState) -> str:
             "take_count": "Takes",
             "output_dir": "Output",
             "save_text": "TXT",
+            "top_k": "Top K",
+            "top_p": "Top P",
+            "temperature": "Temperature",
         }
         label = labels.get(editor.active_field or "", "Setting")
         return f"▶ {label:<12}"
@@ -641,27 +649,55 @@ class TuiRenderer:
                 ("take_count", str(draft["take_count"])),
                 ("output_dir", str(draft["output_dir"])),
                 ("save_text", "ON" if draft["save_text"] else "OFF"),
+                ("top_k", str(draft.get("top_k", VOICEGER_DEFAULT_TOP_K))),
+                (
+                    "top_p",
+                    f"{float(draft.get('top_p', VOICEGER_DEFAULT_TOP_P)):.2f}",
+                ),
+                (
+                    "temperature",
+                    f"{float(draft.get('temperature', VOICEGER_DEFAULT_TEMPERATURE)):.2f}",
+                ),
             )
+            section_headers = {
+                "style_id": "Voice",
+                "take_count": "Generation",
+                "output_dir": "Output",
+                "top_k": "Sampling",
+            }
+            candidate_clearing = {
+                "style_id", "speed", "top_k", "top_p", "temperature"
+            }
             for key, value in values:
+                heading = section_headers.get(key)
+                if heading is not None:
+                    plain(heading)
                 item = menu_item(editor.kind, key, editor.payload)
-                label = item.label
+                label = item.label + (" *" if key in candidate_clearing else "")
                 if editor.active_field == key:
-                    input_field(key, f"▶ {label:<12}")
+                    input_field(key, f"▶ {label:<16}")
                 else:
-                    if key in {"style_id", "speed", "take_count", "save_text"}:
+                    if key in {
+                        "style_id", "speed", "take_count", "save_text",
+                        "top_k", "top_p", "temperature",
+                    }:
                         value = _adjustable_value(
                             value,
                             self._adjustment_press_direction(state, "settings", key),
                         )
                     marker = "▶ " if editor.selection == key else "  "
                     visible_label = (
-                        item.display_label if item.shortcut is not None else label
+                        f"[{item.shortcut.upper()}] {label}"
+                        if item.shortcut is not None
+                        else label
                     )
-                    lines.append((f"{marker}{visible_label:<16}{value}", key))
-            plain()
+                    lines.append((f"{marker}{visible_label:<20}{value}", key))
+            selectable("reset_sampling")
+            plain("Actions")
             selectable("apply")
             selectable("reset")
             selectable("back")
+            plain("* Applying this setting clears existing candidates.")
         elif editor.kind == "english_word":
             plain()
             plain("Word")

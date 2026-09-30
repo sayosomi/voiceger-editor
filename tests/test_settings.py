@@ -29,6 +29,9 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.take_count, 4)
         self.assertEqual(settings.style_id, 1)
         self.assertEqual(settings.speed, 1.0)
+        self.assertEqual(settings.top_k, 20)
+        self.assertEqual(settings.top_p, 1.0)
+        self.assertEqual(settings.temperature, 1.0)
         self.assertFalse(settings.save_text)
 
     def test_save_creates_parent_directories_and_round_trips(self):
@@ -39,6 +42,9 @@ class SettingsTests(unittest.TestCase):
                 take_count=8,
                 style_id=5,
                 speed=1.25,
+                top_k=37,
+                top_p=0.45,
+                temperature=0.80,
                 save_text=True,
             )
 
@@ -56,10 +62,30 @@ class SettingsTests(unittest.TestCase):
                     "take_count": 8,
                     "style_id": 5,
                     "speed": 1.25,
+                    "top_k": 37,
+                    "top_p": 0.45,
+                    "temperature": 0.8,
                     "save_text": True,
                 },
             )
             self.assertTrue(first_contents.endswith(b"\n"))
+
+    def test_legacy_config_without_sampling_keys_uses_voiceger_defaults(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "legacy.json"
+            config_path.write_text(
+                '{"take_count": 2, "style_id": 3, "speed": 1.2, "save_text": true}',
+                encoding="utf-8",
+            )
+
+            settings = load_settings(config_path)
+
+        self.assertEqual(settings.take_count, 2)
+        self.assertEqual(settings.style_id, 3)
+        self.assertEqual(settings.speed, 1.2)
+        self.assertEqual(settings.top_k, 20)
+        self.assertEqual(settings.top_p, 1.0)
+        self.assertEqual(settings.temperature, 1.0)
 
     def test_custom_config_path_can_be_loaded_and_saved(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -84,6 +110,20 @@ class SettingsTests(unittest.TestCase):
             {"speed": float("inf")},
             {"speed": 10**1000},
             {"speed": True},
+            {"top_k": 0},
+            {"top_k": 101},
+            {"top_k": 1.5},
+            {"top_k": True},
+            {"top_p": -0.01},
+            {"top_p": 1.01},
+            {"top_p": float("nan")},
+            {"top_p": float("inf")},
+            {"top_p": True},
+            {"temperature": -0.01},
+            {"temperature": 1.01},
+            {"temperature": float("nan")},
+            {"temperature": float("inf")},
+            {"temperature": True},
             {"save_text": 1},
             {"output_dir": ""},
             {"output_dir": "invalid\x00path"},
@@ -104,6 +144,9 @@ class SettingsTests(unittest.TestCase):
     def test_invalid_persisted_values_are_not_discarded(self):
         invalid_documents = [
             '{"take_count": 101}',
+            '{"top_k": 0}',
+            '{"top_p": 1.01}',
+            '{"temperature": -0.01}',
             '{"save_text": "yes"}',
             '{"future_setting": true}',
         ]

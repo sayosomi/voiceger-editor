@@ -697,9 +697,9 @@ class TuiApp:
     def _change_settings(self, *, report_success: bool = True, **changes: Any) -> None:
         try:
             updated = replace(self.settings, **changes)
-            synthesis_changed = (
-                updated.style_id != self.settings.style_id
-                or updated.speed != self.settings.speed
+            synthesis_changed = any(
+                getattr(updated, name) != getattr(self.settings, name)
+                for name in ("style_id", "speed", "top_k", "top_p", "temperature")
             )
             if self.session is not None:
                 if synthesis_changed:
@@ -730,10 +730,11 @@ class TuiApp:
                 )
 
     def _apply_settings_target(self, target: Settings) -> SettingsApplicationResult:
-        runtime_changed = target != self.settings
-        synthesis_changed = (
-            target.style_id != self.settings.style_id
-            or target.speed != self.settings.speed
+        baseline = self.session.settings if self.session is not None else self.settings
+        runtime_changed = target != self.settings or target != baseline
+        synthesis_changed = any(
+            getattr(target, name) != getattr(baseline, name)
+            for name in ("style_id", "speed", "top_k", "top_p", "temperature")
         )
         if runtime_changed:
             try:

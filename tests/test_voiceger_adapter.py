@@ -1,3 +1,4 @@
+import inspect
 import unittest
 from contextlib import nullcontext
 from pathlib import Path
@@ -21,6 +22,16 @@ from voiceger_accent_adapter.user_dictionary import UserDictionaryCore
 class ResolvePronunciationTests(unittest.TestCase):
     def test_adapter_error_is_available_for_api_import(self):
         self.assertTrue(issubclass(VoicegerAdapterError, RuntimeError))
+
+    def test_sampling_defaults_match_voiceger_for_adapter_entry_points(self):
+        for method_name in ("synthesize_audio", "synthesize_mixed_audio", "synthesize"):
+            with self.subTest(method_name=method_name):
+                parameters = inspect.signature(
+                    getattr(VoicegerAdapter, method_name)
+                ).parameters
+                self.assertEqual(parameters["top_k"].default, 20)
+                self.assertEqual(parameters["top_p"].default, 1.0)
+                self.assertEqual(parameters["temperature"].default, 1.0)
 
     def test_manual_pronunciation_is_canonicalized(self):
         text, parsed, resolved = resolve_pronunciation(

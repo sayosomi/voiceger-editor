@@ -328,8 +328,8 @@ class VoicegerAdapter:
         ref_wav_path: Optional[str | Path] = None,
         prompt_text: Optional[str] = None,
         top_k: int = 20,
-        top_p: float = 0.6,
-        temperature: float = 0.6,
+        top_p: float = 1.0,
+        temperature: float = 1.0,
         speed: float = 1.0,
     ) -> dict[str, Any]:
         """Synthesize one utterance and return audio in memory."""
@@ -421,8 +421,8 @@ class VoicegerAdapter:
         ref_wav_path: Optional[str | Path] = None,
         prompt_text: Optional[str] = None,
         top_k: int = 20,
-        top_p: float = 0.6,
-        temperature: float = 0.6,
+        top_p: float = 1.0,
+        temperature: float = 1.0,
         speed: float = 1.0,
     ) -> dict[str, Any]:
         """Synthesize mixed-language text with Japanese/English G2P overrides."""
@@ -573,8 +573,8 @@ class VoicegerAdapter:
         prompt_text: Optional[str] = None,
         style_name: str = "style_1",
         top_k: int = 20,
-        top_p: float = 0.6,
-        temperature: float = 0.6,
+        top_p: float = 1.0,
+        temperature: float = 1.0,
         speed: float = 1.0,
         save_text: bool = False,
     ) -> dict[str, Any]:
