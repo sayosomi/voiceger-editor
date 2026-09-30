@@ -700,7 +700,7 @@ class TuiEditorControllerTests(unittest.TestCase):
                     current_caption="source",
                 )
 
-                controller.move_selection(4)
+                controller.move_selection(6)
                 cleared = controller.handle_key(
                     "\n",
                     settings=self.settings(),
@@ -1506,7 +1506,7 @@ class TuiEditorControllerTests(unittest.TestCase):
             "\n", settings=self.settings(), query=query, current_caption="caption"
         )
         parent.input_cursor = 4
-        controller.move_selection(3)
+        controller.move_selection(5)
         before = deepcopy(parent)
 
         controller.handle_key(
@@ -1542,7 +1542,7 @@ class TuiEditorControllerTests(unittest.TestCase):
             "\n", settings=self.settings(), query=query, current_caption="caption"
         )
         parent.input_cursor = 5
-        controller.move_selection(3)
+        controller.move_selection(5)
         before = deepcopy(parent)
 
         controller.handle_key(
@@ -1574,7 +1574,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="caption"
         )
-        controller.move_selection(3)
+        controller.move_selection(5)
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="caption"
         )
@@ -1636,7 +1636,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
-        controller.move_selection(3)
+        controller.move_selection(5)
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
@@ -1671,7 +1671,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="caption"
         )
-        controller.move_selection(3)
+        controller.move_selection(5)
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="caption"
         )
@@ -1737,7 +1737,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
-        controller.move_selection(3)
+        controller.move_selection(5)
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
@@ -1807,7 +1807,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="caption"
         )
-        controller.move_selection(3)
+        controller.move_selection(5)
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="caption"
         )
@@ -1878,7 +1878,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="caption"
         )
-        controller.move_selection(3)
+        controller.move_selection(5)
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="caption"
         )
@@ -2035,7 +2035,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
-        controller.move_selection(3)
+        controller.move_selection(5)
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
@@ -2067,7 +2067,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
-        controller.move_selection(3)
+        controller.move_selection(5)
         controller.handle_key(
             "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
