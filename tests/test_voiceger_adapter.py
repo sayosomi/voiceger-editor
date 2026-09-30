@@ -314,6 +314,63 @@ class EnglishDictionaryAdapterTests(unittest.TestCase):
                     (("voiceger", tuple(expected)),),
                 )
 
+    def test_dictionary_hit_applies_to_one_word_inside_larger_segment(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            adapter = self.make_adapter(root, root / "adapter-state")
+            adapter.user_dictionary.set_english_entry(
+                "record",
+                ["R", "IH0", "K", "AO1", "R", "D"],
+            )
+            baseline = [
+                "S", "EY1",
+                "R", "EH1", "K", "ER0", "D",
+                "N", "AW1",
+            ]
+            english = SimpleNamespace(
+                text_normalize=lambda value: value,
+                g2p=lambda value: list(baseline),
+                word_tokenize=lambda value: ["say", "record", "now"],
+                _g2p=lambda value: [
+                    "S", "EY1", " ",
+                    "R", "EH1", "K", "ER0", "D", " ",
+                    "N", "AW1",
+                ],
+                replace_phs=lambda values: list(values),
+            )
+            text_package = ModuleType("text")
+            text_package.__path__ = []
+            text_package.english = english
+
+            with patch.dict(
+                sys.modules,
+                {"text": text_package, "text.english": english},
+            ), patch.object(adapter, "_require_text_paths"), patch.object(
+                adapter, "_ensure_import_paths"
+            ), patch(
+                "voiceger_accent_adapter.voiceger_adapter._pushd",
+                return_value=nullcontext(),
+            ):
+                groups = adapter.english_word_phoneme_groups("say record now")
+                flattened = adapter.english_phonemes("say record now")
+
+            self.assertEqual(
+                groups,
+                (
+                    ("say", ("S", "EY1")),
+                    ("record", ("R", "IH0", "K", "AO1", "R", "D")),
+                    ("now", ("N", "AW1")),
+                ),
+            )
+            self.assertEqual(
+                flattened,
+                [
+                    "S", "EY1",
+                    "R", "IH0", "K", "AO1", "R", "D",
+                    "N", "AW1",
+                ],
+            )
+
     def test_dictionary_miss_uses_existing_voiceger_g2p_and_grouping(self):
         with TemporaryDirectory() as temporary:
             root = Path(temporary)
