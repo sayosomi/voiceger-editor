@@ -785,9 +785,10 @@ class UtteranceSessionTests(unittest.TestCase):
         self.assertEqual(call["query"].accent_phrases[0].moras[0].text, "Preview")
         self.assertIsNot(call["query"], preview)
         self.assertEqual(call["style"], self.style)
-        self.assertEqual(call["top_k"], 20)
+        self.assertEqual(call["top_k"], 1)
         self.assertEqual(call["top_p"], 1.0)
         self.assertEqual(call["temperature"], 1.0)
+        self.assertNotIn("if_freeze", call)
         self.assertEqual(preview.model_dump(), preview_before)
         self.assertEqual(session.query.model_dump(), canonical_before)
         self.assertEqual(session.caption, "Caption")
@@ -795,6 +796,118 @@ class UtteranceSessionTests(unittest.TestCase):
         self.assertTrue(session.has_active_batch)
         self.assertFalse(batch.closed)
         self.assertEqual(session.candidates, candidates_before)
+
+    def test_preview_sampling_ignores_take_generation_sampling_settings(self):
+        session = self.make_session()
+        sampling_settings = replace(
+            session.settings,
+            top_k=37,
+            top_p=0.45,
+            temperature=0.80,
+        )
+        with patch(
+            "voiceger_accent_adapter.session.get_style",
+            return_value=self.style,
+        ):
+            session.replace_settings(sampling_settings)
+
+        with patch(
+            "voiceger_accent_adapter.session.synthesize_audio_query",
+            return_value={"audio": "preview", "sampling_rate": 32000},
+        ) as synthesize:
+            session.preview_synthesis(_query())
+
+        call = synthesize.call_args.kwargs
+        self.assertEqual(call["top_k"], 1)
+        self.assertEqual(call["top_p"], 1.0)
+        self.assertEqual(call["temperature"], 1.0)
+        self.assertNotIn("if_freeze", call)
+
+    def test_preview_cache_reuses_identical_and_restored_query_state(self):
+        session = self.make_session()
+        preview_a = _query(mora_text="ア")
+        preview_b = _query(mora_text="イ")
+        audio_a = object()
+        audio_b = object()
+
+        with patch(
+            "voiceger_accent_adapter.session.synthesize_audio_query",
+            side_effect=[
+                {"audio": audio_a, "sampling_rate": 32000},
+                {"audio": audio_b, "sampling_rate": 32000},
+            ],
+        ) as synthesize:
+            first_a = session.preview_synthesis(preview_a)
+            repeated_a = session.preview_synthesis(preview_a.model_copy(deep=True))
+            first_b = session.preview_synthesis(preview_b)
+            restored_a = session.preview_synthesis(preview_a)
+
+        self.assertEqual(synthesize.call_count, 2)
+        self.assertIs(first_a["audio"], audio_a)
+        self.assertIs(repeated_a["audio"], audio_a)
+        self.assertIs(restored_a["audio"], audio_a)
+        self.assertIs(first_b["audio"], audio_b)
+
+    def test_preview_cache_key_tracks_pronunciation_accent_and_phonemes(self):
+        session = self.make_session()
+        pronunciation = _query(mora_text="ア")
+        pronunciation_edit = _query(mora_text="イ")
+        accent_edit = _query(mora_text="ア")
+        accent_edit.accent_phrases[0].accent = 2
+        mixed = _mixed_pronunciation_query()
+        phoneme_edit = mixed.model_copy(deep=True)
+        phoneme_edit.voicegerSegments[1].phonemes = ["HH", "EH1"]
+
+        with patch(
+            "voiceger_accent_adapter.session.synthesize_audio_query",
+            return_value={"audio": object(), "sampling_rate": 32000},
+        ) as synthesize:
+            for query in (
+                pronunciation,
+                pronunciation_edit,
+                accent_edit,
+                mixed,
+                phoneme_edit,
+            ):
+                session.preview_synthesis(query)
+
+        self.assertEqual(synthesize.call_count, 5)
+
+    def test_preview_cache_key_tracks_style_speed_and_output_format(self):
+        session = self.make_session()
+        preview = _query()
+        rate_changed = preview.model_copy(deep=True)
+        rate_changed.outputSamplingRate = 44100
+        stereo_changed = preview.model_copy(deep=True)
+        stereo_changed.outputStereo = True
+
+        with patch(
+            "voiceger_accent_adapter.session.synthesize_audio_query",
+            return_value={"audio": object(), "sampling_rate": 32000},
+        ) as synthesize:
+            session.preview_synthesis(preview)
+
+            with patch(
+                "voiceger_accent_adapter.session.get_style",
+                return_value=self.other_style,
+            ):
+                session.replace_settings(
+                    replace(session.settings, style_id=self.other_style.id)
+                )
+            session.preview_synthesis(preview)
+
+            with patch(
+                "voiceger_accent_adapter.session.get_style",
+                return_value=self.other_style,
+            ):
+                session.replace_settings(
+                    replace(session.settings, speed=0.9)
+                )
+            session.preview_synthesis(preview)
+            session.preview_synthesis(rate_changed)
+            session.preview_synthesis(stereo_changed)
+
+        self.assertEqual(synthesize.call_count, 5)
 
     def test_preview_synthesis_failure_preserves_session_and_candidates(self):
         session = self.make_session(caption="Caption")
