@@ -382,6 +382,71 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertNotIn("editing_morae", editor.payload)
         self.assertNotIn("mora_cursor", editor.payload)
 
+    def test_japanese_direct_field_question_mark_is_input_and_applies_canonically(self):
+        query = direct_japanese_query()
+        controller, _provider = self.make_controller(
+            {"hello": (("hello", ("HH", "AH1")),)}
+        )
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 0, origin=("pronunciation", 0), busy=False
+        )
+        editor = controller.editor
+
+        controller.handle_key(
+            curses.KEY_BACKSPACE,
+            settings=self.settings(),
+            query=query,
+            current_caption="source",
+        )
+        intents = controller.handle_key(
+            "?",
+            settings=self.settings(),
+            query=query,
+            current_caption="source",
+        )
+
+        self.assertEqual(intents, ())
+        self.assertEqual(editor.input_value, "ナ' ノダ'?")
+        self.assertEqual(editor.active_field, "pronunciation")
+
+        controller.handle_key(
+            "\n",
+            settings=self.settings(),
+            query=query,
+            current_caption="source",
+        )
+        controller.handle_key(
+            curses.KEY_DOWN,
+            settings=self.settings(),
+            query=query,
+            current_caption="source",
+        )
+        controller.handle_key(
+            curses.KEY_DOWN,
+            settings=self.settings(),
+            query=query,
+            current_caption="source",
+        )
+        applied = controller.handle_key(
+            "\n",
+            settings=self.settings(),
+            query=query,
+            current_caption="source",
+        )
+
+        replacement = next(
+            item for item in applied if isinstance(item, ReplaceQueryIntent)
+        )
+        self.assertEqual(
+            japanese_pronunciation(replacement.query, segment_index=0),
+            "ナ'/ノダ'？",
+        )
+        self.assertEqual(
+            replacement.query.voicegerSegments[0].text,
+            "なのだ。",
+        )
+
     def test_unchanged_japanese_direct_field_closes_without_replacing_query(self):
         query = direct_japanese_query()
         controller, _provider = self.make_controller({"hello": (("hello", ("HH", "AH1")),)})

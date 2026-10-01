@@ -10,21 +10,17 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from .pronunciation import AccentPhrase, Pronunciation, format_pronunciation
+from .pronunciation import (
+    AccentPhrase,
+    Pronunciation,
+    PronunciationPunctuation,
+    canonicalize_punctuation,
+    format_pronunciation,
+)
 from .runtime_locks import OPENJTALK_LOCK
 
 
 _SMALL_KANA = frozenset("ァィゥェォャュョヮぁぃぅぇぉゃゅょゎ")
-_SENTENCE_END = {
-    "。": "。",
-    ".": "。",
-    "！": "！",
-    "!": "！",
-    "？": "？",
-    "?": "？",
-}
-
-
 class OpenJTalkConversionError(ValueError):
     """Raised when OpenJTalk frontend data cannot be converted safely."""
 
@@ -87,18 +83,17 @@ def frontend_features_to_pronunciation(
 
     Non-symbol nodes are grouped into accent phrases using chain_flag:
     chain_flag == 1 continues the previous accent phrase; any other value
-    starts a new one. Symbol nodes end the current phrase. Sentence-final
-    punctuation is preserved as a normalized terminator.
+    starts a new one. Supported symbol nodes end the current phrase and are
+    preserved at their original position in canonical editable form.
     """
 
-    phrases: list[AccentPhrase] = []
+    items: list[AccentPhrase | PronunciationPunctuation] = []
     current: list[Mapping[str, Any]] = []
-    terminator: str | None = None
 
     def flush() -> None:
         nonlocal current
         if current:
-            phrases.append(_phrase_from_nodes(current))
+            items.append(_phrase_from_nodes(current))
             current = []
 
     for node in features:
@@ -106,8 +101,13 @@ def frontend_features_to_pronunciation(
         if pos == "記号":
             flush()
             symbol = node.get("string")
-            if isinstance(symbol, str) and symbol in _SENTENCE_END:
-                terminator = _SENTENCE_END[symbol]
+            punctuation = (
+                canonicalize_punctuation(symbol)
+                if isinstance(symbol, str)
+                else None
+            )
+            if punctuation is not None:
+                items.append(PronunciationPunctuation(punctuation))
             continue
 
         chain_flag = node.get("chain_flag")
@@ -117,12 +117,12 @@ def frontend_features_to_pronunciation(
 
     flush()
 
-    if not phrases:
+    if not any(isinstance(item, AccentPhrase) for item in items):
         raise OpenJTalkConversionError(
             "OpenJTalk produced no pronounceable accent phrases"
         )
 
-    return Pronunciation(tuple(phrases), terminator)
+    return Pronunciation(items=tuple(items))
 
 
 def text_to_pronunciation(

@@ -201,6 +201,7 @@ def synthesize_audio_query(
 
     pronunciation = accent_phrases_to_pronunciation(
         query.accent_phrases,
+        punctuation=query.pronunciationPunctuation,
         terminator=_query_terminator(query),
     )
     resolved_pronunciation = format_pronunciation(pronunciation)

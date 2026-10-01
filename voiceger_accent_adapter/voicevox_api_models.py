@@ -7,6 +7,11 @@ from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator, model_serializer
 
 
+_CANONICAL_PRONUNCIATION_PUNCTUATION = frozenset(
+    {"。", "、", "？", "！", "…"}
+)
+
+
 class Mora(BaseModel):
     text: str
     consonant: Optional[str] = None
@@ -23,6 +28,20 @@ class AccentPhrase(BaseModel):
     is_interrogative: bool = False
 
 
+class PronunciationPunctuation(BaseModel):
+    """Adapter extension preserving ordered Japanese punctuation."""
+
+    afterAccentPhrase: int = Field(ge=0)
+    mark: str
+
+    @field_validator("mark")
+    @classmethod
+    def _validate_mark(cls, value: str) -> str:
+        if value not in _CANONICAL_PRONUNCIATION_PUNCTUATION:
+            raise ValueError("unsupported pronunciation punctuation")
+        return value
+
+
 class VoicegerSegment(BaseModel):
     """Adapter extension used only when the utterance is multilingual."""
 
@@ -32,6 +51,7 @@ class VoicegerSegment(BaseModel):
     accentPhraseCount: Optional[int] = None
     phonemes: Optional[List[str]] = None
     pronunciationTerminator: Optional[str] = None
+    pronunciationPunctuation: Optional[List[PronunciationPunctuation]] = None
 
     @field_validator("pronunciationTerminator")
     @classmethod
@@ -50,6 +70,8 @@ class VoicegerSegment(BaseModel):
             data.pop("phonemes", None)
         if self.pronunciationTerminator is None:
             data.pop("pronunciationTerminator", None)
+        if self.pronunciationPunctuation is None:
+            data.pop("pronunciationPunctuation", None)
         return data
 
 
@@ -69,10 +91,13 @@ class AudioQuery(BaseModel):
     outputStereo: bool = False
     kana: Optional[str] = None
     voicegerSegments: Optional[List[VoicegerSegment]] = None
+    pronunciationPunctuation: Optional[List[PronunciationPunctuation]] = None
 
     @model_serializer(mode="wrap")
     def _serialize_optional_adapter_extension(self, handler):
         data = handler(self)
         if self.voicegerSegments is None:
             data.pop("voicegerSegments", None)
+        if self.pronunciationPunctuation is None:
+            data.pop("pronunciationPunctuation", None)
         return data

@@ -15,13 +15,24 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 
-from .pronunciation import AccentPhrase, Pronunciation
+from .pronunciation import (
+    AccentPhrase,
+    Pronunciation,
+    PronunciationPunctuation,
+)
 from .runtime_locks import OPENJTALK_LOCK
 
 
 MoraG2P = Callable[[str], Sequence[str]]
 
 _VOWELS = frozenset({"a", "i", "u", "e", "o", "A", "I", "U", "E", "O"})
+_PUNCTUATION_TOKENS = {
+    "。": ".",
+    "、": ",",
+    "？": "?",
+    "！": "!",
+    "…": "…",
+}
 
 
 class VoicegerTokenConversionError(ValueError):
@@ -98,27 +109,31 @@ def pronunciation_to_voiceger_tokens(
     *,
     mora_g2p: MoraG2P | None = None,
 ) -> list[str]:
-    """Convert Pronunciation to tokens for Voiceger's Japanese G2P hook."""
+    """Convert ordered pronunciation items to Voiceger Japanese G2P tokens."""
 
     tokens: list[str] = []
-    for phrase_index, phrase in enumerate(value.phrases):
-        if phrase_index > 0:
-            # Match Voiceger/OpenJTalk's normal g2p() output exactly.
-            # Voiceger v2's cleaner later maps this "#" to "UNK".
-            tokens.append("#")
+    previous_was_phrase = False
 
-        tokens.extend(
-            accent_phrase_to_voiceger_tokens(
-                phrase,
-                mora_g2p=mora_g2p,
+    for item in value.items:
+        if isinstance(item, AccentPhrase):
+            if previous_was_phrase:
+                # Match Voiceger/OpenJTalk's normal no-punctuation boundary.
+                # Voiceger v2's cleaner later maps this "#" to "UNK".
+                tokens.append("#")
+            tokens.extend(
+                accent_phrase_to_voiceger_tokens(
+                    item,
+                    mora_g2p=mora_g2p,
+                )
             )
-        )
+            previous_was_phrase = True
+            continue
 
-    if value.terminator == "。":
-        tokens.append(".")
-    elif value.terminator == "？":
-        tokens.append("?")
-    elif value.terminator == "！":
-        tokens.append("!")
+        if not isinstance(item, PronunciationPunctuation):
+            raise VoicegerTokenConversionError(
+                f"unsupported pronunciation item: {item!r}"
+            )
+        tokens.append(_PUNCTUATION_TOKENS[item.mark])
+        previous_was_phrase = False
 
     return tokens
