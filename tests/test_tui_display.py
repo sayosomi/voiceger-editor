@@ -68,7 +68,7 @@ class TuiDisplayTests(unittest.TestCase):
         self.assertEqual(_adjustable_value("1", 0), "< 1 >")
 
     def test_adjustable_feedback_forms_are_fixed_width_ascii_with_stable_value_column(self):
-        for value in ("6", "1.00", "1 Neutral"):
+        for value in ("6", "1.00", "3 Neutral"):
             idle = _adjustable_value(value)
             left = _adjustable_value(value, -1)
             right = _adjustable_value(value, 1)
