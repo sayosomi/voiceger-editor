@@ -77,6 +77,11 @@ from .tui_navigation import (
     UpdateNavigationStatus,
 )
 from .voiceger_adapter import VoicegerAdapter
+from .voiceger_environment import (
+    VoicegerEnvironmentError,
+    check_voiceger_environment,
+    format_voiceger_environment_report,
+)
 
 
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
@@ -863,6 +868,19 @@ class TuiApp:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_argument_parser().parse_args(argv)
+    environment = check_voiceger_environment(args.voiceger_root)
+
+    if args.check:
+        print(format_voiceger_environment_report(environment))
+        return 0 if environment.ready else 2
+
+    if not environment.ready:
+        print(str(VoicegerEnvironmentError(environment)), file=sys.stderr)
+        return 2
+
+    for warning in environment.warnings:
+        print(f"Voiceger setup warning: {warning.message}", file=sys.stderr)
+
     cleanup_stale_take_directories()
     try:
         persisted_settings = load_settings(args.config)
@@ -871,7 +889,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Cannot load settings: {exc}", file=sys.stderr)
         return 2
     adapter = VoicegerAdapter(
-        voiceger_root=args.voiceger_root,
+        voiceger_root=environment.voiceger_root,
         output_dir=settings.output_dir,
     )
     app = TuiApp(
