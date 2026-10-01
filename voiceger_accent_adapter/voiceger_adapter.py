@@ -587,10 +587,14 @@ class VoicegerAdapter:
                         f"{type(exc).__name__}: {exc}"
                     )
 
+            def canonical_japanese_text(value: str) -> str:
+                normalized = japanese.text_normalize(value).strip()
+                return normalized.rstrip(" .!?。！？…")
+
             japanese_override_queues = defaultdict(deque)
             for segment_text, tokens in japanese_overrides:
-                normalized = japanese.text_normalize(segment_text)
-                japanese_override_queues[normalized].append(list(tokens))
+                canonical = canonical_japanese_text(segment_text)
+                japanese_override_queues[canonical].append(list(tokens))
 
             def canonical_english_text(value: str) -> str:
                 normalized = english.text_normalize(value).strip()
@@ -611,7 +615,9 @@ class VoicegerAdapter:
                 with_prosody: bool = True,
             ):
                 if with_prosody:
-                    queue = japanese_override_queues.get(norm_text)
+                    queue = japanese_override_queues.get(
+                        canonical_japanese_text(norm_text)
+                    )
                     if queue:
                         return queue.popleft()
                 with OPENJTALK_LOCK:
