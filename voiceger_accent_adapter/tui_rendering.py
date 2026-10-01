@@ -38,8 +38,7 @@ _HELP_ITEMS = (
     ),
     (
         "Enter",
-        ": on JA: edit segment pronunciation; on EN: edit word phonemes; "
-        "otherwise activate the focused action",
+        ": on JA: edit segment pronunciation; on EN: edit word phonemes",
     ),
     ("Space", ": replay a focused candidate"),
     (
