@@ -125,7 +125,7 @@ class ApiSynthesisCompatibilityTests(unittest.TestCase):
                     params={"text": "雨", "speaker": 2},
                 )
 
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 422)
         self.assertIn("unsupported speaker/style id 2", response.json()["detail"])
         self.assertIn("available style ids: 3", response.json()["detail"])
 
