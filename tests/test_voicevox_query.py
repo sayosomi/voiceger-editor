@@ -3,7 +3,10 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from voiceger_accent_adapter.pronunciation import parse_pronunciation
+from voiceger_accent_adapter.pronunciation import (
+    format_pronunciation,
+    parse_pronunciation,
+)
 from voiceger_accent_adapter.runtime_locks import OPENJTALK_LOCK
 from voiceger_accent_adapter.voicevox_query import (
     accent_phrases_to_pronunciation,
@@ -26,6 +29,38 @@ class VoicevoxQueryTests(unittest.TestCase):
             [m.text for m in query.accent_phrases[0].moras],
             ["ア", "メ"],
         )
+
+    def test_audio_query_preserves_ordered_punctuation_metadata(self):
+        pronunciation = parse_pronunciation("ア'メ、アメ'…ア'メ！")
+        query = build_audio_query(pronunciation=pronunciation)
+
+        self.assertEqual(
+            [
+                (entry.afterAccentPhrase, entry.mark)
+                for entry in query.pronunciationPunctuation
+            ],
+            [(0, "、"), (1, "…"), (2, "！")],
+        )
+        rebuilt = accent_phrases_to_pronunciation(
+            query.accent_phrases,
+            punctuation=query.pronunciationPunctuation,
+            terminator="。",
+        )
+        self.assertEqual(
+            format_pronunciation(rebuilt),
+            "ア'メ、アメ'…ア'メ！",
+        )
+
+    def test_explicit_empty_punctuation_overrides_legacy_terminator(self):
+        query = build_audio_query(
+            pronunciation=parse_pronunciation("ア'メ")
+        )
+        rebuilt = accent_phrases_to_pronunciation(
+            query.accent_phrases,
+            punctuation=[],
+            terminator="。",
+        )
+        self.assertEqual(format_pronunciation(rebuilt), "ア'メ")
 
     def test_mora_g2p_holds_openjtalk_lock(self):
         def g2p(text, *, kana, join):
