@@ -8,7 +8,12 @@ from voiceger_accent_adapter.mixed_language import (
     detect_language_segments,
     voiceger_text_language,
 )
-from voiceger_accent_adapter.pronunciation import AccentPhrase, Pronunciation
+from voiceger_accent_adapter.pronunciation import (
+    AccentPhrase,
+    Pronunciation,
+    format_pronunciation,
+    parse_pronunciation,
+)
 from voiceger_accent_adapter.voicevox_api_models import (
     AccentPhrase as ApiAccentPhrase,
     AudioQuery,
@@ -202,6 +207,45 @@ class MixedLanguageTests(unittest.TestCase):
                 self.assertIsNone(
                     query.voicegerSegments[1].pronunciationTerminator
                 )
+
+    def test_mixed_japanese_punctuation_survives_query_and_plan(self):
+        pronunciation = parse_pronunciation("ア'メ、アメ'…ア'メ！")
+        with patch(
+            "voiceger_accent_adapter.mixed_language.text_to_pronunciation",
+            return_value=pronunciation,
+        ):
+            query = build_mixed_audio_query(
+                "雨、飴…雨！hello",
+                segments=[
+                    DetectedSegment("ja", "雨、飴…雨！"),
+                    DetectedSegment("en", "hello"),
+                ],
+                english_g2p=lambda _text: ["HH", "AH0", "L", "OW1"],
+            )
+
+        japanese_segment = query.voicegerSegments[0]
+        self.assertEqual(
+            [
+                (entry.afterAccentPhrase, entry.mark)
+                for entry in japanese_segment.pronunciationPunctuation
+            ],
+            [(0, "、"), (1, "…"), (2, "！")],
+        )
+
+        with patch(
+            "voiceger_accent_adapter.mixed_language.pronunciation_to_voiceger_tokens",
+            side_effect=lambda value: [format_pronunciation(value)],
+        ):
+            plan = build_mixed_synthesis_plan(query)
+
+        self.assertEqual(
+            plan.japanese_overrides,
+            (("雨、飴…雨！", ["ア'メ、アメ'…ア'メ！"]),),
+        )
+        self.assertEqual(
+            plan.english_overrides,
+            (("hello", ["HH", "AH0", "L", "OW1"]),),
+        )
 
     def test_mixed_plan_uses_explicit_or_legacy_terminator_resolution(self):
         phrase = ApiAccentPhrase(
