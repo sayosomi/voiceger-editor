@@ -233,7 +233,7 @@ class ApiUserDictionaryTests(unittest.TestCase):
         ):
             response = self.client.post(
                 "/audio_query",
-                params={"text": "明日は雨", "speaker": 1},
+                params={"text": "明日は雨", "speaker": 3},
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(order, ["activate", "query"])
