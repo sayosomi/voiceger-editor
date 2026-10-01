@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 from contextlib import contextmanager
-from dataclasses import replace
 import os
 from pathlib import Path
 import sys
@@ -20,20 +19,17 @@ from typing import Any, Optional
 from .english_stress import normalize_english_phonemes
 from .openjtalk_converter import text_to_pronunciation
 from .output import save_output
-from .pronunciation import AccentPhrase, Pronunciation, format_pronunciation, parse_pronunciation
+from .pronunciation import (
+    AccentPhrase,
+    Pronunciation,
+    PronunciationPunctuation,
+    canonicalize_punctuation,
+    format_pronunciation,
+    parse_pronunciation,
+)
 from .runtime_locks import LANGSEGMENT_LOCK, OPENJTALK_LOCK
 from .user_dictionary import UserDictionaryCore
 from .voiceger_tokens import pronunciation_to_voiceger_tokens
-
-
-_SENTENCE_END = {
-    "。": "。",
-    ".": "。",
-    "！": "！",
-    "!": "！",
-    "？": "？",
-    "?": "？",
-}
 
 
 class VoicegerAdapterError(RuntimeError):
@@ -50,17 +46,20 @@ def _ensure_single_utterance(text: str) -> str:
     return text.strip()
 
 
-def _text_terminator(text: str) -> str:
-    return _SENTENCE_END.get(text[-1], "。")
+def _text_trailing_punctuation(text: str) -> str | None:
+    return canonicalize_punctuation(text[-1])
 
 
 def pronunciation_to_spoken_text(value: Pronunciation) -> str:
-    """Build plain kana text from resolved pronunciation data."""
+    """Build plain kana text while retaining ordered punctuation."""
 
-    text = "".join(phrase.reading for phrase in value.phrases)
-    if value.terminator is not None:
-        text += value.terminator
-    return text
+    rendered: list[str] = []
+    for item in value.items:
+        if isinstance(item, AccentPhrase):
+            rendered.append(item.reading)
+        else:
+            rendered.append(item.mark)
+    return "".join(rendered)
 
 
 def resolve_pronunciation(
@@ -70,19 +69,20 @@ def resolve_pronunciation(
     """Resolve target text and pronunciation without loading Voiceger."""
 
     source = _ensure_single_utterance(text)
-    terminator = _text_terminator(source)
-
-    if source[-1] not in _SENTENCE_END:
-        synthesis_text = source + terminator
-    else:
-        synthesis_text = source
+    trailing = _text_trailing_punctuation(source)
+    synthesis_text = source if trailing is not None else source + "。"
 
     if pronunciation is None:
         parsed = text_to_pronunciation(synthesis_text)
     else:
         parsed = parse_pronunciation(pronunciation)
-        if parsed.terminator is None:
-            parsed = replace(parsed, terminator=terminator)
+        if parsed.trailing_punctuation is None:
+            parsed = Pronunciation(
+                items=(
+                    *parsed.items,
+                    PronunciationPunctuation(trailing or "。"),
+                )
+            )
 
     return synthesis_text, parsed, format_pronunciation(parsed)
 
@@ -589,7 +589,7 @@ class VoicegerAdapter:
 
             def canonical_japanese_text(value: str) -> str:
                 normalized = japanese.text_normalize(value).strip()
-                return normalized.rstrip(" .!?。！？…")
+                return normalized.rstrip(" .,!?。！？…、，：；·")
 
             japanese_override_queues = defaultdict(deque)
             for segment_text, tokens in japanese_overrides:
