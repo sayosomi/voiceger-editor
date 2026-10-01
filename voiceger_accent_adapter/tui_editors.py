@@ -1835,18 +1835,12 @@ class TuiEditorController:
                 None,
             )
             if index is None:
-                choices = [
-                    style for style in styles
-                    if (style.id > current_id if direction > 0 else style.id < current_id)
-                ]
-                if not choices:
-                    return clear_feedback
-                updated_id = choices[0 if direction > 0 else -1].id
-            else:
-                target = index + direction
-                if not 0 <= target < len(styles):
-                    return clear_feedback
-                updated_id = styles[target].id
+                editor.error = f"Error: Style ID {current_id} is not available."
+                return clear_feedback
+            target = index + direction
+            if not 0 <= target < len(styles):
+                return clear_feedback
+            updated_id = styles[target].id
             if updated_id == current_id:
                 return clear_feedback
             draft["style_id"] = str(updated_id)
