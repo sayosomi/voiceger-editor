@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol, Sequence
 
+from ._version import __version__
+from .project_info import DOCUMENTATION_URL
 from .pronunciation import parse_pronunciation
 from .session import UtteranceSession
 from .settings import (
@@ -226,57 +228,78 @@ class TuiRenderer:
         except curses.error:
             pass
 
-    def render_help(self, screen: Any, width: int) -> None:
+    @staticmethod
+    def help_document(width: int) -> list[tuple[tuple[int, str, bool], ...]]:
+        """Build all physical Help rows before viewport clipping."""
+
+        column = 1
+        available = max(1, width - column - 1)
+        rows: list[tuple[tuple[int, str, bool], ...]] = []
+
+        def append_plain(value: str) -> None:
+            for piece in _wrap_text(value, available) or [""]:
+                rows.append(((column, piece, False),))
+
+        append_plain(f"Voiceger Editor {__version__}")
+        append_plain(f"Docs: {DOCUMENTATION_URL}")
+        rows.append(())
+
+        for shortcut, suffix in _HELP_ITEMS:
+            if shortcut is None:
+                append_plain(suffix)
+                continue
+
+            key_width = _display_width(shortcut)
+            if key_width >= available:
+                for piece in _wrap_text(shortcut, available) or [""]:
+                    rows.append(((column, piece, True),))
+                for piece in _wrap_text(suffix, available) or [""]:
+                    rows.append(((column, piece, False),))
+                continue
+
+            explanation_pieces = _wrap_text(
+                suffix, max(1, available - key_width)
+            ) or [""]
+            rows.append(
+                (
+                    (column, shortcut, True),
+                    (column + key_width, explanation_pieces[0], False),
+                )
+            )
+            for piece in explanation_pieces[1:]:
+                rows.append(((column + key_width, piece, False),))
+
+        return rows
+
+    def help_max_scroll(self, height: int, width: int) -> int:
+        """Return the largest valid Help body scroll offset."""
+
+        back_row = max(0, height - 1)
+        body_rows = max(0, back_row - 1)
+        return max(0, len(self.help_document(width)) - body_rows)
+
+    def render_help(self, screen: Any, width: int, scroll: int = 0) -> int:
+        """Render one Help viewport and return its clamped scroll offset."""
+
         safe_add = self._safe_add
         height = screen.getmaxyx()[0]
         back_row = max(0, height - 1)
         if back_row > 0:
             safe_add(screen, 0, 0, "HELP", width, self._attribute("A_BOLD"))
-        row = 1
-        column = 1
-        available = max(1, width - column - 1)
+
+        document = self.help_document(width)
+        body_rows = max(0, back_row - 1)
+        max_scroll = max(0, len(document) - body_rows)
+        scroll = max(0, min(scroll, max_scroll))
         bold = self._attribute("A_BOLD")
-        for shortcut, suffix in _HELP_ITEMS:
-            if row >= back_row:
-                break
-            if shortcut is None:
-                pieces = _wrap_text(suffix, available) or [""]
-                for piece in pieces:
-                    if row >= back_row:
-                        break
-                    safe_add(screen, row, column, piece, width)
-                    row += 1
-                continue
 
-            key_width = _display_width(shortcut)
-            if key_width >= available:
-                key_pieces = _wrap_text(shortcut, available) or [""]
-                for piece in key_pieces:
-                    if row >= back_row:
-                        break
-                    safe_add(screen, row, column, piece, width, bold)
-                    row += 1
-                explanation_pieces = _wrap_text(suffix, available)
-                for piece in explanation_pieces:
-                    if row >= back_row:
-                        break
-                    safe_add(screen, row, column, piece, width)
-                    row += 1
-                continue
+        for row, segments in enumerate(
+            document[scroll : scroll + body_rows],
+            start=1,
+        ):
+            for column, value, is_bold in segments:
+                safe_add(screen, row, column, value, width, bold if is_bold else 0)
 
-            safe_add(screen, row, column, shortcut, width, bold)
-            explanation_width = available - key_width
-            explanation_pieces = _wrap_text(suffix, explanation_width)
-            if explanation_pieces:
-                safe_add(
-                    screen, row, column + key_width, explanation_pieces[0], width
-                )
-            row += 1
-            for piece in explanation_pieces[1:]:
-                if row >= back_row:
-                    break
-                safe_add(screen, row, column + key_width, piece, width)
-                row += 1
         safe_add(
             screen,
             back_row,
@@ -285,6 +308,7 @@ class TuiRenderer:
             width,
             self._focus_attribute(),
         )
+        return scroll
 
     def render_navigation(
         self,
