@@ -582,12 +582,6 @@ class VoicegerAdapter:
                             )
                         return decoded
 
-                    setattr(
-                        capture_model,
-                        "decode",
-                        MethodType(capture_decode, capture_model),
-                    )
-                    capture_installed = True
                 except Exception as exc:
                     capture_errors.append(
                         f"{type(exc).__name__}: {exc}"
@@ -641,6 +635,19 @@ class VoicegerAdapter:
                             norm_text = english.text_normalize(value)
                             return phone_ids, None, norm_text
                 return original_clean_text_inf(value, language, version)
+
+            if capture_model is not None and not capture_errors:
+                try:
+                    setattr(
+                        capture_model,
+                        "decode",
+                        MethodType(capture_decode, capture_model),
+                    )
+                    capture_installed = True
+                except Exception as exc:
+                    capture_errors.append(
+                        f"{type(exc).__name__}: {exc}"
+                    )
 
             try:
                 inference_webui.clean_text_inf = controlled_clean_text_inf
