@@ -94,6 +94,32 @@ class TakeBatchTests(unittest.TestCase):
                 batch.generate_all()
             batch.close()
 
+    def test_generated_candidate_preserves_mixed_lab_provenance(self):
+        provenance = object()
+
+        def synthesize_one():
+            return {
+                "audio": object(),
+                "sampling_rate": 32000,
+                "mixed_lab_provenance": provenance,
+                "mixed_lab_provenance_warning": None,
+            }
+
+        with tempfile.TemporaryDirectory() as directory:
+            batch = self.make_batch(
+                directory,
+                take_count=1,
+                synthesize_one=synthesize_one,
+            )
+            with patch.dict(
+                "sys.modules", {"soundfile": self.fake_soundfile_module()}
+            ):
+                candidate = next(batch.generate_all())
+
+            self.assertIs(candidate.mixed_lab_provenance, provenance)
+            self.assertIsNone(candidate.mixed_lab_provenance_warning)
+            batch.close()
+
     def test_later_synthesis_failure_keeps_completed_candidates_usable(self):
         failure = RuntimeError("synthesis failed")
         calls = []
