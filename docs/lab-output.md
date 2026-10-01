@@ -2,7 +2,7 @@
 
 This document defines the production contract for optional `.lab` sidecar output.
 
-Implementation tracking: #60.
+Implementation tracking: #60 (pure-language production path), #66 (mixed-language production path).
 
 Feasibility evidence:
 
@@ -233,6 +233,9 @@ With `save_lab=false`, normal TUI/API use must not require Julius or PocketSphin
 Japanese LAB requires a Julius executable plus the pinned small HMM.
 
 English LAB uses PocketSphinx 5.1.1 as an optional LAB dependency.
+
+Mixed Japanese-English LAB uses both the Japanese and English production
+aligners after its MRTE timing provenance has defined language regions.
 
 MFA must not be installed or required for production LAB generation.
 
