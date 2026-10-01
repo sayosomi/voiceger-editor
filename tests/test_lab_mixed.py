@@ -97,6 +97,58 @@ class MixedLabTests(unittest.TestCase):
             "6000000 10000000 a\n",
         )
 
+    def test_stitch_extends_boundary_pauses_to_exact_crop_edges(self):
+        rendered = stitch_mixed_lab_regions(
+            (
+                "100000 500000 pau\n"
+                "500000 3000000 HH\n",
+                "0 2500000 a\n"
+                "2500000 2900000 pau\n",
+            ),
+            sample_edges=(0, 300, 600),
+            sample_rate=1000,
+        )
+
+        self.assertEqual(
+            rendered,
+            "0 500000 pau\n"
+            "500000 3000000 HH\n"
+            "3000000 5500000 a\n"
+            "5500000 6000000 pau\n",
+        )
+
+    def test_stitch_rejects_uncovered_non_pause_crop_edge(self):
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "uncovered leading crop edge before non-pause",
+        ):
+            stitch_mixed_lab_regions(
+                ("100000 3000000 HH\n",),
+                sample_edges=(0, 300),
+                sample_rate=1000,
+            )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "uncovered trailing crop edge after non-pause",
+        ):
+            stitch_mixed_lab_regions(
+                ("0 2900000 HH\n",),
+                sample_edges=(0, 300),
+                sample_rate=1000,
+            )
+
+    def test_stitch_rejects_local_lab_outside_crop(self):
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "extends outside its audio crop",
+        ):
+            stitch_mixed_lab_regions(
+                ("0 3100000 pau\n",),
+                sample_edges=(0, 300),
+                sample_rate=1000,
+            )
+
     def test_short_english_direct_failure_uses_padding_fallback(self):
         query = mixed_query()
         provenance = MixedLabProvenance(
