@@ -29,25 +29,28 @@ Other multilingual combinations are not part of the v1 compatibility guarantee.
 
 The editable kana notation follows the core VOICEVOX / AquesTalk-style accent rules, with one convenience difference: this adapter accepts both hiragana and katakana.
 
-Rules in the initial subset:
+Rules in the supported subset:
 
 - `'` follows the mora selected as the accent position.
 - Every accent phrase contains exactly one `'`.
-- `/` separates accent phrases without an explicit pause.
-- An optional final `。` or `？` is preserved.
-- `、` pause delimiters and `_` devoicing are not implemented yet.
+- `/` separates adjacent accent phrases when no punctuation appears between them.
+- `。`, `、`, `？`, `！`, and `…` are ordered pronunciation items and may appear between phrases or at the end.
+- ASCII `.`, `,`, `?`, and `!` are accepted while editing and canonicalized to `。`, `、`, `？`, and `！`.
+- OpenJTalk comma-like symbols `：`, `；`, `，`, and `·` are canonicalized to `、`.
+- `_` devoicing is not implemented.
 
 Examples:
 
 ```text
-あ'め   -> accent = 1
-あめ'   -> accent = 2
-
-ア'メ   -> accent = 1
-アメ'   -> accent = 2
+あ'め                 -> accent = 1
+あめ'                 -> accent = 2
+ア'メ                 -> accent = 1
+アメ'                 -> accent = 2
+ソ'ウ？ソ'ウナノダ！ -> punctuation remains in sequence
+デ'モ、ホント'ウ…    -> comma and ellipsis remain in sequence
 ```
 
-The internal `accent` value is 1-based and matches the mora immediately before `'`.
+The internal `accent` value is 1-based and matches the mora immediately before `'`. Internally, `Pronunciation` stores an ordered sequence of `AccentPhrase` and `PronunciationPunctuation` items; punctuation is not modeled as only a final sentence terminator.
 
 ## 3. Public API model
 
@@ -74,9 +77,18 @@ For pure Japanese, the response contains the normal VOICEVOX-like fields:
 - `outputStereo`
 - `kana`
 
-`kana` is a readable representation. Synthesis is driven by `accent_phrases`, matching the VOICEVOX model.
+The adapter also emits optional `pronunciationPunctuation` metadata. Each entry stores a canonical punctuation mark and the zero-based accent-phrase index it follows. This keeps punctuation order independent from editable accent values:
 
-For Japanese-English mixed input, `voicegerSegments` is additionally present to preserve the English text and map Japanese sections to the corresponding `accent_phrases`.
+```json
+{
+  "afterAccentPhrase": 0,
+  "mark": "、"
+}
+```
+
+`kana` remains the readable canonical representation. Synthesis reconstructs pronunciation from `accent_phrases` plus punctuation metadata. Queries created before this metadata existed still use the legacy final-terminator fallback.
+
+For Japanese-English mixed input, `voicegerSegments` is additionally present to preserve the English text and map Japanese sections to the corresponding `accent_phrases`. Japanese segments carry their own `pronunciationPunctuation` metadata so punctuation stays attached to the Japanese sequence.
 
 ### POST /accent_phrases
 
@@ -224,13 +236,23 @@ Validated minimal pair:
 
 For representative real text, adapter-generated G2P tokens matched Voiceger's built-in G2P tokens exactly.
 
-### Phrase-boundary handling
+### Phrase-boundary and punctuation handling
 
 OpenJTalk emits `#` for an accent-phrase boundary. Voiceger v2's existing `clean_text()` converts `#` to `UNK`.
 
-Because the adapter hooks before `clean_text()`, public `/` maps to `#` at the hook point. This reproduces Voiceger's normal frontend path.
+Because the adapter hooks before `clean_text()`, public `/` maps to `#` at the hook point. This reproduces Voiceger's normal frontend path. When an ordered punctuation item appears between phrases, the adapter emits the Voiceger punctuation token in that position instead of inserting `#`.
 
-Dropping the boundary token entirely was tested and caused unstable synthesis.
+Canonical token mapping is:
+
+| Editable punctuation | Voiceger token |
+| --- | --- |
+| `。` | `.` |
+| `、` | `,` |
+| `？` | `?` |
+| `！` | `!` |
+| `…` | `…` |
+
+Dropping the boundary token entirely for adjacent unpunctuated phrases was tested and caused unstable synthesis.
 
 ## 8. Japanese-English mixed extension
 
@@ -337,7 +359,7 @@ Not guaranteed in v1:
 
 ## 13. Open questions
 
-- Add VOICEVOX-style `、` pause delimiters and `_` devoicing.
+- Add `_` devoicing.
 - Improve interrogative handling.
 - Decide whether automatic `kana` output should always canonicalize to katakana.
 - Support more AudioQuery acoustic controls.

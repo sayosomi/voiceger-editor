@@ -1,11 +1,21 @@
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
+from voiceger_accent_adapter.pronunciation import format_pronunciation
 from voiceger_accent_adapter.lab_mixed_attention import (
     MixedLabSegmentSpan,
     _select_consensus_head,
+    build_mixed_lab_segment_spans,
     derive_mixed_lab_provenance,
+)
+from voiceger_accent_adapter.voicevox_api_models import (
+    AccentPhrase,
+    AudioQuery,
+    Mora,
+    PronunciationPunctuation,
+    VoicegerSegment,
 )
 
 
@@ -32,6 +42,52 @@ class MixedLabAttentionTests(unittest.TestCase):
     @staticmethod
     def audio():
         return np.concatenate((np.zeros(2000), np.ones(18000)))
+
+    def test_segment_spans_preserve_japanese_punctuation_tokens(self):
+        query = AudioQuery(
+            accent_phrases=[
+                AccentPhrase(
+                    moras=[Mora(text="ア", vowel="a")],
+                    accent=1,
+                ),
+                AccentPhrase(
+                    moras=[Mora(text="メ", vowel="e")],
+                    accent=1,
+                ),
+            ],
+            voicegerSegments=[
+                VoicegerSegment(
+                    language="ja",
+                    text="あ、め！",
+                    accentPhraseStart=0,
+                    accentPhraseCount=2,
+                    pronunciationPunctuation=[
+                        PronunciationPunctuation(
+                            afterAccentPhrase=0,
+                            mark="、",
+                        ),
+                        PronunciationPunctuation(
+                            afterAccentPhrase=1,
+                            mark="！",
+                        ),
+                    ],
+                ),
+                VoicegerSegment(
+                    language="en",
+                    text="hello",
+                    phonemes=["HH", "AH0"],
+                ),
+            ],
+        )
+
+        with patch(
+            "voiceger_accent_adapter.lab_mixed_attention.pronunciation_to_voiceger_tokens",
+            side_effect=lambda value: [format_pronunciation(value)],
+        ):
+            spans = build_mixed_lab_segment_spans(query)
+
+        self.assertEqual(spans[0].tokens, ("ア'、メ'！",))
+        self.assertEqual(spans[1].tokens, ("HH", "AH0"))
 
     def test_selects_unique_monotonic_head_after_speech_onset(self):
         provenance = derive_mixed_lab_provenance(

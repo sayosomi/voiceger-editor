@@ -360,6 +360,40 @@ class QueryEditingTests(unittest.TestCase):
         ):
             self.assertEqual(getattr(updated, field), getattr(query, field))
 
+    def test_pure_punctuation_only_replacement_updates_query_metadata(self):
+        query = _pure_query("ア'メ/アメ'。")
+        original_accents = [phrase.accent for phrase in query.accent_phrases]
+        original_readings = [
+            [mora.text for mora in phrase.moras]
+            for phrase in query.accent_phrases
+        ]
+
+        updated = replace_japanese_pronunciation(
+            query,
+            "ア'メ、アメ'。",
+        )
+
+        self.assertEqual(
+            [phrase.accent for phrase in updated.accent_phrases],
+            original_accents,
+        )
+        self.assertEqual(
+            [
+                [mora.text for mora in phrase.moras]
+                for phrase in updated.accent_phrases
+            ],
+            original_readings,
+        )
+        self.assertEqual(
+            [
+                (entry.afterAccentPhrase, entry.mark)
+                for entry in updated.pronunciationPunctuation
+            ],
+            [(0, "、"), (1, "。")],
+        )
+        self.assertEqual(japanese_pronunciation(updated), "ア'メ、アメ'。")
+        self.assertNotEqual(updated.model_dump(), query.model_dump())
+
     def test_pure_replacement_can_change_terminator_independently_of_text(self):
         for replacement in ("オ'ト", "オ'ト。", "オ'ト？", "オ'ト！"):
             with self.subTest(replacement=replacement):
@@ -596,6 +630,48 @@ class QueryEditingTests(unittest.TestCase):
                     japanese_pronunciation(updated, segment_index=0),
                     replacement,
                 )
+
+    def test_mixed_replacement_preserves_internal_punctuation_metadata(self):
+        query = _mixed_query(
+            ["ア'メ/アメ'"],
+            [
+                VoicegerSegment(
+                    language="ja",
+                    text="雨、飴！",
+                    accentPhraseStart=0,
+                    accentPhraseCount=2,
+                ),
+                VoicegerSegment(
+                    language="en",
+                    text="hello",
+                    phonemes=["HH", "AH0"],
+                ),
+            ],
+        )
+
+        updated = replace_japanese_pronunciation(
+            query,
+            "ア'メ、アメ'！",
+            segment_index=0,
+        )
+
+        punctuation = updated.voicegerSegments[0].pronunciationPunctuation
+        self.assertEqual(
+            [
+                (entry.afterAccentPhrase, entry.mark)
+                for entry in punctuation
+            ],
+            [(0, "、"), (1, "！")],
+        )
+        self.assertEqual(
+            japanese_pronunciation(updated, segment_index=0),
+            "ア'メ、アメ'！",
+        )
+        self.assertEqual(updated.voicegerSegments[0].text, "雨、飴！")
+        self.assertEqual(
+            updated.voicegerSegments[1].phonemes,
+            ["HH", "AH0"],
+        )
 
     def test_english_editor_state_hides_stress_suffixes(self):
         query = _mixed_query(

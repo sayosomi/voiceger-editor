@@ -1489,6 +1489,41 @@ class TuiTests(unittest.TestCase):
                     None,
                 )
 
+    def test_japanese_punctuation_only_apply_uses_question_input_and_clears_candidates(self):
+        app = self.make_app(
+            query=japanese_query((("ナ", "ノ", "ダ"), 3), terminator="。"),
+            candidates=(candidate(1),),
+        )
+        opening_caption = app.session.caption
+        source_text = app.session.query.voicegerSegments[0].text
+        app._edit_selected_pronunciation(0)
+        editor = app._editor_controller.editor
+
+        app._handle_key(curses.KEY_END)
+        app._handle_key(curses.KEY_BACKSPACE)
+        app._handle_key("?")
+
+        self.assertFalse(app._help_open)
+        self.assertEqual(editor.input_value, "ナノダ'?")
+        self.assertEqual(editor.active_field, "pronunciation")
+
+        self.finish_and_apply_pronunciation(app)
+
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(len(app.session.replace_query_calls), 1)
+        self.assertEqual(app.session.candidates, ())
+        self.assertEqual(app.session.caption, opening_caption)
+        segment = app.session.query.voicegerSegments[0]
+        self.assertEqual(segment.text, source_text)
+        self.assertEqual(segment.pronunciationTerminator, "？")
+        self.assertEqual(
+            [
+                (entry.afterAccentPhrase, entry.mark)
+                for entry in segment.pronunciationPunctuation
+            ],
+            [(0, "？")],
+        )
+
     def test_japanese_escape_discards_entire_draft_without_query_mutation(self):
         app = self.make_app(query=japanese_query((("ナ", "ノ", "ダ"), 3)))
         original_query = app.session.query.model_copy(deep=True)

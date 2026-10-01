@@ -16,6 +16,7 @@ from voiceger_accent_adapter.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
     Mora,
+    PronunciationPunctuation,
     VoicegerSegment,
 )
 
@@ -51,6 +52,12 @@ def mixed_query():
                 accentPhraseStart=1,
                 accentPhraseCount=1,
                 pronunciationTerminator="。",
+                pronunciationPunctuation=[
+                    PronunciationPunctuation(
+                        afterAccentPhrase=0,
+                        mark="。",
+                    )
+                ],
             ),
         ],
     )
@@ -64,7 +71,15 @@ class MixedLabTests(unittest.TestCase):
 
         self.assertIsNone(japanese.voicegerSegments)
         self.assertEqual(len(japanese.accent_phrases), 1)
+        self.assertEqual(
+            [
+                (entry.afterAccentPhrase, entry.mark)
+                for entry in japanese.pronunciationPunctuation
+            ],
+            [(0, "。")],
+        )
         self.assertEqual(english.accent_phrases, [])
+        self.assertIsNone(english.pronunciationPunctuation)
         self.assertEqual(
             english.voicegerSegments[0].phonemes,
             ["HH", "AH0", "L", "OW1"],
