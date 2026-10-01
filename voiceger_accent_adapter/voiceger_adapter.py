@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import sys
 from threading import RLock
+from types import MethodType
 from typing import Any, Optional
 
 from .english_stress import normalize_english_phonemes
@@ -456,6 +457,7 @@ class VoicegerAdapter:
         top_p: float = 1.0,
         temperature: float = 1.0,
         speed: float = 1.0,
+        mixed_lab_query: Any | None = None,
     ) -> dict[str, Any]:
         """Synthesize mixed-language text with Japanese/English G2P overrides."""
 
@@ -493,6 +495,103 @@ class VoicegerAdapter:
             get_tts_wav = self._runtime["get_tts_wav"]
             original_clean_text_inf = inference_webui.clean_text_inf
             original_japanese_g2p = japanese.g2p
+
+            capture_records: list[dict[str, Any]] = []
+            capture_errors: list[str] = []
+            capture_installed = False
+            capture_missing = object()
+            capture_original_instance = capture_missing
+            capture_model = None
+            expected_mixed_phone_ids = None
+            mixed_lab_spans = None
+
+            if mixed_lab_query is not None:
+                try:
+                    from .lab_mixed_attention import (
+                        build_mixed_lab_segment_spans,
+                        voiceger_ids_for_spans,
+                    )
+
+                    mixed_lab_spans = build_mixed_lab_segment_spans(
+                        mixed_lab_query
+                    )
+                    expected_mixed_phone_ids = voiceger_ids_for_spans(
+                        mixed_lab_spans,
+                        cleaned_text_to_sequence=(
+                            inference_webui.cleaned_text_to_sequence
+                        ),
+                        version=str(inference_webui.version),
+                    )
+                    capture_model = inference_webui.vq_model
+                    original_decode = capture_model.decode
+                    capture_original_instance = capture_model.__dict__.get(
+                        "decode",
+                        capture_missing,
+                    )
+
+                    def capture_decode(
+                        self,
+                        codes,
+                        text,
+                        refer,
+                        noise_scale=0.5,
+                        speed=1,
+                    ):
+                        decoded = original_decode(
+                            codes,
+                            text,
+                            refer,
+                            noise_scale=noise_scale,
+                            speed=speed,
+                        )
+                        try:
+                            attention = self.enc_p.mrte.cross_attention.attn
+                            if attention is None:
+                                raise RuntimeError(
+                                    "MRTE cross-attention is unavailable"
+                                )
+                            capture_records.append(
+                                {
+                                    "target_phone_ids": [
+                                        int(value)
+                                        for value in (
+                                            text.detach()
+                                            .cpu()
+                                            .reshape(-1)
+                                            .tolist()
+                                        )
+                                    ],
+                                    "attention": (
+                                        attention.detach()
+                                        .float()
+                                        .cpu()
+                                        .numpy()
+                                        .copy()
+                                    ),
+                                    "raw_speech_sample_count": int(
+                                        decoded.shape[-1]
+                                    ),
+                                    "raw_speech_sampling_rate": int(
+                                        inference_webui.hps.data.sampling_rate
+                                    ),
+                                }
+                            )
+                        except Exception as exc:
+                            capture_errors.append(
+                                f"{type(exc).__name__}: {exc}"
+                            )
+                        return decoded
+
+                    setattr(
+                        capture_model,
+                        "decode",
+                        MethodType(capture_decode, capture_model),
+                    )
+                    capture_installed = True
+                except Exception as exc:
+                    capture_errors.append(
+                        f"{type(exc).__name__}: {exc}"
+                    )
 
             japanese_override_queues = defaultdict(deque)
             for segment_text, tokens in japanese_overrides:
@@ -565,6 +664,15 @@ class VoicegerAdapter:
             finally:
                 inference_webui.clean_text_inf = original_clean_text_inf
                 japanese.g2p = original_japanese_g2p
+                if capture_installed and capture_model is not None:
+                    if capture_original_instance is capture_missing:
+                        delattr(capture_model, "decode")
+                    else:
+                        setattr(
+                            capture_model,
+                            "decode",
+                            capture_original_instance,
+                        )
 
             remaining_japanese = sum(
                 len(queue)
@@ -591,10 +699,69 @@ class VoicegerAdapter:
                 raise VoicegerAdapterError("Voiceger returned no audio")
 
             sample_rate, audio = results[-1]
-            return {
+            response = {
                 "audio": audio,
                 "sampling_rate": int(sample_rate),
             }
+
+            if mixed_lab_query is not None:
+                provenance = None
+                provenance_warning = None
+                if capture_errors:
+                    provenance_warning = (
+                        "mixed LAB timing capture failed: "
+                        + "; ".join(capture_errors)
+                    )
+                elif len(capture_records) != 1:
+                    provenance_warning = (
+                        "mixed LAB timing capture requires exactly one "
+                        f"Voiceger decode, got {len(capture_records)}"
+                    )
+                elif (
+                    expected_mixed_phone_ids is None
+                    or capture_records[0]["target_phone_ids"]
+                    != expected_mixed_phone_ids
+                ):
+                    provenance_warning = (
+                        "mixed LAB target phone IDs do not match the "
+                        "adapter-owned pronunciation"
+                    )
+                elif mixed_lab_spans is None:
+                    provenance_warning = (
+                        "mixed LAB segment phone spans are unavailable"
+                    )
+                else:
+                    try:
+                        from .lab_mixed_attention import (
+                            derive_mixed_lab_provenance,
+                        )
+
+                        provenance = derive_mixed_lab_provenance(
+                            mixed_lab_spans,
+                            capture_records[0]["attention"],
+                            raw_speech_sample_count=(
+                                capture_records[0][
+                                    "raw_speech_sample_count"
+                                ]
+                            ),
+                            raw_speech_sampling_rate=(
+                                capture_records[0][
+                                    "raw_speech_sampling_rate"
+                                ]
+                            ),
+                            raw_audio=audio,
+                        )
+                    except Exception as exc:
+                        provenance_warning = (
+                            "mixed LAB timing capture failed: "
+                            f"{type(exc).__name__}: {exc}"
+                        )
+                response["mixed_lab_provenance"] = provenance
+                response["mixed_lab_provenance_warning"] = (
+                    provenance_warning
+                )
+
+            return response
 
     def synthesize(
         self,
