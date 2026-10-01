@@ -472,7 +472,7 @@ class VoicegerIntegrationTests(unittest.TestCase):
             session = UtteranceSession.from_text(
                 adapter=adapter,
                 caption=text,
-                settings=Settings(style_id=1),
+                settings=Settings(style_id=3),
             )
             query_reading = "".join(
                 mora.text
