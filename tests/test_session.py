@@ -311,8 +311,15 @@ class UtteranceSessionTests(unittest.TestCase):
             with patch(
                 "voiceger_accent_adapter.session.synthesize_audio_query",
                 return_value=synthesis_result,
-            ), patch.dict("sys.modules", {"soundfile": fake_soundfile}):
+            ) as synthesize, patch.dict(
+                "sys.modules", {"soundfile": fake_soundfile}
+            ):
                 candidate = next(session.generate_takes())
+                self.assertTrue(
+                    synthesize.call_args.kwargs[
+                        "capture_mixed_lab_provenance"
+                    ]
+                )
                 candidate_wav = candidate.wav_path
                 session.replace_caption("later Caption")
                 with patch(
