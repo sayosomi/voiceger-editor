@@ -105,6 +105,7 @@ class TuiApp:
         self._exit_requested = False
         self._status = ""
         self._help_open = False
+        self._help_scroll = 0
         self._editor_controller = TuiEditorController(
             english_word_groups=self.adapter.english_word_phoneme_groups,
             available_styles=lambda: available_styles(self.adapter.voiceger_root),
@@ -185,6 +186,10 @@ class TuiApp:
             return _ESCAPE
         return key
 
+    def _open_help(self) -> None:
+        self._help_scroll = 0
+        self._help_open = True
+
     def _mark_adjustment_pressed(self, area: str, control: str, direction: int) -> None:
         self._pressed_adjustment = (
             area,
@@ -206,6 +211,29 @@ class TuiApp:
                 or resolve_shortcut("help", key) is not None
             ):
                 self._help_open = False
+                return
+            if key in {
+                curses.KEY_UP,
+                curses.KEY_DOWN,
+                curses.KEY_PPAGE,
+                curses.KEY_NPAGE,
+            }:
+                height, width = (
+                    self._screen.getmaxyx()
+                    if self._screen is not None
+                    else (24, 80)
+                )
+                max_scroll = self._renderer.help_max_scroll(height, width)
+                page_step = max(1, height - 3)
+                delta = {
+                    curses.KEY_UP: -1,
+                    curses.KEY_DOWN: 1,
+                    curses.KEY_PPAGE: -page_step,
+                    curses.KEY_NPAGE: page_step,
+                }[key]
+                self._help_scroll = max(
+                    0, min(max_scroll, self._help_scroll + delta)
+                )
             return
         if self._dictionary_controller.active:
             intents = self._dictionary_controller.handle_key(
@@ -439,7 +467,7 @@ class TuiApp:
             elif isinstance(action, OpenDictionary):
                 self._dispatch_editor_intents(self._dictionary_controller.open_menu())
             elif isinstance(action, OpenHelp):
-                self._help_open = True
+                self._open_help()
             elif isinstance(action, Quit):
                 self._activate_quit()
 
@@ -614,7 +642,7 @@ class TuiApp:
                     intent.area, intent.control, intent.direction
                 )
             elif isinstance(intent, OpenHelpIntent):
-                self._help_open = True
+                self._open_help()
             elif isinstance(intent, OpenDictionaryIntent):
                 pending[0:0] = self._dictionary_controller.open_menu()
             elif isinstance(intent, SaveToDictionaryIntent):
@@ -837,7 +865,9 @@ class TuiApp:
         except curses.error:
             pass
         if self._help_open:
-            self._renderer.render_help(screen, width)
+            self._help_scroll = self._renderer.render_help(
+                screen, width, self._help_scroll
+            )
         elif (
             self._dictionary_controller.active
             or self._editor_controller.editor is not None
