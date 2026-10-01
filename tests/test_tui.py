@@ -1780,28 +1780,28 @@ class TuiTests(unittest.TestCase):
 
     def test_settings_style_arrows_follow_available_order_without_wrapping(self):
         styles = (
-            SimpleNamespace(id=2, name="Sweet"),
-            SimpleNamespace(id=4, name="Sexy"),
-            SimpleNamespace(id=7, name="Exhausted"),
+            SimpleNamespace(id=3, name="Neutral"),
+            SimpleNamespace(id=1, name="Sweet"),
+            SimpleNamespace(id=22, name="Whispering"),
         )
         app = self.make_app()
         app._open_settings_editor("style_id")
         editor = app._editor_controller.editor
-        editor.payload["draft_settings"]["style_id"] = "4"
+        editor.payload["draft_settings"]["style_id"] = "1"
         with patch("voiceger_accent_adapter.tui.available_styles", return_value=styles):
             app._handle_key(curses.KEY_RIGHT)
-            self.assertEqual(editor.payload["draft_settings"]["style_id"], "7")
+            self.assertEqual(editor.payload["draft_settings"]["style_id"], "22")
             app._handle_key(curses.KEY_RIGHT)
-            self.assertEqual(editor.payload["draft_settings"]["style_id"], "7")
+            self.assertEqual(editor.payload["draft_settings"]["style_id"], "22")
             app._handle_key(curses.KEY_LEFT)
-            self.assertEqual(editor.payload["draft_settings"]["style_id"], "4")
-            editor.payload["draft_settings"]["style_id"] = "2"
+            self.assertEqual(editor.payload["draft_settings"]["style_id"], "1")
+            editor.payload["draft_settings"]["style_id"] = "3"
             app._handle_key(curses.KEY_LEFT)
-            self.assertEqual(editor.payload["draft_settings"]["style_id"], "2")
+            self.assertEqual(editor.payload["draft_settings"]["style_id"], "3")
 
     def test_adjustable_settings_enter_saves_the_full_draft_and_txt_enter_does_not_toggle(self):
         cases = (
-            ("style_id", "2", Settings(style_id=2)),
+            ("style_id", "22", Settings(style_id=22)),
             ("speed", "1.25", Settings(speed=1.25)),
             ("save_text", True, Settings(save_text=True)),
             ("save_lab", True, Settings(save_lab=True)),
@@ -2019,7 +2019,7 @@ class TuiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             config_path = Path(directory) / "settings.json"
             effective = Settings(
-                style_id=2,
+                style_id=22,
                 speed=1.25,
                 take_count=7,
                 output_dir=Path("/tmp/effective-output"),
@@ -2042,7 +2042,7 @@ class TuiTests(unittest.TestCase):
             app._handle_key("\n")
 
             target = Settings(
-                style_id=2,
+                style_id=22,
                 speed=1.25,
                 take_count=7,
                 output_dir=Path("/tmp/explicit-output"),
@@ -2053,7 +2053,7 @@ class TuiTests(unittest.TestCase):
             self.assertEqual(json.loads(config_path.read_text()), {
                 "output_dir": "/tmp/explicit-output",
                 "take_count": 7,
-                "style_id": 2,
+                "style_id": 22,
                 "speed": 1.25,
                 "top_k": 20,
                 "top_p": 1.0,
