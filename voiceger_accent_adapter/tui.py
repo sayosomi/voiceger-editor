@@ -5,14 +5,11 @@ from __future__ import annotations
 import curses
 from dataclasses import replace
 import os
-import sys
 from typing import Any, Sequence
 
 from .session import UtteranceSession
-from .settings import Settings, SettingsError, load_settings, save_settings
+from .settings import Settings, save_settings
 from .styles import available_styles
-from .takes import cleanup_stale_take_directories
-from .tui_cli import build_argument_parser, settings_for_invocation
 from .tui_display import _adjustable_value, format_english_phonemes
 from .tui_dictionary import TuiDictionaryController
 from .tui_rendering import (
@@ -77,11 +74,6 @@ from .tui_navigation import (
     UpdateNavigationStatus,
 )
 from .voiceger_adapter import VoicegerAdapter
-from .voiceger_environment import (
-    VoicegerEnvironmentError,
-    check_voiceger_environment,
-    format_voiceger_environment_report,
-)
 
 
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
@@ -866,48 +858,11 @@ class TuiApp:
 
 
 
+
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_argument_parser().parse_args(argv)
-    environment = check_voiceger_environment(args.voiceger_root)
+    from .entrypoint import main as run
 
-    if args.check:
-        print(format_voiceger_environment_report(environment))
-        return 0 if environment.ready else 2
-
-    if not environment.ready:
-        print(str(VoicegerEnvironmentError(environment)), file=sys.stderr)
-        return 2
-
-    for warning in environment.warnings:
-        print(f"Voiceger setup warning: {warning.message}", file=sys.stderr)
-
-    cleanup_stale_take_directories()
-    try:
-        persisted_settings = load_settings(args.config)
-        settings = settings_for_invocation(args, persisted_settings)
-    except (SettingsError, ValueError) as exc:
-        print(f"Cannot load settings: {exc}", file=sys.stderr)
-        return 2
-    adapter = VoicegerAdapter(
-        voiceger_root=environment.voiceger_root,
-        output_dir=settings.output_dir,
-    )
-    app = TuiApp(
-        adapter=adapter,
-        settings=settings,
-        persisted_settings=persisted_settings,
-        config_path=args.config,
-        source_text=args.text,
-    )
-    try:
-        curses.wrapper(app.run)
-    except curses.error as exc:
-        print(
-            f"The terminal UI could not start: {exc}. Run this command in a real terminal.",
-            file=sys.stderr,
-        )
-        return 2
-    return 0
+    return run(argv)
 
 
 if __name__ == "__main__":
