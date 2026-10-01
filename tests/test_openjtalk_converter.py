@@ -97,6 +97,66 @@ class OpenJTalkConverterTests(unittest.TestCase):
         )
         self.assertIsNone(without_terminator.terminator)
 
+    def test_supported_punctuation_is_preserved_in_sequence(self):
+        for symbol, expected in (
+            ("。", "。"),
+            ("、", "、"),
+            ("？", "？"),
+            ("！", "！"),
+            ("…", "…"),
+        ):
+            with self.subTest(symbol=symbol):
+                features = [
+                    node("アメ", acc=1, mora_size=2),
+                    node(symbol, acc=0, mora_size=0, string=symbol, pos="記号"),
+                    node("ソウ", acc=1, mora_size=2),
+                ]
+                self.assertEqual(
+                    text_to_pronunciation_string(
+                        "dummy", run_frontend=lambda _text, f=features: f
+                    ),
+                    "ア'メ" + expected + "ソ'ウ",
+                )
+
+    def test_ascii_and_comma_like_symbols_are_canonicalized(self):
+        for symbol, expected in (
+            (".", "。"),
+            (",", "、"),
+            ("?", "？"),
+            ("!", "！"),
+            ("，", "、"),
+            ("：", "、"),
+            ("；", "、"),
+            ("·", "、"),
+        ):
+            with self.subTest(symbol=symbol):
+                features = [
+                    node("アメ", acc=1, mora_size=2),
+                    node(symbol, acc=0, mora_size=0, string=symbol, pos="記号"),
+                ]
+                self.assertEqual(
+                    text_to_pronunciation_string(
+                        "dummy", run_frontend=lambda _text, f=features: f
+                    ),
+                    "ア'メ" + expected,
+                )
+
+    def test_multiple_punctuation_positions_keep_original_order(self):
+        features = [
+            node("エ", acc=1, mora_size=1),
+            node("？", acc=0, mora_size=0, string="？", pos="記号"),
+            node("ソウ", acc=1, mora_size=2),
+            node("、", acc=0, mora_size=0, string="、", pos="記号"),
+            node("ホントウ", acc=2, mora_size=4),
+            node("！", acc=0, mora_size=0, string="！", pos="記号"),
+        ]
+        self.assertEqual(
+            text_to_pronunciation_string(
+                "dummy", run_frontend=lambda _: features
+            ),
+            "エ'？ソ'ウ、ホン'トウ！",
+        )
+
     def test_digraph_counts_as_one_mora(self):
         features = [node("キャク", acc=1, mora_size=2)]
         self.assertEqual(
