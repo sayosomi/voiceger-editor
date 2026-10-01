@@ -50,7 +50,7 @@ _ESCAPE = "\x1b"
 _SETTINGS_SECTIONS = (
     ("style_id", "speed"),
     ("take_count",),
-    ("output_dir", "save_text"),
+    ("output_dir", "save_text", "save_lab"),
     ("top_k", "top_p", "temperature", "reset_sampling"),
     ("apply", "reset", "back"),
 )
@@ -330,6 +330,7 @@ class TuiEditorController:
             "take_count": str(settings.take_count),
             "output_dir": str(settings.output_dir),
             "save_text": settings.save_text,
+            "save_lab": settings.save_lab,
             "top_k": str(settings.top_k),
             "top_p": f"{settings.top_p:.2f}",
             "temperature": f"{settings.temperature:.2f}",
@@ -1047,7 +1048,7 @@ class TuiEditorController:
             if selected == "back":
                 return self.cancel()
         elif editor.kind == "settings":
-            if selected in {"style_id", "speed", "save_text", "apply"}:
+            if selected in {"style_id", "speed", "save_text", "save_lab", "apply"}:
                 return self.apply(settings, query, current_caption)
             if selected in {
                 "take_count", "output_dir", "top_k", "top_p", "temperature"
@@ -1618,6 +1619,7 @@ class TuiEditorController:
                 take_count=int(draft["take_count"]),
                 output_dir=Path(draft["output_dir"]),
                 save_text=draft["save_text"],
+                save_lab=draft["save_lab"],
                 top_k=int(draft["top_k"]),
                 top_p=float(draft["top_p"]),
                 temperature=float(draft["temperature"]),
@@ -1755,7 +1757,7 @@ class TuiEditorController:
         draft = editor.payload["draft_settings"]
         selected = editor.selection
         if selected not in {
-            "style_id", "speed", "take_count", "save_text",
+            "style_id", "speed", "take_count", "save_text", "save_lab",
             "top_k", "top_p", "temperature",
         }:
             return ()
@@ -1854,7 +1856,7 @@ class TuiEditorController:
                 editor.error = ""
                 return clear_feedback
             draft[selected] = f"{updated:.2f}"
-        elif selected == "save_text":
-            draft["save_text"] = not bool(draft["save_text"])
+        elif selected in {"save_text", "save_lab"}:
+            draft[selected] = not bool(draft[selected])
         editor.error = ""
         return (feedback,)

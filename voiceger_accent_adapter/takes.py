@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, replace
 import os
 from pathlib import Path
 import shutil
@@ -10,7 +11,9 @@ import tempfile
 import time
 from typing import Any, Callable, Iterator, Mapping
 
+from .lab import LabSidecarResult, save_lab_sidecar
 from .output import SavedOutput, save_output_wav
+from .voicevox_api_models import AudioQuery
 
 
 _TAKE_TEMP_PREFIX = "voiceger-takes-"
@@ -99,6 +102,7 @@ class TakeCandidate:
     frame_count: int
     source_text: str
     style_name: str
+    query: AudioQuery | None = None
 
 
 class TakeBatch:
@@ -111,6 +115,7 @@ class TakeBatch:
         synthesize_one: Callable[[], Mapping[str, Any]],
         style_name: str,
         source_text: str,
+        query: AudioQuery | None = None,
     ) -> None:
         if (
             isinstance(take_count, bool)
@@ -125,6 +130,7 @@ class TakeBatch:
         self.synthesize_one = synthesize_one
         self._style_name = style_name
         self._source_text = source_text
+        self._query = deepcopy(query)
 
         self._temporary_directory = tempfile.TemporaryDirectory(
             prefix=_TAKE_TEMP_PREFIX
@@ -209,6 +215,7 @@ class TakeBatch:
         *,
         output_dir: Path,
         save_text: bool,
+        save_lab: bool = False,
     ) -> SavedOutput:
         """Save the selected candidate using its generation provenance."""
 
@@ -218,13 +225,32 @@ class TakeBatch:
         if candidate is None:
             raise ValueError(f"take {number} has no generated candidate")
 
-        saved = save_output_wav(
-            wav_source=candidate.wav_path,
-            source_text=candidate.source_text,
-            style_name=candidate.style_name,
-            output_dir=output_dir,
-            save_text=save_text,
-        )
+        save_kwargs = {
+            "wav_source": candidate.wav_path,
+            "source_text": candidate.source_text,
+            "style_name": candidate.style_name,
+            "output_dir": output_dir,
+            "save_text": save_text,
+        }
+        if save_lab:
+            save_kwargs["avoid_lab_collision"] = True
+        saved = save_output_wav(**save_kwargs)
+
+        if save_lab:
+            if candidate.query is None:
+                lab_result = LabSidecarResult(
+                    warning="LAB generation failed: accepted take has no query snapshot"
+                )
+            else:
+                lab_result = save_lab_sidecar(
+                    wav_path=saved.wav_path,
+                    query=deepcopy(candidate.query),
+                )
+            saved = replace(
+                saved,
+                lab_path=lab_result.path,
+                lab_warning=lab_result.warning,
+            )
         self.close()
         return saved
 
@@ -284,6 +310,7 @@ class TakeBatch:
             frame_count=frame_count,
             source_text=self.source_text,
             style_name=self.style_name,
+            query=deepcopy(self._query),
         )
 
     def _ensure_open(self) -> None:

@@ -572,10 +572,20 @@ class TuiOperations:
                 UpdateStatusEffect(f"Error: Could not save take {number}: {exc}"),
             )
         self.current_take = None
-        sidecar = f" and {saved.text_path.name}" if saved.text_path else ""
+        sidecars = []
+        if saved.text_path is not None:
+            sidecars.append(saved.text_path.name)
+        lab_path = getattr(saved, "lab_path", None)
+        if lab_path is not None:
+            sidecars.append(lab_path.name)
+        names = [saved.wav_path.name, *sidecars]
+        status = f"Saved {' and '.join(names)}."
+        lab_warning = getattr(saved, "lab_warning", None)
+        if lab_warning:
+            status += f" {lab_warning}"
         return (
             FocusEffect(("pronunciation", pronunciation_index)),
-            UpdateStatusEffect(f"Saved {saved.wav_path.name}{sidecar}."),
+            UpdateStatusEffect(status),
         )
 
     def join_worker(self) -> None:

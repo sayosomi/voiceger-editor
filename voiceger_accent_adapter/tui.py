@@ -280,7 +280,7 @@ class TuiApp:
             "v": "speed",
             "n": "take_count",
             "o": "output_dir",
-            "x": "save_text",
+            "x": "save_text", "l": "save_lab",
         }
         if key in setting_shortcuts:
             self._open_settings_editor(setting_shortcuts[key])
