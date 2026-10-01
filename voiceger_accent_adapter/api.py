@@ -10,6 +10,7 @@ from typing import List
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from ._version import __version__
 from .mixed_language import build_mixed_audio_query
 from .openjtalk_converter import OpenJTalkConversionError
 from .openjtalk_dictionary import OpenJTalkDictionaryError
@@ -37,7 +38,7 @@ from .voicevox_query import (
 
 app = FastAPI(
     title="voiceger-accent-adapter",
-    version="0.1.0-dev",
+    version=__version__,
 )
 
 
@@ -58,7 +59,7 @@ def _resolve_style(speaker: int):
 def root():
     return {
         "name": "voiceger-accent-adapter",
-        "version": "0.1.0-dev",
+        "version": __version__,
         "endpoints": [
             "/version",
             "/speakers",
@@ -78,7 +79,7 @@ def root():
 def version():
     """Return an engine-style version string."""
 
-    return "0.1.0-dev"
+    return __version__
 
 
 @app.get("/speakers")

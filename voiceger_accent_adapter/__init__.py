@@ -1,5 +1,6 @@
 """Core package for voiceger-accent-adapter."""
 
+from ._version import __version__
 from .openjtalk_converter import (
     OpenJTalkConversionError,
     frontend_features_to_pronunciation,
@@ -27,6 +28,7 @@ from .user_dictionary import (
 )
 
 __all__ = [
+    "__version__",
     "AccentPhrase",
     "OpenJTalkConversionError",
     "Pronunciation",

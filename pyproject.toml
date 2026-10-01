@@ -4,9 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voiceger-accent-adapter"
-version = "0.0.0"
-description = "Japanese pronunciation and pitch-accent adapter for Voiceger"
-requires-python = ">=3.9"
+dynamic = ["version"]
+description = "Pronunciation and synthesis control adapter for Voiceger"
+readme = "README.md"
+requires-python = "==3.9.*"
 license = "MIT"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 dependencies = [
@@ -28,8 +29,15 @@ lab = [
   "pocketsphinx==5.1.1",
 ]
 
+[project.urls]
+Repository = "https://github.com/sayosomi/voiceger-accent-adapter"
+Issues = "https://github.com/sayosomi/voiceger-accent-adapter/issues"
+
 [project.scripts]
 voiceger-accent-adapter = "voiceger_accent_adapter.tui:main"
 
 [tool.setuptools.packages.find]
 include = ["voiceger_accent_adapter*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "voiceger_accent_adapter._version.__version__"}
