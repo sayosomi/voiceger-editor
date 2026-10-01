@@ -170,16 +170,16 @@ Production LAB sidecar behavior is specified in:
 
 Voiceger's local reference audio files are available as selectable styles.
 
-Current presets include:
+Current presets use the corresponding VOICEVOX Zundamon style IDs:
 
-- Neutral
-- Sweet
-- Snippy
-- Sexy
-- Whispering
-- Murmuring
-- Exhausted
-- Sobbing
+- Neutral — `3`
+- Sweet — `1`
+- Snippy — `7`
+- Sexy — `5`
+- Whispering — `22`
+- Murmuring — `38`
+- Exhausted — `75`
+- Sobbing — `76`
 
 Only reference audio that exists in the user's local Voiceger installation is used.
 
