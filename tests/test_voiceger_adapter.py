@@ -8,7 +8,11 @@ import sys
 from unittest.mock import patch
 
 from voiceger_accent_adapter.output import SavedOutput
-from voiceger_accent_adapter.pronunciation import AccentPhrase, Pronunciation
+from voiceger_accent_adapter.pronunciation import (
+    AccentPhrase,
+    Pronunciation,
+    parse_pronunciation,
+)
 from voiceger_accent_adapter.runtime_locks import OPENJTALK_LOCK
 from voiceger_accent_adapter.voiceger_adapter import (
     VoicegerAdapter,
@@ -58,6 +62,34 @@ class ResolvePronunciationTests(unittest.TestCase):
             ("雨?", "？"),
             ("雨！", "！"),
             ("雨!", "！"),
+        ):
+            with self.subTest(source=source):
+                text, _, resolved = resolve_pronunciation(source, "ア'メ")
+                self.assertEqual(text, source)
+                self.assertEqual(resolved, "ア'メ" + expected)
+
+    def test_manual_pronunciation_preserves_internal_punctuation_and_aliases(self):
+        text, parsed, resolved = resolve_pronunciation(
+            "雨、飴！",
+            "ア'メ,アメ'!",
+        )
+
+        self.assertEqual(text, "雨、飴！")
+        self.assertEqual(resolved, "ア'メ、アメ'！")
+        self.assertEqual(
+            pronunciation_to_spoken_text(parsed),
+            "アメ、アメ！",
+        )
+
+    def test_source_pause_and_ellipsis_punctuation_are_preserved(self):
+        for source, expected in (
+            ("雨、", "、"),
+            ("雨,", "、"),
+            ("雨，", "、"),
+            ("雨：", "、"),
+            ("雨；", "、"),
+            ("雨·", "、"),
+            ("雨…", "…"),
         ):
             with self.subTest(source=source):
                 text, _, resolved = resolve_pronunciation(source, "ア'メ")
@@ -115,6 +147,13 @@ class ResolvePronunciationTests(unittest.TestCase):
         self.assertEqual(
             pronunciation_to_spoken_text(value),
             "キョーワアメ。",
+        )
+
+    def test_pronunciation_rebuilds_spoken_text_with_internal_punctuation(self):
+        value = parse_pronunciation("ア'メ、アメ'…ア'メ？")
+        self.assertEqual(
+            pronunciation_to_spoken_text(value),
+            "アメ、アメ…アメ？",
         )
 
     def test_rejects_newlines(self):
