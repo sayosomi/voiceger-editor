@@ -24,6 +24,7 @@ from .synthesis import _query_terminator
 from .voicevox_api_models import AudioQuery, VoicegerSegment
 from .voicevox_query import (
     accent_phrases_to_pronunciation,
+    pronunciation_punctuation,
     pronunciation_to_accent_phrases,
 )
 
@@ -195,6 +196,7 @@ def japanese_pronunciation(
     if segment is None:
         pronunciation = accent_phrases_to_pronunciation(
             query.accent_phrases,
+            punctuation=query.pronunciationPunctuation,
             terminator=_pure_japanese_terminator(query),
         )
         return format_pronunciation(pronunciation)
@@ -204,6 +206,7 @@ def japanese_pronunciation(
     assert start is not None and count is not None
     pronunciation = accent_phrases_to_pronunciation(
         query.accent_phrases[start : start + count],
+        punctuation=segment.pronunciationPunctuation,
         terminator=resolve_japanese_segment_terminator(segment),
     )
     return format_pronunciation(pronunciation)
@@ -224,6 +227,7 @@ def replace_japanese_pronunciation(
         updated = query.model_copy(deep=True)
         updated.accent_phrases = pronunciation_to_accent_phrases(parsed)
         updated.kana = format_pronunciation(parsed)
+        updated.pronunciationPunctuation = pronunciation_punctuation(parsed)
         return updated
 
     parsed = _parse_replacement(pronunciation)
@@ -240,6 +244,9 @@ def replace_japanese_pronunciation(
     assert updated.voicegerSegments is not None
     updated.voicegerSegments[segment_index].pronunciationTerminator = (
         parsed.terminator or ""
+    )
+    updated.voicegerSegments[segment_index].pronunciationPunctuation = (
+        pronunciation_punctuation(parsed)
     )
 
     next_offset = 0
@@ -287,6 +294,7 @@ def japanese_preview_query(
     phrases = updated.accent_phrases[start : start + count]
     pronunciation_value = accent_phrases_to_pronunciation(
         phrases,
+        punctuation=segment.pronunciationPunctuation,
         terminator=resolve_japanese_segment_terminator(segment),
     )
 
@@ -294,6 +302,9 @@ def japanese_preview_query(
     preview.accent_phrases = preview.accent_phrases[start : start + count]
     preview.voicegerSegments = None
     preview.kana = format_pronunciation(pronunciation_value)
+    preview.pronunciationPunctuation = pronunciation_punctuation(
+        pronunciation_value
+    )
     return preview
 
 
@@ -315,6 +326,9 @@ def replace_japanese_section_text(
     if segment is None:
         updated.accent_phrases = replacement_phrases
         updated.kana = format_pronunciation(pronunciation)
+        updated.pronunciationPunctuation = pronunciation_punctuation(
+            pronunciation
+        )
         return updated
 
     start = segment.accentPhraseStart
@@ -330,6 +344,9 @@ def replace_japanese_section_text(
     changed_segment.text = text
     changed_segment.accentPhraseCount = len(replacement_phrases)
     changed_segment.pronunciationTerminator = pronunciation.terminator or ""
+    changed_segment.pronunciationPunctuation = pronunciation_punctuation(
+        pronunciation
+    )
 
     next_offset = 0
     for updated_segment in updated.voicegerSegments:
@@ -360,11 +377,13 @@ def _isolated_japanese_segment_query(
     phrases = preview.accent_phrases[start : start + count]
     pronunciation = accent_phrases_to_pronunciation(
         phrases,
+        punctuation=segment.pronunciationPunctuation,
         terminator=resolve_japanese_segment_terminator(segment),
     )
     preview.accent_phrases = phrases
     preview.voicegerSegments = None
     preview.kana = format_pronunciation(pronunciation)
+    preview.pronunciationPunctuation = pronunciation_punctuation(pronunciation)
     return preview
 
 
@@ -474,9 +493,11 @@ def _explicit_query_for_append(
             accentPhraseStart=0,
             accentPhraseCount=len(updated.accent_phrases),
             pronunciationTerminator=_query_terminator(query) or "",
+            pronunciationPunctuation=updated.pronunciationPunctuation,
         )
     ]
     updated.kana = None
+    updated.pronunciationPunctuation = None
     return updated
 
 
@@ -503,6 +524,7 @@ def append_japanese_section(
             accentPhraseStart=start,
             accentPhraseCount=len(phrases),
             pronunciationTerminator=pronunciation.terminator or "",
+            pronunciationPunctuation=pronunciation_punctuation(pronunciation),
         )
     )
     return updated
@@ -579,10 +601,14 @@ def delete_utterance_section(
         updated.accent_phrases = updated.accent_phrases[start : start + count]
         pronunciation = accent_phrases_to_pronunciation(
             updated.accent_phrases,
+            punctuation=remaining.pronunciationPunctuation,
             terminator=resolve_japanese_segment_terminator(remaining),
         )
         updated.voicegerSegments = None
         updated.kana = format_pronunciation(pronunciation)
+        updated.pronunciationPunctuation = pronunciation_punctuation(
+            pronunciation
+        )
         return updated, remaining.text
 
     return updated, None
@@ -608,6 +634,7 @@ def _refresh_pure_japanese_kana(query: AudioQuery) -> None:
         return
     pronunciation = accent_phrases_to_pronunciation(
         query.accent_phrases,
+        punctuation=query.pronunciationPunctuation,
         terminator=_pure_japanese_terminator(query),
     )
     query.kana = format_pronunciation(pronunciation)
