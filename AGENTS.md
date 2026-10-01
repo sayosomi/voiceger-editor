@@ -2,7 +2,7 @@
 
 ## Development routing
 
-Route all development work through this repository's `README.md` and the fixed [voiceger-editor project context](https://github.com/sayosomi/dev-context/blob/main/projects/voiceger-editor/README.md).
+Route all development work through this repository's `README.md` and the fixed [voiceger-editor project context](https://github.com/sayosomi/dev-context/blob/main/projects/voiceger-accent-adapter/README.md).
 
 Load the shared documents routed from that entrypoint when their topics apply. In particular:
 
