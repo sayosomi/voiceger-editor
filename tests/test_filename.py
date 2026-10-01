@@ -8,37 +8,47 @@ from voiceger_accent_adapter.filename import (
 
 
 class FileNameTests(unittest.TestCase):
-    def test_filename_uses_local_timestamp_style_and_full_source(self):
+    def test_filename_uses_local_minute_timestamp_and_full_source(self):
         self.assertEqual(
             build_output_filename(
-                style_name="Neutral",
                 text="今日はhelloと言うよ。",
                 timestamp=datetime(2026, 9, 28, 1, 45, 32),
             ),
-            "20260928014532_Neutral_今日はhelloと言うよ。.wav",
+            "202609280145_今日はhelloと言うよ。.wav",
         )
+
+    def test_filename_ignores_seconds(self):
+        source = "同じ分です。"
+        first = build_output_filename(
+            text=source,
+            timestamp=datetime(2026, 10, 1, 20, 45, 0),
+        )
+        second = build_output_filename(
+            text=source,
+            timestamp=datetime(2026, 10, 1, 20, 45, 59),
+        )
+        self.assertEqual(first, "202610012045_同じ分です。.wav")
+        self.assertEqual(second, first)
 
     def test_filename_does_not_truncate_source_longer_than_old_limit(self):
         source = "12345678901とても長い発話です。"
         result = build_output_filename(
-            style_name="Murmuring",
             text=source,
             timestamp=datetime(2026, 9, 27, 17, 55, 6),
         )
         self.assertEqual(
             result,
-            f"20260927175506_Murmuring_{source}.wav",
+            f"202609271755_{source}.wav",
         )
         self.assertNotIn("…", result)
 
-    def test_style_and_source_filename_characters_are_sanitized(self):
+    def test_source_filename_characters_are_sanitized(self):
         self.assertEqual(
             build_output_filename(
-                style_name='Ne/utr:al?',
                 text='a/b:c?"d*e|f123456',
                 timestamp=datetime(2026, 9, 27, 17, 55, 6),
             ),
-            "20260927175506_Neutral_abcdef123456.wav",
+            "202609271755_abcdef123456.wav",
         )
 
     def test_invalid_filename_characters_are_removed(self):

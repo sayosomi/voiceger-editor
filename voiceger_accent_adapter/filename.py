@@ -18,13 +18,11 @@ def sanitize_filename_part(value: str) -> str:
 
 def build_output_filename(
     *,
-    style_name: str,
     text: str,
     timestamp: Optional[datetime] = None,
 ) -> str:
-    """Build a timestamped WAV filename with its style and complete source."""
+    """Build a minute-resolution timestamped WAV filename from source text."""
 
     local_time = timestamp if timestamp is not None else datetime.now()
-    style = sanitize_filename_part(style_name)
     source = sanitize_filename_part(text)
-    return f"{local_time:%Y%m%d%H%M%S}_{style}_{source}.wav"
+    return f"{local_time:%Y%m%d%H%M}_{source}.wav"

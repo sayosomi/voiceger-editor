@@ -23,7 +23,7 @@ class OutputSaveTests(unittest.TestCase):
         module.write = write
         return module
 
-    def save(self, root, source_text, *, save_text=False):
+    def save(self, root, source_text, *, save_text=False, style_name="Neutral"):
         with patch.dict(
             "sys.modules",
             {"soundfile": self.fake_soundfile_module()},
@@ -32,18 +32,37 @@ class OutputSaveTests(unittest.TestCase):
                 audio=[0.0],
                 sampling_rate=32000,
                 source_text=source_text,
-                style_name="Neutral",
+                style_name=style_name,
                 output_dir=root,
                 save_text=save_text,
                 timestamp=self.timestamp,
             )
+
+    def test_style_does_not_change_output_basename(self):
+        source_text = "ファイル名"
+        with (
+            tempfile.TemporaryDirectory() as first_directory,
+            tempfile.TemporaryDirectory() as second_directory,
+        ):
+            first = self.save(
+                Path(first_directory),
+                source_text,
+                style_name="Neutral",
+            )
+            second = self.save(
+                Path(second_directory),
+                source_text,
+                style_name="Sweet",
+            )
+
+        self.assertEqual(first.wav_path.name, "202609271755_ファイル名.wav")
+        self.assertEqual(second.wav_path.name, first.wav_path.name)
 
     def test_wav_collision_adds_deterministic_suffix_without_overwriting(self):
         source_text = "今日は雨ですね。"
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             existing = root / build_output_filename(
-                style_name="Neutral",
                 text=source_text,
                 timestamp=self.timestamp,
             )
@@ -59,7 +78,6 @@ class OutputSaveTests(unittest.TestCase):
     def test_paired_output_skips_basename_if_either_target_exists(self):
         source_text = "雨です。\r\n 次です。"
         initial_wav = build_output_filename(
-            style_name="Neutral",
             text=source_text,
             timestamp=self.timestamp,
         )
@@ -134,7 +152,6 @@ class OutputSaveTests(unittest.TestCase):
             )
 
             expected_name = build_output_filename(
-                style_name="Sweet",
                 text=source_text,
                 timestamp=self.timestamp,
             )
@@ -152,7 +169,6 @@ class OutputSaveTests(unittest.TestCase):
             output_dir = root / "output"
             output_dir.mkdir()
             initial_name = build_output_filename(
-                style_name="Neutral",
                 text=source_text,
                 timestamp=self.timestamp,
             )
