@@ -5,9 +5,20 @@ from __future__ import annotations
 import curses
 import sys
 from typing import Sequence
+import webbrowser
 
 from .settings import SettingsError, load_settings
 from .takes import cleanup_stale_take_directories
+from .terms_acceptance import (
+    OFFICIAL_TERMS_URL,
+    VoicegerTermsAcceptanceError,
+    current_acceptance_status,
+    format_acceptance_status,
+    format_current_notice,
+    preferred_notice_language,
+    record_explicit_acceptance,
+    require_current_acceptance,
+)
 from .tui_cli import build_argument_parser, settings_for_invocation
 from .voiceger_adapter import VoicegerAdapter
 from .voiceger_environment import (
@@ -17,8 +28,138 @@ from .voiceger_environment import (
 )
 
 
+def _open_official_terms() -> bool:
+    try:
+        opened = webbrowser.open(OFFICIAL_TERMS_URL)
+    except Exception as exc:
+        opened = False
+        reason = str(exc)
+    else:
+        reason = ""
+
+    if opened:
+        return True
+
+    detail = f" ({reason})" if reason else ""
+    print(
+        "Could not open a browser. Open the official terms manually at "
+        f"{OFFICIAL_TERMS_URL}{detail}",
+        file=sys.stderr,
+    )
+    return False
+
+
+def _run_terms_action(args) -> int | None:
+    if args.accept_voiceger_terms:
+        print(format_current_notice())
+        try:
+            record_explicit_acceptance()
+        except OSError as exc:
+            print(f"Cannot save Voiceger terms acceptance: {exc}", file=sys.stderr)
+            return 2
+        print("Voiceger:Zundamon terms acceptance saved.")
+        return 0
+
+    if args.voiceger_terms_status:
+        status = current_acceptance_status()
+        print(format_acceptance_status(status))
+        return 0 if status.accepted else 2
+
+    if args.open_voiceger_terms:
+        print(format_current_notice())
+        return 0 if _open_official_terms() else 2
+
+    return None
+
+
+def _require_tui_terms_acceptance() -> bool:
+    status = current_acceptance_status()
+    if status.accepted:
+        try:
+            require_current_acceptance()
+        except VoicegerTermsAcceptanceError as exc:
+            print(str(exc), file=sys.stderr)
+            return False
+        return True
+
+    if not sys.stdin.isatty():
+        try:
+            require_current_acceptance()
+        except VoicegerTermsAcceptanceError as exc:
+            print(str(exc), file=sys.stderr)
+        return False
+
+    language = preferred_notice_language()
+    while True:
+        print(format_current_notice(language))
+        print()
+        if language == "ja":
+            print("[O] 公式利用規約を開く")
+            print("[A] 同意して続ける")
+            print("[E] English")
+            print("[Q] 終了")
+            prompt = "選択: "
+            invalid_message = "O / A / E / Q のいずれかを入力してください。"
+        else:
+            print("[O] Open the official terms")
+            print("[A] Accept and continue")
+            print("[J] 日本語")
+            print("[Q] Quit")
+            prompt = "Choice: "
+            invalid_message = "Enter O, A, J, or Q."
+
+        try:
+            answer = input(prompt).strip().lower()
+        except (EOFError, OSError):
+            return False
+
+        if answer == "a":
+            try:
+                record_explicit_acceptance()
+                require_current_acceptance()
+            except (OSError, VoicegerTermsAcceptanceError) as exc:
+                print(
+                    "Cannot continue without current Voiceger terms acceptance: "
+                    f"{exc}",
+                    file=sys.stderr,
+                )
+                return False
+            return True
+
+        if answer == "o":
+            _open_official_terms()
+            continue
+
+        if language == "ja" and answer == "e":
+            language = "en"
+            continue
+
+        if language == "en" and answer == "j":
+            language = "ja"
+            continue
+
+        if answer == "q":
+            return False
+
+        print(invalid_message, file=sys.stderr)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_argument_parser().parse_args(argv)
+    parser = build_argument_parser()
+    args = parser.parse_args(argv)
+
+    if args.text is not None and (
+        args.check
+        or args.accept_voiceger_terms
+        or args.voiceger_terms_status
+        or args.open_voiceger_terms
+    ):
+        parser.error("a management action cannot be combined with synthesis text")
+
+    terms_action_result = _run_terms_action(args)
+    if terms_action_result is not None:
+        return terms_action_result
+
     environment = check_voiceger_environment(args.voiceger_root)
 
     if args.check:
@@ -31,6 +172,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     for warning in environment.warnings:
         print(f"Voiceger setup warning: {warning.message}", file=sys.stderr)
+
+    if not _require_tui_terms_acceptance():
+        return 2
 
     cleanup_stale_take_directories()
     try:

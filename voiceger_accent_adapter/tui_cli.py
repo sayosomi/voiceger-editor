@@ -15,10 +15,26 @@ def build_argument_parser() -> argparse.ArgumentParser:
         description="Keyboard-first local pronunciation editing and take review.",
     )
     parser.add_argument("text", nargs="?", help="one utterance to edit and synthesize")
-    parser.add_argument(
+    actions = parser.add_mutually_exclusive_group()
+    actions.add_argument(
         "--check",
         action="store_true",
         help="check the local Voiceger environment and exit",
+    )
+    actions.add_argument(
+        "--accept-voiceger-terms",
+        action="store_true",
+        help="review and explicitly accept the Voiceger:Zundamon terms",
+    )
+    actions.add_argument(
+        "--voiceger-terms-status",
+        action="store_true",
+        help="show whether current Voiceger:Zundamon terms are accepted",
+    )
+    actions.add_argument(
+        "--open-voiceger-terms",
+        action="store_true",
+        help="show the notice and open the official Voiceger:Zundamon terms",
     )
     parser.add_argument("--voiceger-root", type=Path, help="Voiceger installation path")
     parser.add_argument("--config", type=Path, help="settings file path")

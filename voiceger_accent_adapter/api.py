@@ -21,6 +21,10 @@ from .pronunciation import (
 )
 from .synthesis import synthesize_audio_query
 from .styles import available_styles, get_style
+from .terms_acceptance import (
+    VoicegerTermsAcceptanceError,
+    require_current_acceptance,
+)
 from .voiceger_environment import (
     VoicegerEnvironmentError,
     require_voiceger_environment,
@@ -49,6 +53,7 @@ app = FastAPI(
 
 @lru_cache(maxsize=1)
 def get_adapter() -> VoicegerAdapter:
+    require_current_acceptance()
     environment = require_voiceger_environment()
     for warning in environment.warnings:
         warnings.warn(
@@ -62,6 +67,14 @@ def get_adapter() -> VoicegerAdapter:
 @app.exception_handler(VoicegerEnvironmentError)
 async def _voiceger_environment_error(_request, exc: VoicegerEnvironmentError):
     return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+@app.exception_handler(VoicegerTermsAcceptanceError)
+async def _voiceger_terms_acceptance_error(
+    _request,
+    exc: VoicegerTermsAcceptanceError,
+):
+    return JSONResponse(status_code=403, content={"detail": str(exc)})
 
 
 def _resolve_style(speaker: int):
@@ -206,6 +219,7 @@ def synthesis(
 ):
     """Synthesize a WAV from a VOICEVOX-style AudioQuery."""
 
+    require_current_acceptance()
     style = _resolve_style(speaker)
 
     try:

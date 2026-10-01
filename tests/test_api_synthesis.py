@@ -10,8 +10,14 @@ from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
+from voiceger_accent_adapter import api
 from voiceger_accent_adapter.api import app
 from voiceger_accent_adapter.styles import VoicegerStyle
+from voiceger_accent_adapter.terms_acceptance import (
+    OFFICIAL_TERMS_URL,
+    ACCEPTANCE_COMMAND,
+    VoicegerTermsAcceptanceError,
+)
 
 
 def _audio_query_payload() -> dict:
@@ -87,6 +93,8 @@ class ApiSynthesisCompatibilityTests(unittest.TestCase):
             "voiceger_accent_adapter.api.get_adapter",
             return_value=adapter,
         ), patch(
+            "voiceger_accent_adapter.api.require_current_acceptance",
+        ), patch(
             "voiceger_accent_adapter.api._resolve_style",
             return_value=style,
         ), warnings.catch_warnings(record=True) as caught:
@@ -127,6 +135,61 @@ class ApiSynthesisCompatibilityTests(unittest.TestCase):
         samples = struct.unpack("<" + "h" * (len(raw) // 2), raw)
         self.assertGreater(len(samples), 0)
         self.assertEqual(samples[0::2], samples[1::2])
+
+    def test_synthesis_without_acceptance_returns_actionable_403_before_work(self):
+        adapter = FakeAdapter()
+        error = VoicegerTermsAcceptanceError(
+            "Terms acceptance required. "
+            f"Read {OFFICIAL_TERMS_URL} and run {ACCEPTANCE_COMMAND}."
+        )
+        with patch(
+            "voiceger_accent_adapter.api.require_current_acceptance",
+            side_effect=error,
+        ), patch(
+            "voiceger_accent_adapter.api.get_adapter",
+            return_value=adapter,
+        ) as get_adapter, patch(
+            "voiceger_accent_adapter.api._resolve_style",
+        ) as resolve_style, patch(
+            "voiceger_accent_adapter.api.synthesize_audio_query",
+        ) as synthesize_audio_query, TestClient(app) as client:
+            response = client.post(
+                "/synthesis?speaker=1",
+                json=_audio_query_payload(),
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn(OFFICIAL_TERMS_URL, response.json()["detail"])
+        self.assertIn(ACCEPTANCE_COMMAND, response.json()["detail"])
+        get_adapter.assert_not_called()
+        resolve_style.assert_not_called()
+        synthesize_audio_query.assert_not_called()
+        adapter.synthesize_audio.assert_not_called()
+
+    def test_get_adapter_requires_acceptance_before_environment_setup(self):
+        error = VoicegerTermsAcceptanceError("terms acceptance required")
+        with patch(
+            "voiceger_accent_adapter.api.require_current_acceptance",
+            side_effect=error,
+        ), patch(
+            "voiceger_accent_adapter.api.require_voiceger_environment",
+        ) as require_environment:
+            with self.assertRaises(VoicegerTermsAcceptanceError):
+                api.get_adapter.__wrapped__()
+
+        require_environment.assert_not_called()
+
+    def test_root_and_version_remain_available_without_acceptance(self):
+        error = VoicegerTermsAcceptanceError("terms acceptance required")
+        with patch(
+            "voiceger_accent_adapter.api.require_current_acceptance",
+            side_effect=error,
+        ), TestClient(app) as client:
+            root_response = client.get("/")
+            version_response = client.get("/version")
+
+        self.assertEqual(root_response.status_code, 200)
+        self.assertEqual(version_response.status_code, 200)
 
 
 if __name__ == "__main__":
