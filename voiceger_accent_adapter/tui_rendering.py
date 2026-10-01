@@ -34,7 +34,7 @@ _HELP_ITEMS = (
     ("Up/Down", ": move one selectable item"),
     (
         "Left/Right",
-        ": on Generate/Regenerate: Takes; on JA: accent; on EN: primary stress",
+        ": on Generate/Regenerate: Takes; on JA: accent by one mora; on EN: primary stress by one vowel",
     ),
     (
         "Enter",
