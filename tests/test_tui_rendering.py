@@ -692,7 +692,7 @@ class TuiRenderingTests(unittest.TestCase):
 
     def test_editor_status_shows_hint_for_each_active_text_entry_mode(self):
         settings = {
-            "style_id": "1",
+            "style_id": "3",
             "speed": "1.00",
             "take_count": "4",
             "output_dir": "/tmp/output",
@@ -1107,14 +1107,14 @@ class TuiRenderingTests(unittest.TestCase):
         editor = SimpleNamespace(
             kind="settings", title="EDIT SETTINGS", selection="speed",
             payload={"draft_settings": {
-                "style_id": "1", "speed": "1.00", "take_count": "4",
+                "style_id": "3", "speed": "1.00", "take_count": "4",
                 "output_dir": "/tmp/output", "save_text": True,
             }},
             active_field=None, input_value="", input_cursor=0, error="", scroll=0,
         )
         with patch(
             "voiceger_accent_adapter.tui_rendering.available_styles",
-            return_value=(SimpleNamespace(id=1, name="Neutral"),),
+            return_value=(SimpleNamespace(id=3, name="Neutral"),),
         ):
             document, _, _ = self.renderer.editor_document(render_state(editor=editor), 80)
         visible = "\n".join(line for line, _key in document)
@@ -1151,7 +1151,7 @@ class TuiRenderingTests(unittest.TestCase):
         editor.input_cursor = 4
         with patch(
             "voiceger_accent_adapter.tui_rendering.available_styles",
-            return_value=(SimpleNamespace(id=1, name="Neutral"),),
+            return_value=(SimpleNamespace(id=3, name="Neutral"),),
         ):
             active, _, _ = self.renderer.editor_document(render_state(editor=editor), 80)
         speed_lines = [line for line, key in active if key == "speed"]
