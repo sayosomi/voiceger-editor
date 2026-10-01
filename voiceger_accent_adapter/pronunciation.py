@@ -1,21 +1,16 @@
 """Parse the editable Japanese pronunciation notation.
 
-The initial notation follows the core accent-position rules used by
-VOICEVOX's AquesTalk-style kana notation, with one deliberate convenience:
-both hiragana and katakana are accepted.
+The notation follows the core accent-position rules used by VOICEVOX's
+AquesTalk-style kana notation, with one deliberate convenience: both hiragana
+and katakana are accepted.
 
-Initial subset:
+Rules:
 
 - kana represent the spoken reading;
 - `'` follows the mora selected as the accent position;
 - every accent phrase must contain exactly one `'`;
-- `/` separates accent phrases without an explicit pause;
-- an optional final `。`, `？`, or `！` is preserved as the utterance terminator.
-
-Examples:
-
-- `あ'め` -> accent=1
-- `あめ'` -> accent=2
+- `/` separates adjacent accent phrases without explicit punctuation;
+- supported punctuation is preserved in sequence and rendered canonically.
 
 This module is Voiceger-independent and has no third-party dependencies.
 """
@@ -23,12 +18,29 @@ This module is Voiceger-independent and has no third-party dependencies.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Sequence, Union
 
 
 _SMALL_KANA = frozenset(
     "ぁぃぅぇぉゃゅょゎァィゥェォャュョヮ"
 )
 _TERMINATORS = frozenset({"。", "？", "！"})
+_CANONICAL_PUNCTUATION = frozenset({"。", "、", "？", "！", "…"})
+_PUNCTUATION_ALIASES = {
+    "。": "。",
+    ".": "。",
+    "、": "、",
+    ",": "、",
+    "，": "、",
+    "：": "、",
+    "；": "、",
+    "·": "、",
+    "？": "？",
+    "?": "？",
+    "！": "！",
+    "!": "！",
+    "…": "…",
+}
 
 
 class PronunciationSyntaxError(ValueError):
@@ -61,18 +73,99 @@ class AccentPhrase:
         return len(self.morae)
 
 
-@dataclass(frozen=True)
-class Pronunciation:
-    """Parsed editable pronunciation."""
+def canonicalize_punctuation(value: str) -> str | None:
+    """Return the canonical editable punctuation mark for one character."""
 
-    phrases: tuple[AccentPhrase, ...]
-    terminator: str | None = None
+    return _PUNCTUATION_ALIASES.get(value)
+
+
+@dataclass(frozen=True)
+class PronunciationPunctuation:
+    """One ordered punctuation token in editable pronunciation data."""
+
+    mark: str
 
     def __post_init__(self) -> None:
-        if not self.phrases:
+        if self.mark not in _CANONICAL_PUNCTUATION:
+            raise ValueError(f"unsupported punctuation: {self.mark!r}")
+
+
+PronunciationItem = Union[AccentPhrase, PronunciationPunctuation]
+
+
+@dataclass(frozen=True, init=False)
+class Pronunciation:
+    """Parsed editable pronunciation with phrases and punctuation in sequence."""
+
+    items: tuple[PronunciationItem, ...]
+
+    def __init__(
+        self,
+        phrases: Sequence[AccentPhrase] | None = None,
+        terminator: str | None = None,
+        *,
+        items: Sequence[PronunciationItem] | None = None,
+    ) -> None:
+        if items is not None:
+            if phrases is not None or terminator is not None:
+                raise ValueError(
+                    "items cannot be combined with phrases or terminator"
+                )
+            resolved = tuple(items)
+        else:
+            if phrases is None:
+                raise ValueError(
+                    "pronunciation requires phrases or ordered items"
+                )
+            resolved_items: list[PronunciationItem] = list(phrases)
+            if terminator is not None:
+                canonical = canonicalize_punctuation(terminator)
+                if canonical not in _TERMINATORS:
+                    raise ValueError(
+                        f"unsupported terminator: {terminator!r}"
+                    )
+                resolved_items.append(PronunciationPunctuation(canonical))
+            resolved = tuple(resolved_items)
+
+        object.__setattr__(self, "items", resolved)
+        self.__post_init__()
+
+    def __post_init__(self) -> None:
+        if not self.items:
             raise ValueError("pronunciation must contain at least one accent phrase")
-        if self.terminator is not None and self.terminator not in _TERMINATORS:
-            raise ValueError(f"unsupported terminator: {self.terminator!r}")
+        if not isinstance(self.items[0], AccentPhrase):
+            raise ValueError("pronunciation cannot start with punctuation")
+        if not any(isinstance(item, AccentPhrase) for item in self.items):
+            raise ValueError("pronunciation must contain at least one accent phrase")
+        if any(
+            not isinstance(item, (AccentPhrase, PronunciationPunctuation))
+            for item in self.items
+        ):
+            raise ValueError("pronunciation contains an unsupported item")
+
+    @property
+    def phrases(self) -> tuple[AccentPhrase, ...]:
+        """Return accent phrases in their ordered pronunciation positions."""
+
+        return tuple(
+            item for item in self.items if isinstance(item, AccentPhrase)
+        )
+
+    @property
+    def trailing_punctuation(self) -> str | None:
+        """Return the final punctuation mark, including comma/ellipsis forms."""
+
+        last = self.items[-1]
+        if isinstance(last, PronunciationPunctuation):
+            return last.mark
+        return None
+
+    @property
+    def terminator(self) -> str | None:
+        """Compatibility view of the legacy sentence-ending punctuation."""
+
+        trailing = self.trailing_punctuation
+        return trailing if trailing in _TERMINATORS else None
 
 
 def _is_kana(ch: str) -> bool:
@@ -135,7 +228,7 @@ def _parse_phrase(source: str) -> AccentPhrase:
 
 
 def parse_pronunciation(source: str) -> Pronunciation:
-    """Parse editable pronunciation notation into a canonical data model."""
+    """Parse editable pronunciation notation into ordered canonical data."""
 
     if not source:
         raise PronunciationSyntaxError("pronunciation is empty")
@@ -144,44 +237,80 @@ def parse_pronunciation(source: str) -> Pronunciation:
             "leading or trailing whitespace is not allowed"
         )
 
-    terminator: str | None = None
-    body = source
-    if body[-1] in _TERMINATORS:
-        terminator = body[-1]
-        body = body[:-1]
+    items: list[PronunciationItem] = []
+    phrase_chars: list[str] = []
+    boundary_pending = False
 
-    if not body:
-        raise PronunciationSyntaxError("pronunciation has no reading")
-    if any(ch in _TERMINATORS for ch in body):
-        raise PronunciationSyntaxError(
-            "sentence terminators are only supported at the end"
-        )
+    def flush_phrase() -> None:
+        nonlocal phrase_chars
+        if not phrase_chars:
+            raise PronunciationSyntaxError(
+                "accent phrase boundary cannot create an empty phrase"
+            )
+        items.append(_parse_phrase("".join(phrase_chars)))
+        phrase_chars = []
 
-    phrase_sources = body.split("/")
-    if any(not phrase for phrase in phrase_sources):
+    for ch in source:
+        if ch == "/":
+            if boundary_pending or not phrase_chars:
+                raise PronunciationSyntaxError(
+                    "accent phrase boundary cannot create an empty phrase"
+                )
+            flush_phrase()
+            boundary_pending = True
+            continue
+
+        punctuation = canonicalize_punctuation(ch)
+        if punctuation is not None:
+            if boundary_pending:
+                raise PronunciationSyntaxError(
+                    "accent phrase boundary cannot create an empty phrase"
+                )
+            if phrase_chars:
+                flush_phrase()
+            elif not items:
+                raise PronunciationSyntaxError(
+                    "pronunciation cannot start with punctuation"
+                )
+            items.append(PronunciationPunctuation(punctuation))
+            continue
+
+        phrase_chars.append(ch)
+        boundary_pending = False
+
+    if boundary_pending:
         raise PronunciationSyntaxError(
             "accent phrase boundary cannot create an empty phrase"
         )
+    if phrase_chars:
+        flush_phrase()
 
-    return Pronunciation(
-        tuple(_parse_phrase(phrase) for phrase in phrase_sources),
-        terminator,
-    )
+    return Pronunciation(items=tuple(items))
+
+
+def _format_phrase(phrase: AccentPhrase) -> str:
+    parts: list[str] = []
+    for index, mora in enumerate(phrase.morae, start=1):
+        parts.append(mora)
+        if phrase.accent == index:
+            parts.append("'")
+    return "".join(parts)
 
 
 def format_pronunciation(value: Pronunciation) -> str:
-    """Serialize the canonical data model back to editable notation."""
+    """Serialize ordered pronunciation data back to editable notation."""
 
     rendered: list[str] = []
-    for phrase in value.phrases:
-        parts: list[str] = []
-        for index, mora in enumerate(phrase.morae, start=1):
-            parts.append(mora)
-            if phrase.accent == index:
-                parts.append("'")
-        rendered.append("".join(parts))
+    previous_phrase = False
 
-    result = "/".join(rendered)
-    if value.terminator is not None:
-        result += value.terminator
-    return result
+    for item in value.items:
+        if isinstance(item, AccentPhrase):
+            if previous_phrase:
+                rendered.append("/")
+            rendered.append(_format_phrase(item))
+            previous_phrase = True
+        else:
+            rendered.append(item.mark)
+            previous_phrase = False
+
+    return "".join(rendered)
