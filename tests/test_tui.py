@@ -2392,7 +2392,7 @@ class TuiTests(unittest.TestCase):
         regenerate._handle_key("g")
         regenerate._operations.start_regenerate_all.assert_called_once_with(
             regenerate.session,
-            take_count=regenerate.session.active_candidate_count,
+            take_count=regenerate.settings.take_count,
             navigation_revision=regenerate._navigation.revision,
         )
 
