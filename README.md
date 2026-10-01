@@ -1,245 +1,147 @@
 # Voiceger Editor
 
-An experimental pronunciation and synthesis editor for Voiceger.
+Voiceger Editor is a pronunciation and synthesis editor for [Voiceger](https://github.com/zunzun999/voiceger_v2).
 
 It provides:
 
-- editable Japanese pronunciation and accent;
-- editable English stress;
-- multiple generation candidates;
-- selectable Voiceger reference-audio styles;
-- a VOICEVOX-style TTS API;
-- a keyboard-first terminal interface.
+- a keyboard-first TUI;
+- Japanese pronunciation and pitch-accent editing;
+- English ARPAbet pronunciation and stress editing;
+- multiple generated Takes;
+- Japanese and English user dictionaries;
+- Voiceger reference-audio styles;
+- optional TXT and LAB output;
+- a VOICEVOX-style HTTP API.
 
-Voiceger itself is not modified.
+Voiceger itself is not included or modified.
 
-## Requirements
+> [!IMPORTANT]
+> Audio generated with Voiceger:Zundamon is **not covered by the MIT License of Voiceger Editor**.
+>
+> Generated audio is subject to the official Voiceger:Zundamon terms:
+>
+> https://zunko.jp/con_ongen_kiyaku.html
+>
+> Credit is required when using generated audio. See [Generated Audio and License](#generated-audio-and-license).
 
-You need a local installation of Voiceger:
+## Quick Start
 
-https://github.com/zunzun999/voiceger_v2
-
-This adapter is currently tested with Voiceger revision:
-
-`f77c1172baf1f490bb962f2d2acd01c852ef3464`
-
-Other revisions may also work, but they are not currently guaranteed.
-
-Set `VOICEGER_ROOT` to your local Voiceger directory:
-
-```bash
-export VOICEGER_ROOT=/path/to/voiceger_v2
-```
-
-## First Use: Voiceger:Zundamon Terms
-
-Before the adapter uses Voiceger:Zundamon for synthesis, open and read the
-[official terms](https://zunko.jp/con_ongen_kiyaku.html). Voiceger and the
-Voiceger:Zundamon voice model are separate from this adapter. The adapter's MIT
-License covers only this repository's code; it does not cover Voiceger, the
-Voiceger model, Voiceger reference audio, generated audio, the Zundamon
-character, name or voice, or other third-party materials.
-
-On interactive first use, the initial notice language follows the process
-locale: Japanese for Japanese locales and English otherwise. The first-use
-screen also lets you switch between Japanese and English. Press `A` to
-explicitly accept and continue. Opening the official terms or pressing Enter
-alone does not accept them. API and other headless users must run the explicit
-acceptance command before Voiceger-backed requests will work. Acceptance is
-stored locally beside the default settings file and is shared across the TUI,
-API, and direct adapter use.
-
-Review the official terms, explicitly accept them, or inspect the saved status
-with:
+Install Voiceger separately, then set its path:
 
 ```bash
-voiceger-editor --open-voiceger-terms
-voiceger-editor --accept-voiceger-terms
-voiceger-editor --voiceger-terms-status
+export VOICEGER_ROOT="$HOME/voiceger_v2"
+source "$VOICEGER_ROOT/.venv/bin/activate"
 ```
 
-The local notice is only a summary and does not replace the official terms.
-Generated audio remains subject to the official credit requirement documented
-below. The official terms currently allow the Voiceger credit to be written in
-another language.
-
-## Terminal Interface
-
-Install the TUI in the Voiceger Python environment:
+Install Voiceger Editor from PyPI:
 
 ```bash
-"$VOICEGER_ROOT/.venv/bin/python" -m pip install -e '.[tui]'
+python -m pip install 'voiceger-editor[tui]'
 ```
 
-Start it with:
+Check the installation:
+
+```bash
+voiceger-editor --version
+voiceger-editor --check
+```
+
+Start the TUI:
 
 ```bash
 voiceger-editor
 ```
 
-You can also give it text directly:
+Or start with text:
 
 ```bash
 voiceger-editor "このずんだ餅はvery sweetなのだ。"
 ```
 
-The TUI is still under active development.
+On first use, read and explicitly accept the Voiceger:Zundamon terms before synthesis.
 
-Its layout, controls, and shortcuts may change. Detailed TUI documentation will be added after the interface becomes more stable.
+See [Setup](docs/en/setup.md) for the complete installation guide.
 
-Optional LAB sidecars for accepted Japanese, English, and Japanese-English
-mixed takes require the LAB extra:
+## Basic Workflow
 
-```bash
-"$VOICEGER_ROOT/.venv/bin/python" -m pip install -e '.[tui,lab]'
+```text
+Caption
+→ check or edit pronunciation
+→ Generate
+→ listen to Takes
+→ accept one Take
 ```
 
-Japanese LAB output also requires a `julius` executable. The adapter uses the
-pinned segmentation-kit model documented in
-[`docs/lab-output.md`](docs/lab-output.md) and caches it outside the output
-directory. English LAB output uses the pinned PocketSphinx 5.1.1 dependency.
-Mixed Japanese-English LAB output uses MRTE attention from the exact generated
-Take to define language regions, then applies the same Julius/PocketSphinx
-aligners inside those regions.
+The supported v1 speech scope is:
 
-## API
+- Japanese;
+- Japanese with English sections.
 
-This project also provides a VOICEVOX-style HTTP API.
+See [Compatibility](docs/en/compatibility.md) for details.
 
-```http
-GET  /version
-GET  /speakers
-POST /audio_query
-POST /accent_phrases
-POST /synthesis
-```
+## HTTP API
 
-Install the API dependencies:
+Install API support:
 
 ```bash
-"$VOICEGER_ROOT/.venv/bin/python" -m pip install -e '.[api]'
+python -m pip install 'voiceger-editor[api]'
 ```
 
 Start the API:
 
 ```bash
-"$VOICEGER_ROOT/.venv/bin/python" -m uvicorn \
+python -m uvicorn \
   voiceger_editor.api:app \
   --host 127.0.0.1 \
   --port 8001
 ```
 
-Basic workflow:
+The API provides a VOICEVOX-style workflow:
 
 ```text
 text
-  ↓
-POST /audio_query
-  ↓
-edit pronunciation or accent if needed
-  ↓
-POST /synthesis
-  ↓
-audio/wav
+→ /audio_query
+→ edit query
+→ /synthesis
+→ WAV
 ```
 
-The API does not permanently save generated WAV files.
+The corresponding Zundamon style IDs match VOICEVOX.
 
-## Language Support
+See [HTTP API](docs/en/api.md).
 
-The current supported scope is:
+## Documentation
 
-- Japanese
-- Japanese + English mixed text
+- [Setup](docs/en/setup.md)
+- [TUI](docs/en/tui.md)
+- [Pronunciation](docs/en/pronunciation.md)
+- [User Dictionary](docs/en/dictionary.md)
+- [Settings](docs/en/settings.md)
+- [LAB Output](docs/en/lab-output.md)
+- [HTTP API](docs/en/api.md)
+- [Compatibility](docs/en/compatibility.md)
 
-Japanese pronunciation and pitch accent can be edited.
+See [User Documentation](docs/en/README.md) for the full index.
 
-English stress can also be edited using Voiceger-compatible ARPAbet phonemes.
+## Generated Audio and License
 
-Other language combinations may work through Voiceger, but they are not currently part of the compatibility guarantee.
+Voiceger Editor is an unofficial project. It is not made, approved, or supported by the Voiceger project or the Tohoku Zunko / Zundamon Project.
 
-For technical details about Japanese pronunciation and accent handling, see:
+Audio generated with Voiceger:Zundamon is subject to the official terms:
 
-[`docs/japanese-pronunciation.md`](docs/japanese-pronunciation.md)
+https://zunko.jp/con_ongen_kiyaku.html
 
-Production LAB sidecar behavior is specified in:
+The official terms require Voiceger credit. Examples:
 
-[`docs/lab-output.md`](docs/lab-output.md)
+```text
+Voicegerずんだもん
+Voiceger:Zundamon
+```
 
-## Voiceger Styles
-
-Voiceger's local reference audio files are available as selectable styles.
-
-Current presets use the corresponding VOICEVOX Zundamon style IDs:
-
-- Neutral — `3`
-- Sweet — `1`
-- Snippy — `7`
-- Sexy — `5`
-- Whispering — `22`
-- Murmuring — `38`
-- Exhausted — `75`
-- Sobbing — `76`
-
-Only reference audio that exists in the user's local Voiceger installation is used.
-
-## Project Boundaries
-
-Voiceger Editor is an unofficial project.
-
-It is not made, approved, or supported by the Voiceger project or the Tohoku Zunko / Zundamon Project.
-
-This adapter uses Voiceger as it is. It does not try to remove or bypass safety rules, usage limits, or other restrictions added by Voiceger.
-
-This project only adds more control over Voiceger inference, such as pronunciation, accent, English stress, generation candidates, and inference settings.
-
-If Voiceger has a safety feature or restriction, this project will not add a feature to disable or avoid it.
-
-This project does not modify or redistribute the official Voiceger models or reference audio.
-
-Voiceger is a separate project:
-
-https://github.com/zunzun999/voiceger_v2
-
-## Generated Audio License
-
-> [!IMPORTANT]
-> Audio generated with Voiceger:Zundamon is **not covered by the MIT License of this adapter**.
->
-> You must follow the official Voiceger Zundamon terms of use when using, publishing, or distributing generated audio.
->
-> The official terms require Voiceger credit and allow it to be written in
-> another language. Examples:
->
-> - Japanese: `Voicegerずんだもん`
-> - English: `Voiceger:Zundamon`
->
-> Please read the latest official terms before using generated audio:
->
-> https://zunko.jp/con_ongen_kiyaku.html
-
-The Voiceger Zundamon terms also include rules about how the voice may and may not be used.
-
-These rules still apply when the audio is generated through Voiceger Editor.
-
-## This Adapter License
+The official terms are authoritative. The notice shown by Voiceger Editor does not replace them.
 
 The code in this repository is licensed under the MIT License.
 
-The MIT License applies **only to the code in this repository**.
+The MIT License applies **only to this repository's code**. It does not grant rights to Voiceger, GPT-SoVITS, Voiceger models, reference audio, generated audio, the Zundamon character, name, voice, trademarks, or other third-party materials.
 
-It does not grant any rights to Voiceger, GPT-SoVITS, the Voiceger:Zundamon models, reference audio, or other third-party assets.
-
-**The MIT License does not grant rights to the Zundamon character, name, voice, or related trademarks.**
-
-Voiceger and other third-party software and assets remain subject to their own licenses and terms.
-
-Installing or using this adapter does not grant any additional rights to those third-party materials or to generated audio.
-
-For direct optional dependencies and external runtime components, see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
-
-## Status
-
-Voiceger Editor is under active development.
-
-The API, TUI, settings, and other interfaces may change before the first stable release.
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for dependency and runtime notices.
