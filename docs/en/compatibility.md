@@ -104,7 +104,6 @@ CLI:            voiceger-editor
 Python package: voiceger_editor
 ~~~
 
-The pre-release voiceger-accent-adapter and voiceger_accent_adapter names are not compatibility aliases.
 
 ## What compatibility does not mean
 
