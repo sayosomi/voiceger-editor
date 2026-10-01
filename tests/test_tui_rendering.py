@@ -4,6 +4,8 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import call, patch
 
+from voiceger_accent_adapter import __version__
+from voiceger_accent_adapter.project_info import DOCUMENTATION_URL
 from voiceger_accent_adapter.settings import Settings
 from voiceger_accent_adapter.tui_editors import (
     EnglishGroupingCache,
@@ -515,9 +517,11 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("OW2", wrapped)
 
     def test_help_contains_pronunciation_controls_and_separate_settings_shortcuts(self):
-        screen = FakeScreen()
+        screen = FakeScreen(rows=80, columns=80)
         self.renderer.render_help(screen, screen.columns)
         visible = self.rendered(screen)
+        self.assertIn(f"voiceger-accent-adapter {__version__}", visible)
+        self.assertIn(f"Docs: {DOCUMENTATION_URL}", visible)
         for text in (
             "Up/Down", "JA accent/mora",
             "EN primary stress/vowel",
@@ -570,6 +574,27 @@ class TuiRenderingTests(unittest.TestCase):
                 self.assertFalse(
                     any(row >= height for row, _column, _text, _attr in screen.drawn)
                 )
+
+    def test_help_scrolls_body_and_clamps_offset(self):
+        screen = FakeScreen(rows=24, columns=80)
+        max_scroll = self.renderer.help_max_scroll(screen.rows, screen.columns)
+        self.assertGreater(max_scroll, 0)
+
+        top = self.renderer.render_help(screen, screen.columns, scroll=-100)
+        self.assertEqual(top, 0)
+        top_visible = self.rendered(screen)
+        self.assertIn(f"voiceger-accent-adapter {__version__}", top_visible)
+        self.assertIn(f"Docs: {DOCUMENTATION_URL}", top_visible)
+
+        screen.drawn.clear()
+        bottom = self.renderer.render_help(screen, screen.columns, scroll=10_000)
+        self.assertEqual(bottom, max_scroll)
+        bottom_visible = self.rendered(screen)
+        self.assertIn(": Quit", bottom_visible)
+        self.assertNotIn(f"Docs: {DOCUMENTATION_URL}", bottom_visible)
+        back = next(item for item in screen.drawn if item[2] == "▶ [B] Back")
+        self.assertEqual(back[0], screen.rows - 1)
+        self.assertTrue(back[3] & curses.A_REVERSE)
 
     def test_help_shortcut_emphasis_does_not_bold_explanations(self):
         screen = FakeScreen(rows=30, columns=60)
