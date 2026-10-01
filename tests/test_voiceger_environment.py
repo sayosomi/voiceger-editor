@@ -192,7 +192,7 @@ class VoicegerEnvironmentFrontendTests(unittest.TestCase):
         )
         output = StringIO()
         with patch(
-            "voiceger_accent_adapter.tui.check_voiceger_environment",
+            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
             return_value=ready,
         ), redirect_stdout(output):
             result = main(["--check"])
@@ -209,10 +209,10 @@ class VoicegerEnvironmentFrontendTests(unittest.TestCase):
         )
         error = StringIO()
         with patch(
-            "voiceger_accent_adapter.tui.check_voiceger_environment",
+            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
             return_value=failed,
         ), patch(
-            "voiceger_accent_adapter.tui.curses.wrapper"
+            "voiceger_accent_adapter.entrypoint.curses.wrapper"
         ) as wrapper, redirect_stderr(error):
             result = main([])
 
