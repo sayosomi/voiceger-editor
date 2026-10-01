@@ -6,8 +6,8 @@ from types import ModuleType
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from voiceger_accent_adapter.output import SavedOutput
-from voiceger_accent_adapter.takes import (
+from voiceger_editor.output import SavedOutput
+from voiceger_editor.takes import (
     TakeBatch,
     TakeCandidate,
     cleanup_stale_take_directories,
@@ -476,7 +476,7 @@ class TakeBatchTests(unittest.TestCase):
                 text_path=Path(directory) / "saved.txt",
             )
             with patch(
-                "voiceger_accent_adapter.takes.save_output_wav", return_value=saved
+                "voiceger_editor.takes.save_output_wav", return_value=saved
             ) as save_output_wav:
                 result = batch.accept(2, output_dir=Path(directory), save_text=True)
 
@@ -500,7 +500,7 @@ class TakeBatchTests(unittest.TestCase):
             ):
                 candidates = list(batch.generate_all())
             with patch(
-                "voiceger_accent_adapter.takes.save_output_wav",
+                "voiceger_editor.takes.save_output_wav",
                 side_effect=OSError("save failed"),
             ):
                 with self.assertRaisesRegex(OSError, "save failed"):
@@ -534,7 +534,7 @@ class TakeBatchTests(unittest.TestCase):
             os.utime(old_legacy, (now - 90_000, now - 90_000))
 
             with patch(
-                "voiceger_accent_adapter.takes._process_is_alive",
+                "voiceger_editor.takes._process_is_alive",
                 side_effect=lambda pid: pid == 222,
             ):
                 removed = cleanup_stale_take_directories(

@@ -4,13 +4,13 @@ import subprocess
 from tempfile import TemporaryDirectory
 import unittest
 
-from voiceger_accent_adapter.compatibility import SUPPORTED_VOICEGER_REVISION
-from voiceger_accent_adapter.mixed_language import (
+from voiceger_editor.compatibility import SUPPORTED_VOICEGER_REVISION
+from voiceger_editor.mixed_language import (
     DetectedSegment,
     build_mixed_audio_query,
 )
-from voiceger_accent_adapter.pronunciation import parse_pronunciation
-from voiceger_accent_adapter.query_editing import (
+from voiceger_editor.pronunciation import parse_pronunciation
+from voiceger_editor.query_editing import (
     append_english_section,
     delete_utterance_section,
     english_word_preview_query,
@@ -20,15 +20,15 @@ from voiceger_accent_adapter.query_editing import (
     replace_english_section_text,
     replace_japanese_section_text,
 )
-from voiceger_accent_adapter.styles import get_style
-from voiceger_accent_adapter.session import UtteranceSession
-from voiceger_accent_adapter.settings import Settings
-from voiceger_accent_adapter.synthesis import synthesize_audio_query
-from voiceger_accent_adapter.voiceger_adapter import VoicegerAdapter
-from voiceger_accent_adapter.user_dictionary import UserDictionaryCore
-from voiceger_accent_adapter.openjtalk_converter import text_to_pronunciation
-from voiceger_accent_adapter.runtime_locks import OPENJTALK_LOCK
-from voiceger_accent_adapter.voicevox_query import build_audio_query
+from voiceger_editor.styles import get_style
+from voiceger_editor.session import UtteranceSession
+from voiceger_editor.settings import Settings
+from voiceger_editor.synthesis import synthesize_audio_query
+from voiceger_editor.voiceger_adapter import VoicegerAdapter
+from voiceger_editor.user_dictionary import UserDictionaryCore
+from voiceger_editor.openjtalk_converter import text_to_pronunciation
+from voiceger_editor.runtime_locks import OPENJTALK_LOCK
+from voiceger_editor.voicevox_query import build_audio_query
 
 
 RUN_INTEGRATION = os.environ.get("VOICEGER_RUN_INTEGRATION") == "1"

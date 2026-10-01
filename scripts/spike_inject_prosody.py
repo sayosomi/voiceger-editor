@@ -7,7 +7,7 @@ two different pitch-accent token sequences.
 
 Expected local layout by default:
   ~/voiceger_v2/
-  ~/Code/voiceger-accent-adapter/   (this repository)
+  ~/Code/voiceger-editor/   (this repository)
 
 Run with Voiceger's virtualenv:
   ~/voiceger_v2/.venv/bin/python scripts/spike_inject_prosody.py

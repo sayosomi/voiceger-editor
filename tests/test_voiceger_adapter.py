@@ -7,27 +7,27 @@ from types import ModuleType, SimpleNamespace
 import sys
 from unittest.mock import patch
 
-from voiceger_accent_adapter.output import SavedOutput
-from voiceger_accent_adapter.pronunciation import (
+from voiceger_editor.output import SavedOutput
+from voiceger_editor.pronunciation import (
     AccentPhrase,
     Pronunciation,
     parse_pronunciation,
 )
-from voiceger_accent_adapter.runtime_locks import OPENJTALK_LOCK
-from voiceger_accent_adapter.terms_acceptance import VoicegerTermsAcceptanceError
-from voiceger_accent_adapter.voiceger_adapter import (
+from voiceger_editor.runtime_locks import OPENJTALK_LOCK
+from voiceger_editor.terms_acceptance import VoicegerTermsAcceptanceError
+from voiceger_editor.voiceger_adapter import (
     VoicegerAdapter,
     VoicegerAdapterError,
     pronunciation_to_spoken_text,
     resolve_pronunciation,
 )
-from voiceger_accent_adapter.user_dictionary import UserDictionaryCore
+from voiceger_editor.user_dictionary import UserDictionaryCore
 
 
 class ResolvePronunciationTests(unittest.TestCase):
     def setUp(self):
         acceptance = patch(
-            "voiceger_accent_adapter.voiceger_adapter.require_current_acceptance"
+            "voiceger_editor.voiceger_adapter.require_current_acceptance"
         )
         acceptance.start()
         self.addCleanup(acceptance.stop)
@@ -110,7 +110,7 @@ class ResolvePronunciationTests(unittest.TestCase):
             terminator="。",
         )
         with patch(
-            "voiceger_accent_adapter.voiceger_adapter.text_to_pronunciation",
+            "voiceger_editor.voiceger_adapter.text_to_pronunciation",
             return_value=fake,
         ):
             text, _, resolved = resolve_pronunciation("雨")
@@ -132,7 +132,7 @@ class ResolvePronunciationTests(unittest.TestCase):
                 adapter,
                 "ensure_japanese_dictionary_active",
             ) as ensure_active, patch(
-                "voiceger_accent_adapter.voiceger_adapter.resolve_pronunciation",
+                "voiceger_editor.voiceger_adapter.resolve_pronunciation",
                 return_value=("ずんだもん。", parsed, "ズン'ダ/モ'ン。"),
             ):
                 result = adapter.japanese_dictionary_pronunciation("ずんだもん")
@@ -173,7 +173,7 @@ class ResolvePronunciationTests(unittest.TestCase):
             adapter = VoicegerAdapter(voiceger_root=Path(temp_dir))
             error = VoicegerTermsAcceptanceError("terms acceptance required")
             with patch(
-                "voiceger_accent_adapter.voiceger_adapter.require_current_acceptance",
+                "voiceger_editor.voiceger_adapter.require_current_acceptance",
                 side_effect=error,
             ), patch.object(adapter, "_ensure_runtime") as ensure_runtime:
                 with self.assertRaises(VoicegerTermsAcceptanceError):
@@ -186,7 +186,7 @@ class ResolvePronunciationTests(unittest.TestCase):
             adapter = VoicegerAdapter(voiceger_root=Path(temp_dir))
             error = VoicegerTermsAcceptanceError("terms acceptance required")
             with patch(
-                "voiceger_accent_adapter.voiceger_adapter.require_current_acceptance",
+                "voiceger_editor.voiceger_adapter.require_current_acceptance",
                 side_effect=error,
             ), patch.object(adapter, "_ensure_runtime") as ensure_runtime:
                 with self.assertRaises(VoicegerTermsAcceptanceError):
@@ -218,7 +218,7 @@ class ResolvePronunciationTests(unittest.TestCase):
                 return_value=audio_result,
             ):
                 with patch(
-                    "voiceger_accent_adapter.voiceger_adapter.save_output",
+                    "voiceger_editor.voiceger_adapter.save_output",
                     return_value=SavedOutput(wav_path, text_path),
                 ) as save_output:
                     result = adapter.synthesize(
@@ -279,7 +279,7 @@ class ResolvePronunciationTests(unittest.TestCase):
             }
 
             with patch(
-                "voiceger_accent_adapter.voiceger_adapter.pronunciation_to_voiceger_tokens",
+                "voiceger_editor.voiceger_adapter.pronunciation_to_voiceger_tokens",
                 return_value=["a"],
             ):
                 result = adapter.synthesize_audio(
@@ -300,7 +300,7 @@ class ResolvePronunciationTests(unittest.TestCase):
             ref_wav.write_bytes(b"test")
 
             adapter = __import__(
-                "voiceger_accent_adapter.voiceger_adapter",
+                "voiceger_editor.voiceger_adapter",
                 fromlist=["VoicegerAdapter"],
             ).VoicegerAdapter(voiceger_root=root)
 
@@ -592,7 +592,7 @@ class EnglishDictionaryAdapterTests(unittest.TestCase):
             ), patch.object(adapter, "_require_text_paths"), patch.object(
                 adapter, "_ensure_import_paths"
             ), patch(
-                "voiceger_accent_adapter.voiceger_adapter._pushd",
+                "voiceger_editor.voiceger_adapter._pushd",
                 return_value=nullcontext(),
             ):
                 groups = adapter.english_word_phoneme_groups("say record now")
@@ -641,7 +641,7 @@ class EnglishDictionaryAdapterTests(unittest.TestCase):
             ), patch.object(adapter, "_require_text_paths"), patch.object(
                 adapter, "_ensure_import_paths"
             ), patch(
-                "voiceger_accent_adapter.voiceger_adapter._pushd",
+                "voiceger_editor.voiceger_adapter._pushd",
                 return_value=nullcontext(),
             ):
                 groups = adapter.english_word_phoneme_groups("recorder")
@@ -668,7 +668,7 @@ class EnglishDictionaryAdapterTests(unittest.TestCase):
             ), patch.object(adapter, "_require_text_paths"), patch.object(
                 adapter, "_ensure_import_paths"
             ), patch(
-                "voiceger_accent_adapter.voiceger_adapter._pushd",
+                "voiceger_editor.voiceger_adapter._pushd",
                 return_value=nullcontext(),
             ):
                 self.assertEqual(adapter.english_phonemes("hello"), ["HH", "AH0"])

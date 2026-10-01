@@ -6,7 +6,7 @@ import unittest
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-PACKAGE_ROOT = REPOSITORY_ROOT / "voiceger_accent_adapter"
+PACKAGE_ROOT = REPOSITORY_ROOT / "voiceger_editor"
 COMPOSITION_ROOT = PACKAGE_ROOT / "tui.py"
 COMPOSITION_ROOT_LINE_CEILING = 900
 
@@ -15,9 +15,9 @@ def _imports_composition_root(node):
     if isinstance(node, ast.ImportFrom):
         if node.level and node.module == "tui":
             return True
-        if node.module == "voiceger_accent_adapter.tui":
+        if node.module == "voiceger_editor.tui":
             return True
-        if node.module == "voiceger_accent_adapter" and any(
+        if node.module == "voiceger_editor" and any(
             alias.name == "tui" for alias in node.names
         ):
             return True
@@ -27,8 +27,8 @@ def _imports_composition_root(node):
             return True
     elif isinstance(node, ast.Import):
         return any(
-            alias.name == "voiceger_accent_adapter.tui"
-            or alias.name.startswith("voiceger_accent_adapter.tui.")
+            alias.name == "voiceger_editor.tui"
+            or alias.name.startswith("voiceger_editor.tui.")
             for alias in node.names
         )
     return False
@@ -52,7 +52,7 @@ class TuiArchitectureTests(unittest.TestCase):
         self.assertLessEqual(
             actual_lines,
             COMPOSITION_ROOT_LINE_CEILING,
-            f"voiceger_accent_adapter/tui.py has {actual_lines} physical lines; "
+            f"voiceger_editor/tui.py has {actual_lines} physical lines; "
             f"the ceiling is {COMPOSITION_ROOT_LINE_CEILING}. Place new "
             "responsibility in the owning subsystem rather than expanding "
             "the composition root.",

@@ -4,28 +4,28 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from voiceger_accent_adapter.lab import (
+from voiceger_editor.lab import (
     LabSidecarResult,
     normalize_and_validate_lab,
     query_lab_language,
     save_lab_sidecar,
 )
-from voiceger_accent_adapter.lab_julius import (
+from voiceger_editor.lab_julius import (
     JuliusAlignment,
     julius_strip_time_map,
     render_julius_lab,
     to_julius_phoneme,
     to_lab_phoneme,
 )
-from voiceger_accent_adapter.lab_pocketsphinx import (
+from voiceger_editor.lab_pocketsphinx import (
     TimedAlignment,
     english_query_phonemes,
     render_pocketsphinx_lab,
     to_pocketsphinx_phonemes,
 )
-from voiceger_accent_adapter.output import SavedOutput, _reserve_output_paths
-from voiceger_accent_adapter.takes import TakeBatch, TakeCandidate
-from voiceger_accent_adapter.voicevox_api_models import (
+from voiceger_editor.output import SavedOutput, _reserve_output_paths
+from voiceger_editor.takes import TakeBatch, TakeCandidate
+from voiceger_editor.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
     Mora,
@@ -169,7 +169,7 @@ class JapaneseLabTests(unittest.TestCase):
         self.assertEqual(to_lab_phoneme("N"), "N")
 
     def test_query_uses_exact_mora_phonemes(self):
-        from voiceger_accent_adapter.lab_julius import japanese_query_phonemes
+        from voiceger_editor.lab_julius import japanese_query_phonemes
 
         self.assertEqual(
             japanese_query_phonemes(japanese_query()),
@@ -298,10 +298,10 @@ class AcceptedTakeLabTests(unittest.TestCase):
         )
         lab_result = LabSidecarResult(path=Path("/output/accepted.lab"))
         with patch(
-            "voiceger_accent_adapter.takes.save_output_wav",
+            "voiceger_editor.takes.save_output_wav",
             return_value=saved,
         ) as save_wav, patch(
-            "voiceger_accent_adapter.takes.save_lab_sidecar",
+            "voiceger_editor.takes.save_lab_sidecar",
             return_value=lab_result,
         ) as save_lab:
             self.assertEqual(save_lab.call_count, 0)
@@ -360,10 +360,10 @@ class AcceptedTakeLabTests(unittest.TestCase):
             text_path=None,
         )
         with patch(
-            "voiceger_accent_adapter.takes.save_output_wav",
+            "voiceger_editor.takes.save_output_wav",
             return_value=saved,
         ), patch(
-            "voiceger_accent_adapter.takes.save_lab_sidecar",
+            "voiceger_editor.takes.save_lab_sidecar",
             return_value=LabSidecarResult(
                 warning="LAB generation failed: dependency missing"
             ),

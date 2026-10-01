@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from voiceger_accent_adapter.styles import (
+from voiceger_editor.styles import (
     KNOWN_STYLES,
     PRESET_PROMPT_TEXT,
     available_styles,

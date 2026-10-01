@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from voiceger_accent_adapter.settings import (
+from voiceger_editor.settings import (
     Settings,
     SettingsError,
     default_config_path,
@@ -24,7 +24,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings, Settings())
         self.assertEqual(
             settings.output_dir,
-            Path.home() / ".voiceger-accent-adapter" / "output",
+            Path.home() / ".voiceger-editor" / "output",
         )
         self.assertEqual(settings.take_count, 4)
         self.assertEqual(settings.style_id, 3)
@@ -188,37 +188,37 @@ class SettingsTests(unittest.TestCase):
 
     def test_config_path_uses_macos_application_support(self):
         home = Path("/home/example")
-        with patch("voiceger_accent_adapter.settings.Path.home", return_value=home), patch(
-            "voiceger_accent_adapter.settings.sys.platform", "darwin"
+        with patch("voiceger_editor.settings.Path.home", return_value=home), patch(
+            "voiceger_editor.settings.sys.platform", "darwin"
         ), patch.dict(os.environ, {"XDG_CONFIG_HOME": "/tmp/xdg"}, clear=True):
             self.assertEqual(
                 default_config_path(),
                 home
                 / "Library"
                 / "Application Support"
-                / "voiceger-accent-adapter"
+                / "voiceger-editor"
                 / "config.json",
             )
 
     def test_config_path_honors_xdg_config_home(self):
-        with patch("voiceger_accent_adapter.settings.sys.platform", "linux"), patch.dict(
+        with patch("voiceger_editor.settings.sys.platform", "linux"), patch.dict(
             os.environ,
             {"XDG_CONFIG_HOME": "/tmp/custom-config"},
             clear=True,
         ):
             self.assertEqual(
                 default_config_path(),
-                Path("/tmp/custom-config") / "voiceger-accent-adapter" / "config.json",
+                Path("/tmp/custom-config") / "voiceger-editor" / "config.json",
             )
 
     def test_config_path_falls_back_to_home_config_directory(self):
         home = Path("/home/example")
-        with patch("voiceger_accent_adapter.settings.Path.home", return_value=home), patch(
-            "voiceger_accent_adapter.settings.sys.platform", "linux"
+        with patch("voiceger_editor.settings.Path.home", return_value=home), patch(
+            "voiceger_editor.settings.sys.platform", "linux"
         ), patch.dict(os.environ, {}, clear=True):
             self.assertEqual(
                 default_config_path(),
-                home / ".config" / "voiceger-accent-adapter" / "config.json",
+                home / ".config" / "voiceger-editor" / "config.json",
             )
 
 

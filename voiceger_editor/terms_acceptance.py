@@ -16,7 +16,7 @@ from .settings import default_config_path
 CURRENT_NOTICE_VERSION = 1
 OFFICIAL_TERMS_URL = "https://zunko.jp/con_ongen_kiyaku.html"
 ACCEPTANCE_FILENAME = "voiceger-terms-acceptance.json"
-ACCEPTANCE_COMMAND = "voiceger-accent-adapter --accept-voiceger-terms"
+ACCEPTANCE_COMMAND = "voiceger-editor --accept-voiceger-terms"
 
 _RECORD_FIELDS = {
     "accepted_explicitly",

@@ -11,7 +11,7 @@ import sys
 from typing import Any
 
 
-_APP_DIRECTORY = "voiceger-accent-adapter"
+_APP_DIRECTORY = "voiceger-editor"
 _CONFIG_FILENAME = "config.json"
 VOICEGER_DEFAULT_TOP_K = 20
 VOICEGER_DEFAULT_TOP_P = 1.0
@@ -35,7 +35,7 @@ class SettingsError(ValueError):
 
 def _default_output_dir() -> Path:
     # Keep the existing adapter output location as the reusable default.
-    return Path.home() / ".voiceger-accent-adapter" / "output"
+    return Path.home() / ".voiceger-editor" / "output"
 
 
 @dataclass(frozen=True)

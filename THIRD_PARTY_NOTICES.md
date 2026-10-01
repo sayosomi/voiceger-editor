@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-voiceger-accent-adapter is licensed under the MIT License in [LICENSE](LICENSE).
+voiceger-editor is licensed under the MIT License in [LICENSE](LICENSE).
 
 This file documents third-party software, services, models, and other assets that
 the adapter integrates with or declares as dependencies. Those third-party
@@ -12,7 +12,7 @@ Voiceger is a separate project:
 
 https://github.com/zunzun999/voiceger_v2
 
-voiceger-accent-adapter requires a separately installed Voiceger runtime. This
+voiceger-editor requires a separately installed Voiceger runtime. This
 repository does not redistribute Voiceger source, Voiceger models, or Voiceger
 reference audio.
 
@@ -26,13 +26,13 @@ MIT License:
 
 https://zunko.jp/con_ongen_kiyaku.html
 
-Installing or using voiceger-accent-adapter does not grant additional rights to
+Installing or using voiceger-editor does not grant additional rights to
 Voiceger, GPT-SoVITS, Voiceger:Zundamon models or reference audio, the Zundamon
 character/name/voice, generated audio, or other third-party assets.
 
 ## Python dependencies
 
-The following base packages are installed with voiceger-accent-adapter. They
+The following base packages are installed with voiceger-editor. They
 are not vendored in this repository and remain subject to their upstream
 licenses.
 
@@ -96,10 +96,10 @@ the following copyright notices in its license file:
 - Copyright (c) 2008 Ryuichi Nisimura
 
 The model is an external runtime asset. It is not committed to or distributed
-as part of the voiceger-accent-adapter source repository.
+as part of the voiceger-editor source repository.
 
 ## No endorsement
 
 References to third-party projects identify interoperability and dependency
 boundaries only. They do not imply sponsorship, approval, or endorsement of
-voiceger-accent-adapter by those projects or their rights holders.
+voiceger-editor by those projects or their rights holders.

@@ -1,12 +1,12 @@
 import unittest
 from unittest.mock import patch
 
-from voiceger_accent_adapter.english_stress import (
+from voiceger_editor.english_stress import (
     EnglishPhonemeEditorState,
     english_phonemes_to_editor_state,
 )
-from voiceger_accent_adapter.pronunciation import parse_pronunciation
-from voiceger_accent_adapter.query_editing import (
+from voiceger_editor.pronunciation import parse_pronunciation
+from voiceger_editor.query_editing import (
     english_editor_state,
     english_section_text_preview_query,
     english_word_preview_query,
@@ -28,7 +28,7 @@ from voiceger_accent_adapter.query_editing import (
     japanese_section_text_preview_query,
     retain_unchanged_english_word_phonemes,
 )
-from voiceger_accent_adapter.voicevox_api_models import (
+from voiceger_editor.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
     Mora,
@@ -878,7 +878,7 @@ class QueryEditingTests(unittest.TestCase):
         ]
 
         with patch(
-            "voiceger_accent_adapter.query_editing.text_to_pronunciation",
+            "voiceger_editor.query_editing.text_to_pronunciation",
             return_value=parse_pronunciation("ミ'ズ/サ'ク！"),
         ):
             updated = replace_japanese_section_text(
@@ -910,7 +910,7 @@ class QueryEditingTests(unittest.TestCase):
         original = query.model_dump()
 
         with patch(
-            "voiceger_accent_adapter.query_editing.text_to_pronunciation",
+            "voiceger_editor.query_editing.text_to_pronunciation",
             return_value=parse_pronunciation("キョ'ウ！"),
         ):
             updated = replace_japanese_section_text(query, "今日はいい天気")
@@ -936,7 +936,7 @@ class QueryEditingTests(unittest.TestCase):
         original = query.model_dump()
 
         with patch(
-            "voiceger_accent_adapter.query_editing.text_to_pronunciation",
+            "voiceger_editor.query_editing.text_to_pronunciation",
             return_value=parse_pronunciation("ミ'ズ/サ'ク？"),
         ):
             preview = japanese_section_text_preview_query(

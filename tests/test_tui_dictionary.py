@@ -2,11 +2,11 @@ import curses
 import unittest
 from types import SimpleNamespace
 
-from voiceger_accent_adapter.openjtalk_dictionary import expand_word_type, normalize_surface
-from voiceger_accent_adapter.pronunciation import parse_pronunciation
-from voiceger_accent_adapter.tui_dictionary import TuiDictionaryController
-from voiceger_accent_adapter.tui_editors import PreviewIntent
-from voiceger_accent_adapter.user_dictionary import JapaneseWordType
+from voiceger_editor.openjtalk_dictionary import expand_word_type, normalize_surface
+from voiceger_editor.pronunciation import parse_pronunciation
+from voiceger_editor.tui_dictionary import TuiDictionaryController
+from voiceger_editor.tui_editors import PreviewIntent
+from voiceger_editor.user_dictionary import JapaneseWordType
 
 
 def ja_word(surface, pronunciation="ズンダモン", accent=3, *, priority=5, word_type=JapaneseWordType.PROPER_NOUN):

@@ -4,15 +4,15 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
-from voiceger_accent_adapter.settings import Settings
-from voiceger_accent_adapter.tui_editors import (
+from voiceger_editor.settings import Settings
+from voiceger_editor.tui_editors import (
     EditorState,
     OpenHelpIntent,
     QuitIntent,
     TuiEditorController,
 )
-from voiceger_accent_adapter.tui_rendering import TuiRenderer, TuiRenderState
-from voiceger_accent_adapter.tui_shortcuts import (
+from voiceger_editor.tui_rendering import TuiRenderer, TuiRenderState
+from voiceger_editor.tui_shortcuts import (
     main_shortcut,
     main_shortcuts,
     menu_definitions,

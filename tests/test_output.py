@@ -6,8 +6,8 @@ from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
 
-from voiceger_accent_adapter.filename import build_output_filename
-from voiceger_accent_adapter.output import save_output, save_output_wav
+from voiceger_editor.filename import build_output_filename
+from voiceger_editor.output import save_output, save_output_wav
 
 
 class OutputSaveTests(unittest.TestCase):
@@ -108,7 +108,7 @@ class OutputSaveTests(unittest.TestCase):
             with patch.dict(
                 "sys.modules",
                 {"soundfile": self.fake_soundfile_module()},
-            ), patch("voiceger_accent_adapter.output._reserve") as reserve:
+            ), patch("voiceger_editor.output._reserve") as reserve:
                 def reserve_then_fail(path):
                     if reserve.call_count == 1:
                         with path.open("xb"):
@@ -175,7 +175,7 @@ class OutputSaveTests(unittest.TestCase):
             existing = output_dir / initial_name
             existing.write_bytes(b"keep")
 
-            with patch("voiceger_accent_adapter.output.shutil.copyfile") as copyfile:
+            with patch("voiceger_editor.output.shutil.copyfile") as copyfile:
                 copyfile.side_effect = OSError("copy failed")
                 with self.assertRaisesRegex(OSError, "copy failed"):
                     save_output_wav(

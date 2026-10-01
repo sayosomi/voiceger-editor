@@ -127,7 +127,7 @@ class VoicegerAdapter:
         self.output_dir = Path(
             output_dir
             or os.environ.get("VOICEGER_ACCENT_OUTPUT_DIR")
-            or (Path.home() / ".voiceger-accent-adapter" / "output")
+            or (Path.home() / ".voiceger-editor" / "output")
         ).expanduser().resolve()
 
         self.character_name = os.environ.get(

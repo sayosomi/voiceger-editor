@@ -6,8 +6,8 @@ from threading import Event, Thread
 import unittest
 from unittest.mock import patch
 
-from voiceger_accent_adapter import openjtalk_dictionary
-from voiceger_accent_adapter.openjtalk_dictionary import (
+from voiceger_editor import openjtalk_dictionary
+from voiceger_editor.openjtalk_dictionary import (
     OpenJTalkDictionary,
     OpenJTalkDictionaryError,
     WORD_TYPE_DATA,
@@ -15,8 +15,8 @@ from voiceger_accent_adapter.openjtalk_dictionary import (
     priority_to_cost,
     render_word_csv,
 )
-from voiceger_accent_adapter.runtime_locks import OPENJTALK_LOCK
-from voiceger_accent_adapter.user_dictionary import (
+from voiceger_editor.runtime_locks import OPENJTALK_LOCK
+from voiceger_editor.user_dictionary import (
     JapaneseWordType,
     UserDictWord,
     UserDictionaryCore,
@@ -279,7 +279,7 @@ class UserDictionaryTests(unittest.TestCase):
     def test_default_files_are_next_to_settings_and_voiceger_path_is_rejected(self):
         config_path = self.root / "platform-config" / "config.json"
         with patch(
-            "voiceger_accent_adapter.user_dictionary.default_config_path",
+            "voiceger_editor.user_dictionary.default_config_path",
             return_value=config_path,
         ):
             default_core = UserDictionaryCore(self.voiceger_root)
@@ -318,7 +318,7 @@ class UserDictionaryTests(unittest.TestCase):
         old_file = self.core.japanese_path.read_bytes()
         old_active = dict(self.backend.active)
         with patch(
-            "voiceger_accent_adapter.user_dictionary._atomic_write",
+            "voiceger_editor.user_dictionary._atomic_write",
             side_effect=OSError("disk full"),
         ):
             with self.assertRaisesRegex(Exception, "could not be persisted"):
@@ -338,7 +338,7 @@ class UserDictionaryTests(unittest.TestCase):
         self.backend.active = {"voiceger": "replaced global manager"}
 
         with patch(
-            "voiceger_accent_adapter.user_dictionary._atomic_write",
+            "voiceger_editor.user_dictionary._atomic_write",
             side_effect=OSError("disk full"),
         ):
             with self.assertRaisesRegex(Exception, "could not be persisted"):

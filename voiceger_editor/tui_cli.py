@@ -12,7 +12,7 @@ from .settings import Settings
 
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="voiceger-accent-adapter",
+        prog="voiceger-editor",
         description="Keyboard-first local pronunciation editing and take review.",
     )
     parser.add_argument("text", nargs="?", help="one utterance to edit and synthesize")

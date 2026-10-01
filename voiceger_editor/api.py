@@ -1,4 +1,4 @@
-"""VOICEVOX-style FastAPI surface for voiceger-accent-adapter."""
+"""VOICEVOX-style FastAPI surface for voiceger-editor."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ from .voicevox_query import (
 
 
 app = FastAPI(
-    title="voiceger-accent-adapter",
+    title="voiceger-editor",
     version=__version__,
 )
 
@@ -88,7 +88,7 @@ def _resolve_style(speaker: int):
 @app.get("/")
 def root():
     return {
-        "name": "voiceger-accent-adapter",
+        "name": "voiceger-editor",
         "version": __version__,
         "endpoints": [
             "/version",
@@ -122,7 +122,7 @@ def speakers():
     return [
         {
             "name": adapter.character_name,
-            "speaker_uuid": "voiceger-accent-adapter-zundamon",
+            "speaker_uuid": "voiceger-editor-zundamon",
             "styles": [
                 {
                     "name": style.name,

@@ -1,7 +1,7 @@
 import unittest
 
-from voiceger_accent_adapter.english_stress import english_phonemes_to_editor_state
-from voiceger_accent_adapter.tui_display import (
+from voiceger_editor.english_stress import english_phonemes_to_editor_state
+from voiceger_editor.tui_display import (
     _adjustable_value,
     _display_width,
     _english_display_tokens,

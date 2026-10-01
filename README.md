@@ -1,6 +1,6 @@
-# voiceger-accent-adapter
+# Voiceger Editor
 
-An experimental adapter for Voiceger that adds more control over pronunciation and speech generation.
+An experimental pronunciation and synthesis editor for Voiceger.
 
 It provides:
 
@@ -53,9 +53,9 @@ Review the official terms, explicitly accept them, or inspect the saved status
 with:
 
 ```bash
-voiceger-accent-adapter --open-voiceger-terms
-voiceger-accent-adapter --accept-voiceger-terms
-voiceger-accent-adapter --voiceger-terms-status
+voiceger-editor --open-voiceger-terms
+voiceger-editor --accept-voiceger-terms
+voiceger-editor --voiceger-terms-status
 ```
 
 The local notice is only a summary and does not replace the official terms.
@@ -74,13 +74,13 @@ Install the TUI in the Voiceger Python environment:
 Start it with:
 
 ```bash
-voiceger-accent-adapter
+voiceger-editor
 ```
 
 You can also give it text directly:
 
 ```bash
-voiceger-accent-adapter "このずんだ餅はvery sweetなのだ。"
+voiceger-editor "このずんだ餅はvery sweetなのだ。"
 ```
 
 The TUI is still under active development.
@@ -124,7 +124,7 @@ Start the API:
 
 ```bash
 "$VOICEGER_ROOT/.venv/bin/python" -m uvicorn \
-  voiceger_accent_adapter.api:app \
+  voiceger_editor.api:app \
   --host 127.0.0.1 \
   --port 8001
 ```
@@ -185,7 +185,7 @@ Only reference audio that exists in the user's local Voiceger installation is us
 
 ## Project Boundaries
 
-voiceger-accent-adapter is an unofficial project.
+Voiceger Editor is an unofficial project.
 
 It is not made, approved, or supported by the Voiceger project or the Tohoku Zunko / Zundamon Project.
 
@@ -220,7 +220,7 @@ https://github.com/zunzun999/voiceger_v2
 
 The Voiceger Zundamon terms also include rules about how the voice may and may not be used.
 
-These rules still apply when the audio is generated through voiceger-accent-adapter.
+These rules still apply when the audio is generated through Voiceger Editor.
 
 ## This Adapter License
 
@@ -240,6 +240,6 @@ For direct optional dependencies and external runtime components, see [`THIRD_PA
 
 ## Status
 
-voiceger-accent-adapter is under active development.
+Voiceger Editor is under active development.
 
 The API, TUI, settings, and other interfaces may change before the first stable release.

@@ -70,7 +70,7 @@ class VoicegerEnvironmentError(RuntimeError):
                 f"Voiceger: {VOICEGER_REPOSITORY_URL}",
                 'Set VOICEGER_ROOT, for example: export VOICEGER_ROOT="/path/to/voiceger_v2"',
                 f"Tested Voiceger revision: {SUPPORTED_VOICEGER_REVISION}",
-                "Run voiceger-accent-adapter --check for the full report.",
+                "Run voiceger-editor --check for the full report.",
             )
         )
         super().__init__("\n".join(lines))
@@ -358,7 +358,7 @@ def format_voiceger_environment_report(report: VoicegerEnvironmentReport) -> str
 
     revision = report.voiceger_revision or "unavailable"
     lines = [
-        f"voiceger-accent-adapter {report.adapter_version}",
+        f"voiceger-editor {report.adapter_version}",
         f"Python: {report.python_version}",
         f"VOICEGER_ROOT: {report.voiceger_root} ({report.root_source})",
         f"Voiceger revision: {revision}",

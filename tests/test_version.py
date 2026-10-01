@@ -3,10 +3,10 @@ from io import StringIO
 import unittest
 from unittest.mock import patch
 
-from voiceger_accent_adapter import __version__
-from voiceger_accent_adapter.api import app, root, version
-from voiceger_accent_adapter.entrypoint import main
-from voiceger_accent_adapter.tui_cli import build_argument_parser
+from voiceger_editor import __version__
+from voiceger_editor.api import app, root, version
+from voiceger_editor.entrypoint import main
+from voiceger_editor.tui_cli import build_argument_parser
 
 
 class VersionTests(unittest.TestCase):
@@ -19,9 +19,9 @@ class VersionTests(unittest.TestCase):
     def test_cli_version_prints_canonical_version_and_skips_voiceger_gates(self):
         output = StringIO()
         with patch(
-            "voiceger_accent_adapter.entrypoint.check_voiceger_environment"
+            "voiceger_editor.entrypoint.check_voiceger_environment"
         ) as check_environment, patch(
-            "voiceger_accent_adapter.entrypoint._require_tui_terms_acceptance"
+            "voiceger_editor.entrypoint._require_tui_terms_acceptance"
         ) as require_terms, redirect_stdout(output):
             with self.assertRaises(SystemExit) as caught:
                 main(["--version"])
@@ -29,7 +29,7 @@ class VersionTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, 0)
         self.assertEqual(
             output.getvalue(),
-            f"voiceger-accent-adapter {__version__}\n",
+            f"voiceger-editor {__version__}\n",
         )
         check_environment.assert_not_called()
         require_terms.assert_not_called()

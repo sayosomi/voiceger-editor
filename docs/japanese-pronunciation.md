@@ -210,7 +210,7 @@ Voiceger / GPT-SoVITS
 Core modules include:
 
 ```text
-voiceger_accent_adapter/
+voiceger_editor/
   pronunciation.py
   openjtalk_converter.py
   mixed_language.py

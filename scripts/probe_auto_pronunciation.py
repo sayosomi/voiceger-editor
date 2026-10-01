@@ -16,7 +16,7 @@ sys.path.insert(0, str(VOICEGER_ROOT / "GPT-SoVITS" / "GPT_SoVITS"))
 
 import pyopenjtalk  # noqa: E402
 
-from voiceger_accent_adapter.openjtalk_converter import (  # noqa: E402
+from voiceger_editor.openjtalk_converter import (  # noqa: E402
     text_to_pronunciation_string,
 )
 
