@@ -66,7 +66,7 @@ class VoicegerEnvironmentTests(unittest.TestCase):
             return_value=Path("/home/tester"),
         ):
             default, default_source = resolve_voiceger_root()
-        self.assertEqual(default, Path("/home/tester/voiceger_v2"))
+        self.assertEqual(default, Path("/home/tester/voiceger_v2").resolve())
         self.assertEqual(default_source, "default")
 
     def test_missing_root_reports_major_setup_failures(self):
