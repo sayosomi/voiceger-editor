@@ -442,11 +442,11 @@ class TuiRenderingTests(unittest.TestCase):
         self.renderer.render_help(screen, screen.columns)
         visible = self.rendered(screen)
         for text in (
-            "Up/Down", "on JA: accent by one mora",
-            "on EN: primary stress by one vowel",
+            "Up/Down", "JA accent/mora",
+            "EN primary stress/vowel",
             "on JA: edit segment pronunciation",
             "on EN: edit word phonemes",
-            "Generate/Regenerate: Takes",
+            "Generate/Regenerate Takes",
             "b / a / g",
             "Build pronunciation / Add section / Generate or regenerate all",
             "initial/regenerate-all",
