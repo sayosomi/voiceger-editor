@@ -166,7 +166,6 @@ class TuiOperations:
     ) -> tuple[OperationEffect, ...]:
         if session is None:
             return ()
-        take_count = session.active_candidate_count
         try:
             values = session.regenerate_all_takes()
         except Exception as exc:
