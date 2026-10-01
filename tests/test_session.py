@@ -94,7 +94,7 @@ class FakeTakeBatch:
         self.close_calls = 0
         self.closed = False
         self.regenerate_calls = []
-        self.regenerate_all_calls = 0
+        self.regenerate_all_calls = []
         self.accept_calls = []
         self.accept_error = None
         self.accept_result = object()
@@ -136,8 +136,8 @@ class FakeTakeBatch:
             style_name=self.kwargs["style_name"],
         )
 
-    def regenerate_all(self):
-        self.regenerate_all_calls += 1
+    def regenerate_all(self, take_count=None):
+        self.regenerate_all_calls.append(take_count)
         return iter(("regenerated",))
 
     def accept(self, take_number, **save_settings):
@@ -866,7 +866,10 @@ class UtteranceSessionTests(unittest.TestCase):
         self.assertEqual(batch.regenerate_calls, [2])
         self.assertEqual(regenerated.number, 2)
         self.assertEqual(list(all_regenerated), ["regenerated"])
-        self.assertEqual(batch.regenerate_all_calls, 1)
+        self.assertEqual(
+            batch.regenerate_all_calls,
+            [session.settings.take_count],
+        )
 
     def test_successful_acceptance_clears_active_batch(self):
         session = self.make_session()
