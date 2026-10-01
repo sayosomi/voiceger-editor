@@ -2699,7 +2699,15 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app.session.close_calls, 1)
 
     def test_main_sweeps_stale_take_directories_before_starting_tui(self):
+        environment = SimpleNamespace(
+            ready=True,
+            warnings=(),
+            voiceger_root=Path("/voiceger"),
+        )
         with patch(
+            "voiceger_accent_adapter.tui.check_voiceger_environment",
+            return_value=environment,
+        ), patch(
             "voiceger_accent_adapter.tui.cleanup_stale_take_directories"
         ) as cleanup, patch(
             "voiceger_accent_adapter.tui.load_settings",
