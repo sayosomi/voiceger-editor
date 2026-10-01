@@ -391,6 +391,7 @@ class TuiRenderingTests(unittest.TestCase):
             "on EN: primary stress by one vowel",
             "on JA: edit segment pronunciation",
             "on EN: edit word phonemes",
+            "Generate/Regenerate: Takes",
             "b / a / g",
             "Build pronunciation / Add section / Generate or regenerate all",
             "initial/regenerate-all",
@@ -1078,10 +1079,28 @@ class TuiRenderingTests(unittest.TestCase):
         labels = {line.key: line.text for line in lines if line.key is not None}
         self.assertEqual(labels[("build_pronunciation", None)], "  [B] Build pronunciation")
         self.assertEqual(labels[("add_section", None)], "  [A] Add section")
-        self.assertEqual(labels[("generate", None)], "▶ [G] Regenerate all 2 takes")
+        self.assertEqual(labels[("generate", None)], "▶ [G] Regenerate all <<6 > takes")
         self.assertEqual(labels[("candidate", 1)], "  [1] Take 1  0.01s")
         self.assertEqual(labels[("candidate", 2)], "  [2] Take 2  0.01s")
         self.assertEqual(labels[("clear_candidates", None)], "  [C] Clear candidates")
+        keyed = [line.key for line in lines if line.key is not None]
+        self.assertLess(keyed.index(("candidate", 2)), keyed.index(("generate", None)))
+        self.assertLess(keyed.index(("generate", None)), keyed.index(("clear_candidates", None)))
+        candidate_index = next(
+            index for index, line in enumerate(lines)
+            if line.key == ("candidate", 2)
+        )
+        generate_index = next(
+            index for index, line in enumerate(lines)
+            if line.key == ("generate", None)
+        )
+        clear_index = next(
+            index for index, line in enumerate(lines)
+            if line.key == ("clear_candidates", None)
+        )
+        self.assertEqual(lines[candidate_index + 1].text, "")
+        self.assertEqual(generate_index, candidate_index + 2)
+        self.assertEqual(clear_index, generate_index + 1)
         self.assertEqual(labels[("settings", None)], "  [S] Settings")
         self.assertEqual(labels[("dictionary", None)], "  [D] Dictionary")
         self.assertEqual(labels[("help", None)], "  [?] Help")

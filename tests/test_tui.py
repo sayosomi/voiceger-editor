@@ -772,6 +772,26 @@ class TuiTests(unittest.TestCase):
             )
             self.assertIn("[G] Generate < 100 > takes", idle_label)
 
+            batch_app = self.make_app(
+                query=mixed_query(),
+                candidates=(candidate(1),),
+            )
+            batch_app.config_path = Path(directory) / "batch-settings.json"
+            batch_app.settings = Settings(take_count=1)
+            batch_app._persisted_settings = batch_app.settings
+            set_navigation_focus(batch_app, ("generate", None))
+            existing = batch_app.session.candidates
+
+            batch_app._handle_key(curses.KEY_RIGHT)
+
+            self.assertEqual(batch_app.settings.take_count, 2)
+            self.assertEqual(batch_app.session.candidates, existing)
+            batch_label = next(
+                line for line, key in navigation_document(batch_app, 100)
+                if key == ("generate", None)
+            )
+            self.assertIn("[G] Regenerate all < 2>> takes", batch_label)
+
     def test_settings_feedback_requires_a_movable_change_and_clears_after_render(self):
         app = self.make_app(query=mixed_query())
         app.settings = Settings(style_id=1, speed=0.01, take_count=1, save_text=False)
@@ -2392,7 +2412,7 @@ class TuiTests(unittest.TestCase):
         regenerate._handle_key("g")
         regenerate._operations.start_regenerate_all.assert_called_once_with(
             regenerate.session,
-            take_count=regenerate.session.active_candidate_count,
+            take_count=regenerate.settings.take_count,
             navigation_revision=regenerate._navigation.revision,
         )
 

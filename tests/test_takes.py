@@ -255,6 +255,142 @@ class TakeBatchTests(unittest.TestCase):
 
             batch.close()
 
+    def test_full_regeneration_can_grow_to_requested_take_count(self):
+        calls = []
+
+        def synthesize_one():
+            calls.append(len(calls) + 1)
+            return {"audio": object(), "sampling_rate": 32000}
+
+        with tempfile.TemporaryDirectory() as directory:
+            batch = self.make_batch(
+                directory,
+                take_count=3,
+                synthesize_one=synthesize_one,
+            )
+            with patch.dict(
+                "sys.modules", {"soundfile": self.fake_soundfile_module()}
+            ):
+                old = list(batch.generate_all())
+                grown = list(batch.regenerate_all(5))
+
+            self.assertEqual(
+                [candidate.number for candidate in grown],
+                [1, 2, 3, 4, 5],
+            )
+            self.assertEqual(
+                [candidate.number for candidate in batch.candidates],
+                [1, 2, 3, 4, 5],
+            )
+            self.assertEqual(batch.take_count, 5)
+            self.assertTrue(
+                all(not candidate.wav_path.exists() for candidate in old)
+            )
+            self.assertTrue(
+                all(candidate.wav_path.is_file() for candidate in batch.candidates)
+            )
+            batch.close()
+
+    def test_full_regeneration_can_shrink_after_success(self):
+        calls = []
+
+        def synthesize_one():
+            calls.append(len(calls) + 1)
+            return {"audio": object(), "sampling_rate": 32000}
+
+        with tempfile.TemporaryDirectory() as directory:
+            batch = self.make_batch(
+                directory,
+                take_count=4,
+                synthesize_one=synthesize_one,
+            )
+            with patch.dict(
+                "sys.modules", {"soundfile": self.fake_soundfile_module()}
+            ):
+                old = list(batch.generate_all())
+                shrunk = list(batch.regenerate_all(2))
+
+            self.assertEqual(
+                [candidate.number for candidate in shrunk],
+                [1, 2],
+            )
+            self.assertEqual(
+                [candidate.number for candidate in batch.candidates],
+                [1, 2],
+            )
+            self.assertEqual(batch.take_count, 2)
+            self.assertTrue(
+                all(not candidate.wav_path.exists() for candidate in old)
+            )
+            batch.close()
+
+    def test_failed_shrink_keeps_excess_existing_candidates(self):
+        calls = []
+
+        def synthesize_one():
+            calls.append(len(calls) + 1)
+            if len(calls) == 6:
+                raise RuntimeError("replacement synthesis failed")
+            return {"audio": object(), "sampling_rate": 32000}
+
+        with tempfile.TemporaryDirectory() as directory:
+            batch = self.make_batch(
+                directory,
+                take_count=4,
+                synthesize_one=synthesize_one,
+            )
+            with patch.dict(
+                "sys.modules", {"soundfile": self.fake_soundfile_module()}
+            ):
+                old = list(batch.generate_all())
+                regeneration = batch.regenerate_all(2)
+                first_replacement = next(regeneration)
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "replacement synthesis failed",
+                ):
+                    next(regeneration)
+
+            self.assertEqual(batch.take_count, 4)
+            self.assertEqual(
+                [candidate.number for candidate in batch.candidates],
+                [1, 2, 3, 4],
+            )
+            self.assertIs(batch.candidates[0], first_replacement)
+            self.assertIs(batch.candidates[1], old[1])
+            self.assertIs(batch.candidates[2], old[2])
+            self.assertIs(batch.candidates[3], old[3])
+            self.assertFalse(old[0].wav_path.exists())
+            self.assertTrue(
+                all(
+                    candidate.wav_path.is_file()
+                    for candidate in batch.candidates
+                )
+            )
+            batch.close()
+
+    def test_cancelled_shrink_keeps_excess_existing_candidates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            batch = self.make_batch(directory, take_count=4)
+            with patch.dict(
+                "sys.modules", {"soundfile": self.fake_soundfile_module()}
+            ):
+                old = list(batch.generate_all())
+                regeneration = batch.regenerate_all(2)
+                first_replacement = next(regeneration)
+                regeneration.close()
+
+            self.assertEqual(batch.take_count, 4)
+            self.assertEqual(
+                [candidate.number for candidate in batch.candidates],
+                [1, 2, 3, 4],
+            )
+            self.assertIs(batch.candidates[0], first_replacement)
+            self.assertIs(batch.candidates[1], old[1])
+            self.assertIs(batch.candidates[2], old[2])
+            self.assertIs(batch.candidates[3], old[3])
+            batch.close()
+
     def test_failed_single_regeneration_preserves_previous_candidate(self):
         failure = RuntimeError("replacement synthesis failed")
         calls = []
