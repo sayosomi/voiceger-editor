@@ -32,6 +32,12 @@ from .query_editing import (
     replace_japanese_section_text,
     japanese_section_text_preview_query,
 )
+from .pronunciation import (
+    AccentPhrase as CoreAccentPhrase,
+    PronunciationPunctuation as CorePronunciationPunctuation,
+    canonicalize_punctuation,
+    parse_pronunciation,
+)
 from .settings import (
     Settings,
     SettingsError,
@@ -94,6 +100,28 @@ class PronunciationRow:
     vowel_offset: int = 0
     word_column_width: int = 0
     grouping: EnglishGroupingCache | None = None
+    punctuation_suffix: str = ""
+
+
+def _punctuation_suffixes(value: str) -> tuple[str, ...]:
+    """Return canonical punctuation grouped after each phrase in notation."""
+
+    pronunciation = parse_pronunciation(value)
+    suffixes: list[str] = []
+    phrase_index = -1
+    for item in pronunciation.items:
+        if isinstance(item, CoreAccentPhrase):
+            phrase_index += 1
+            suffixes.append("")
+        elif isinstance(item, CorePronunciationPunctuation):
+            if phrase_index < 0:
+                raise ValueError(
+                    "pronunciation punctuation has no preceding phrase"
+                )
+            suffixes[phrase_index] += item.mark
+        else:
+            raise ValueError(f"unsupported pronunciation item: {item!r}")
+    return tuple(suffixes)
 
 
 @dataclass
@@ -457,6 +485,28 @@ class TuiEditorController:
                     ):
                         self.grouping_error = "Error: Japanese segment references are invalid."
                         continue
+                try:
+                    canonical = japanese_pronunciation(
+                        query,
+                        segment_index=(
+                            model_index
+                            if query.voicegerSegments is not None
+                            else None
+                        ),
+                    )
+                    punctuation_suffixes = _punctuation_suffixes(canonical)
+                except Exception as exc:
+                    self.grouping_error = (
+                        "Error: Cannot reconstruct Japanese pronunciation: "
+                        f"{exc}"
+                    )
+                    continue
+                if len(punctuation_suffixes) != count:
+                    self.grouping_error = (
+                        "Error: Japanese pronunciation phrases do not match "
+                        "their query references."
+                    )
+                    continue
                 for local_index in range(count):
                     phrase_index = start + local_index
                     phrase = query.accent_phrases[phrase_index]
@@ -471,6 +521,7 @@ class TuiEditorController:
                             phrase_index_in_segment=local_index,
                             moras=tuple(mora.text for mora in phrase.moras),
                             accent=phrase.accent,
+                            punctuation_suffix=punctuation_suffixes[local_index],
                         )
                     )
                     first = False
@@ -1507,6 +1558,12 @@ class TuiEditorController:
                 )
                 return ()
             value = f"{numeric:.2f}"
+            editor.input_value = value
+        elif editor.kind == "japanese" and name == "pronunciation":
+            value = "".join(
+                canonicalize_punctuation(character) or character
+                for character in value
+            )
             editor.input_value = value
         if editor.kind == "settings":
             editor.payload["draft_settings"][name] = value

@@ -1524,6 +1524,58 @@ class TuiTests(unittest.TestCase):
             [(0, "？")],
         )
 
+    def test_japanese_ascii_punctuation_only_apply_is_canonical_and_visible(self):
+        previous_marks = {".": "！", ",": "。", "?": "！", "!": "？"}
+        for alias, canonical in ((".", "。"), (",", "、"), ("?", "？"), ("!", "！")):
+            with self.subTest(alias=alias):
+                app = self.make_app(
+                    query=japanese_query(
+                        (("ナ", "ノ", "ダ"), 3),
+                        terminator=previous_marks[alias],
+                    ),
+                    candidates=(candidate(1),),
+                )
+                opening_caption = app.session.caption
+                source_text = app.session.query.voicegerSegments[0].text
+                app._edit_selected_pronunciation(0)
+                editor = app._editor_controller.editor
+
+                app._handle_key(curses.KEY_END)
+                app._handle_key(curses.KEY_BACKSPACE)
+                app._handle_key(alias)
+                self.assertFalse(app._help_open)
+                app._handle_key("\n")
+                self.assertEqual(editor.input_value, "ナノダ'" + canonical)
+                self.finish_and_apply_pronunciation(app)
+
+                updated = app.session.query
+                segment = updated.voicegerSegments[0]
+                self.assertEqual(len(app.session.replace_query_calls), 1)
+                self.assertEqual(app.session.caption, opening_caption)
+                self.assertEqual(segment.text, source_text)
+                self.assertEqual(app.session.candidates, ())
+                self.assertEqual(
+                    [
+                        (entry.afterAccentPhrase, entry.mark)
+                        for entry in segment.pronunciationPunctuation
+                    ],
+                    [(0, canonical)],
+                )
+
+                rendered = app._renderer.navigation_document(
+                    app._render_state(), 80
+                )
+                main_row = next(
+                    line for line in rendered
+                    if line.key == ("pronunciation", 0)
+                )
+                self.assertTrue(main_row.text.endswith(canonical))
+
+                set_navigation_focus(app, ("pronunciation", 0))
+                app._handle_key("\n")
+                reopened = app._editor_controller.editor
+                self.assertEqual(reopened.input_value, "ナノダ'" + canonical)
+
     def test_japanese_escape_discards_entire_draft_without_query_mutation(self):
         app = self.make_app(query=japanese_query((("ナ", "ノ", "ダ"), 3)))
         original_query = app.session.query.model_copy(deep=True)

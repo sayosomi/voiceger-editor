@@ -322,6 +322,83 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(row, "▶ JA | [キョ] ウ")
         self.assertNotIn("キ ョ", row)
 
+    def test_japanese_punctuation_renders_inline_in_phrase_order(self):
+        rows = (
+            PronunciationRow(
+                "ja", "source", 0, 0, True,
+                phrase_index=0,
+                phrase_index_in_segment=0,
+                moras=("ソ", "ウ"),
+                accent=2,
+                punctuation_suffix="、",
+            ),
+            PronunciationRow(
+                "ja", "source", 0, 0, False,
+                phrase_index=1,
+                phrase_index_in_segment=1,
+                moras=("ナ", "ノ", "ダ"),
+                accent=3,
+                punctuation_suffix="……",
+            ),
+            PronunciationRow(
+                "ja", "source", 0, 0, False,
+                phrase_index=2,
+                phrase_index_in_segment=2,
+                moras=("デ", "モ"),
+                accent=1,
+                punctuation_suffix="！？",
+            ),
+        )
+        lines = self.renderer.navigation_document(
+            render_state(
+                session=FakeSession(),
+                focus_key=("pronunciation", 0),
+                pronunciation_rows=rows,
+                segments=(("ja", "source", 0),),
+            ),
+            80,
+        )
+        selectable = [
+            line for line in lines
+            if line.key and line.key[0] == "pronunciation"
+        ]
+
+        self.assertEqual(len(selectable), 3)
+        self.assertTrue(selectable[0].text.endswith("[ウ]、"))
+        self.assertTrue(selectable[1].text.endswith("[ダ]……"))
+        self.assertTrue(selectable[2].text.endswith("モ！？"))
+
+    def test_japanese_punctuation_stays_attached_when_phrase_wraps(self):
+        row = PronunciationRow(
+            "ja", "source", 0, 0, True,
+            phrase_index=0,
+            phrase_index_in_segment=0,
+            moras=("ア", "メ"),
+            accent=2,
+            punctuation_suffix="！？",
+        )
+        lines = self.renderer.navigation_document(
+            render_state(
+                session=FakeSession(),
+                focus_key=("pronunciation", 0),
+                pronunciation_rows=(row,),
+                segments=(("ja", "source", 0),),
+            ),
+            18,
+        )
+        owned_lines = [
+            line for line in lines
+            if line.focus_owner == ("pronunciation", 0)
+        ]
+
+        self.assertGreater(len(owned_lines), 1)
+        self.assertEqual(
+            sum(line.key == ("pronunciation", 0) for line in owned_lines),
+            1,
+        )
+        self.assertTrue(owned_lines[-1].text.endswith("[メ]！？"))
+        self.assertNotIn("[メ] ！？", "\n".join(line.text for line in owned_lines))
+
     def test_english_words_are_individual_rows_grouped_under_one_language_label(self):
         lines = self.renderer.navigation_document(
             render_state(session=FakeSession(), focus_key=("pronunciation", 0)), 80
