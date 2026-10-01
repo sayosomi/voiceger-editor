@@ -45,7 +45,7 @@ class VoicegerIntegrationTests(unittest.TestCase):
             os.environ.get("VOICEGER_ROOT", str(Path.home() / "voiceger_v2"))
         ).expanduser().resolve()
         cls.adapter = VoicegerAdapter(voiceger_root=cls.voiceger_root)
-        cls.style = get_style(cls.voiceger_root, 1)
+        cls.style = get_style(cls.voiceger_root, 3)
 
     def assert_full_synthesis_succeeds(self, query):
         result = synthesize_audio_query(
