@@ -270,14 +270,24 @@ class UtteranceSession:
         )
 
         def synthesize_one():
-            return synthesize_audio_query(
-                adapter=adapter,
-                query=deepcopy(query_snapshot),
-                style=style_snapshot,
-                top_k=resolved_top_k,
-                top_p=resolved_top_p,
-                temperature=resolved_temperature,
-            )
+            synthesis_kwargs = {
+                "adapter": adapter,
+                "query": deepcopy(query_snapshot),
+                "style": style_snapshot,
+                "top_k": resolved_top_k,
+                "top_p": resolved_top_p,
+                "temperature": resolved_temperature,
+            }
+            if (
+                query_snapshot.voicegerSegments
+                and {
+                    segment.language
+                    for segment in query_snapshot.voicegerSegments
+                }
+                == {"ja", "en"}
+            ):
+                synthesis_kwargs["capture_mixed_lab_provenance"] = True
+            return synthesize_audio_query(**synthesis_kwargs)
 
         batch = TakeBatch(
             take_count=settings_snapshot.take_count,

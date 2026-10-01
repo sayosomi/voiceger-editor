@@ -55,8 +55,8 @@ The TUI is still under active development.
 
 Its layout, controls, and shortcuts may change. Detailed TUI documentation will be added after the interface becomes more stable.
 
-Optional LAB sidecars for accepted pure-Japanese and pure-English takes require
-the LAB extra:
+Optional LAB sidecars for accepted Japanese, English, and Japanese-English
+mixed takes require the LAB extra:
 
 ```bash
 "$VOICEGER_ROOT/.venv/bin/python" -m pip install -e '.[tui,lab]'
@@ -66,6 +66,9 @@ Japanese LAB output also requires a `julius` executable. The adapter uses the
 pinned segmentation-kit model documented in
 [`docs/lab-output.md`](docs/lab-output.md) and caches it outside the output
 directory. English LAB output uses the pinned PocketSphinx 5.1.1 dependency.
+Mixed Japanese-English LAB output uses MRTE attention from the exact generated
+Take to define language regions, then applies the same Julius/PocketSphinx
+aligners inside those regions.
 
 ## API
 

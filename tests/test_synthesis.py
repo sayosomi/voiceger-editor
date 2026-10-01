@@ -350,6 +350,42 @@ class SynthesisTests(unittest.TestCase):
         )
         self.adapter.synthesize_audio.assert_not_called()
 
+    def test_mixed_capture_request_forwards_exact_query_snapshot(self):
+        result_mapping = {"audio": object(), "sampling_rate": 32000}
+        self.adapter.synthesize_mixed_audio.return_value = result_mapping
+        query = AudioQuery(
+            accent_phrases=[_accent_phrase(["キョ", "ー", "ワ"])],
+            voicegerSegments=[
+                VoicegerSegment(
+                    language="ja",
+                    text="今日は",
+                    accentPhraseStart=0,
+                    accentPhraseCount=1,
+                ),
+                VoicegerSegment(
+                    language="en",
+                    text="hello",
+                    phonemes=["HH", "AH0", "L", "OW1"],
+                ),
+            ],
+        )
+
+        result = synthesize_audio_query(
+            adapter=self.adapter,
+            query=query,
+            style=self.style,
+            capture_mixed_lab_provenance=True,
+        )
+
+        self.assertIs(result, result_mapping)
+        forwarded = (
+            self.adapter.synthesize_mixed_audio.call_args.kwargs[
+                "mixed_lab_query"
+            ]
+        )
+        self.assertEqual(forwarded.model_dump(), query.model_dump())
+        self.assertIsNot(forwarded, query)
+
     def test_shared_core_does_not_write_output_files(self):
         result_mapping = {"audio": object(), "sampling_rate": 32000}
 

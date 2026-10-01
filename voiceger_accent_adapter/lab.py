@@ -121,6 +121,9 @@ def save_lab_sidecar(
     destination: Path | None = None,
     japanese_aligner: Callable[[Path, AudioQuery], str] | None = None,
     english_aligner: Callable[[Path, AudioQuery], str] | None = None,
+    mixed_aligner: Callable[[Path, AudioQuery, object], str] | None = None,
+    mixed_provenance: object | None = None,
+    mixed_provenance_warning: str | None = None,
 ) -> LabSidecarResult:
     """Generate one optional LAB sidecar without making WAV acceptance fail."""
 
@@ -128,13 +131,6 @@ def save_lab_sidecar(
     lab_path = Path(destination) if destination is not None else wav_path.with_suffix(".lab")
     language = query_lab_language(query)
 
-    if language == "mixed":
-        return LabSidecarResult(
-            warning=(
-                "LAB not created: mixed Japanese-English alignment is not "
-                "supported yet."
-            )
-        )
     if language == "unsupported":
         return LabSidecarResult(
             warning="LAB not created: this language combination is not supported."
@@ -146,11 +142,30 @@ def save_lab_sidecar(
                 from .lab_julius import align_japanese_lab
                 japanese_aligner = align_japanese_lab
             content = japanese_aligner(wav_path, query)
-        else:
+        elif language == "en":
             if english_aligner is None:
                 from .lab_pocketsphinx import align_english_lab
                 english_aligner = align_english_lab
             content = english_aligner(wav_path, query)
+        else:
+            if mixed_provenance is None:
+                detail = (
+                    f": {mixed_provenance_warning}"
+                    if mixed_provenance_warning
+                    else ""
+                )
+                raise RuntimeError(
+                    "mixed-language timing provenance is unavailable"
+                    + detail
+                )
+            if mixed_aligner is None:
+                from .lab_mixed import align_mixed_lab
+                mixed_aligner = align_mixed_lab
+            content = mixed_aligner(
+                wav_path,
+                query,
+                mixed_provenance,
+            )
 
         import soundfile as sf
 
