@@ -1282,8 +1282,9 @@ class TuiEditorControllerTests(unittest.TestCase):
 
     def test_settings_keep_draft_apply_semantics_and_emit_movement_feedback(self):
         styles = (
-            type("Style", (), {"id": 1, "name": "Neutral"})(),
-            type("Style", (), {"id": 2, "name": "Sweet"})(),
+            type("Style", (), {"id": 3, "name": "Neutral"})(),
+            type("Style", (), {"id": 1, "name": "Sweet"})(),
+            type("Style", (), {"id": 22, "name": "Whispering"})(),
         )
         controller, _provider = self.make_controller(styles=styles)
         controller.open_settings(
@@ -1292,12 +1293,39 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(controller.editor.selection, "style_id")
         self.assertEqual(controller.adjust_settings(-1), (ClearAdjustmentFeedbackIntent(),))
         self.assertEqual(controller.adjust_settings(1), (AdjustmentPressedIntent("settings", "style_id", 1),))
-        self.assertEqual(controller.editor.payload["draft_settings"]["style_id"], "2")
+        self.assertEqual(controller.editor.payload["draft_settings"]["style_id"], "1")
+        self.assertEqual(controller.adjust_settings(1), (AdjustmentPressedIntent("settings", "style_id", 1),))
+        self.assertEqual(controller.editor.payload["draft_settings"]["style_id"], "22")
+        self.assertEqual(controller.adjust_settings(-1), (AdjustmentPressedIntent("settings", "style_id", -1),))
+        self.assertEqual(controller.editor.payload["draft_settings"]["style_id"], "1")
         controller.editor.selection = "apply"
         intent = controller._activate_selection(self.settings(), None, None)[0]
         self.assertIsInstance(intent, ApplySettingsIntent)
-        self.assertEqual(intent.settings.style_id, 2)
+        self.assertEqual(intent.settings.style_id, 1)
         self.assertEqual(intent.settings.output_dir, self.settings().output_dir)
+
+    def test_settings_reject_unavailable_style_id_instead_of_falling_back(self):
+        styles = (
+            type("Style", (), {"id": 3, "name": "Neutral"})(),
+            type("Style", (), {"id": 1, "name": "Sweet"})(),
+        )
+        controller, _provider = self.make_controller(styles=styles)
+        controller.open_settings(
+            Settings(style_id=2), origin=("settings", None), busy=False
+        )
+
+        self.assertEqual(
+            controller.adjust_settings(1),
+            (ClearAdjustmentFeedbackIntent(),),
+        )
+        self.assertEqual(
+            controller.editor.payload["draft_settings"]["style_id"],
+            "2",
+        )
+        self.assertEqual(
+            controller.editor.error,
+            "Error: Style ID 2 is not available.",
+        )
 
     def test_sampling_settings_adjust_edit_reset_and_apply_as_draft(self):
         settings = self.settings()
