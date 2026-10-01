@@ -3,8 +3,8 @@
 voiceger-accent-adapter is licensed under the MIT License in [LICENSE](LICENSE).
 
 This file documents third-party software, services, models, and other assets that
-the adapter integrates with or declares as optional dependencies. Those
-third-party materials are not relicensed under the adapter's MIT License.
+the adapter integrates with or declares as dependencies. Those third-party
+materials are not relicensed under the adapter's MIT License.
 
 ## Voiceger and Voiceger:Zundamon
 
@@ -30,7 +30,16 @@ Installing or using voiceger-accent-adapter does not grant additional rights to
 Voiceger, GPT-SoVITS, Voiceger:Zundamon models or reference audio, the Zundamon
 character/name/voice, generated audio, or other third-party assets.
 
-## Python optional dependencies
+## Python dependencies
+
+The following base packages are installed with voiceger-accent-adapter. They
+are not vendored in this repository and remain subject to their upstream
+licenses.
+
+| Package | Version used by this project | Upstream license |
+| --- | --- | --- |
+| NumPy | 1.23.4 | BSD-3-Clause |
+| Pydantic | 2.11.4 | MIT |
 
 The following packages are installed separately by the user's Python package
 manager when the corresponding extras are selected. They are not vendored in
@@ -45,6 +54,8 @@ this repository and remain subject to their upstream licenses.
 
 Upstream projects:
 
+- NumPy: https://github.com/numpy/numpy
+- Pydantic: https://github.com/pydantic/pydantic
 - FastAPI: https://github.com/fastapi/fastapi
 - Uvicorn: https://github.com/Kludex/uvicorn
 - SoundFile: https://github.com/bastibe/python-soundfile
