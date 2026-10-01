@@ -62,16 +62,16 @@ class MixedLabAttentionTests(unittest.TestCase):
         self.assertEqual(provenance.selected_attention_head, 0)
         self.assertEqual(len(provenance.boundary_seconds), 2)
 
-    def test_consensus_accepts_observed_two_frame_head_shift(self):
+    def test_prefers_human_validated_head_when_multiple_heads_survive(self):
         head_0 = np.asarray(
-            [0] * 25 + [1] * 18 + [2] * 7,
+            [0] * 28 + [1] * 20 + [2] * 7,
             dtype=np.int64,
         )
-        head_2 = np.asarray(
-            [0] * 23 + [1] * 18 + [2] * 9,
+        shifted_head = np.asarray(
+            [0] * 25 + [1] * 20 + [2] * 10,
             dtype=np.int64,
         )
-        dominance = np.stack((head_0, head_2), axis=0)
+        dominance = np.stack((head_0, shifted_head), axis=0)
 
         selected, transitions = _select_consensus_head(
             dominance,
@@ -81,10 +81,33 @@ class MixedLabAttentionTests(unittest.TestCase):
         )
 
         self.assertEqual(selected, 0)
+        self.assertEqual(transitions, (28, 48))
+
+    def test_fallback_consensus_accepts_close_heads_when_validated_head_absent(self):
+        unused = np.zeros(50, dtype=np.int64)
+        head_1 = np.asarray(
+            [0] * 25 + [1] * 18 + [2] * 7,
+            dtype=np.int64,
+        )
+        head_2 = np.asarray(
+            [0] * 23 + [1] * 18 + [2] * 9,
+            dtype=np.int64,
+        )
+        dominance = np.stack((unused, head_1, head_2), axis=0)
+
+        selected, transitions = _select_consensus_head(
+            dominance,
+            {1, 2},
+            segment_count=3,
+            conservative_onset=0,
+        )
+
+        self.assertEqual(selected, 1)
         self.assertEqual(transitions, (25, 43))
 
     def test_consensus_rejects_heads_with_material_transition_disagreement(self):
-        head_0 = np.asarray(
+        unused = np.zeros(50, dtype=np.int64)
+        head_1 = np.asarray(
             [0] * 25 + [1] * 18 + [2] * 7,
             dtype=np.int64,
         )
@@ -92,7 +115,7 @@ class MixedLabAttentionTests(unittest.TestCase):
             [0] * 22 + [1] * 18 + [2] * 10,
             dtype=np.int64,
         )
-        dominance = np.stack((head_0, head_2), axis=0)
+        dominance = np.stack((unused, head_1, head_2), axis=0)
 
         with self.assertRaisesRegex(
             RuntimeError,
@@ -100,14 +123,14 @@ class MixedLabAttentionTests(unittest.TestCase):
         ) as context:
             _select_consensus_head(
                 dominance,
-                {0, 1},
+                {1, 2},
                 segment_count=3,
                 conservative_onset=0,
             )
 
         message = str(context.exception)
-        self.assertIn("0:(25, 43)", message)
-        self.assertIn("1:(22, 40)", message)
+        self.assertIn("1:(25, 43)", message)
+        self.assertIn("2:(22, 40)", message)
 
 
 if __name__ == "__main__":
