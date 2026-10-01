@@ -284,6 +284,7 @@ class UtteranceSession:
             synthesize_one=synthesize_one,
             style_name=style_snapshot.name,
             source_text=source_text_snapshot,
+            query=query_snapshot,
         )
         try:
             iterator = batch.generate_all()
@@ -302,10 +303,15 @@ class UtteranceSession:
 
     def accept_take(self, take_number: int) -> SavedOutput:
         batch = self._require_active_batch()
+        accept_kwargs = {
+            "output_dir": self._settings.output_dir,
+            "save_text": self._settings.save_text,
+        }
+        if self._settings.save_lab:
+            accept_kwargs["save_lab"] = True
         saved = batch.accept(
             take_number,
-            output_dir=self._settings.output_dir,
-            save_text=self._settings.save_text,
+            **accept_kwargs,
         )
         self._active_batch = None
         return saved

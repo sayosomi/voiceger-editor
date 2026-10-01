@@ -18,6 +18,10 @@ api = [
 tui = [
   "soundfile==0.13.1",
 ]
+lab = [
+  "soundfile==0.13.1",
+  "pocketsphinx==5.1.1",
+]
 
 [project.scripts]
 voiceger-accent-adapter = "voiceger_accent_adapter.tui:main"

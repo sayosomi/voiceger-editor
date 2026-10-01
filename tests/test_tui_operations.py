@@ -866,6 +866,45 @@ class TuiOperationsTests(unittest.TestCase):
         )
         process.terminate.assert_called_once_with()
 
+    def test_candidate_acceptance_reports_lab_success_and_nonfatal_warning(self):
+        session = FakeSession((candidate(3),))
+        session.accepted = SimpleNamespace(
+            wav_path=Path("/tmp/saved.wav"),
+            text_path=None,
+            lab_path=Path("/tmp/saved.lab"),
+            lab_warning=None,
+        )
+        effects = self.operations.accept_take(
+            session,
+            3,
+            busy=False,
+            pronunciation_index=0,
+        )
+        self.assertEqual(
+            effects[-1],
+            UpdateStatusEffect("Saved saved.wav and saved.lab."),
+        )
+
+        session = FakeSession((candidate(3),))
+        session.accepted = SimpleNamespace(
+            wav_path=Path("/tmp/saved.wav"),
+            text_path=None,
+            lab_path=None,
+            lab_warning="LAB generation failed: Julius executable not found",
+        )
+        effects = self.operations.accept_take(
+            session,
+            3,
+            busy=False,
+            pronunciation_index=0,
+        )
+        self.assertEqual(
+            effects[-1],
+            UpdateStatusEffect(
+                "Saved saved.wav. LAB generation failed: Julius executable not found"
+            ),
+        )
+
     def test_candidate_acceptance_failure_and_busy_guard(self):
         original = candidate(3)
         session = FakeSession((original,))

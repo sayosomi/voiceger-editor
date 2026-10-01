@@ -303,7 +303,7 @@ class TuiTests(unittest.TestCase):
 
     def test_command_line_options_still_override_persisted_defaults(self):
         args = build_argument_parser().parse_args(
-            ["example", "--take-count", "8", "--style", "2", "--speed", "1.25", "--save-text"]
+            ["example", "--take-count", "8", "--style", "2", "--speed", "1.25", "--save-text", "--save-lab"]
         )
         base = Settings()
         effective = settings_for_invocation(args, base)
@@ -311,6 +311,7 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(effective.style_id, 2)
         self.assertEqual(effective.speed, 1.25)
         self.assertTrue(effective.save_text)
+        self.assertTrue(effective.save_lab)
         self.assertEqual(base, Settings())
 
     def test_settings_change_persists_only_interactive_fields_over_cli_defaults(self):
@@ -1648,7 +1649,7 @@ class TuiTests(unittest.TestCase):
             rendered = self.rendered(screen)
             for label in (
                 "[S] Style *", "[V] Speed *", "[N] Takes",
-                "[O] Output", "[X] TXT",
+                "[O] Output", "[X] TXT", "[L] LAB",
             ):
                 self.assertIn(label, rendered)
             for heading in ("Voice", "Generation", "Output", "Sampling", "Actions"):
@@ -1688,6 +1689,7 @@ class TuiTests(unittest.TestCase):
             ("style_id", "2", Settings(style_id=2)),
             ("speed", "1.25", Settings(speed=1.25)),
             ("save_text", True, Settings(save_text=True)),
+            ("save_lab", True, Settings(save_lab=True)),
         )
         for field, value, expected in cases:
             with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
@@ -1695,7 +1697,7 @@ class TuiTests(unittest.TestCase):
                 app.config_path = Path(directory) / "config.json"
                 app._open_settings_editor(field)
                 editor = app._editor_controller.editor
-                if field == "save_text":
+                if field in {"save_text", "save_lab"}:
                     app._handle_key(curses.KEY_RIGHT)
                     self.assertTrue(editor.payload["draft_settings"][field])
                 else:
@@ -1707,6 +1709,7 @@ class TuiTests(unittest.TestCase):
                     take_count=expected.take_count,
                     output_dir=app.settings.output_dir,
                     save_text=expected.save_text,
+                    save_lab=expected.save_lab,
                 )
                 app._handle_key("\n")
 
@@ -1725,6 +1728,7 @@ class TuiTests(unittest.TestCase):
                         "top_p": target.top_p,
                         "temperature": target.temperature,
                         "save_text": target.save_text,
+                        "save_lab": target.save_lab,
                     },
                 )
 
@@ -1819,6 +1823,7 @@ class TuiTests(unittest.TestCase):
                     "top_p": target.top_p,
                     "temperature": target.temperature,
                     "save_text": target.save_text,
+                    "save_lab": target.save_lab,
                 },
             )
 
@@ -1860,6 +1865,7 @@ class TuiTests(unittest.TestCase):
                 "take_count": "6",
                 "output_dir": "/tmp/opening-settings",
                 "save_text": True,
+                "save_lab": False,
                 "top_k": "20",
                 "top_p": "1.00",
                 "temperature": "1.00",
@@ -1938,6 +1944,7 @@ class TuiTests(unittest.TestCase):
                 "top_p": 1.0,
                 "temperature": 1.0,
                 "save_text": True,
+                "save_lab": False,
             })
 
     def test_identical_runtime_settings_still_save_without_reapplying_or_clearing_takes(self):
@@ -2421,7 +2428,7 @@ class TuiTests(unittest.TestCase):
 
         for shortcut, field in (
             ("s", "style_id"), ("v", "speed"), ("n", "take_count"),
-            ("x", "save_text"),
+            ("x", "save_text"), ("l", "save_lab"),
         ):
             with self.subTest(shortcut=shortcut):
                 settings_shortcut = self.make_app(query=mixed_query())

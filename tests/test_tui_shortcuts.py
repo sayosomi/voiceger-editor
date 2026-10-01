@@ -61,7 +61,7 @@ class TuiShortcutTests(unittest.TestCase):
             "add_section": {"a": "add", "c": "clear", "r": "reset", "b": "back"},
             "settings": {
                 "s": "style_id", "v": "speed", "n": "take_count",
-                "o": "output_dir", "x": "save_text",
+                "o": "output_dir", "x": "save_text", "l": "save_lab",
                 "k": "top_k", "p": "top_p", "t": "temperature",
                 "d": "reset_sampling",
                 "a": "apply", "r": "reset", "b": "back",
@@ -359,6 +359,7 @@ class TuiShortcutTests(unittest.TestCase):
             ("n", "take_count"),
             ("o", "output_dir"),
             ("x", "save_text"),
+            ("l", "save_lab"),
         ):
             with self.subTest(key=key):
                 intents = self.handle(controller, key)
