@@ -50,7 +50,7 @@ VOICEGER_ROOT=~/voiceger_v2 \
 - Logic reusable by the API, Web UI, or other frontends belongs in shared application/core modules, not TUI-specific modules.
 - Normally test subsystem behavior in its corresponding focused test module; use `tests/test_tui.py` for composition and genuinely cross-subsystem behavior.
 - Keep TUI architecture regression tests green, including the 900-line ceiling for `tui.py`.
-- See [`docs/tui-architecture.md`](docs/tui-architecture.md) for the subsystem ownership map and placement guidance.
+- See [`docs/development/tui-architecture.md`](docs/development/tui-architecture.md) for the subsystem ownership map and placement guidance.
 
 ## Manual testing and generated files
 
