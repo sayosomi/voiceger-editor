@@ -148,12 +148,18 @@ class VoicegerIntegrationTests(unittest.TestCase):
             adapter=self.adapter,
             query=query,
             style=self.style,
+            capture_mixed_lab_provenance=True,
         )
 
         self.assertEqual(result["sampling_rate"], 32000)
         duration = len(result["audio"]) / result["sampling_rate"]
         self.assertGreater(duration, 0.5)
         self.assertLess(duration, 15.0)
+        self.assertIsNotNone(
+            result.get("mixed_lab_provenance"),
+            result.get("mixed_lab_provenance_warning"),
+        )
+        self.assertIsNone(result.get("mixed_lab_provenance_warning"))
 
     def test_selected_japanese_segment_preview_synthesizes_without_runaway(self):
         query = build_mixed_audio_query(
