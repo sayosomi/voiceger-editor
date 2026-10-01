@@ -321,8 +321,17 @@ class TuiRenderer:
         )
 
         lines = self.navigation_document(state, width)
-        status_row = max(0, height - 1)
-        viewport_height = max(1, status_row - 4)
+        status = state.status
+        if status and not status.startswith(("Error:", "Warning:")):
+            status = f"Status: {status}"
+        status_lines = (
+            _wrap_text(status, max(1, width - 1))
+            if status
+            else []
+        )
+        status_height = max(1, len(status_lines))
+        status_start = max(0, height - status_height)
+        viewport_height = max(0, status_start - 4)
         focused_index = next(
             (
                 index
@@ -352,14 +361,19 @@ class TuiRenderer:
                     word_attr,
                 )
 
-        status = state.status
-        if status and not status.startswith("Error:"):
-            status = f"Status: {status}"
-        if status:
+        if status_lines:
             status_attr = self._attribute("A_BOLD")
-            if status.startswith("Error:"):
+            if status.startswith(("Error:", "Warning:")):
                 status_attr |= self._attribute("A_REVERSE")
-            safe_add(screen, status_row, 0, status, width, status_attr)
+            for offset, line in enumerate(status_lines):
+                safe_add(
+                    screen,
+                    status_start + offset,
+                    0,
+                    line,
+                    width,
+                    status_attr,
+                )
 
     def navigation_document(
         self,
