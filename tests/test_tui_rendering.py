@@ -415,7 +415,10 @@ class TuiRenderingTests(unittest.TestCase):
             if item[2] == "d" and item[3] & curses.A_BOLD
         )
         self.assertEqual(dictionary[0], rows[0] + 1)
-        self.assertEqual(rows[1:], list(range(rows[0] + 2, rows[0] + 6)))
+        self.assertEqual(
+            rows[1:],
+            list(range(rows[0] + 2, rows[0] + len(settings_shortcuts) + 1)),
+        )
         self.assertNotIn("Return to Navigation", visible)
         self.assertNotIn("| q Quit", visible)
         self.assertIn("q", [text for _row, _column, text, _attr in screen.drawn])
