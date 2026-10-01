@@ -29,6 +29,7 @@ from .pronunciation import (
 )
 from .runtime_locks import LANGSEGMENT_LOCK, OPENJTALK_LOCK
 from .user_dictionary import UserDictionaryCore
+from .voiceger_environment import resolve_voiceger_root
 from .voiceger_tokens import pronunciation_to_voiceger_tokens
 
 
@@ -105,11 +106,7 @@ class VoicegerAdapter:
         voiceger_root: Optional[str | Path] = None,
         output_dir: Optional[str | Path] = None,
     ) -> None:
-        self.voiceger_root = Path(
-            voiceger_root
-            or os.environ.get("VOICEGER_ROOT")
-            or (Path.home() / "voiceger_v2")
-        ).expanduser().resolve()
+        self.voiceger_root, _ = resolve_voiceger_root(voiceger_root)
 
         self.sovits_dir = self.voiceger_root / "GPT-SoVITS"
         self.gpt_sovits_dir = self.sovits_dir / "GPT_SoVITS"
