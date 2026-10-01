@@ -311,6 +311,147 @@ class ResolvePronunciationTests(unittest.TestCase):
             self.assertIs(japanese.g2p, original_japanese_g2p)
 
 
+    def test_mixed_japanese_override_matches_appended_terminal_punctuation(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            sovits_dir = root / "GPT-SoVITS"
+            sovits_dir.mkdir()
+            ref_wav = root / "ref.wav"
+            ref_wav.write_bytes(b"test")
+
+            adapter = VoicegerAdapter(voiceger_root=root)
+            original_japanese_g2p = lambda text, with_prosody=True: ["NATIVE_JA"]
+            english = SimpleNamespace(text_normalize=lambda text: text)
+            japanese = SimpleNamespace(
+                g2p=original_japanese_g2p,
+                text_normalize=lambda text: text,
+            )
+            original_clean_text_inf = (
+                lambda text, language, version: ([text], None, text)
+            )
+            inference_webui = SimpleNamespace(
+                clean_text_inf=original_clean_text_inf,
+                cleaned_text_to_sequence=lambda phones, version: list(phones),
+            )
+
+            class FakeMhaPatched:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+            def fake_get_tts_wav(**kwargs):
+                self.assertEqual(
+                    japanese.g2p("今日は", True),
+                    ["FIRST_JA"],
+                )
+                self.assertEqual(
+                    japanese.g2p("と言うよ。", True),
+                    ["SECOND_JA"],
+                )
+                self.assertEqual(
+                    inference_webui.clean_text_inf("hello", "en", "v2")[0],
+                    ["HH", "AH0", "L", "OW1"],
+                )
+                yield 32000, [0]
+
+            adapter._loaded = True
+            adapter._runtime = {
+                "MhaPatched": FakeMhaPatched,
+                "english": english,
+                "japanese": japanese,
+                "inference_webui": inference_webui,
+                "get_tts_wav": fake_get_tts_wav,
+            }
+
+            result = adapter.synthesize_mixed_audio(
+                text="今日はhelloと言うよ",
+                japanese_overrides=[
+                    ("今日は", ["FIRST_JA"]),
+                    ("と言うよ", ["SECOND_JA"]),
+                ],
+                english_overrides=[
+                    ("hello", ["HH", "AH0", "L", "OW1"]),
+                ],
+                text_language="Japanese-English Mixed",
+                ref_wav_path=ref_wav,
+                prompt_text="prompt",
+            )
+
+            self.assertEqual(result["sampling_rate"], 32000)
+            self.assertIs(japanese.g2p, original_japanese_g2p)
+            self.assertIs(
+                inference_webui.clean_text_inf,
+                original_clean_text_inf,
+            )
+
+    def test_mixed_japanese_duplicate_canonical_segments_keep_queue_order(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            sovits_dir = root / "GPT-SoVITS"
+            sovits_dir.mkdir()
+            ref_wav = root / "ref.wav"
+            ref_wav.write_bytes(b"test")
+
+            adapter = VoicegerAdapter(voiceger_root=root)
+            original_japanese_g2p = lambda text, with_prosody=True: ["NATIVE_JA"]
+            english = SimpleNamespace(text_normalize=lambda text: text)
+            japanese = SimpleNamespace(
+                g2p=original_japanese_g2p,
+                text_normalize=lambda text: text,
+            )
+            inference_webui = SimpleNamespace(
+                clean_text_inf=lambda text, language, version: (
+                    [text],
+                    None,
+                    text,
+                ),
+                cleaned_text_to_sequence=lambda phones, version: list(phones),
+            )
+
+            class FakeMhaPatched:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+            def fake_get_tts_wav(**kwargs):
+                self.assertEqual(
+                    japanese.g2p("雨。", True),
+                    ["FIRST"],
+                )
+                self.assertEqual(
+                    japanese.g2p("雨", True),
+                    ["SECOND"],
+                )
+                yield 32000, [0]
+
+            adapter._loaded = True
+            adapter._runtime = {
+                "MhaPatched": FakeMhaPatched,
+                "english": english,
+                "japanese": japanese,
+                "inference_webui": inference_webui,
+                "get_tts_wav": fake_get_tts_wav,
+            }
+
+            result = adapter.synthesize_mixed_audio(
+                text="雨hello雨",
+                japanese_overrides=[
+                    ("雨", ["FIRST"]),
+                    ("雨。", ["SECOND"]),
+                ],
+                text_language="Japanese-English Mixed",
+                ref_wav_path=ref_wav,
+                prompt_text="prompt",
+            )
+
+            self.assertEqual(result["sampling_rate"], 32000)
+
+
+
 class EnglishDictionaryAdapterTests(unittest.TestCase):
     def make_adapter(self, root: Path, data_dir: Path) -> VoicegerAdapter:
         voiceger_root = root / "voiceger"
