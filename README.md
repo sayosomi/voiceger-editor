@@ -1,6 +1,6 @@
 # Voiceger Editor
 
-An experimental adapter for Voiceger that adds more control over pronunciation and speech generation.
+An experimental pronunciation and synthesis editor for Voiceger.
 
 It provides:
 
@@ -220,7 +220,7 @@ https://github.com/zunzun999/voiceger_v2
 
 The Voiceger Zundamon terms also include rules about how the voice may and may not be used.
 
-These rules still apply when the audio is generated through voiceger-editor.
+These rules still apply when the audio is generated through Voiceger Editor.
 
 ## This Adapter License
 
@@ -240,6 +240,6 @@ For direct optional dependencies and external runtime components, see [`THIRD_PA
 
 ## Status
 
-voiceger-editor is under active development.
+Voiceger Editor is under active development.
 
 The API, TUI, settings, and other interfaces may change before the first stable release.

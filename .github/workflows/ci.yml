@@ -73,3 +73,4 @@ jobs:
           .ci-smoke/bin/python -m pip install "voiceger-editor[api,tui,lab] @ file://$wheel"
           .ci-smoke/bin/python -m pip check
           .ci-smoke/bin/voiceger-editor --help
+          .ci-smoke/bin/voiceger-editor --version
