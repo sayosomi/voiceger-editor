@@ -104,6 +104,8 @@ def save_output(
     never replaced. Paired WAV/TXT output reserves both paths before either is
     written. ``filename_text`` can preserve an adapter's established naming
     text while ``source_text`` remains byte-for-byte the text saved to TXT.
+    ``style_name`` is retained for caller compatibility but does not affect
+    the output basename.
     """
 
     import soundfile as sf
@@ -111,7 +113,6 @@ def save_output(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     initial_name = build_output_filename(
-        style_name=style_name,
         text=filename_text if filename_text is not None else source_text,
         timestamp=timestamp,
     )
@@ -143,12 +144,15 @@ def save_output_wav(
     timestamp: Optional[datetime] = None,
     avoid_lab_collision: bool = False,
 ) -> SavedOutput:
-    """Copy an existing WAV to a reserved output path without decoding it."""
+    """Copy an existing WAV to a reserved output path without decoding it.
+
+    ``style_name`` is retained for caller compatibility but does not affect
+    the output basename.
+    """
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     initial_name = build_output_filename(
-        style_name=style_name,
         text=source_text,
         timestamp=timestamp,
     )

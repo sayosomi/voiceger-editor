@@ -342,7 +342,12 @@ class UtteranceSessionTests(unittest.TestCase):
 
             self.assertFalse(candidate_wav.exists())
             self.assertEqual(saved.wav_path.read_bytes(), b"candidate wav bytes")
-            self.assertIn("_Neutral_old-jaold-enold-end.wav", saved.wav_path.name)
+            self.assertTrue(saved.wav_path.name[:12].isdigit())
+            self.assertEqual(
+                saved.wav_path.name[12:],
+                "_old-jaold-enold-end.wav",
+            )
+            self.assertNotIn("_Neutral_", saved.wav_path.name)
             self.assertNotIn("later Caption", saved.wav_path.name)
             self.assertEqual(
                 saved.text_path.read_text(encoding="utf-8"), "old-jaold-enold-end"
