@@ -1030,10 +1030,14 @@ class TuiRenderer:
         if not status and editor.active_field is not None:
             status = "Enter: Finish editing   Esc: Back"
         if status:
-            status_attr = self._attribute("A_BOLD")
-            if status.startswith("Error:"):
-                status_attr |= self._attribute("A_REVERSE")
-            safe_add(screen, status_row, 0, status, width, status_attr)
+            safe_add(
+                screen,
+                status_row,
+                0,
+                status,
+                width,
+                self._status_attribute(status),
+            )
         if cursor_line is not None and start <= cursor_line < start + viewport_height:
             try:
                 screen.move(
