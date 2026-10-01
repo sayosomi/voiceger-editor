@@ -34,7 +34,7 @@ _HELP_ITEMS = (
     ("Up/Down", ": move one selectable item"),
     (
         "Left/Right",
-        ": on JA: accent by one mora; on EN: primary stress by one vowel",
+        ": on Generate/Regenerate: Takes; on JA: accent; on EN: primary stress",
     ),
     (
         "Enter",
@@ -507,14 +507,10 @@ class TuiRenderer:
                     self._adjustment_press_direction(state, "navigation", "generate"),
                 )
                 generate_label = (
-                    f"Regenerate all {len(session.candidates)} takes"
+                    f"Regenerate all {adjustable_count} takes"
                     if has_batch
                     else f"Generate {adjustable_count} takes"
                 )
-            action(
-                ("generate", None),
-                main_shortcut("generate").display_with_label(generate_label),
-            )
             plain()
             if not session.candidates:
                 plain("Candidates   No candidates yet.")
@@ -534,6 +530,10 @@ class TuiRenderer:
                     ("candidate", candidate.number),
                     label,
                 )
+            action(
+                ("generate", None),
+                main_shortcut("generate").display_with_label(generate_label),
+            )
             if session.candidates:
                 action(
                     ("clear_candidates", None),
