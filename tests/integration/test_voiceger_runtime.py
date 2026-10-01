@@ -155,6 +155,24 @@ class VoicegerIntegrationTests(unittest.TestCase):
         self.assertGreater(duration, 0.5)
         self.assertLess(duration, 15.0)
 
+    def test_mixed_without_terminal_punctuation_synthesizes_with_take_capture(self):
+        query = build_mixed_audio_query(
+            "今日はhelloと言うよ",
+            english_g2p=self.adapter.english_phonemes,
+        )
+
+        result = synthesize_audio_query(
+            adapter=self.adapter,
+            query=query,
+            style=self.style,
+            capture_mixed_lab_provenance=True,
+        )
+
+        self.assertEqual(result["sampling_rate"], 32000)
+        duration = len(result["audio"]) / result["sampling_rate"]
+        self.assertGreater(duration, 0.5)
+        self.assertLess(duration, 15.0)
+
     def test_mixed_lab_provenance_capture_uses_validated_runtime_path(self):
         import random
 
