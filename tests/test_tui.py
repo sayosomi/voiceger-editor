@@ -311,12 +311,12 @@ class TuiTests(unittest.TestCase):
 
     def test_command_line_options_still_override_persisted_defaults(self):
         args = build_argument_parser().parse_args(
-            ["example", "--take-count", "8", "--style", "2", "--speed", "1.25", "--save-text", "--save-lab"]
+            ["example", "--take-count", "8", "--style", "22", "--speed", "1.25", "--save-text", "--save-lab"]
         )
         base = Settings()
         effective = settings_for_invocation(args, base)
         self.assertEqual(effective.take_count, 8)
-        self.assertEqual(effective.style_id, 2)
+        self.assertEqual(effective.style_id, 22)
         self.assertEqual(effective.speed, 1.25)
         self.assertTrue(effective.save_text)
         self.assertTrue(effective.save_lab)
@@ -802,10 +802,10 @@ class TuiTests(unittest.TestCase):
 
     def test_settings_feedback_requires_a_movable_change_and_clears_after_render(self):
         app = self.make_app(query=mixed_query())
-        app.settings = Settings(style_id=1, speed=0.01, take_count=1, save_text=False)
+        app.settings = Settings(style_id=3, speed=0.01, take_count=1, save_text=False)
         styles = (
-            SimpleNamespace(id=1, name="Neutral"),
-            SimpleNamespace(id=2, name="Sweet"),
+            SimpleNamespace(id=3, name="Neutral"),
+            SimpleNamespace(id=1, name="Sweet"),
         )
         app._open_settings_editor()
         editor = app._editor_controller.editor
@@ -817,7 +817,7 @@ class TuiTests(unittest.TestCase):
             editor.selection = "style_id"
             app._pressed_adjustment = ("settings", "speed", 1)
             app._handle_key(curses.KEY_LEFT)
-            self.assertEqual(editor.payload["draft_settings"]["style_id"], "1")
+            self.assertEqual(editor.payload["draft_settings"]["style_id"], "3")
             self.assertIsNone(app._pressed_adjustment)
             style_left = next(
                 line for line, key in editor_document(app, 100)[0]
@@ -829,7 +829,7 @@ class TuiTests(unittest.TestCase):
 
             editor.selection = "style_id"
             app._handle_key(curses.KEY_RIGHT)
-            self.assertEqual(editor.payload["draft_settings"]["style_id"], "2")
+            self.assertEqual(editor.payload["draft_settings"]["style_id"], "1")
             self.assertEqual(app._pressed_adjustment, ("settings", "style_id", 1))
             style_right = next(
                 line for line, key in editor_document(app, 100)[0]
@@ -840,7 +840,7 @@ class TuiTests(unittest.TestCase):
             self.assertEqual(style_right.index("Sweet"), value_column)
 
             app._handle_key(curses.KEY_LEFT)
-            self.assertEqual(editor.payload["draft_settings"]["style_id"], "1")
+            self.assertEqual(editor.payload["draft_settings"]["style_id"], "3")
             style_left_moved = next(
                 line for line, key in editor_document(app, 100)[0]
                 if key == "style_id"
@@ -849,11 +849,11 @@ class TuiTests(unittest.TestCase):
             self.assertIn("<<Neutral >", style_left_moved)
 
             app._handle_key(curses.KEY_RIGHT)
-            self.assertEqual(editor.payload["draft_settings"]["style_id"], "2")
+            self.assertEqual(editor.payload["draft_settings"]["style_id"], "1")
             editor.selection = "style_id"
             app._pressed_adjustment = ("settings", "style_id", -1)
             app._handle_key(curses.KEY_RIGHT)
-            self.assertEqual(editor.payload["draft_settings"]["style_id"], "2")
+            self.assertEqual(editor.payload["draft_settings"]["style_id"], "1")
             self.assertIsNone(app._pressed_adjustment)
             style_right = next(
                 line for line, key in editor_document(app, 100)[0]
