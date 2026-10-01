@@ -15,6 +15,10 @@ from .voicevox_query import accent_phrases_to_pronunciation
 
 
 _ONSET_THRESHOLDS_DB = (-40.0, -35.0, -30.0, -25.0)
+_ATTENTION_SMOOTHING_RADIUS_FRAMES = 2
+# #61 Human-validated this MRTE head for the repository's supported Voiceger
+# compatibility target. Revalidate this preference when that target changes.
+_HUMAN_VALIDATED_ATTENTION_HEAD = 0
 
 
 @dataclass(frozen=True)
@@ -160,6 +164,85 @@ def _relative_rms_onsets(
     return tuple(result)
 
 
+def _transition_frames(
+    dominance: np.ndarray,
+    *,
+    segment_count: int,
+    conservative_onset: int,
+) -> tuple[int, ...]:
+    frame_count = len(dominance)
+    frame_indexes = np.arange(frame_count)
+    result: list[int] = []
+    for to_segment in range(1, segment_count):
+        candidates = np.flatnonzero(
+            (frame_indexes >= conservative_onset)
+            & (dominance == to_segment)
+        )
+        if candidates.size == 0:
+            raise RuntimeError(
+                "monotonic MRTE attention head is missing a segment transition"
+            )
+        frame_index = int(candidates[0])
+        if result and frame_index <= result[-1]:
+            raise RuntimeError(
+                "monotonic MRTE attention transitions are not increasing"
+            )
+        result.append(frame_index)
+    return tuple(result)
+
+
+def _select_consensus_head(
+    dominance: np.ndarray,
+    common_heads: set[int],
+    *,
+    segment_count: int,
+    conservative_onset: int,
+) -> tuple[int, tuple[int, ...]]:
+    transitions = {
+        head_index: _transition_frames(
+            dominance[head_index],
+            segment_count=segment_count,
+            conservative_onset=conservative_onset,
+        )
+        for head_index in sorted(common_heads)
+    }
+    if len(transitions) == 1:
+        head_index = next(iter(transitions))
+        return head_index, transitions[head_index]
+
+    if _HUMAN_VALIDATED_ATTENTION_HEAD in transitions:
+        return (
+            _HUMAN_VALIDATED_ATTENTION_HEAD,
+            transitions[_HUMAN_VALIDATED_ATTENTION_HEAD],
+        )
+
+    vectors = np.asarray(tuple(transitions.values()), dtype=np.int64)
+    spread = vectors.max(axis=0) - vectors.min(axis=0)
+    if np.any(spread > _ATTENTION_SMOOTHING_RADIUS_FRAMES):
+        detail = ", ".join(
+            f"{head}:{frames}" for head, frames in transitions.items()
+        )
+        raise RuntimeError(
+            "monotonic MRTE attention heads disagree on segment transition "
+            f"frames; transitions={{ {detail} }}"
+        )
+
+    medians = np.median(vectors, axis=0)
+    selected_head = min(
+        transitions,
+        key=lambda head: (
+            float(
+                np.abs(
+                    np.asarray(transitions[head], dtype=np.float64)
+                    - medians
+                ).sum()
+            ),
+            head,
+        ),
+    )
+    return selected_head, transitions[selected_head]
+
+
 def derive_mixed_lab_provenance(
     spans: tuple[MixedLabSegmentSpan, ...],
     attention: np.ndarray,
@@ -168,7 +251,7 @@ def derive_mixed_lab_provenance(
     raw_speech_sampling_rate: int,
     raw_audio,
 ) -> MixedLabProvenance:
-    """Select the unique monotonic attention head and return seam times."""
+    """Select a validated monotonic head or consensus representative."""
 
     if len(spans) < 2:
         raise ValueError("mixed LAB timing requires at least two segments")
@@ -212,8 +295,14 @@ def derive_mixed_lab_provenance(
     smoothed = np.empty_like(masses)
     for head_index in range(head_count):
         for frame_index in range(frame_count):
-            start = max(0, frame_index - 2)
-            end = min(frame_count, frame_index + 3)
+            start = max(
+                0,
+                frame_index - _ATTENTION_SMOOTHING_RADIUS_FRAMES,
+            )
+            end = min(
+                frame_count,
+                frame_index + _ATTENTION_SMOOTHING_RADIUS_FRAMES + 1,
+            )
             smoothed[head_index, frame_index] = (
                 masses[head_index, start:end].mean(axis=0)
             )
@@ -245,30 +334,25 @@ def derive_mixed_lab_provenance(
     common = set(range(head_count))
     for matching in matching_sets:
         common.intersection_update(matching)
-    if len(common) != 1:
-        candidates = [tuple(sorted(values)) for values in matching_sets]
+    if not common:
+        candidates = [tuple(sorted(items)) for items in matching_sets]
         raise RuntimeError(
-            "no unique monotonic MRTE attention head survives every "
-            f"speech-onset threshold; candidates={candidates}"
+            "no monotonic MRTE attention head survives every speech-onset "
+            f"threshold; candidates={candidates}"
         )
 
-    selected_head = next(iter(common))
     conservative_onset = max(onset_frames)
+    selected_head, transition_frames = _select_consensus_head(
+        dominance,
+        common,
+        segment_count=len(spans),
+        conservative_onset=conservative_onset,
+    )
     samples_per_frame = raw_speech_sample_count / frame_count
     boundary_seconds: list[float] = []
     previous_sample = 0
-    selected = dominance[selected_head]
 
-    for to_segment in range(1, len(spans)):
-        candidates = np.flatnonzero(
-            (np.arange(frame_count) >= conservative_onset)
-            & (selected == to_segment)
-        )
-        if candidates.size == 0:
-            raise RuntimeError(
-                "selected MRTE attention head is missing a segment transition"
-            )
-        frame_index = int(candidates[0])
+    for frame_index in transition_frames:
         sample_index = int(round(frame_index * samples_per_frame))
         if (
             sample_index <= previous_sample
