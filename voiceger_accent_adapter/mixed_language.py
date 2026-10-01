@@ -15,6 +15,7 @@ from .voiceger_tokens import pronunciation_to_voiceger_tokens
 from .voicevox_query import (
     accent_phrases_to_pronunciation,
     build_audio_query,
+    pronunciation_punctuation,
     pronunciation_to_accent_phrases,
 )
 
@@ -146,6 +147,9 @@ def build_mixed_audio_query(
                     pronunciationTerminator=(
                         pronunciation.terminator or ""
                     ),
+                    pronunciationPunctuation=(
+                        pronunciation_punctuation(pronunciation)
+                    ),
                 )
             )
         elif segment.language == "en":
@@ -251,6 +255,7 @@ def build_mixed_synthesis_plan(query: AudioQuery) -> MixedSynthesisPlan:
 
         pronunciation = accent_phrases_to_pronunciation(
             segment_phrases,
+            punctuation=segment.pronunciationPunctuation,
             terminator=resolve_japanese_segment_terminator(segment),
         )
         japanese_overrides.append(
