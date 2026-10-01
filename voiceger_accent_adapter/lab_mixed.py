@@ -49,6 +49,7 @@ def segment_alignment_query(
         ]
         result.voicegerSegments = None
         result.kana = None
+        result.pronunciationPunctuation = segment.pronunciationPunctuation
         return result
 
     if segment.language == "en":
@@ -59,6 +60,7 @@ def segment_alignment_query(
         result.accent_phrases = []
         result.voicegerSegments = [segment.model_copy(deep=True)]
         result.kana = None
+        result.pronunciationPunctuation = None
         return result
 
     raise ValueError(
