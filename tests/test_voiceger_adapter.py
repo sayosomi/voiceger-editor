@@ -14,6 +14,7 @@ from voiceger_accent_adapter.pronunciation import (
     parse_pronunciation,
 )
 from voiceger_accent_adapter.runtime_locks import OPENJTALK_LOCK
+from voiceger_accent_adapter.terms_acceptance import VoicegerTermsAcceptanceError
 from voiceger_accent_adapter.voiceger_adapter import (
     VoicegerAdapter,
     VoicegerAdapterError,
@@ -24,6 +25,13 @@ from voiceger_accent_adapter.user_dictionary import UserDictionaryCore
 
 
 class ResolvePronunciationTests(unittest.TestCase):
+    def setUp(self):
+        acceptance = patch(
+            "voiceger_accent_adapter.voiceger_adapter.require_current_acceptance"
+        )
+        acceptance.start()
+        self.addCleanup(acceptance.stop)
+
     def test_adapter_error_is_available_for_api_import(self):
         self.assertTrue(issubclass(VoicegerAdapterError, RuntimeError))
 
@@ -159,6 +167,36 @@ class ResolvePronunciationTests(unittest.TestCase):
     def test_rejects_newlines(self):
         with self.assertRaises(ValueError):
             resolve_pronunciation("一行目\n二行目")
+
+    def test_japanese_synthesis_requires_acceptance_before_runtime(self):
+        with TemporaryDirectory() as temp_dir:
+            adapter = VoicegerAdapter(voiceger_root=Path(temp_dir))
+            error = VoicegerTermsAcceptanceError("terms acceptance required")
+            with patch(
+                "voiceger_accent_adapter.voiceger_adapter.require_current_acceptance",
+                side_effect=error,
+            ), patch.object(adapter, "_ensure_runtime") as ensure_runtime:
+                with self.assertRaises(VoicegerTermsAcceptanceError):
+                    adapter.synthesize_audio(text="雨")
+
+        ensure_runtime.assert_not_called()
+
+    def test_mixed_synthesis_requires_acceptance_before_runtime(self):
+        with TemporaryDirectory() as temp_dir:
+            adapter = VoicegerAdapter(voiceger_root=Path(temp_dir))
+            error = VoicegerTermsAcceptanceError("terms acceptance required")
+            with patch(
+                "voiceger_accent_adapter.voiceger_adapter.require_current_acceptance",
+                side_effect=error,
+            ), patch.object(adapter, "_ensure_runtime") as ensure_runtime:
+                with self.assertRaises(VoicegerTermsAcceptanceError):
+                    adapter.synthesize_mixed_audio(
+                        text="今日はhello",
+                        japanese_overrides=[],
+                        text_language="Japanese-English Mixed",
+                    )
+
+        ensure_runtime.assert_not_called()
 
     def test_synthesize_uses_shared_output_saver_and_can_save_text(self):
         with TemporaryDirectory() as temp_dir:

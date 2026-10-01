@@ -231,6 +231,8 @@ class VoicegerEnvironmentFrontendTests(unittest.TestCase):
         with patch(
             "voiceger_accent_adapter.api.require_voiceger_environment",
             side_effect=VoicegerEnvironmentError(failed),
+        ), patch(
+            "voiceger_accent_adapter.api.require_current_acceptance",
         ):
             with TestClient(api.app) as client:
                 response = client.get("/speakers")

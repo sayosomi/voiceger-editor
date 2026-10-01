@@ -1,4 +1,6 @@
 import curses
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -8,6 +10,12 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 from voiceger_accent_adapter.settings import Settings
+from voiceger_accent_adapter.terms_acceptance import (
+    ACCEPTANCE_COMMAND,
+    OFFICIAL_TERMS_URL,
+    TermsAcceptanceStatus,
+    VoicegerTermsAcceptanceError,
+)
 from voiceger_accent_adapter.tui_editors import PreviewIntent, ReplaceQueryIntent
 from voiceger_accent_adapter.tui_operations import PlayPreviewEffect
 from voiceger_accent_adapter.tui import (
@@ -2708,6 +2716,11 @@ class TuiTests(unittest.TestCase):
             "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
             return_value=environment,
         ), patch(
+            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            return_value=SimpleNamespace(accepted=True),
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.require_current_acceptance",
+        ), patch(
             "voiceger_accent_adapter.entrypoint.cleanup_stale_take_directories"
         ) as cleanup, patch(
             "voiceger_accent_adapter.entrypoint.load_settings",
@@ -2720,6 +2733,270 @@ class TuiTests(unittest.TestCase):
             self.assertEqual(main([]), 0)
 
         cleanup.assert_called_once_with()
+
+    def test_first_use_requires_exact_accept_and_persists_before_tui(self):
+        environment = SimpleNamespace(
+            ready=True,
+            warnings=(),
+            voiceger_root=Path("/voiceger"),
+        )
+        order = []
+        status = TermsAcceptanceStatus(
+            accepted=False,
+            path=Path("/terms.json"),
+            notice_version=1,
+            terms_url=OFFICIAL_TERMS_URL,
+            detail="No acceptance record exists.",
+        )
+        with patch(
+            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            return_value=environment,
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            return_value=status,
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.record_explicit_acceptance",
+            side_effect=lambda: order.append("accepted"),
+        ) as record_acceptance, patch(
+            "voiceger_accent_adapter.entrypoint.require_current_acceptance",
+            side_effect=lambda: order.append("required"),
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.sys.stdin",
+            SimpleNamespace(isatty=lambda: True),
+        ), patch(
+            "builtins.input",
+            return_value="ACCEPT",
+        ) as prompt, patch(
+            "voiceger_accent_adapter.entrypoint.cleanup_stale_take_directories",
+            side_effect=lambda: order.append("cleanup"),
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.load_settings",
+            return_value=Settings(),
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
+            side_effect=lambda **_kwargs: order.append("adapter") or Mock(),
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.curses.wrapper",
+            side_effect=lambda _run: order.append("tui"),
+        ), redirect_stdout(io.StringIO()) as stdout:
+            result = main([])
+
+        self.assertEqual(result, 0)
+        self.assertIn(OFFICIAL_TERMS_URL, stdout.getvalue())
+        prompt.assert_called_once_with(
+            "Type ACCEPT after reading the official terms to continue: "
+        )
+        record_acceptance.assert_called_once_with()
+        self.assertEqual(order, ["accepted", "required", "cleanup", "adapter", "tui"])
+
+    def test_blank_and_non_affirmative_first_use_input_never_accepts(self):
+        environment = SimpleNamespace(
+            ready=True,
+            warnings=(),
+            voiceger_root=Path("/voiceger"),
+        )
+        status = TermsAcceptanceStatus(
+            accepted=False,
+            path=Path("/terms.json"),
+            notice_version=1,
+            terms_url=OFFICIAL_TERMS_URL,
+            detail="No acceptance record exists.",
+        )
+        for answer in ("", "yes", " ACCEPT"):
+            with self.subTest(answer=answer):
+                with patch(
+                    "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+                    return_value=environment,
+                ), patch(
+                    "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+                    return_value=status,
+                ), patch(
+                    "voiceger_accent_adapter.entrypoint.sys.stdin",
+                    SimpleNamespace(isatty=lambda: True),
+                ), patch(
+                    "builtins.input",
+                    return_value=answer,
+                ), patch(
+                    "voiceger_accent_adapter.entrypoint.record_explicit_acceptance",
+                ) as record_acceptance, patch(
+                    "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
+                ) as adapter, patch(
+                    "voiceger_accent_adapter.entrypoint.curses.wrapper",
+                ) as wrapper:
+                    self.assertEqual(main([]), 2)
+
+                record_acceptance.assert_not_called()
+                adapter.assert_not_called()
+                wrapper.assert_not_called()
+
+    def test_persisted_acceptance_skips_first_use_prompt(self):
+        environment = SimpleNamespace(
+            ready=True,
+            warnings=(),
+            voiceger_root=Path("/voiceger"),
+        )
+        with patch(
+            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            return_value=environment,
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            return_value=SimpleNamespace(accepted=True),
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.require_current_acceptance",
+        ), patch(
+            "builtins.input",
+            side_effect=AssertionError("accepted state must not prompt"),
+        ) as prompt, patch(
+            "voiceger_accent_adapter.entrypoint.cleanup_stale_take_directories"
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.load_settings",
+            return_value=Settings(),
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.curses.wrapper",
+        ):
+            self.assertEqual(main([]), 0)
+
+        prompt.assert_not_called()
+
+    def test_noninteractive_missing_acceptance_fails_with_setup_command(self):
+        environment = SimpleNamespace(
+            ready=True,
+            warnings=(),
+            voiceger_root=Path("/voiceger"),
+        )
+        error = VoicegerTermsAcceptanceError(
+            f"Read {OFFICIAL_TERMS_URL} and run {ACCEPTANCE_COMMAND}."
+        )
+        with patch(
+            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            return_value=environment,
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            return_value=SimpleNamespace(accepted=False, detail="missing"),
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.require_current_acceptance",
+            side_effect=error,
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.sys.stdin",
+            SimpleNamespace(isatty=lambda: False),
+        ), patch(
+            "builtins.input",
+            side_effect=AssertionError("non-interactive startup must not prompt"),
+        ) as prompt, patch(
+            "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
+        ) as adapter, patch(
+            "voiceger_accent_adapter.entrypoint.curses.wrapper",
+        ) as wrapper, redirect_stderr(io.StringIO()) as stderr:
+            self.assertEqual(main([]), 2)
+
+        self.assertIn(OFFICIAL_TERMS_URL, stderr.getvalue())
+        self.assertIn(ACCEPTANCE_COMMAND, stderr.getvalue())
+        prompt.assert_not_called()
+        adapter.assert_not_called()
+        wrapper.assert_not_called()
+
+    def test_terms_management_actions_skip_voiceger_preflight(self):
+        accepted_status = SimpleNamespace(
+            accepted=True,
+            path=Path("/terms.json"),
+            notice_version=1,
+            terms_url=OFFICIAL_TERMS_URL,
+            detail="accepted",
+        )
+        rejected_status = SimpleNamespace(
+            accepted=False,
+            path=Path("/terms.json"),
+            notice_version=1,
+            terms_url=OFFICIAL_TERMS_URL,
+            detail="No acceptance record exists.",
+        )
+        output = io.StringIO()
+
+        def verify_notice_was_printed_before_recording():
+            self.assertIn(OFFICIAL_TERMS_URL, output.getvalue())
+
+        with patch(
+            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+        ) as environment_check, patch(
+            "voiceger_accent_adapter.entrypoint.record_explicit_acceptance",
+            side_effect=verify_notice_was_printed_before_recording,
+        ) as record_acceptance, patch(
+            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            side_effect=[rejected_status, accepted_status],
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.webbrowser.open",
+            return_value=True,
+        ) as open_browser, redirect_stdout(output):
+            self.assertEqual(main(["--accept-voiceger-terms"]), 0)
+            self.assertEqual(main(["--voiceger-terms-status"]), 2)
+            self.assertEqual(main(["--voiceger-terms-status"]), 0)
+            self.assertEqual(main(["--open-voiceger-terms"]), 0)
+
+        environment_check.assert_not_called()
+        record_acceptance.assert_called_once_with()
+        open_browser.assert_called_once_with(OFFICIAL_TERMS_URL)
+        self.assertIn("not accepted", output.getvalue())
+
+    def test_acceptance_write_failure_does_not_start_tui(self):
+        environment = SimpleNamespace(
+            ready=True,
+            warnings=(),
+            voiceger_root=Path("/voiceger"),
+        )
+        status = TermsAcceptanceStatus(
+            accepted=False,
+            path=Path("/terms.json"),
+            notice_version=1,
+            terms_url=OFFICIAL_TERMS_URL,
+            detail="No acceptance record exists.",
+        )
+        with patch(
+            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            return_value=environment,
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            return_value=status,
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.record_explicit_acceptance",
+            side_effect=OSError("read-only directory"),
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.sys.stdin",
+            SimpleNamespace(isatty=lambda: True),
+        ), patch(
+            "builtins.input",
+            return_value="ACCEPT",
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
+        ) as adapter, patch(
+            "voiceger_accent_adapter.entrypoint.curses.wrapper",
+        ) as wrapper, redirect_stderr(io.StringIO()) as stderr:
+            self.assertEqual(main([]), 2)
+
+        self.assertIn("Cannot continue", stderr.getvalue())
+        adapter.assert_not_called()
+        wrapper.assert_not_called()
+
+    def test_ambiguous_terms_actions_are_mutually_exclusive(self):
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                build_argument_parser().parse_args(
+                    ["--check", "--voiceger-terms-status"]
+                )
+
+    def test_open_terms_reports_browser_failure_with_printed_url(self):
+        with patch(
+            "voiceger_accent_adapter.entrypoint.webbrowser.open",
+            return_value=False,
+        ), redirect_stdout(io.StringIO()) as stdout, redirect_stderr(
+            io.StringIO()
+        ) as stderr:
+            result = main(["--open-voiceger-terms"])
+
+        self.assertEqual(result, 2)
+        self.assertIn(OFFICIAL_TERMS_URL, stdout.getvalue())
+        self.assertIn(OFFICIAL_TERMS_URL, stderr.getvalue())
 
     def test_busy_shutdown_drains_worker_before_playback_and_session_cleanup(self):
         app = self.make_app()

@@ -31,6 +31,7 @@ from .runtime_locks import LANGSEGMENT_LOCK, OPENJTALK_LOCK
 from .user_dictionary import UserDictionaryCore
 from .voiceger_environment import resolve_voiceger_root
 from .voiceger_tokens import pronunciation_to_voiceger_tokens
+from .terms_acceptance import require_current_acceptance
 
 
 class VoicegerAdapterError(RuntimeError):
@@ -364,6 +365,7 @@ class VoicegerAdapter:
     ) -> dict[str, Any]:
         """Synthesize one utterance and return audio in memory."""
 
+        require_current_acceptance()
         source_text = _ensure_single_utterance(text)
         if pronunciation is None:
             self.user_dictionary.ensure_japanese_active()
@@ -458,6 +460,7 @@ class VoicegerAdapter:
     ) -> dict[str, Any]:
         """Synthesize mixed-language text with Japanese/English G2P overrides."""
 
+        require_current_acceptance()
         synthesis_text = _ensure_single_utterance(text)
 
         selected_ref_wav = Path(

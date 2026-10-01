@@ -31,6 +31,35 @@ Set `VOICEGER_ROOT` to your local Voiceger directory:
 export VOICEGER_ROOT=/path/to/voiceger_v2
 ```
 
+## First Use: Voiceger:Zundamon Terms
+
+Before the adapter uses Voiceger:Zundamon for synthesis, open and read the
+[official terms](https://zunko.jp/con_ongen_kiyaku.html). Voiceger and the
+Voiceger:Zundamon voice model are separate from this adapter. The adapter's MIT
+License covers only this repository's code; it does not cover Voiceger, the
+Voiceger model, Voiceger reference audio, generated audio, the Zundamon
+character, name or voice, or other third-party materials.
+
+On an interactive first use, the adapter displays this notice and requires you
+to type `ACCEPT` exactly before starting the TUI. API and other headless users
+must run the explicit acceptance command before Voiceger-backed requests will
+work. Acceptance is stored locally beside the default settings file and is
+shared across the TUI, API, and direct adapter use.
+
+Review the official terms, explicitly accept them, or inspect the saved status
+with:
+
+```bash
+voiceger-accent-adapter --open-voiceger-terms
+voiceger-accent-adapter --accept-voiceger-terms
+voiceger-accent-adapter --voiceger-terms-status
+```
+
+The local notice is only a summary and does not replace the official terms.
+Generated audio remains subject to the official credit requirement documented
+below, including the `Voiceger:Zundamon` credit where the official terms require
+it.
+
 ## Terminal Interface
 
 Install the TUI in the Voiceger Python environment:
