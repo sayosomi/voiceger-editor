@@ -169,6 +169,7 @@ def synthesize_audio_query(
     top_k: int = 20,
     top_p: float = 1.0,
     temperature: float = 1.0,
+    capture_mixed_lab_provenance: bool = False,
 ) -> dict[str, Any]:
     """Synthesize an AudioQuery through the selected Voiceger style."""
 
@@ -177,18 +178,25 @@ def synthesize_audio_query(
 
     if query.voicegerSegments:
         plan = build_mixed_synthesis_plan(query)
-        result = adapter.synthesize_mixed_audio(
-            text=plan.text,
-            japanese_overrides=list(plan.japanese_overrides),
-            text_language=plan.text_language,
-            english_overrides=list(plan.english_overrides),
-            ref_wav_path=ref_wav_path,
-            prompt_text=style.prompt_text,
-            speed=query.speedScale,
-            top_k=top_k,
-            top_p=top_p,
-            temperature=temperature,
-        )
+        mixed_kwargs: dict[str, Any] = {
+            "text": plan.text,
+            "japanese_overrides": list(plan.japanese_overrides),
+            "text_language": plan.text_language,
+            "english_overrides": list(plan.english_overrides),
+            "ref_wav_path": ref_wav_path,
+            "prompt_text": style.prompt_text,
+            "speed": query.speedScale,
+            "top_k": top_k,
+            "top_p": top_p,
+            "temperature": temperature,
+        }
+        if (
+            capture_mixed_lab_provenance
+            and {segment.language for segment in query.voicegerSegments}
+            == {"ja", "en"}
+        ):
+            mixed_kwargs["mixed_lab_query"] = query.model_copy(deep=True)
+        result = adapter.synthesize_mixed_audio(**mixed_kwargs)
         return _apply_output_format(result, query)
 
     pronunciation = accent_phrases_to_pronunciation(
