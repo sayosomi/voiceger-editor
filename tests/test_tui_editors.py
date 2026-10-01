@@ -31,6 +31,7 @@ from voiceger_accent_adapter.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
     Mora,
+    PronunciationPunctuation,
     VoicegerSegment,
 )
 
@@ -263,6 +264,51 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(rows[2].phonemes, ("HH", "AH1", "L", "OW2"))
         self.assertEqual(provider.calls, ["hello everyone"])
 
+    def test_pronunciation_rows_take_punctuation_from_pure_and_mixed_query_state(self):
+        controller, _provider = self.make_controller()
+        pure = AudioQuery(
+            accent_phrases=[
+                _phrase(("ソ", "ウ"), 2),
+                _phrase(("ナ", "ノ"), 1),
+                _phrase(("ダ",), 1),
+            ],
+            kana="stale caption pronunciation。",
+            pronunciationPunctuation=[
+                PronunciationPunctuation(afterAccentPhrase=0, mark="！"),
+                PronunciationPunctuation(afterAccentPhrase=0, mark="？"),
+                PronunciationPunctuation(afterAccentPhrase=1, mark="…"),
+                PronunciationPunctuation(afterAccentPhrase=1, mark="…"),
+            ],
+        )
+        pure_rows = controller.pronunciation_rows(
+            pure,
+            (("ja", "caption punctuation must not be used?!", None),),
+        )
+        self.assertEqual(
+            [row.punctuation_suffix for row in pure_rows],
+            ["！？", "……", ""],
+        )
+
+        mixed = mixed_query()
+        mixed.voicegerSegments[0].pronunciationPunctuation = [
+            PronunciationPunctuation(afterAccentPhrase=0, mark="、"),
+            PronunciationPunctuation(afterAccentPhrase=1, mark="…"),
+            PronunciationPunctuation(afterAccentPhrase=1, mark="！"),
+        ]
+        mixed_rows = controller.pronunciation_rows(mixed, segments(mixed)[:1])
+        self.assertEqual(
+            [row.punctuation_suffix for row in mixed_rows],
+            ["、", "…！"],
+        )
+
+        legacy = mixed_query()
+        legacy.voicegerSegments[0].pronunciationPunctuation = None
+        legacy_rows = controller.pronunciation_rows(legacy, segments(legacy)[:1])
+        self.assertEqual(
+            [row.punctuation_suffix for row in legacy_rows[:2]],
+            ["", "？"],
+        )
+
     def test_english_grouping_must_flatten_to_the_canonical_segment(self):
         query = mixed_query()
         controller, _provider = self.make_controller(
@@ -416,6 +462,8 @@ class TuiEditorControllerTests(unittest.TestCase):
             query=query,
             current_caption="source",
         )
+        self.assertEqual(editor.input_value, "ナ' ノダ'？")
+        self.assertEqual(editor.payload["pronunciation"], "ナ' ノダ'？")
         controller.handle_key(
             curses.KEY_DOWN,
             settings=self.settings(),
@@ -446,6 +494,76 @@ class TuiEditorControllerTests(unittest.TestCase):
             replacement.query.voicegerSegments[0].text,
             "なのだ。",
         )
+
+    def test_japanese_direct_field_canonicalizes_all_ascii_punctuation_on_finish_and_apply(self):
+        cases = ((".", "。"), (",", "、"), ("?", "？"), ("!", "！"))
+        previous_marks = {".": "！", ",": "。", "?": "！", "!": "？"}
+        for alias, expected in cases:
+            with self.subTest(alias=alias):
+                query = direct_japanese_query()
+                query.voicegerSegments[0].pronunciationTerminator = previous_marks[alias]
+                controller, _provider = self.make_controller(
+                    {"hello": (("hello", ("HH", "AH1")),)}
+                )
+                rows = controller.pronunciation_rows(query, segments(query))
+                controller.open_pronunciation_item(
+                    query, rows, 0, origin=("pronunciation", 0), busy=False
+                )
+                editor = controller.editor
+
+                controller.handle_key(
+                    curses.KEY_END,
+                    settings=self.settings(),
+                    query=query,
+                    current_caption="unchanged Caption",
+                )
+                controller.handle_key(
+                    curses.KEY_BACKSPACE,
+                    settings=self.settings(),
+                    query=query,
+                    current_caption="unchanged Caption",
+                )
+                controller.handle_key(
+                    alias,
+                    settings=self.settings(),
+                    query=query,
+                    current_caption="unchanged Caption",
+                )
+                controller.handle_key(
+                    "\n",
+                    settings=self.settings(),
+                    query=query,
+                    current_caption="unchanged Caption",
+                )
+
+                canonical_draft = "ナ' ノダ'" + expected
+                self.assertEqual(editor.input_value, canonical_draft)
+                self.assertEqual(editor.payload["pronunciation"], canonical_draft)
+                controller.handle_key(
+                    curses.KEY_DOWN,
+                    settings=self.settings(),
+                    query=query,
+                    current_caption="unchanged Caption",
+                )
+                controller.handle_key(
+                    curses.KEY_DOWN,
+                    settings=self.settings(),
+                    query=query,
+                    current_caption="unchanged Caption",
+                )
+                applied = controller.handle_key(
+                    "\n",
+                    settings=self.settings(),
+                    query=query,
+                    current_caption="unchanged Caption",
+                )
+                replacement = next(
+                    item for item in applied if isinstance(item, ReplaceQueryIntent)
+                )
+                self.assertEqual(
+                    japanese_pronunciation(replacement.query, segment_index=0),
+                    "ナ'/ノダ'" + expected,
+                )
 
     def test_unchanged_japanese_direct_field_closes_without_replacing_query(self):
         query = direct_japanese_query()

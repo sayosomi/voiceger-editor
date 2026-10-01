@@ -435,6 +435,8 @@ class TuiRenderer:
 
             if item.language == "ja":
                 tokens = _japanese_mora_tokens(item.moras, item.accent or 1)
+                if item.punctuation_suffix:
+                    tokens[-1] += item.punctuation_suffix
                 physical, _cursor = _wrap_tokens_with_prefixes(
                     first_prefix,
                     continuation_prefix,
