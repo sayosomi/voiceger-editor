@@ -13,6 +13,7 @@ from voiceger_accent_adapter.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
     Mora,
+    PronunciationPunctuation,
     VoicegerSegment,
 )
 
@@ -212,6 +213,40 @@ class SynthesisTests(unittest.TestCase):
             temperature=0.83,
         )
         self.adapter.synthesize_mixed_audio.assert_not_called()
+
+    def test_pure_japanese_rebuild_preserves_ordered_punctuation(self):
+        result_mapping = {"audio": object(), "sampling_rate": 32000}
+        self.adapter.synthesize_audio.return_value = result_mapping
+        query = AudioQuery(
+            accent_phrases=[
+                _accent_phrase(["ア", "メ"], accent=1),
+                _accent_phrase(["ア", "メ"], accent=2),
+                _accent_phrase(["ア", "メ"], accent=1),
+            ],
+            kana="legacy-stale。",
+            pronunciationPunctuation=[
+                PronunciationPunctuation(afterAccentPhrase=0, mark="、"),
+                PronunciationPunctuation(afterAccentPhrase=1, mark="…"),
+                PronunciationPunctuation(afterAccentPhrase=2, mark="！"),
+            ],
+        )
+
+        synthesize_audio_query(
+            adapter=self.adapter,
+            query=query,
+            style=self.style,
+        )
+
+        self.adapter.synthesize_audio.assert_called_once_with(
+            text="アメ、アメ…アメ！",
+            pronunciation="ア'メ、アメ'…ア'メ！",
+            ref_wav_path=Path("/voiceger/reference/reference.wav"),
+            prompt_text="style prompt",
+            speed=1,
+            top_k=20,
+            top_p=1.0,
+            temperature=1.0,
+        )
 
     def test_shared_sampling_defaults_match_voiceger(self):
         self.adapter.synthesize_audio.return_value = {
