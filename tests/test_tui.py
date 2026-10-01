@@ -2705,17 +2705,17 @@ class TuiTests(unittest.TestCase):
             voiceger_root=Path("/voiceger"),
         )
         with patch(
-            "voiceger_accent_adapter.tui.check_voiceger_environment",
+            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
             return_value=environment,
         ), patch(
-            "voiceger_accent_adapter.tui.cleanup_stale_take_directories"
+            "voiceger_accent_adapter.entrypoint.cleanup_stale_take_directories"
         ) as cleanup, patch(
-            "voiceger_accent_adapter.tui.load_settings",
+            "voiceger_accent_adapter.entrypoint.load_settings",
             return_value=Settings(),
         ), patch(
-            "voiceger_accent_adapter.tui.VoicegerAdapter",
+            "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
         ), patch(
-            "voiceger_accent_adapter.tui.curses.wrapper",
+            "voiceger_accent_adapter.entrypoint.curses.wrapper",
         ):
             self.assertEqual(main([]), 0)
 
