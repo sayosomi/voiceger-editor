@@ -530,6 +530,8 @@ class TuiRenderer:
                     ("candidate", candidate.number),
                     label,
                 )
+            if session.candidates:
+                plain()
             action(
                 ("generate", None),
                 main_shortcut("generate").display_with_label(generate_label),
