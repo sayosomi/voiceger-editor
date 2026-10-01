@@ -200,6 +200,10 @@ It does not grant any rights to Voiceger, GPT-SoVITS, the Voiceger:Zundamon mode
 
 Voiceger and other third-party software and assets remain subject to their own licenses and terms.
 
+Installing or using this adapter does not grant any additional rights to those third-party materials or to generated audio.
+
+For direct optional dependencies and external runtime components, see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
 ## Status
 
 voiceger-accent-adapter is under active development.
