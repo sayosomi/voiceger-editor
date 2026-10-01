@@ -67,6 +67,7 @@ def build_mixed_lab_segment_spans(
                 )
             pronunciation = accent_phrases_to_pronunciation(
                 query.accent_phrases[start:end],
+                punctuation=segment.pronunciationPunctuation,
                 terminator=resolve_japanese_segment_terminator(segment),
             )
             tokens = tuple(pronunciation_to_voiceger_tokens(pronunciation))
