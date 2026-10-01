@@ -2,13 +2,14 @@
 
 This document defines the production contract for optional `.lab` sidecar output.
 
-Implementation tracking: #60.
+Implementation tracking: #60 (pure-language production path), #66 (mixed-language production path).
 
 Feasibility evidence:
 
 - #56 selected **Julius** for Japanese after Human comparison against MFA.
 - #58 selected **PocketSphinx 5.1.1** for English after real forced-alignment E2E and Human review.
-- #61 owns Japanese-English mixed alignment, which is not part of the first production slice.
+- #61 validated Japanese-English mixed alignment with MRTE attention boundaries plus per-language forced alignment.
+- #66 owns the production mixed-language implementation.
 
 ## User-facing behavior
 
@@ -86,7 +87,7 @@ Timing must come from forced alignment. Never derive timing by evenly dividing t
 | --- | --- | --- |
 | Pure Japanese | Julius | Supported |
 | Pure English | PocketSphinx 5.1.1 | Supported |
-| Japanese-English mixed | None yet | Unsupported in v1; tracked by #61 |
+| Japanese-English mixed | MRTE boundary probe + Julius/PocketSphinx | Supported when timing provenance and all region alignments validate |
 | Other languages | None | Unsupported |
 
 MFA is not part of the production LAB path.
@@ -178,18 +179,50 @@ Once corrected, LAB generation aligns the corrected adapter phone sequence. It m
 
 ## Mixed Japanese-English utterances
 
-Mixed utterances are explicitly unsupported in the first production slice.
+Mixed LAB alignment uses the strategy validated by #61.
 
-When `save_lab=true` for a mixed utterance:
+### Generation-time timing provenance
 
-- save the accepted WAV normally;
-- save TXT normally when enabled;
-- do not create a partial or synthetic LAB;
-- show a clear non-fatal message that mixed-language LAB alignment is not supported yet.
+For a mixed Take candidate, capture MRTE cross-attention from the exact Voiceger
+decode that produced that candidate. Map adapter-owned segment phone ranges to
+the exact target phone IDs passed to SoVITS and require an exact match.
 
-Do not independently align Japanese and English against the full waveform and concatenate guessed timing.
+On the attention-frame time axis:
 
-#61 owns the mixed-language alignment design.
+- detect acoustic speech onset at -40, -35, -30, and -25 dB relative RMS;
+- smooth per-head segment attention mass with the validated centered five-frame window;
+- require exactly one attention head whose dominance follows the expected
+  segment order after every onset threshold;
+- obtain each language-segment boundary from that selected head.
+
+Only the lightweight validated boundary provenance is retained with the Take.
+Normal production use does not retain raw attention tensors or spike CSV/JSON
+diagnostics.
+
+Failure to obtain timing provenance does not invalidate the generated Take. It
+only means that a mixed LAB cannot later be created from that candidate.
+
+### Accepted-take region alignment
+
+When a mixed Take is accepted with `save_lab=true`:
+
+1. crop exact non-overlapping regions at the recorded segment boundaries;
+2. use the accepted candidate's query/pronunciation snapshot;
+3. align Japanese regions with Julius;
+4. align English regions with PocketSphinx;
+5. if direct PocketSphinx alignment fails for an English region, retry that
+   exact region with 0.20 s of synthetic silence before and after it;
+6. remove only the synthetic padding and reject the retry if any non-pause
+   phone extends into that padding;
+7. map all region LAB rows back to the original accepted-WAV time axis;
+8. merge adjacent boundary pauses and require contiguous full-WAV coverage.
+
+Do not run one language's aligner over the other language's phones. Do not
+derive boundaries from text length or phone counts. Do not re-decode the
+accepted WAV solely to recover missing attention.
+
+If provenance, a region alignment, padding trim, sequence validation, or final
+stitching fails, preserve WAV/TXT and publish no partial LAB.
 
 ## Dependency boundary
 
@@ -200,6 +233,9 @@ With `save_lab=false`, normal TUI/API use must not require Julius or PocketSphin
 Japanese LAB requires a Julius executable plus the pinned small HMM.
 
 English LAB uses PocketSphinx 5.1.1 as an optional LAB dependency.
+
+Mixed Japanese-English LAB uses both the Japanese and English production
+aligners after its MRTE timing provenance has defined language regions.
 
 MFA must not be installed or required for production LAB generation.
 
