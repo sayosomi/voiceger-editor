@@ -527,13 +527,15 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._help_scroll, 0)
         app._handle_key(curses.KEY_DOWN)
         self.assertEqual(app._help_scroll, 1)
+        max_scroll = app._renderer.help_max_scroll(24, 80)
         app._handle_key(curses.KEY_NPAGE)
+        expected_after_page_down = min(max_scroll, 22)
+        self.assertEqual(app._help_scroll, expected_after_page_down)
+        app._handle_key(curses.KEY_PPAGE)
         self.assertEqual(
             app._help_scroll,
-            min(app._renderer.help_max_scroll(24, 80), 22),
+            max(0, expected_after_page_down - 21),
         )
-        app._handle_key(curses.KEY_PPAGE)
-        self.assertEqual(app._help_scroll, 1)
         self.assertTrue(app._help_open)
         app._handle_key("\n")
         self.assertFalse(app._help_open)
