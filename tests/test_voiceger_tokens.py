@@ -88,6 +88,27 @@ class VoicegerTokenTests(unittest.TestCase):
                     expected,
                 )
 
+    def test_ordered_punctuation_maps_to_distinct_voiceger_tokens(self):
+        value = parse_pronunciation("あ'め、あめ'…あ'め？")
+        self.assertEqual(
+            pronunciation_to_voiceger_tokens(value, mora_g2p=fake_g2p),
+            [
+                "a", "]", "m", "e", ",",
+                "a", "[", "m", "e", "…",
+                "a", "]", "m", "e", "?",
+            ],
+        )
+
+    def test_punctuation_breaks_phrase_boundary_without_hash(self):
+        value = parse_pronunciation("あ'め!あめ'.")
+        self.assertEqual(
+            pronunciation_to_voiceger_tokens(value, mora_g2p=fake_g2p),
+            [
+                "a", "]", "m", "e", "!",
+                "a", "[", "m", "e", ".",
+            ],
+        )
+
     def test_long_vowel_repeats_previous_vowel(self):
         value = parse_pronunciation("きょ'ーわ")
         self.assertEqual(
