@@ -62,14 +62,16 @@ class MixedLabAttentionTests(unittest.TestCase):
         self.assertEqual(provenance.selected_attention_head, 0)
         self.assertEqual(len(provenance.boundary_seconds), 2)
 
-    def test_consensus_accepts_heads_within_one_transition_frame(self):
-        dominance = np.asarray(
-            (
-                (0, 0, 1, 1, 2, 2),
-                (0, 0, 0, 1, 1, 2),
-            ),
+    def test_consensus_accepts_observed_two_frame_head_shift(self):
+        head_0 = np.asarray(
+            [0] * 25 + [1] * 18 + [2] * 7,
             dtype=np.int64,
         )
+        head_2 = np.asarray(
+            [0] * 23 + [1] * 18 + [2] * 9,
+            dtype=np.int64,
+        )
+        dominance = np.stack((head_0, head_2), axis=0)
 
         selected, transitions = _select_consensus_head(
             dominance,
@@ -79,16 +81,18 @@ class MixedLabAttentionTests(unittest.TestCase):
         )
 
         self.assertEqual(selected, 0)
-        self.assertEqual(transitions, (2, 4))
+        self.assertEqual(transitions, (25, 43))
 
     def test_consensus_rejects_heads_with_material_transition_disagreement(self):
-        dominance = np.asarray(
-            (
-                (0, 0, 1, 1, 2, 2, 2),
-                (0, 0, 0, 0, 1, 1, 2),
-            ),
+        head_0 = np.asarray(
+            [0] * 25 + [1] * 18 + [2] * 7,
             dtype=np.int64,
         )
+        head_2 = np.asarray(
+            [0] * 22 + [1] * 18 + [2] * 10,
+            dtype=np.int64,
+        )
+        dominance = np.stack((head_0, head_2), axis=0)
 
         with self.assertRaisesRegex(
             RuntimeError,
@@ -102,8 +106,8 @@ class MixedLabAttentionTests(unittest.TestCase):
             )
 
         message = str(context.exception)
-        self.assertIn("0:(2, 4)", message)
-        self.assertIn("1:(4, 6)", message)
+        self.assertIn("0:(25, 43)", message)
+        self.assertIn("1:(22, 40)", message)
 
 
 if __name__ == "__main__":
