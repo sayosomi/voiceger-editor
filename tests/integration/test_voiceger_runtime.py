@@ -148,18 +148,61 @@ class VoicegerIntegrationTests(unittest.TestCase):
             adapter=self.adapter,
             query=query,
             style=self.style,
-            capture_mixed_lab_provenance=True,
         )
 
         self.assertEqual(result["sampling_rate"], 32000)
         duration = len(result["audio"]) / result["sampling_rate"]
         self.assertGreater(duration, 0.5)
         self.assertLess(duration, 15.0)
+
+    def test_mixed_lab_provenance_capture_uses_validated_runtime_path(self):
+        import random
+
+        import numpy as np
+        import torch
+
+        seed = 61061
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+
+        query = build_mixed_audio_query(
+            "このずんだ餅はvery sweetなのだ。",
+            english_g2p=self.adapter.english_phonemes,
+        )
+        result = synthesize_audio_query(
+            adapter=self.adapter,
+            query=query,
+            style=self.style,
+            capture_mixed_lab_provenance=True,
+        )
+
+        provenance = result.get("mixed_lab_provenance")
         self.assertIsNotNone(
-            result.get("mixed_lab_provenance"),
+            provenance,
             result.get("mixed_lab_provenance_warning"),
         )
         self.assertIsNone(result.get("mixed_lab_provenance_warning"))
+        self.assertEqual(
+            provenance.segment_languages,
+            tuple(
+                segment.language
+                for segment in query.voicegerSegments
+            ),
+        )
+        self.assertEqual(
+            len(provenance.boundary_seconds),
+            len(query.voicegerSegments) - 1,
+        )
+        self.assertTrue(
+            all(
+                left < right
+                for left, right in zip(
+                    provenance.boundary_seconds,
+                    provenance.boundary_seconds[1:],
+                )
+            )
+        )
 
     def test_selected_japanese_segment_preview_synthesizes_without_runaway(self):
         query = build_mixed_audio_query(
