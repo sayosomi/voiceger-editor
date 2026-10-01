@@ -15,6 +15,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         description="Keyboard-first local pronunciation editing and take review.",
     )
     parser.add_argument("text", nargs="?", help="one utterance to edit and synthesize")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="check the local Voiceger environment and exit",
+    )
     parser.add_argument("--voiceger-root", type=Path, help="Voiceger installation path")
     parser.add_argument("--config", type=Path, help="settings file path")
     parser.add_argument("--output-dir", type=Path, help="override output directory")
