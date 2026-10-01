@@ -241,7 +241,7 @@ def derive_mixed_lab_provenance(
     raw_speech_sampling_rate: int,
     raw_audio,
 ) -> MixedLabProvenance:
-    """Select the unique monotonic attention head and return seam times."""
+    """Select a validated monotonic head or consensus representative."""
 
     if len(spans) < 2:
         raise ValueError("mixed LAB timing requires at least two segments")
