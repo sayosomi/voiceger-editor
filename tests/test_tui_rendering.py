@@ -1086,6 +1086,21 @@ class TuiRenderingTests(unittest.TestCase):
         keyed = [line.key for line in lines if line.key is not None]
         self.assertLess(keyed.index(("candidate", 2)), keyed.index(("generate", None)))
         self.assertLess(keyed.index(("generate", None)), keyed.index(("clear_candidates", None)))
+        candidate_index = next(
+            index for index, line in enumerate(lines)
+            if line.key == ("candidate", 2)
+        )
+        generate_index = next(
+            index for index, line in enumerate(lines)
+            if line.key == ("generate", None)
+        )
+        clear_index = next(
+            index for index, line in enumerate(lines)
+            if line.key == ("clear_candidates", None)
+        )
+        self.assertEqual(lines[candidate_index + 1].text, "")
+        self.assertEqual(generate_index, candidate_index + 2)
+        self.assertEqual(clear_index, generate_index + 1)
         self.assertEqual(labels[("settings", None)], "  [S] Settings")
         self.assertEqual(labels[("dictionary", None)], "  [D] Dictionary")
         self.assertEqual(labels[("help", None)], "  [?] Help")
