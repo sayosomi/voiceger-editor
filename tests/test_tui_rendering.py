@@ -442,10 +442,11 @@ class TuiRenderingTests(unittest.TestCase):
         self.renderer.render_help(screen, screen.columns)
         visible = self.rendered(screen)
         for text in (
-            "Up/Down", "on JA: accent by one mora",
+            "Up/Down", "JA accent/mora",
+            "EN primary stress/vowel",
             "on JA: edit segment pronunciation",
             "on EN: edit word phonemes",
-            "Generate/Regenerate: Takes",
+            "Generate/Regenerate Takes",
             "b / a / g",
             "Build pronunciation / Add section / Generate or regenerate all",
             "initial/regenerate-all",
@@ -456,10 +457,6 @@ class TuiRenderingTests(unittest.TestCase):
             "Editing: Enter finishes; printable shortcut letters insert text.",
         ):
             self.assertIn(text, visible)
-        self.assertIn(
-            "on EN: primary stress by one vowel",
-            visible.replace("\n", ""),
-        )
         self.assertNotIn("F5", visible)
         self.assertNotIn("Ctrl+G", visible)
         settings_shortcuts = (("s", "style"), ("v", "speed"), ("n", "takes"), ("o", "output"), ("x", "TXT"), ("l", "LAB"))
