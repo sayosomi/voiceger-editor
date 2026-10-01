@@ -6,10 +6,10 @@ import unittest
 import warnings
 from unittest.mock import Mock, patch
 
-from voiceger_accent_adapter.mixed_language import build_mixed_synthesis_plan
-from voiceger_accent_adapter.styles import VoicegerStyle
-from voiceger_accent_adapter.synthesis import synthesize_audio_query
-from voiceger_accent_adapter.voicevox_api_models import (
+from voiceger_editor.mixed_language import build_mixed_synthesis_plan
+from voiceger_editor.styles import VoicegerStyle
+from voiceger_editor.synthesis import synthesize_audio_query
+from voiceger_editor.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
     Mora,
@@ -344,13 +344,13 @@ class SynthesisTests(unittest.TestCase):
         )
 
         with patch(
-            "voiceger_accent_adapter.mixed_language.pronunciation_to_voiceger_tokens",
+            "voiceger_editor.mixed_language.pronunciation_to_voiceger_tokens",
             return_value=["JA_TOKEN"],
         ):
             plan = build_mixed_synthesis_plan(query)
 
         with patch(
-            "voiceger_accent_adapter.synthesis.build_mixed_synthesis_plan",
+            "voiceger_editor.synthesis.build_mixed_synthesis_plan",
             return_value=plan,
         ) as plan_builder:
             result = synthesize_audio_query(

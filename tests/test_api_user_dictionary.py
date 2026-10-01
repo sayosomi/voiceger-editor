@@ -6,10 +6,10 @@ from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
-from voiceger_accent_adapter import api
-from voiceger_accent_adapter.openjtalk_dictionary import OpenJTalkDictionaryError
-from voiceger_accent_adapter.user_dictionary import UserDictionaryCore
-from voiceger_accent_adapter.voicevox_api_models import AudioQuery
+from voiceger_editor import api
+from voiceger_editor.openjtalk_dictionary import OpenJTalkDictionaryError
+from voiceger_editor.user_dictionary import UserDictionaryCore
+from voiceger_editor.voicevox_api_models import AudioQuery
 
 
 class _State:
@@ -64,7 +64,7 @@ class ApiUserDictionaryTests(unittest.TestCase):
         )
         self.backend = backend
         self.client = TestClient(api.app)
-        self.adapter_patch = patch("voiceger_accent_adapter.api.get_adapter", return_value=self.adapter)
+        self.adapter_patch = patch("voiceger_editor.api.get_adapter", return_value=self.adapter)
         self.adapter_patch.start()
         self.addCleanup(self.adapter_patch.stop)
 
@@ -227,8 +227,8 @@ class ApiUserDictionaryTests(unittest.TestCase):
         order = []
         self.adapter.ensure_japanese_dictionary_active.side_effect = lambda: order.append("activate")
         query_value = AudioQuery(accent_phrases=[])
-        with patch("voiceger_accent_adapter.api._resolve_style", return_value=object()), patch(
-            "voiceger_accent_adapter.api.build_mixed_audio_query",
+        with patch("voiceger_editor.api._resolve_style", return_value=object()), patch(
+            "voiceger_editor.api.build_mixed_audio_query",
             side_effect=lambda *args, **kwargs: order.append("query") or query_value,
         ):
             response = self.client.post(

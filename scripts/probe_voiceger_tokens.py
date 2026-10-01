@@ -17,11 +17,11 @@ sys.path.insert(0, str(GPT_SOVITS))
 from text.cleaner import clean_text  # noqa: E402
 from text.japanese import g2p as voiceger_g2p  # noqa: E402
 
-from voiceger_accent_adapter.openjtalk_converter import (  # noqa: E402
+from voiceger_editor.openjtalk_converter import (  # noqa: E402
     text_to_pronunciation,
 )
-from voiceger_accent_adapter.pronunciation import format_pronunciation  # noqa: E402
-from voiceger_accent_adapter.voiceger_tokens import (  # noqa: E402
+from voiceger_editor.pronunciation import format_pronunciation  # noqa: E402
+from voiceger_editor.voiceger_tokens import (  # noqa: E402
     pronunciation_to_voiceger_tokens,
 )
 

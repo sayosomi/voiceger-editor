@@ -4,19 +4,19 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import call, patch
 
-from voiceger_accent_adapter.settings import Settings
-from voiceger_accent_adapter.tui_editors import (
+from voiceger_editor.settings import Settings
+from voiceger_editor.tui_editors import (
     EnglishGroupingCache,
     EnglishWordGroup,
     PronunciationRow,
 )
-from voiceger_accent_adapter.tui_display import _display_width
-from voiceger_accent_adapter.tui_rendering import (
+from voiceger_editor.tui_display import _display_width
+from voiceger_editor.tui_rendering import (
     _HELP_ITEMS,
     TuiRenderer,
     TuiRenderState,
 )
-from voiceger_accent_adapter.voicevox_api_models import (
+from voiceger_editor.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
     Mora,
@@ -214,16 +214,16 @@ class TuiRenderingTests(unittest.TestCase):
     def test_semantic_colors_use_terminal_default_background(self):
         renderer = TuiRenderer()
         with patch(
-            "voiceger_accent_adapter.tui_rendering.curses.has_colors",
+            "voiceger_editor.tui_rendering.curses.has_colors",
             return_value=True,
         ), patch(
-            "voiceger_accent_adapter.tui_rendering.curses.start_color"
+            "voiceger_editor.tui_rendering.curses.start_color"
         ), patch(
-            "voiceger_accent_adapter.tui_rendering.curses.use_default_colors"
+            "voiceger_editor.tui_rendering.curses.use_default_colors"
         ) as use_default_colors, patch(
-            "voiceger_accent_adapter.tui_rendering.curses.init_pair"
+            "voiceger_editor.tui_rendering.curses.init_pair"
         ) as init_pair, patch(
-            "voiceger_accent_adapter.tui_rendering.curses.color_pair",
+            "voiceger_editor.tui_rendering.curses.color_pair",
             side_effect=lambda pair: {1: 101, 2: 202, 3: 303}[pair],
         ):
             renderer.initialize_colors()
@@ -252,7 +252,7 @@ class TuiRenderingTests(unittest.TestCase):
     def test_semantic_status_colors_fall_back_to_reverse_without_color(self):
         renderer = TuiRenderer()
         with patch(
-            "voiceger_accent_adapter.tui_rendering.curses.has_colors",
+            "voiceger_editor.tui_rendering.curses.has_colors",
             return_value=False,
         ):
             renderer.initialize_colors()
@@ -268,7 +268,7 @@ class TuiRenderingTests(unittest.TestCase):
 
     def test_main_header_shows_product_title_without_navigation_label(self):
         screen = FakeScreen()
-        with patch("voiceger_accent_adapter.tui_rendering.available_styles", return_value=()):
+        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
             self.renderer.render_navigation(screen, render_state(), screen.rows, screen.columns)
 
         header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
@@ -462,7 +462,7 @@ class TuiRenderingTests(unittest.TestCase):
             session=FakeSession(), focus_key=("pronunciation", 2)
         )
         screen = FakeScreen()
-        with patch("voiceger_accent_adapter.tui_rendering.available_styles", return_value=()):
+        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
             self.renderer.render_navigation(screen, state, screen.rows, screen.columns)
 
         base = next(
@@ -480,7 +480,7 @@ class TuiRenderingTests(unittest.TestCase):
 
         idle_screen = FakeScreen()
         idle_state = render_state(session=FakeSession(), focus_key=("pronunciation", 0))
-        with patch("voiceger_accent_adapter.tui_rendering.available_styles", return_value=()):
+        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
             self.renderer.render_navigation(idle_screen, idle_state, idle_screen.rows, idle_screen.columns)
         idle_source = next(item for item in idle_screen.drawn if item[2] == "hello")
         self.assertTrue(idle_source[3] & curses.A_BOLD)
@@ -737,7 +737,7 @@ class TuiRenderingTests(unittest.TestCase):
             with self.subTest(kind=editor.kind, active_field=editor.active_field):
                 screen = FakeScreen(rows=10, columns=80)
                 with patch(
-                    "voiceger_accent_adapter.tui_rendering.available_styles",
+                    "voiceger_editor.tui_rendering.available_styles",
                     return_value=(),
                 ):
                     self.renderer.render_editor(
@@ -1113,7 +1113,7 @@ class TuiRenderingTests(unittest.TestCase):
             active_field=None, input_value="", input_cursor=0, error="", scroll=0,
         )
         with patch(
-            "voiceger_accent_adapter.tui_rendering.available_styles",
+            "voiceger_editor.tui_rendering.available_styles",
             return_value=(SimpleNamespace(id=3, name="Neutral"),),
         ):
             document, _, _ = self.renderer.editor_document(render_state(editor=editor), 80)
@@ -1150,7 +1150,7 @@ class TuiRenderingTests(unittest.TestCase):
         editor.input_value = "1.25"
         editor.input_cursor = 4
         with patch(
-            "voiceger_accent_adapter.tui_rendering.available_styles",
+            "voiceger_editor.tui_rendering.available_styles",
             return_value=(SimpleNamespace(id=3, name="Neutral"),),
         ):
             active, _, _ = self.renderer.editor_document(render_state(editor=editor), 80)
@@ -1167,7 +1167,7 @@ class TuiRenderingTests(unittest.TestCase):
             active_field=None, input_value="", input_cursor=0, error="", scroll=0,
         )
         with patch(
-            "voiceger_accent_adapter.tui_rendering.available_styles",
+            "voiceger_editor.tui_rendering.available_styles",
             return_value=(),
         ):
             document, _, _ = self.renderer.editor_document(
@@ -1176,7 +1176,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("▶ [S] Style *", "\n".join(line for line, _key in document))
 
         with patch(
-            "voiceger_accent_adapter.tui_rendering.available_styles",
+            "voiceger_editor.tui_rendering.available_styles",
             side_effect=RuntimeError("styles unavailable"),
         ):
             value = self.renderer.setting_display("style_id", "19", Path("/missing"))
@@ -1186,7 +1186,7 @@ class TuiRenderingTests(unittest.TestCase):
         session = FakeSession(candidates=(candidate(1),))
         state = render_state(session=session, status="Saved output.wav.")
         screen = FakeScreen()
-        with patch("voiceger_accent_adapter.tui_rendering.available_styles", return_value=()):
+        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
             self.renderer.render_navigation(screen, state, screen.rows, screen.columns)
         visible = self.rendered(screen)
         self.assertIn("Status: Saved output.wav.", visible)
@@ -1209,7 +1209,7 @@ class TuiRenderingTests(unittest.TestCase):
         )
         screen = FakeScreen(rows=14, columns=42)
         with patch(
-            "voiceger_accent_adapter.tui_rendering.available_styles",
+            "voiceger_editor.tui_rendering.available_styles",
             return_value=(),
         ):
             self.renderer.render_navigation(

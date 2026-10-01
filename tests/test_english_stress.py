@@ -1,13 +1,13 @@
 import unittest
 
-from voiceger_accent_adapter.english_stress import (
+from voiceger_editor.english_stress import (
     editor_state_to_english_phonemes,
     english_phonemes_to_editor_state,
     move_primary_stress,
     normalize_english_phonemes,
     replace_editor_base_phonemes,
 )
-from voiceger_accent_adapter.voicevox_api_models import VoicegerSegment
+from voiceger_editor.voicevox_api_models import VoicegerSegment
 
 
 class EnglishStressTests(unittest.TestCase):

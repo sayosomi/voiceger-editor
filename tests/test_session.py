@@ -5,12 +5,12 @@ import tempfile
 from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock, patch
 
-from voiceger_accent_adapter.output import SavedOutput
-from voiceger_accent_adapter.session import UtteranceSession
-from voiceger_accent_adapter.settings import Settings
-from voiceger_accent_adapter.styles import VoicegerStyle
-from voiceger_accent_adapter.takes import TakeCandidate
-from voiceger_accent_adapter.voicevox_api_models import (
+from voiceger_editor.output import SavedOutput
+from voiceger_editor.session import UtteranceSession
+from voiceger_editor.settings import Settings
+from voiceger_editor.styles import VoicegerStyle
+from voiceger_editor.takes import TakeCandidate
+from voiceger_editor.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
     Mora,
@@ -179,7 +179,7 @@ class UtteranceSessionTests(unittest.TestCase):
         if query is None:
             query = _query(speed_scale=0.5)
         with patch(
-            "voiceger_accent_adapter.session.get_style",
+            "voiceger_editor.session.get_style",
             return_value=self.style,
         ):
             return UtteranceSession(
@@ -191,7 +191,7 @@ class UtteranceSessionTests(unittest.TestCase):
 
     def activate_batch(self, session):
         with patch(
-            "voiceger_accent_adapter.session.TakeBatch",
+            "voiceger_editor.session.TakeBatch",
             FakeTakeBatch,
         ):
             session.generate_takes()
@@ -201,7 +201,7 @@ class UtteranceSessionTests(unittest.TestCase):
         for source in (None, 1, "", " \t ", "line one\nline two", "line\rtwo"):
             with self.subTest(source=source):
                 with patch(
-                    "voiceger_accent_adapter.session.get_style",
+                    "voiceger_editor.session.get_style",
                     return_value=self.style,
                 ):
                     with self.assertRaises((TypeError, ValueError)):
@@ -221,7 +221,7 @@ class UtteranceSessionTests(unittest.TestCase):
 
     def test_constructor_requires_settings_instance(self):
         with patch(
-            "voiceger_accent_adapter.session.get_style",
+            "voiceger_editor.session.get_style",
             return_value=self.style,
         ):
             with self.assertRaisesRegex(TypeError, "Settings instance"):
@@ -309,7 +309,7 @@ class UtteranceSessionTests(unittest.TestCase):
                 query=_mixed_pronunciation_query(),
             )
             with patch(
-                "voiceger_accent_adapter.session.synthesize_audio_query",
+                "voiceger_editor.session.synthesize_audio_query",
                 return_value=synthesis_result,
             ) as synthesize, patch.dict(
                 "sys.modules", {"soundfile": fake_soundfile}
@@ -323,7 +323,7 @@ class UtteranceSessionTests(unittest.TestCase):
                 candidate_wav = candidate.wav_path
                 session.replace_caption("later Caption")
                 with patch(
-                    "voiceger_accent_adapter.session.get_style",
+                    "voiceger_editor.session.get_style",
                     return_value=self.style,
                 ):
                     session.replace_settings(
@@ -364,7 +364,7 @@ class UtteranceSessionTests(unittest.TestCase):
         session = self.make_session(query=_query())
 
         with patch(
-            "voiceger_accent_adapter.session.synthesize_audio_query",
+            "voiceger_editor.session.synthesize_audio_query",
             return_value={"audio": [0.0], "sampling_rate": 32000},
         ), patch.dict("sys.modules", {"soundfile": fake_soundfile}):
             candidate = next(session.generate_takes())
@@ -402,7 +402,7 @@ class UtteranceSessionTests(unittest.TestCase):
         automatic_query = _query(speed_scale=0.6, mora_text="automatic")
 
         with patch(
-            "voiceger_accent_adapter.session.build_mixed_audio_query",
+            "voiceger_editor.session.build_mixed_audio_query",
             return_value=automatic_query,
         ) as build_query:
             session.build_pronunciation_from_caption()
@@ -428,7 +428,7 @@ class UtteranceSessionTests(unittest.TestCase):
         batch = self.activate_batch(session)
 
         with patch(
-            "voiceger_accent_adapter.session.build_mixed_audio_query",
+            "voiceger_editor.session.build_mixed_audio_query",
             return_value=_query(mora_text="automatic"),
         ):
             session.build_pronunciation_from_caption()
@@ -448,7 +448,7 @@ class UtteranceSessionTests(unittest.TestCase):
         replacement_settings = Settings(style_id=1, speed=0.9)
 
         with patch(
-            "voiceger_accent_adapter.session.get_style",
+            "voiceger_editor.session.get_style",
             return_value=self.other_style,
         ):
             session.replace_query(_query(mora_text="manual edit"))
@@ -482,7 +482,7 @@ class UtteranceSessionTests(unittest.TestCase):
         candidates = session.candidates
         old_query = session.query
         with patch(
-            "voiceger_accent_adapter.session.build_mixed_audio_query",
+            "voiceger_editor.session.build_mixed_audio_query",
             side_effect=RuntimeError("automatic analysis failed"),
         ):
             with self.assertRaisesRegex(RuntimeError, "automatic analysis failed"):
@@ -498,10 +498,10 @@ class UtteranceSessionTests(unittest.TestCase):
         source = "  今日はhello  "
         built_query = _query(speed_scale=0.8)
         with patch(
-            "voiceger_accent_adapter.session.build_mixed_audio_query",
+            "voiceger_editor.session.build_mixed_audio_query",
             return_value=built_query,
         ) as build_query, patch(
-            "voiceger_accent_adapter.session.get_style",
+            "voiceger_editor.session.get_style",
             return_value=self.style,
         ):
             session = UtteranceSession.from_text(
@@ -523,7 +523,7 @@ class UtteranceSessionTests(unittest.TestCase):
 
     def test_from_text_rejects_invalid_source_before_building_query(self):
         with patch(
-            "voiceger_accent_adapter.session.build_mixed_audio_query"
+            "voiceger_editor.session.build_mixed_audio_query"
         ) as build_query:
             with self.assertRaises(ValueError):
                 UtteranceSession.from_text(
@@ -593,7 +593,7 @@ class UtteranceSessionTests(unittest.TestCase):
         )
 
         with patch(
-            "voiceger_accent_adapter.session.get_style",
+            "voiceger_editor.session.get_style",
             return_value=self.other_style,
         ) as resolve_style:
             session.replace_settings(replacement_settings)
@@ -624,7 +624,7 @@ class UtteranceSessionTests(unittest.TestCase):
                 batch._candidates.append(_candidate(1, "/tmp/existing.wav"))
 
                 with patch(
-                    "voiceger_accent_adapter.session.get_style",
+                    "voiceger_editor.session.get_style",
                     return_value=resolved_style,
                 ):
                     session.replace_settings(
@@ -649,7 +649,7 @@ class UtteranceSessionTests(unittest.TestCase):
         )
 
         with patch(
-            "voiceger_accent_adapter.session.get_style",
+            "voiceger_editor.session.get_style",
             return_value=self.style,
         ):
             session.replace_settings(replacement_settings)
@@ -673,7 +673,7 @@ class UtteranceSessionTests(unittest.TestCase):
         replacement_settings = Settings(style_id=1, speed=1.8)
 
         with patch(
-            "voiceger_accent_adapter.session.get_style",
+            "voiceger_editor.session.get_style",
             side_effect=ValueError("style is unavailable"),
         ):
             with self.assertRaisesRegex(ValueError, "unavailable"):
@@ -694,10 +694,10 @@ class UtteranceSessionTests(unittest.TestCase):
         batch_instance.generate_all.return_value = iterator
 
         with patch(
-            "voiceger_accent_adapter.session.TakeBatch",
+            "voiceger_editor.session.TakeBatch",
             return_value=batch_instance,
         ) as take_batch, patch(
-            "voiceger_accent_adapter.session.synthesize_audio_query",
+            "voiceger_editor.session.synthesize_audio_query",
             return_value={"audio": object(), "sampling_rate": 32000},
         ) as synthesize:
             result = session.generate_takes(
@@ -735,7 +735,7 @@ class UtteranceSessionTests(unittest.TestCase):
             temperature=0.80,
         )
         with patch(
-            "voiceger_accent_adapter.session.get_style",
+            "voiceger_editor.session.get_style",
             return_value=self.style,
         ):
             session.replace_settings(sampling_settings)
@@ -743,10 +743,10 @@ class UtteranceSessionTests(unittest.TestCase):
         batch_instance = Mock()
         batch_instance.generate_all.return_value = iter(())
         with patch(
-            "voiceger_accent_adapter.session.TakeBatch",
+            "voiceger_editor.session.TakeBatch",
             return_value=batch_instance,
         ) as take_batch, patch(
-            "voiceger_accent_adapter.session.synthesize_audio_query",
+            "voiceger_editor.session.synthesize_audio_query",
             return_value={"audio": object(), "sampling_rate": 32000},
         ) as synthesize:
             session.generate_takes()
@@ -776,7 +776,7 @@ class UtteranceSessionTests(unittest.TestCase):
         preview_before = preview.model_dump()
 
         with patch(
-            "voiceger_accent_adapter.session.synthesize_audio_query",
+            "voiceger_editor.session.synthesize_audio_query",
             return_value={"audio": "preview-audio", "sampling_rate": 22050},
         ) as synthesize:
             result = session.preview_synthesis(preview)
@@ -811,13 +811,13 @@ class UtteranceSessionTests(unittest.TestCase):
             temperature=0.80,
         )
         with patch(
-            "voiceger_accent_adapter.session.get_style",
+            "voiceger_editor.session.get_style",
             return_value=self.style,
         ):
             session.replace_settings(sampling_settings)
 
         with patch(
-            "voiceger_accent_adapter.session.synthesize_audio_query",
+            "voiceger_editor.session.synthesize_audio_query",
             return_value={"audio": "preview", "sampling_rate": 32000},
         ) as synthesize:
             session.preview_synthesis(_query())
@@ -836,7 +836,7 @@ class UtteranceSessionTests(unittest.TestCase):
         audio_b = object()
 
         with patch(
-            "voiceger_accent_adapter.session.synthesize_audio_query",
+            "voiceger_editor.session.synthesize_audio_query",
             side_effect=[
                 {"audio": audio_a, "sampling_rate": 32000},
                 {"audio": audio_b, "sampling_rate": 32000},
@@ -864,7 +864,7 @@ class UtteranceSessionTests(unittest.TestCase):
         phoneme_edit.voicegerSegments[1].phonemes = ["HH", "EH1"]
 
         with patch(
-            "voiceger_accent_adapter.session.synthesize_audio_query",
+            "voiceger_editor.session.synthesize_audio_query",
             return_value={"audio": object(), "sampling_rate": 32000},
         ) as synthesize:
             for query in (
@@ -887,13 +887,13 @@ class UtteranceSessionTests(unittest.TestCase):
         stereo_changed.outputStereo = True
 
         with patch(
-            "voiceger_accent_adapter.session.synthesize_audio_query",
+            "voiceger_editor.session.synthesize_audio_query",
             return_value={"audio": object(), "sampling_rate": 32000},
         ) as synthesize:
             session.preview_synthesis(preview)
 
             with patch(
-                "voiceger_accent_adapter.session.get_style",
+                "voiceger_editor.session.get_style",
                 return_value=self.other_style,
             ):
                 session.replace_settings(
@@ -902,7 +902,7 @@ class UtteranceSessionTests(unittest.TestCase):
             session.preview_synthesis(preview)
 
             with patch(
-                "voiceger_accent_adapter.session.get_style",
+                "voiceger_editor.session.get_style",
                 return_value=self.other_style,
             ):
                 session.replace_settings(
@@ -933,7 +933,7 @@ class UtteranceSessionTests(unittest.TestCase):
         preview_before = preview.model_dump()
 
         with patch(
-            "voiceger_accent_adapter.session.synthesize_audio_query",
+            "voiceger_editor.session.synthesize_audio_query",
             side_effect=RuntimeError("preview synthesis failed"),
         ):
             with self.assertRaisesRegex(RuntimeError, "preview synthesis failed"):
@@ -953,7 +953,7 @@ class UtteranceSessionTests(unittest.TestCase):
         existing_batch_count = len(FakeTakeBatch.instances)
 
         with patch(
-            "voiceger_accent_adapter.session.TakeBatch",
+            "voiceger_editor.session.TakeBatch",
             FakeTakeBatch,
         ):
             with self.assertRaisesRegex(RuntimeError, "already active"):
@@ -965,7 +965,7 @@ class UtteranceSessionTests(unittest.TestCase):
     def test_invalidation_closes_batch_and_stops_existing_generation_iterator(self):
         session = self.make_session()
         with patch(
-            "voiceger_accent_adapter.session.TakeBatch",
+            "voiceger_editor.session.TakeBatch",
             FakeTakeBatch,
         ):
             iterator = session.generate_takes()
@@ -1026,7 +1026,7 @@ class UtteranceSessionTests(unittest.TestCase):
             save_text=False,
         )
         with patch(
-            "voiceger_accent_adapter.session.get_style",
+            "voiceger_editor.session.get_style",
             return_value=self.style,
         ):
             session.replace_settings(replacement_settings)
@@ -1100,7 +1100,7 @@ class UtteranceSessionTests(unittest.TestCase):
         self.assertEqual(batch.close_calls, 1)
 
         with patch(
-            "voiceger_accent_adapter.session.TakeBatch",
+            "voiceger_editor.session.TakeBatch",
             FakeTakeBatch,
         ):
             with session as entered:

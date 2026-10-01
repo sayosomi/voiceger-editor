@@ -3,14 +3,14 @@ from unittest.mock import patch
 
 import numpy as np
 
-from voiceger_accent_adapter.pronunciation import format_pronunciation
-from voiceger_accent_adapter.lab_mixed_attention import (
+from voiceger_editor.pronunciation import format_pronunciation
+from voiceger_editor.lab_mixed_attention import (
     MixedLabSegmentSpan,
     _select_consensus_head,
     build_mixed_lab_segment_spans,
     derive_mixed_lab_provenance,
 )
-from voiceger_accent_adapter.voicevox_api_models import (
+from voiceger_editor.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
     Mora,
@@ -81,7 +81,7 @@ class MixedLabAttentionTests(unittest.TestCase):
         )
 
         with patch(
-            "voiceger_accent_adapter.lab_mixed_attention.pronunciation_to_voiceger_tokens",
+            "voiceger_editor.lab_mixed_attention.pronunciation_to_voiceger_tokens",
             side_effect=lambda value: [format_pronunciation(value)],
         ):
             spans = build_mixed_lab_segment_spans(query)

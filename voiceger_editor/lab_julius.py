@@ -258,10 +258,10 @@ def _default_cache_dir() -> Path:
     if override:
         return Path(override).expanduser()
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Caches" / "voiceger-accent-adapter" / "lab"
+        return Path.home() / "Library" / "Caches" / "voiceger-editor" / "lab"
     xdg_cache = os.environ.get("XDG_CACHE_HOME")
     root = Path(xdg_cache).expanduser() if xdg_cache else Path.home() / ".cache"
-    return root / "voiceger-accent-adapter" / "lab"
+    return root / "voiceger-editor" / "lab"
 
 
 def resolve_julius_executable() -> str:

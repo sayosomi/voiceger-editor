@@ -1,11 +1,11 @@
 import unittest
 
-from voiceger_accent_adapter.openjtalk_converter import (
+from voiceger_editor.openjtalk_converter import (
     OpenJTalkConversionError,
     frontend_features_to_pronunciation,
     text_to_pronunciation_string,
 )
-from voiceger_accent_adapter.runtime_locks import OPENJTALK_LOCK
+from voiceger_editor.runtime_locks import OPENJTALK_LOCK
 
 
 def node(

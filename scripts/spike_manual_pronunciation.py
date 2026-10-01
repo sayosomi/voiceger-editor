@@ -81,14 +81,14 @@ from GPT_SoVITS.inference_webui import (  # noqa: E402
     get_tts_wav,
 )
 
-from voiceger_accent_adapter.openjtalk_converter import (  # noqa: E402
+from voiceger_editor.openjtalk_converter import (  # noqa: E402
     text_to_pronunciation,
 )
-from voiceger_accent_adapter.pronunciation import (  # noqa: E402
+from voiceger_editor.pronunciation import (  # noqa: E402
     format_pronunciation,
     parse_pronunciation,
 )
-from voiceger_accent_adapter.voiceger_tokens import (  # noqa: E402
+from voiceger_editor.voiceger_tokens import (  # noqa: E402
     pronunciation_to_voiceger_tokens,
 )
 

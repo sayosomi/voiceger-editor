@@ -8,10 +8,10 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from voiceger_accent_adapter import api
-from voiceger_accent_adapter.compatibility import SUPPORTED_VOICEGER_REVISION
-from voiceger_accent_adapter.tui import main
-from voiceger_accent_adapter.voiceger_environment import (
+from voiceger_editor import api
+from voiceger_editor.compatibility import SUPPORTED_VOICEGER_REVISION
+from voiceger_editor.tui import main
+from voiceger_editor.voiceger_environment import (
     CheckStatus,
     EnvironmentCheck,
     VoicegerEnvironmentError,
@@ -62,7 +62,7 @@ class VoicegerEnvironmentTests(unittest.TestCase):
         self.assertEqual(configured_source, "environment")
 
         with patch.dict(os.environ, {"VOICEGER_ROOT": ""}), patch(
-            "voiceger_accent_adapter.voiceger_environment.Path.home",
+            "voiceger_editor.voiceger_environment.Path.home",
             return_value=Path("/home/tester"),
         ):
             default, default_source = resolve_voiceger_root()
@@ -73,7 +73,7 @@ class VoicegerEnvironmentTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "missing"
             with patch(
-                "voiceger_accent_adapter.voiceger_environment._read_voiceger_revision",
+                "voiceger_editor.voiceger_environment._read_voiceger_revision",
                 return_value=None,
             ):
                 report = check_voiceger_environment(root)
@@ -90,7 +90,7 @@ class VoicegerEnvironmentTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             with patch(
-                "voiceger_accent_adapter.voiceger_environment._read_voiceger_revision",
+                "voiceger_editor.voiceger_environment._read_voiceger_revision",
                 return_value=None,
             ):
                 report = check_voiceger_environment(root)
@@ -106,10 +106,10 @@ class VoicegerEnvironmentTests(unittest.TestCase):
             _touch(root / "GPT-SoVITS" / "GPT_SoVITS" / "inference_webui.py")
             _touch(root / ".venv" / "bin" / "python")
             with patch(
-                "voiceger_accent_adapter.voiceger_environment._read_voiceger_revision",
+                "voiceger_editor.voiceger_environment._read_voiceger_revision",
                 return_value=SUPPORTED_VOICEGER_REVISION,
             ), patch(
-                "voiceger_accent_adapter.voiceger_environment.sys.prefix",
+                "voiceger_editor.voiceger_environment.sys.prefix",
                 str(root / ".venv"),
             ):
                 report = check_voiceger_environment(root)
@@ -126,10 +126,10 @@ class VoicegerEnvironmentTests(unittest.TestCase):
             root = Path(temp_dir)
             _make_valid_voiceger(root)
             with patch(
-                "voiceger_accent_adapter.voiceger_environment._read_voiceger_revision",
+                "voiceger_editor.voiceger_environment._read_voiceger_revision",
                 return_value="0123456789abcdef0123456789abcdef01234567",
             ), patch(
-                "voiceger_accent_adapter.voiceger_environment.sys.prefix",
+                "voiceger_editor.voiceger_environment.sys.prefix",
                 str(root / ".venv"),
             ):
                 report = check_voiceger_environment(root)
@@ -147,13 +147,13 @@ class VoicegerEnvironmentTests(unittest.TestCase):
             root = home / "voiceger_v2"
             _make_valid_voiceger(root)
             with patch.dict(os.environ, {"VOICEGER_ROOT": ""}), patch(
-                "voiceger_accent_adapter.voiceger_environment.Path.home",
+                "voiceger_editor.voiceger_environment.Path.home",
                 return_value=home,
             ), patch(
-                "voiceger_accent_adapter.voiceger_environment._read_voiceger_revision",
+                "voiceger_editor.voiceger_environment._read_voiceger_revision",
                 return_value=SUPPORTED_VOICEGER_REVISION,
             ), patch(
-                "voiceger_accent_adapter.voiceger_environment.sys.prefix",
+                "voiceger_editor.voiceger_environment.sys.prefix",
                 str(root / ".venv"),
             ):
                 report = check_voiceger_environment()
@@ -192,13 +192,13 @@ class VoicegerEnvironmentFrontendTests(unittest.TestCase):
         )
         output = StringIO()
         with patch(
-            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            "voiceger_editor.entrypoint.check_voiceger_environment",
             return_value=ready,
         ), redirect_stdout(output):
             result = main(["--check"])
 
         self.assertEqual(result, 0)
-        self.assertIn("voiceger-accent-adapter 1.0.0", output.getvalue())
+        self.assertIn("voiceger-editor 1.0.0", output.getvalue())
         self.assertIn("READY: YES", output.getvalue())
 
     def test_normal_tui_stops_before_curses_on_setup_error(self):
@@ -209,10 +209,10 @@ class VoicegerEnvironmentFrontendTests(unittest.TestCase):
         )
         error = StringIO()
         with patch(
-            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            "voiceger_editor.entrypoint.check_voiceger_environment",
             return_value=failed,
         ), patch(
-            "voiceger_accent_adapter.entrypoint.curses.wrapper"
+            "voiceger_editor.entrypoint.curses.wrapper"
         ) as wrapper, redirect_stderr(error):
             result = main([])
 
@@ -229,10 +229,10 @@ class VoicegerEnvironmentFrontendTests(unittest.TestCase):
         )
         api.get_adapter.cache_clear()
         with patch(
-            "voiceger_accent_adapter.api.require_voiceger_environment",
+            "voiceger_editor.api.require_voiceger_environment",
             side_effect=VoicegerEnvironmentError(failed),
         ), patch(
-            "voiceger_accent_adapter.api.require_current_acceptance",
+            "voiceger_editor.api.require_current_acceptance",
         ):
             with TestClient(api.app) as client:
                 response = client.get("/speakers")

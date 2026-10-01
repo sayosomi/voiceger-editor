@@ -1,6 +1,6 @@
 import unittest
 
-from voiceger_accent_adapter.tui_navigation import (
+from voiceger_editor.tui_navigation import (
     AcceptCandidate,
     AddSectionEditor,
     BuildPronunciation,

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 
-from voiceger_accent_adapter.mixed_language import (
+from voiceger_editor.mixed_language import (
     build_mixed_audio_query,
     detect_language_segments,
 )

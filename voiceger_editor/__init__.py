@@ -1,4 +1,4 @@
-"""Core package for voiceger-accent-adapter."""
+"""Core package for voiceger-editor."""
 
 from ._version import __version__
 from .openjtalk_converter import (

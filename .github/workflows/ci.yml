@@ -70,6 +70,6 @@ jobs:
           )"
           python -m venv .ci-smoke
           .ci-smoke/bin/python -m pip install --upgrade pip
-          .ci-smoke/bin/python -m pip install "voiceger-accent-adapter[api,tui,lab] @ file://$wheel"
+          .ci-smoke/bin/python -m pip install "voiceger-editor[api,tui,lab] @ file://$wheel"
           .ci-smoke/bin/python -m pip check
-          .ci-smoke/bin/voiceger-accent-adapter --help
+          .ci-smoke/bin/voiceger-editor --help

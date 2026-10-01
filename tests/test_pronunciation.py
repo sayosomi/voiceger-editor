@@ -1,6 +1,6 @@
 import unittest
 
-from voiceger_accent_adapter.pronunciation import (
+from voiceger_editor.pronunciation import (
     PronunciationPunctuation,
     PronunciationSyntaxError,
     format_pronunciation,

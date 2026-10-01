@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from voiceger_accent_adapter import terms_acceptance as terms
+from voiceger_editor import terms_acceptance as terms
 
 
 class TermsAcceptanceTests(unittest.TestCase):

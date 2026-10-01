@@ -3,9 +3,9 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from voiceger_accent_adapter.pronunciation import parse_pronunciation
-from voiceger_accent_adapter.runtime_locks import OPENJTALK_LOCK
-from voiceger_accent_adapter.voiceger_tokens import (
+from voiceger_editor.pronunciation import parse_pronunciation
+from voiceger_editor.runtime_locks import OPENJTALK_LOCK
+from voiceger_editor.voiceger_tokens import (
     VoicegerTokenConversionError,
     _default_mora_g2p,
     pronunciation_to_voiceger_tokens,

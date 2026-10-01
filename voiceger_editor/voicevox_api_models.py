@@ -1,4 +1,4 @@
-"""VOICEVOX-like API models used by voiceger-accent-adapter."""
+"""VOICEVOX-like API models used by voiceger-editor."""
 
 from __future__ import annotations
 

@@ -1,20 +1,20 @@
 import unittest
 from unittest.mock import patch
 
-from voiceger_accent_adapter.mixed_language import (
+from voiceger_editor.mixed_language import (
     DetectedSegment,
     build_mixed_audio_query,
     build_mixed_synthesis_plan,
     detect_language_segments,
     voiceger_text_language,
 )
-from voiceger_accent_adapter.pronunciation import (
+from voiceger_editor.pronunciation import (
     AccentPhrase,
     Pronunciation,
     format_pronunciation,
     parse_pronunciation,
 )
-from voiceger_accent_adapter.voicevox_api_models import (
+from voiceger_editor.voicevox_api_models import (
     AccentPhrase as ApiAccentPhrase,
     AudioQuery,
     Mora,
@@ -100,7 +100,7 @@ class MixedLanguageTests(unittest.TestCase):
         ]
 
         with patch(
-            "voiceger_accent_adapter.mixed_language.text_to_pronunciation",
+            "voiceger_editor.mixed_language.text_to_pronunciation",
             return_value=japanese,
         ):
             query = build_mixed_audio_query(
@@ -152,7 +152,7 @@ class MixedLanguageTests(unittest.TestCase):
             DetectedSegment("ja", "雨。"),
         )
         with patch(
-            "voiceger_accent_adapter.mixed_language.text_to_pronunciation",
+            "voiceger_editor.mixed_language.text_to_pronunciation",
             side_effect=lambda _text: next(japanese_values),
         ):
             query = build_mixed_audio_query(
@@ -189,7 +189,7 @@ class MixedLanguageTests(unittest.TestCase):
                     terminator=terminator,
                 )
                 with patch(
-                    "voiceger_accent_adapter.mixed_language.text_to_pronunciation",
+                    "voiceger_editor.mixed_language.text_to_pronunciation",
                     return_value=pronunciation,
                 ):
                     query = build_mixed_audio_query(
@@ -211,7 +211,7 @@ class MixedLanguageTests(unittest.TestCase):
     def test_mixed_japanese_punctuation_survives_query_and_plan(self):
         pronunciation = parse_pronunciation("ア'メ、アメ'…ア'メ！")
         with patch(
-            "voiceger_accent_adapter.mixed_language.text_to_pronunciation",
+            "voiceger_editor.mixed_language.text_to_pronunciation",
             return_value=pronunciation,
         ):
             query = build_mixed_audio_query(
@@ -233,7 +233,7 @@ class MixedLanguageTests(unittest.TestCase):
         )
 
         with patch(
-            "voiceger_accent_adapter.mixed_language.pronunciation_to_voiceger_tokens",
+            "voiceger_editor.mixed_language.pronunciation_to_voiceger_tokens",
             side_effect=lambda value: [format_pronunciation(value)],
         ):
             plan = build_mixed_synthesis_plan(query)
@@ -273,7 +273,7 @@ class MixedLanguageTests(unittest.TestCase):
                     voicegerSegments=[segment],
                 )
                 with patch(
-                    "voiceger_accent_adapter.mixed_language.pronunciation_to_voiceger_tokens",
+                    "voiceger_editor.mixed_language.pronunciation_to_voiceger_tokens",
                     side_effect=lambda value: [value.terminator],
                 ):
                     plan = build_mixed_synthesis_plan(query)
@@ -286,7 +286,7 @@ class MixedLanguageTests(unittest.TestCase):
             terminator="。",
         )
         with patch(
-            "voiceger_accent_adapter.mixed_language.text_to_pronunciation",
+            "voiceger_editor.mixed_language.text_to_pronunciation",
             return_value=japanese,
         ):
             query = build_mixed_audio_query(
@@ -308,7 +308,7 @@ class MixedLanguageTests(unittest.TestCase):
         ]
 
         with patch(
-            "voiceger_accent_adapter.mixed_language.text_to_pronunciation",
+            "voiceger_editor.mixed_language.text_to_pronunciation",
             return_value=japanese,
         ):
             query = build_mixed_audio_query(
@@ -324,7 +324,7 @@ class MixedLanguageTests(unittest.TestCase):
             )
 
         with patch(
-            "voiceger_accent_adapter.mixed_language.pronunciation_to_voiceger_tokens",
+            "voiceger_editor.mixed_language.pronunciation_to_voiceger_tokens",
             return_value=["dummy"],
         ):
             plan = build_mixed_synthesis_plan(query)

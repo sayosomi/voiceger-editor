@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime
 
-from voiceger_accent_adapter.filename import (
+from voiceger_editor.filename import (
     build_output_filename,
     sanitize_filename_part,
 )

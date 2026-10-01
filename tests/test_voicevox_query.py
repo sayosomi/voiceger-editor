@@ -3,12 +3,12 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from voiceger_accent_adapter.pronunciation import (
+from voiceger_editor.pronunciation import (
     format_pronunciation,
     parse_pronunciation,
 )
-from voiceger_accent_adapter.runtime_locks import OPENJTALK_LOCK
-from voiceger_accent_adapter.voicevox_query import (
+from voiceger_editor.runtime_locks import OPENJTALK_LOCK
+from voiceger_editor.voicevox_query import (
     accent_phrases_to_pronunciation,
     build_audio_query,
     _mora_phones,

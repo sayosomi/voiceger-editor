@@ -9,22 +9,22 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
-from voiceger_accent_adapter.settings import Settings
-from voiceger_accent_adapter.terms_acceptance import (
+from voiceger_editor.settings import Settings
+from voiceger_editor.terms_acceptance import (
     ACCEPTANCE_COMMAND,
     OFFICIAL_TERMS_URL,
     TermsAcceptanceStatus,
     VoicegerTermsAcceptanceError,
 )
-from voiceger_accent_adapter.tui_editors import PreviewIntent, ReplaceQueryIntent
-from voiceger_accent_adapter.tui_operations import PlayPreviewEffect
-from voiceger_accent_adapter.tui import (
+from voiceger_editor.tui_editors import PreviewIntent, ReplaceQueryIntent
+from voiceger_editor.tui_operations import PlayPreviewEffect
+from voiceger_editor.tui import (
     TuiApp,
     build_argument_parser,
     main,
     settings_for_invocation,
 )
-from voiceger_accent_adapter.voicevox_api_models import (
+from voiceger_editor.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
     Mora,
@@ -810,8 +810,8 @@ class TuiTests(unittest.TestCase):
         app._open_settings_editor()
         editor = app._editor_controller.editor
 
-        with patch("voiceger_accent_adapter.tui.available_styles", return_value=styles), patch(
-            "voiceger_accent_adapter.tui_rendering.available_styles",
+        with patch("voiceger_editor.tui.available_styles", return_value=styles), patch(
+            "voiceger_editor.tui_rendering.available_styles",
             return_value=styles,
         ):
             editor.selection = "style_id"
@@ -1002,7 +1002,7 @@ class TuiTests(unittest.TestCase):
 
             screen = FakeScreen(columns=100)
             app._screen = screen
-            with patch("voiceger_accent_adapter.tui_rendering.available_styles", return_value=styles):
+            with patch("voiceger_editor.tui_rendering.available_styles", return_value=styles):
                 app._render()
             self.assertIsNone(app._pressed_adjustment)
             app._render()
@@ -1019,7 +1019,7 @@ class TuiTests(unittest.TestCase):
                 app.session = None
                 app._initial_caption = initial_caption
                 screen = FakeScreen(keys=("q",))
-                with patch("voiceger_accent_adapter.tui.curses.set_escdelay"):
+                with patch("voiceger_editor.tui.curses.set_escdelay"):
                     app.run(screen)
 
                 self.assertIsNone(app.session)
@@ -1035,9 +1035,9 @@ class TuiTests(unittest.TestCase):
         app._initial_caption = "example"
         screen = FakeScreen(keys=("q",))
         with patch(
-            "voiceger_accent_adapter.tui.UtteranceSession.from_text",
+            "voiceger_editor.tui.UtteranceSession.from_text",
             return_value=app.session,
-        ), patch("voiceger_accent_adapter.tui.curses.set_escdelay") as set_escdelay:
+        ), patch("voiceger_editor.tui.curses.set_escdelay") as set_escdelay:
             app.run(screen)
 
         set_escdelay.assert_called_once_with(25)
@@ -1058,9 +1058,9 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(preview_path.is_file())
 
         with patch(
-            "voiceger_accent_adapter.tui.UtteranceSession.from_text",
+            "voiceger_editor.tui.UtteranceSession.from_text",
             return_value=app.session,
-        ), patch("voiceger_accent_adapter.tui.curses.set_escdelay"):
+        ), patch("voiceger_editor.tui.curses.set_escdelay"):
             app.run(FakeScreen(keys=("q",)))
 
         self.assertFalse(preview_path.exists())
@@ -1162,7 +1162,7 @@ class TuiTests(unittest.TestCase):
         app._open_caption_editor()
         app._editor_controller.editor.input_value = "new caption"
         with patch(
-            "voiceger_accent_adapter.tui.UtteranceSession.from_text",
+            "voiceger_editor.tui.UtteranceSession.from_text",
             side_effect=AssertionError("existing session must be reused"),
         ) as from_text:
             app._handle_key("\n")
@@ -1236,7 +1236,7 @@ class TuiTests(unittest.TestCase):
         app._open_caption_editor("")
         app._editor_controller.editor.input_value = "initial caption"
         with patch(
-            "voiceger_accent_adapter.tui.UtteranceSession.from_text",
+            "voiceger_editor.tui.UtteranceSession.from_text",
             return_value=seeded_session,
         ) as from_text:
             app._handle_key("\n")
@@ -1788,7 +1788,7 @@ class TuiTests(unittest.TestCase):
         app._open_settings_editor("style_id")
         editor = app._editor_controller.editor
         editor.payload["draft_settings"]["style_id"] = "1"
-        with patch("voiceger_accent_adapter.tui.available_styles", return_value=styles):
+        with patch("voiceger_editor.tui.available_styles", return_value=styles):
             app._handle_key(curses.KEY_RIGHT)
             self.assertEqual(editor.payload["draft_settings"]["style_id"], "22")
             app._handle_key(curses.KEY_RIGHT)
@@ -1888,7 +1888,7 @@ class TuiTests(unittest.TestCase):
         app._operations.stop_playback = Mock()
         app._open_settings_editor()
 
-        with patch("voiceger_accent_adapter.tui.save_settings") as save:
+        with patch("voiceger_editor.tui.save_settings") as save:
             app._handle_key("a")
 
         save.assert_called_once_with(target, app.config_path)
@@ -1969,7 +1969,7 @@ class TuiTests(unittest.TestCase):
             }
         )
         editor.selection = "reset"
-        with patch("voiceger_accent_adapter.tui.save_settings") as save:
+        with patch("voiceger_editor.tui.save_settings") as save:
             app._handle_key("\n")
         save.assert_not_called()
         self.assertEqual(
@@ -1995,7 +1995,7 @@ class TuiTests(unittest.TestCase):
 
         editor.payload["draft_settings"]["take_count"] = "2"
         editor.selection = "back"
-        with patch("voiceger_accent_adapter.tui.save_settings") as save:
+        with patch("voiceger_editor.tui.save_settings") as save:
             app._handle_key("\n")
         save.assert_not_called()
         self.assertIsNone(app._editor_controller.editor)
@@ -2005,7 +2005,7 @@ class TuiTests(unittest.TestCase):
 
         app._open_settings_editor()
         app._editor_controller.editor.payload["draft_settings"]["style_id"] = "1"
-        with patch("voiceger_accent_adapter.tui.save_settings") as save:
+        with patch("voiceger_editor.tui.save_settings") as save:
             app._handle_key("\x1b")
         save.assert_not_called()
         self.assertIsNone(app._editor_controller.editor)
@@ -2073,7 +2073,7 @@ class TuiTests(unittest.TestCase):
             target = app.settings
             app._open_settings_editor()
 
-            with patch("voiceger_accent_adapter.tui.save_settings") as save:
+            with patch("voiceger_editor.tui.save_settings") as save:
                 app._handle_key("\n")
 
             save.assert_called_once_with(target, app.config_path)
@@ -2101,7 +2101,7 @@ class TuiTests(unittest.TestCase):
             target = Settings(speed=1.25, output_dir=app.settings.output_dir)
 
             with patch(
-                "voiceger_accent_adapter.tui.save_settings",
+                "voiceger_editor.tui.save_settings",
                 side_effect=[OSError("disk full"), None],
             ) as save:
                 app._handle_key("\n")
@@ -2351,7 +2351,7 @@ class TuiTests(unittest.TestCase):
 
     @staticmethod
     def english_phoneme_state(phonemes):
-        from voiceger_accent_adapter.english_stress import english_phonemes_to_editor_state
+        from voiceger_editor.english_stress import english_phonemes_to_editor_state
 
         return english_phonemes_to_editor_state(phonemes)
 
@@ -2691,9 +2691,9 @@ class TuiTests(unittest.TestCase):
 
         app._render = Mock(side_effect=record_render)
         with patch(
-            "voiceger_accent_adapter.tui.UtteranceSession.from_text",
+            "voiceger_editor.tui.UtteranceSession.from_text",
             return_value=app.session,
-        ), patch("voiceger_accent_adapter.tui.curses.set_escdelay"):
+        ), patch("voiceger_editor.tui.curses.set_escdelay"):
             app.run(screen)
 
         self.assertTrue(app._exit_requested)
@@ -2713,22 +2713,22 @@ class TuiTests(unittest.TestCase):
             voiceger_root=Path("/voiceger"),
         )
         with patch(
-            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            "voiceger_editor.entrypoint.check_voiceger_environment",
             return_value=environment,
         ), patch(
-            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            "voiceger_editor.entrypoint.current_acceptance_status",
             return_value=SimpleNamespace(accepted=True),
         ), patch(
-            "voiceger_accent_adapter.entrypoint.require_current_acceptance",
+            "voiceger_editor.entrypoint.require_current_acceptance",
         ), patch(
-            "voiceger_accent_adapter.entrypoint.cleanup_stale_take_directories"
+            "voiceger_editor.entrypoint.cleanup_stale_take_directories"
         ) as cleanup, patch(
-            "voiceger_accent_adapter.entrypoint.load_settings",
+            "voiceger_editor.entrypoint.load_settings",
             return_value=Settings(),
         ), patch(
-            "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
+            "voiceger_editor.entrypoint.VoicegerAdapter",
         ), patch(
-            "voiceger_accent_adapter.entrypoint.curses.wrapper",
+            "voiceger_editor.entrypoint.curses.wrapper",
         ):
             self.assertEqual(main([]), 0)
 
@@ -2749,37 +2749,37 @@ class TuiTests(unittest.TestCase):
             detail="No acceptance record exists.",
         )
         with patch(
-            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            "voiceger_editor.entrypoint.check_voiceger_environment",
             return_value=environment,
         ), patch(
-            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            "voiceger_editor.entrypoint.current_acceptance_status",
             return_value=status,
         ), patch(
-            "voiceger_accent_adapter.entrypoint.preferred_notice_language",
+            "voiceger_editor.entrypoint.preferred_notice_language",
             return_value="ja",
         ), patch(
-            "voiceger_accent_adapter.entrypoint.record_explicit_acceptance",
+            "voiceger_editor.entrypoint.record_explicit_acceptance",
             side_effect=lambda: order.append("accepted"),
         ) as record_acceptance, patch(
-            "voiceger_accent_adapter.entrypoint.require_current_acceptance",
+            "voiceger_editor.entrypoint.require_current_acceptance",
             side_effect=lambda: order.append("required"),
         ), patch(
-            "voiceger_accent_adapter.entrypoint.sys.stdin",
+            "voiceger_editor.entrypoint.sys.stdin",
             SimpleNamespace(isatty=lambda: True),
         ), patch(
             "builtins.input",
             return_value="A",
         ) as prompt, patch(
-            "voiceger_accent_adapter.entrypoint.cleanup_stale_take_directories",
+            "voiceger_editor.entrypoint.cleanup_stale_take_directories",
             side_effect=lambda: order.append("cleanup"),
         ), patch(
-            "voiceger_accent_adapter.entrypoint.load_settings",
+            "voiceger_editor.entrypoint.load_settings",
             return_value=Settings(),
         ), patch(
-            "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
+            "voiceger_editor.entrypoint.VoicegerAdapter",
             side_effect=lambda **_kwargs: order.append("adapter") or Mock(),
         ), patch(
-            "voiceger_accent_adapter.entrypoint.curses.wrapper",
+            "voiceger_editor.entrypoint.curses.wrapper",
             side_effect=lambda _run: order.append("tui"),
         ), redirect_stdout(io.StringIO()) as stdout:
             result = main([])
@@ -2812,26 +2812,26 @@ class TuiTests(unittest.TestCase):
         for initial, answers, first_notice, switched_notice in cases:
             with self.subTest(initial=initial):
                 with patch(
-                    "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+                    "voiceger_editor.entrypoint.check_voiceger_environment",
                     return_value=environment,
                 ), patch(
-                    "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+                    "voiceger_editor.entrypoint.current_acceptance_status",
                     return_value=status,
                 ), patch(
-                    "voiceger_accent_adapter.entrypoint.preferred_notice_language",
+                    "voiceger_editor.entrypoint.preferred_notice_language",
                     return_value=initial,
                 ), patch(
-                    "voiceger_accent_adapter.entrypoint.sys.stdin",
+                    "voiceger_editor.entrypoint.sys.stdin",
                     SimpleNamespace(isatty=lambda: True),
                 ), patch(
                     "builtins.input",
                     side_effect=answers,
                 ), patch(
-                    "voiceger_accent_adapter.entrypoint.record_explicit_acceptance",
+                    "voiceger_editor.entrypoint.record_explicit_acceptance",
                 ) as record_acceptance, patch(
-                    "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
+                    "voiceger_editor.entrypoint.VoicegerAdapter",
                 ) as adapter, patch(
-                    "voiceger_accent_adapter.entrypoint.curses.wrapper",
+                    "voiceger_editor.entrypoint.curses.wrapper",
                 ) as wrapper, redirect_stdout(io.StringIO()) as stdout:
                     self.assertEqual(main([]), 2)
 
@@ -2855,29 +2855,29 @@ class TuiTests(unittest.TestCase):
             detail="No acceptance record exists.",
         )
         with patch(
-            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            "voiceger_editor.entrypoint.check_voiceger_environment",
             return_value=environment,
         ), patch(
-            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            "voiceger_editor.entrypoint.current_acceptance_status",
             return_value=status,
         ), patch(
-            "voiceger_accent_adapter.entrypoint.preferred_notice_language",
+            "voiceger_editor.entrypoint.preferred_notice_language",
             return_value="ja",
         ), patch(
-            "voiceger_accent_adapter.entrypoint.sys.stdin",
+            "voiceger_editor.entrypoint.sys.stdin",
             SimpleNamespace(isatty=lambda: True),
         ), patch(
             "builtins.input",
             side_effect=["", "x", "O", "Q"],
         ), patch(
-            "voiceger_accent_adapter.entrypoint.webbrowser.open",
+            "voiceger_editor.entrypoint.webbrowser.open",
             return_value=True,
         ) as open_browser, patch(
-            "voiceger_accent_adapter.entrypoint.record_explicit_acceptance",
+            "voiceger_editor.entrypoint.record_explicit_acceptance",
         ) as record_acceptance, patch(
-            "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
+            "voiceger_editor.entrypoint.VoicegerAdapter",
         ) as adapter, patch(
-            "voiceger_accent_adapter.entrypoint.curses.wrapper",
+            "voiceger_editor.entrypoint.curses.wrapper",
         ) as wrapper, redirect_stderr(io.StringIO()):
             self.assertEqual(main([]), 2)
 
@@ -2900,26 +2900,26 @@ class TuiTests(unittest.TestCase):
             detail="No acceptance record exists.",
         )
         with patch(
-            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            "voiceger_editor.entrypoint.check_voiceger_environment",
             return_value=environment,
         ), patch(
-            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            "voiceger_editor.entrypoint.current_acceptance_status",
             return_value=status,
         ), patch(
-            "voiceger_accent_adapter.entrypoint.preferred_notice_language",
+            "voiceger_editor.entrypoint.preferred_notice_language",
             return_value="en",
         ), patch(
-            "voiceger_accent_adapter.entrypoint.sys.stdin",
+            "voiceger_editor.entrypoint.sys.stdin",
             SimpleNamespace(isatty=lambda: True),
         ), patch(
             "builtins.input",
             side_effect=EOFError,
         ), patch(
-            "voiceger_accent_adapter.entrypoint.record_explicit_acceptance",
+            "voiceger_editor.entrypoint.record_explicit_acceptance",
         ) as record_acceptance, patch(
-            "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
+            "voiceger_editor.entrypoint.VoicegerAdapter",
         ) as adapter, patch(
-            "voiceger_accent_adapter.entrypoint.curses.wrapper",
+            "voiceger_editor.entrypoint.curses.wrapper",
         ) as wrapper:
             self.assertEqual(main([]), 2)
 
@@ -2934,25 +2934,25 @@ class TuiTests(unittest.TestCase):
             voiceger_root=Path("/voiceger"),
         )
         with patch(
-            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            "voiceger_editor.entrypoint.check_voiceger_environment",
             return_value=environment,
         ), patch(
-            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            "voiceger_editor.entrypoint.current_acceptance_status",
             return_value=SimpleNamespace(accepted=True),
         ), patch(
-            "voiceger_accent_adapter.entrypoint.require_current_acceptance",
+            "voiceger_editor.entrypoint.require_current_acceptance",
         ), patch(
             "builtins.input",
             side_effect=AssertionError("accepted state must not prompt"),
         ) as prompt, patch(
-            "voiceger_accent_adapter.entrypoint.cleanup_stale_take_directories"
+            "voiceger_editor.entrypoint.cleanup_stale_take_directories"
         ), patch(
-            "voiceger_accent_adapter.entrypoint.load_settings",
+            "voiceger_editor.entrypoint.load_settings",
             return_value=Settings(),
         ), patch(
-            "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
+            "voiceger_editor.entrypoint.VoicegerAdapter",
         ), patch(
-            "voiceger_accent_adapter.entrypoint.curses.wrapper",
+            "voiceger_editor.entrypoint.curses.wrapper",
         ):
             self.assertEqual(main([]), 0)
 
@@ -2968,24 +2968,24 @@ class TuiTests(unittest.TestCase):
             f"Read {OFFICIAL_TERMS_URL} and run {ACCEPTANCE_COMMAND}."
         )
         with patch(
-            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            "voiceger_editor.entrypoint.check_voiceger_environment",
             return_value=environment,
         ), patch(
-            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            "voiceger_editor.entrypoint.current_acceptance_status",
             return_value=SimpleNamespace(accepted=False, detail="missing"),
         ), patch(
-            "voiceger_accent_adapter.entrypoint.require_current_acceptance",
+            "voiceger_editor.entrypoint.require_current_acceptance",
             side_effect=error,
         ), patch(
-            "voiceger_accent_adapter.entrypoint.sys.stdin",
+            "voiceger_editor.entrypoint.sys.stdin",
             SimpleNamespace(isatty=lambda: False),
         ), patch(
             "builtins.input",
             side_effect=AssertionError("non-interactive startup must not prompt"),
         ) as prompt, patch(
-            "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
+            "voiceger_editor.entrypoint.VoicegerAdapter",
         ) as adapter, patch(
-            "voiceger_accent_adapter.entrypoint.curses.wrapper",
+            "voiceger_editor.entrypoint.curses.wrapper",
         ) as wrapper, redirect_stderr(io.StringIO()) as stderr:
             self.assertEqual(main([]), 2)
 
@@ -3016,15 +3016,15 @@ class TuiTests(unittest.TestCase):
             self.assertIn(OFFICIAL_TERMS_URL, output.getvalue())
 
         with patch(
-            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            "voiceger_editor.entrypoint.check_voiceger_environment",
         ) as environment_check, patch(
-            "voiceger_accent_adapter.entrypoint.record_explicit_acceptance",
+            "voiceger_editor.entrypoint.record_explicit_acceptance",
             side_effect=verify_notice_was_printed_before_recording,
         ) as record_acceptance, patch(
-            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            "voiceger_editor.entrypoint.current_acceptance_status",
             side_effect=[rejected_status, accepted_status],
         ), patch(
-            "voiceger_accent_adapter.entrypoint.webbrowser.open",
+            "voiceger_editor.entrypoint.webbrowser.open",
             return_value=True,
         ) as open_browser, redirect_stdout(output):
             self.assertEqual(main(["--accept-voiceger-terms"]), 0)
@@ -3051,24 +3051,24 @@ class TuiTests(unittest.TestCase):
             detail="No acceptance record exists.",
         )
         with patch(
-            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            "voiceger_editor.entrypoint.check_voiceger_environment",
             return_value=environment,
         ), patch(
-            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            "voiceger_editor.entrypoint.current_acceptance_status",
             return_value=status,
         ), patch(
-            "voiceger_accent_adapter.entrypoint.record_explicit_acceptance",
+            "voiceger_editor.entrypoint.record_explicit_acceptance",
             side_effect=OSError("read-only directory"),
         ), patch(
-            "voiceger_accent_adapter.entrypoint.sys.stdin",
+            "voiceger_editor.entrypoint.sys.stdin",
             SimpleNamespace(isatty=lambda: True),
         ), patch(
             "builtins.input",
             return_value="A",
         ), patch(
-            "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
+            "voiceger_editor.entrypoint.VoicegerAdapter",
         ) as adapter, patch(
-            "voiceger_accent_adapter.entrypoint.curses.wrapper",
+            "voiceger_editor.entrypoint.curses.wrapper",
         ) as wrapper, redirect_stderr(io.StringIO()) as stderr:
             self.assertEqual(main([]), 2)
 
@@ -3085,7 +3085,7 @@ class TuiTests(unittest.TestCase):
 
     def test_open_terms_reports_browser_failure_with_printed_url(self):
         with patch(
-            "voiceger_accent_adapter.entrypoint.webbrowser.open",
+            "voiceger_editor.entrypoint.webbrowser.open",
             return_value=False,
         ), redirect_stdout(io.StringIO()) as stdout, redirect_stderr(
             io.StringIO()
@@ -3138,7 +3138,7 @@ class TuiTests(unittest.TestCase):
         worker.start()
         screen = DrainScreen()
         with patch(
-            "voiceger_accent_adapter.tui.UtteranceSession.from_text",
+            "voiceger_editor.tui.UtteranceSession.from_text",
             return_value=app.session,
         ):
             app.run(screen)
@@ -3179,7 +3179,7 @@ class TuiTests(unittest.TestCase):
         app.session.close = Mock(side_effect=close_session)
         worker.start()
         with patch(
-            "voiceger_accent_adapter.tui.UtteranceSession.from_text",
+            "voiceger_editor.tui.UtteranceSession.from_text",
             return_value=app.session,
         ):
             with self.assertRaisesRegex(RuntimeError, "render failed"):

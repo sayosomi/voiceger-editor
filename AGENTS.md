@@ -2,7 +2,7 @@
 
 ## Development routing
 
-Route all development work through this repository's `README.md` and the fixed [voiceger-accent-adapter project context](https://github.com/sayosomi/dev-context/blob/main/projects/voiceger-accent-adapter/README.md).
+Route all development work through this repository's `README.md` and the fixed [voiceger-editor project context](https://github.com/sayosomi/dev-context/blob/main/projects/voiceger-editor/README.md).
 
 Load the shared documents routed from that entrypoint when their topics apply. In particular:
 
@@ -12,7 +12,7 @@ Load the shared documents routed from that entrypoint when their topics apply. I
 
 Authority:
 
-- The latest remote `sayosomi/voiceger-accent-adapter` repository is authoritative for implemented repository facts.
+- The latest remote `sayosomi/voiceger-editor` repository is authoritative for implemented repository facts.
 - GitHub Issues in this repository are the primary Work and current implementation-contract authority.
 - Reusable workflow mechanics belong in dev-context; repository-local environment, test, scratch-artifact, and hygiene rules remain owned here.
 - Do not import nuinuiCAD-specific Linear workflow, declared lanes, Astra policy, Manual E2E policy, or other nuinuiCAD product rules.
@@ -44,7 +44,7 @@ VOICEGER_ROOT=~/voiceger_v2 \
 
 ## TUI architecture
 
-- `voiceger_accent_adapter/tui.py` is the TUI composition root, not the default location for new feature logic.
+- `voiceger_editor/tui.py` is the TUI composition root, not the default location for new feature logic.
 - Put new TUI behavior in the subsystem that owns the responsibility. Give substantial new TUI state or policy that does not fit an existing subsystem a focused owner rather than enlarging `TuiApp`.
 - Extracted `tui_*` modules must not import `tui.py` or `TuiApp`.
 - Logic reusable by the API, Web UI, or other frontends belongs in shared application/core modules, not TUI-specific modules.

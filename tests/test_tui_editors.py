@@ -4,8 +4,8 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from voiceger_accent_adapter.settings import Settings
-from voiceger_accent_adapter.tui_editors import (
+from voiceger_editor.settings import Settings
+from voiceger_editor.tui_editors import (
     AdjustmentPressedIntent,
     ApplySettingsIntent,
     ApplyCaptionIntent,
@@ -24,10 +24,10 @@ from voiceger_accent_adapter.tui_editors import (
     TuiEditorController,
     UpdateStatusIntent,
 )
-from voiceger_accent_adapter.tui_rendering import _active_input_prefix
-from voiceger_accent_adapter.query_editing import japanese_pronunciation
-from voiceger_accent_adapter.pronunciation import parse_pronunciation
-from voiceger_accent_adapter.voicevox_api_models import (
+from voiceger_editor.tui_rendering import _active_input_prefix
+from voiceger_editor.query_editing import japanese_pronunciation
+from voiceger_editor.pronunciation import parse_pronunciation
+from voiceger_editor.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
     Mora,
@@ -1815,7 +1815,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         )
         controller.move_selection(2)
         with patch(
-            "voiceger_accent_adapter.query_editing.text_to_pronunciation",
+            "voiceger_editor.query_editing.text_to_pronunciation",
             return_value=parse_pronunciation("ア'シ/タ'モ！"),
         ):
             intents = controller.handle_key(
@@ -1861,7 +1861,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         )
         controller.move_selection(2)
         with patch(
-            "voiceger_accent_adapter.query_editing.text_to_pronunciation",
+            "voiceger_editor.query_editing.text_to_pronunciation",
             return_value=parse_pronunciation("キョ'ウ！"),
         ):
             intents = controller.handle_key(
@@ -1895,7 +1895,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         )
         original = query.model_dump()
         with patch(
-            "voiceger_accent_adapter.query_editing.text_to_pronunciation",
+            "voiceger_editor.query_editing.text_to_pronunciation",
             return_value=parse_pronunciation("ミ'ズ？"),
         ):
             controller.move_selection(1)
@@ -2115,7 +2115,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         )
         controller.move_selection(1)
         with patch(
-            "voiceger_accent_adapter.query_editing.text_to_pronunciation",
+            "voiceger_editor.query_editing.text_to_pronunciation",
             return_value=parse_pronunciation("ツ'イカ！"),
         ):
             intents = controller.handle_key(

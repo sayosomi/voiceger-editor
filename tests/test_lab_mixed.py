@@ -5,14 +5,14 @@ import unittest
 import numpy as np
 import soundfile as sf
 
-from voiceger_accent_adapter.lab_mixed import (
+from voiceger_editor.lab_mixed import (
     align_mixed_lab,
     segment_alignment_query,
     stitch_mixed_lab_regions,
     trim_synthetic_padding_lab,
 )
-from voiceger_accent_adapter.lab_mixed_attention import MixedLabProvenance
-from voiceger_accent_adapter.voicevox_api_models import (
+from voiceger_editor.lab_mixed_attention import MixedLabProvenance
+from voiceger_editor.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
     Mora,

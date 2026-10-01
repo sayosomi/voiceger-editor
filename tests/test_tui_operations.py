@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from voiceger_accent_adapter.tui_operations import (
+from voiceger_editor.tui_operations import (
     DiscardInitialBatchEffect,
     FocusEffect,
     PlayPreviewEffect,
@@ -18,7 +18,7 @@ from voiceger_accent_adapter.tui_operations import (
     TuiOperations,
     UpdateStatusEffect,
 )
-from voiceger_accent_adapter.voicevox_api_models import AudioQuery
+from voiceger_editor.voicevox_api_models import AudioQuery
 
 
 def candidate(number):
@@ -665,7 +665,7 @@ class TuiOperationsTests(unittest.TestCase):
     def assert_playback_command(self, expected):
         session = self.playback_session()
         process = Mock()
-        with patch("voiceger_accent_adapter.tui_operations.subprocess.Popen", return_value=process) as popen:
+        with patch("voiceger_editor.tui_operations.subprocess.Popen", return_value=process) as popen:
             effects = self.operations.play_take(session, 3)
         self.assertEqual(effects, (UpdateStatusEffect("Playing take 3."),))
         self.assertEqual(popen.call_args.args[0], expected)
@@ -681,17 +681,17 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(self.operations.current_take, 3)
 
     def test_macos_prefers_afplay(self):
-        with patch("voiceger_accent_adapter.tui_operations.sys.platform", "darwin"):
+        with patch("voiceger_editor.tui_operations.sys.platform", "darwin"):
             with patch(
-                "voiceger_accent_adapter.tui_operations.shutil.which",
+                "voiceger_editor.tui_operations.shutil.which",
                 side_effect=lambda name: f"/usr/bin/{name}",
             ):
                 self.assert_playback_command(["/usr/bin/afplay", "/tmp/take-3.wav"])
 
     def test_macos_falls_back_to_ffplay(self):
-        with patch("voiceger_accent_adapter.tui_operations.sys.platform", "darwin"):
+        with patch("voiceger_editor.tui_operations.sys.platform", "darwin"):
             with patch(
-                "voiceger_accent_adapter.tui_operations.shutil.which",
+                "voiceger_editor.tui_operations.shutil.which",
                 side_effect=[None, "/usr/bin/ffplay"],
             ):
                 self.assert_playback_command(
@@ -706,9 +706,9 @@ class TuiOperationsTests(unittest.TestCase):
                 )
 
     def test_non_macos_uses_ffplay(self):
-        with patch("voiceger_accent_adapter.tui_operations.sys.platform", "linux"):
+        with patch("voiceger_editor.tui_operations.sys.platform", "linux"):
             with patch(
-                "voiceger_accent_adapter.tui_operations.shutil.which",
+                "voiceger_editor.tui_operations.shutil.which",
                 return_value="/usr/bin/ffplay",
             ):
                 self.assert_playback_command(
@@ -764,8 +764,8 @@ class TuiOperationsTests(unittest.TestCase):
         operations.stop_playback()
 
     def test_missing_player_and_playback_oserror_preserve_status_text(self):
-        with patch("voiceger_accent_adapter.tui_operations.sys.platform", "linux"):
-            with patch("voiceger_accent_adapter.tui_operations.shutil.which", return_value=None):
+        with patch("voiceger_editor.tui_operations.sys.platform", "linux"):
+            with patch("voiceger_editor.tui_operations.shutil.which", return_value=None):
                 self.assertEqual(
                     self.operations.play_take(self.playback_session(), 3),
                     (
@@ -774,13 +774,13 @@ class TuiOperationsTests(unittest.TestCase):
                         ),
                     ),
                 )
-        with patch("voiceger_accent_adapter.tui_operations.sys.platform", "linux"):
+        with patch("voiceger_editor.tui_operations.sys.platform", "linux"):
             with patch(
-                "voiceger_accent_adapter.tui_operations.shutil.which",
+                "voiceger_editor.tui_operations.shutil.which",
                 return_value="/usr/bin/ffplay",
             ):
                 with patch(
-                    "voiceger_accent_adapter.tui_operations.subprocess.Popen",
+                    "voiceger_editor.tui_operations.subprocess.Popen",
                     side_effect=OSError("spawn failed"),
                 ):
                     self.assertEqual(
@@ -800,13 +800,13 @@ class TuiOperationsTests(unittest.TestCase):
         old = Mock()
         old.poll.return_value = None
         self.operations.playback_process = old
-        with patch("voiceger_accent_adapter.tui_operations.sys.platform", "linux"):
+        with patch("voiceger_editor.tui_operations.sys.platform", "linux"):
             with patch(
-                "voiceger_accent_adapter.tui_operations.shutil.which",
+                "voiceger_editor.tui_operations.shutil.which",
                 return_value="/usr/bin/ffplay",
             ):
                 with patch(
-                    "voiceger_accent_adapter.tui_operations.subprocess.Popen",
+                    "voiceger_editor.tui_operations.subprocess.Popen",
                     return_value=Mock(),
                 ):
                     self.operations.play_take(session, 3)

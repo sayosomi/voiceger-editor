@@ -11,10 +11,10 @@ from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
-from voiceger_accent_adapter import api
-from voiceger_accent_adapter.api import app
-from voiceger_accent_adapter.styles import VoicegerStyle
-from voiceger_accent_adapter.terms_acceptance import (
+from voiceger_editor import api
+from voiceger_editor.api import app
+from voiceger_editor.styles import VoicegerStyle
+from voiceger_editor.terms_acceptance import (
     OFFICIAL_TERMS_URL,
     ACCEPTANCE_COMMAND,
     VoicegerTermsAcceptanceError,
@@ -96,7 +96,7 @@ class ApiSynthesisCompatibilityTests(unittest.TestCase):
                 (references / filename).write_bytes(b"")
 
             with patch(
-                "voiceger_accent_adapter.api.get_adapter",
+                "voiceger_editor.api.get_adapter",
                 return_value=adapter,
             ), TestClient(app) as client:
                 response = client.get("/speakers")
@@ -117,7 +117,7 @@ class ApiSynthesisCompatibilityTests(unittest.TestCase):
             (references / "01_ref_emoNormal026.wav").write_bytes(b"")
 
             with patch(
-                "voiceger_accent_adapter.api.get_adapter",
+                "voiceger_editor.api.get_adapter",
                 return_value=adapter,
             ), TestClient(app) as client:
                 response = client.post(
@@ -139,12 +139,12 @@ class ApiSynthesisCompatibilityTests(unittest.TestCase):
         )
 
         with patch(
-            "voiceger_accent_adapter.api.get_adapter",
+            "voiceger_editor.api.get_adapter",
             return_value=adapter,
         ), patch(
-            "voiceger_accent_adapter.api.require_current_acceptance",
+            "voiceger_editor.api.require_current_acceptance",
         ), patch(
-            "voiceger_accent_adapter.api._resolve_style",
+            "voiceger_editor.api._resolve_style",
             return_value=style,
         ), warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -192,15 +192,15 @@ class ApiSynthesisCompatibilityTests(unittest.TestCase):
             f"Read {OFFICIAL_TERMS_URL} and run {ACCEPTANCE_COMMAND}."
         )
         with patch(
-            "voiceger_accent_adapter.api.require_current_acceptance",
+            "voiceger_editor.api.require_current_acceptance",
             side_effect=error,
         ), patch(
-            "voiceger_accent_adapter.api.get_adapter",
+            "voiceger_editor.api.get_adapter",
             return_value=adapter,
         ) as get_adapter, patch(
-            "voiceger_accent_adapter.api._resolve_style",
+            "voiceger_editor.api._resolve_style",
         ) as resolve_style, patch(
-            "voiceger_accent_adapter.api.synthesize_audio_query",
+            "voiceger_editor.api.synthesize_audio_query",
         ) as synthesize_audio_query, TestClient(app) as client:
             response = client.post(
                 "/synthesis?speaker=3",
@@ -218,10 +218,10 @@ class ApiSynthesisCompatibilityTests(unittest.TestCase):
     def test_get_adapter_requires_acceptance_before_environment_setup(self):
         error = VoicegerTermsAcceptanceError("terms acceptance required")
         with patch(
-            "voiceger_accent_adapter.api.require_current_acceptance",
+            "voiceger_editor.api.require_current_acceptance",
             side_effect=error,
         ), patch(
-            "voiceger_accent_adapter.api.require_voiceger_environment",
+            "voiceger_editor.api.require_voiceger_environment",
         ) as require_environment:
             with self.assertRaises(VoicegerTermsAcceptanceError):
                 api.get_adapter.__wrapped__()
@@ -231,7 +231,7 @@ class ApiSynthesisCompatibilityTests(unittest.TestCase):
     def test_root_and_version_remain_available_without_acceptance(self):
         error = VoicegerTermsAcceptanceError("terms acceptance required")
         with patch(
-            "voiceger_accent_adapter.api.require_current_acceptance",
+            "voiceger_editor.api.require_current_acceptance",
             side_effect=error,
         ), TestClient(app) as client:
             root_response = client.get("/")
