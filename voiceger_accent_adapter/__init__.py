@@ -9,6 +9,7 @@ from .openjtalk_converter import (
 from .pronunciation import (
     AccentPhrase,
     Pronunciation,
+    PronunciationPunctuation,
     PronunciationSyntaxError,
     format_pronunciation,
     parse_pronunciation,
@@ -29,6 +30,7 @@ __all__ = [
     "AccentPhrase",
     "OpenJTalkConversionError",
     "Pronunciation",
+    "PronunciationPunctuation",
     "PronunciationSyntaxError",
     "VoicegerTokenConversionError",
     "EnglishUserDictionaryEntry",
