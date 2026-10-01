@@ -229,7 +229,7 @@ class TuiShortcutTests(unittest.TestCase):
                 "style_id",
                 {
                     "draft_settings": {
-                        "style_id": "1",
+                        "style_id": "3",
                         "speed": "1.0",
                         "take_count": "4",
                         "output_dir": ".",
