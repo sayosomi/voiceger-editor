@@ -16,6 +16,9 @@ from .voicevox_query import accent_phrases_to_pronunciation
 
 _ONSET_THRESHOLDS_DB = (-40.0, -35.0, -30.0, -25.0)
 _ATTENTION_SMOOTHING_RADIUS_FRAMES = 2
+# #61 Human-validated this MRTE head for the repository's supported Voiceger
+# compatibility target. Revalidate this preference when that target changes.
+_HUMAN_VALIDATED_ATTENTION_HEAD = 0
 
 
 @dataclass(frozen=True)
@@ -206,6 +209,12 @@ def _select_consensus_head(
     if len(transitions) == 1:
         head_index = next(iter(transitions))
         return head_index, transitions[head_index]
+
+    if _HUMAN_VALIDATED_ATTENTION_HEAD in transitions:
+        return (
+            _HUMAN_VALIDATED_ATTENTION_HEAD,
+            transitions[_HUMAN_VALIDATED_ATTENTION_HEAD],
+        )
 
     vectors = np.asarray(tuple(transitions.values()), dtype=np.int64)
     spread = vectors.max(axis=0) - vectors.min(axis=0)
