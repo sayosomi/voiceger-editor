@@ -97,23 +97,28 @@ class LabCoreTests(unittest.TestCase):
                 wav_duration_seconds=1.0,
             )
 
-    def test_mixed_language_skip_is_nonfatal_and_does_not_call_aligner(self):
+    def test_mixed_language_missing_provenance_is_nonfatal(self):
         query = AudioQuery(
             accent_phrases=[],
             voicegerSegments=[
                 VoicegerSegment(language="ja", text="雨"),
-                VoicegerSegment(language="en", text="rain", phonemes=["R", "EY1", "N"]),
+                VoicegerSegment(
+                    language="en",
+                    text="rain",
+                    phonemes=["R", "EY1", "N"],
+                ),
             ],
         )
         aligner = Mock()
         result = save_lab_sidecar(
             wav_path=Path("/not/read.wav"),
             query=query,
-            japanese_aligner=aligner,
-            english_aligner=aligner,
+            mixed_aligner=aligner,
+            mixed_provenance_warning="capture unavailable",
         )
         self.assertIsNone(result.path)
-        self.assertIn("mixed Japanese-English", result.warning)
+        self.assertIn("timing provenance", result.warning)
+        self.assertIn("capture unavailable", result.warning)
         aligner.assert_not_called()
 
     def test_existing_lab_is_not_deleted_when_publication_refuses_overwrite(self):
@@ -273,6 +278,7 @@ class AcceptedTakeLabTests(unittest.TestCase):
         )
         candidate_path = batch._temporary_path / "take.wav"
         candidate_path.write_bytes(b"candidate")
+        provenance = object()
         candidate = TakeCandidate(
             number=1,
             wav_path=candidate_path,
@@ -281,6 +287,8 @@ class AcceptedTakeLabTests(unittest.TestCase):
             source_text="hello.",
             style_name="Neutral",
             query=query.model_copy(deep=True),
+            mixed_lab_provenance=provenance,
+            mixed_lab_provenance_warning=None,
         )
         batch._candidates[1] = candidate
 
@@ -317,6 +325,13 @@ class AcceptedTakeLabTests(unittest.TestCase):
         self.assertEqual(
             save_lab.call_args.kwargs["query"].model_dump(),
             query.model_dump(),
+        )
+        self.assertIs(
+            save_lab.call_args.kwargs["mixed_provenance"],
+            provenance,
+        )
+        self.assertIsNone(
+            save_lab.call_args.kwargs["mixed_provenance_warning"]
         )
         self.assertEqual(result.lab_path, Path("/output/accepted.lab"))
 
