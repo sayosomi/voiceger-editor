@@ -521,9 +521,21 @@ class TuiTests(unittest.TestCase):
         set_navigation_focus(app, ("help", None))
         app._handle_key("\n")
         self.assertTrue(app._help_open)
+        self.assertEqual(app._help_scroll, 0)
         self.assertEqual(app._navigation.focus_key, ("help", None))
         app._handle_key(curses.KEY_UP)
+        self.assertEqual(app._help_scroll, 0)
         app._handle_key(curses.KEY_DOWN)
+        self.assertEqual(app._help_scroll, 1)
+        max_scroll = app._renderer.help_max_scroll(24, 80)
+        app._handle_key(curses.KEY_NPAGE)
+        expected_after_page_down = min(max_scroll, 22)
+        self.assertEqual(app._help_scroll, expected_after_page_down)
+        app._handle_key(curses.KEY_PPAGE)
+        self.assertEqual(
+            app._help_scroll,
+            max(0, expected_after_page_down - 21),
+        )
         self.assertTrue(app._help_open)
         app._handle_key("\n")
         self.assertFalse(app._help_open)
@@ -531,6 +543,7 @@ class TuiTests(unittest.TestCase):
 
         app._handle_key("?")
         self.assertTrue(app._help_open)
+        self.assertEqual(app._help_scroll, 0)
         app._handle_key("?")
         self.assertFalse(app._help_open)
         self.assertEqual(app._navigation.focus_key, ("help", None))
