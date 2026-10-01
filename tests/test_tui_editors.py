@@ -1415,7 +1415,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         )
 
         drafts = (
-            ("style_id", {"style_id": "2"}, Settings(style_id=2, output_dir=settings.output_dir)),
+            ("style_id", {"style_id": "22"}, Settings(style_id=22, output_dir=settings.output_dir)),
             ("speed", {"speed": "1.25"}, Settings(speed=1.25, output_dir=settings.output_dir)),
             ("save_text", {"save_text": True}, Settings(save_text=True, output_dir=settings.output_dir)),
             ("save_lab", {"save_lab": True}, Settings(save_lab=True, output_dir=settings.output_dir)),
