@@ -7,10 +7,16 @@ from typing import List, Optional, Sequence, Tuple
 from .pronunciation import (
     AccentPhrase as CoreAccentPhrase,
     Pronunciation,
+    PronunciationPunctuation as CorePronunciationPunctuation,
     format_pronunciation,
 )
 from .runtime_locks import OPENJTALK_LOCK
-from .voicevox_api_models import AccentPhrase, AudioQuery, Mora
+from .voicevox_api_models import (
+    AccentPhrase,
+    AudioQuery,
+    Mora,
+    PronunciationPunctuation,
+)
 
 
 _VOWEL_LIKE = frozenset(
@@ -84,15 +90,40 @@ def pronunciation_to_accent_phrases(
     return result
 
 
+def pronunciation_punctuation(
+    value: Pronunciation,
+) -> List[PronunciationPunctuation]:
+    """Serialize ordered punctuation positions independently of accent phrases."""
+
+    result: List[PronunciationPunctuation] = []
+    phrase_index = -1
+    for item in value.items:
+        if isinstance(item, CoreAccentPhrase):
+            phrase_index += 1
+            continue
+        if not isinstance(item, CorePronunciationPunctuation):
+            raise ValueError(f"unsupported pronunciation item: {item!r}")
+        if phrase_index < 0:
+            raise ValueError("pronunciation punctuation requires a preceding phrase")
+        result.append(
+            PronunciationPunctuation(
+                afterAccentPhrase=phrase_index,
+                mark=item.mark,
+            )
+        )
+    return result
+
+
 def accent_phrases_to_pronunciation(
     accent_phrases: Sequence[AccentPhrase],
     *,
-    terminator: Optional[str],
+    punctuation: Optional[Sequence[PronunciationPunctuation]] = None,
+    terminator: Optional[str] = None,
 ) -> Pronunciation:
     if not accent_phrases:
         raise ValueError("accent_phrases must not be empty")
 
-    core_phrases = []
+    core_phrases: list[CoreAccentPhrase] = []
     for phrase in accent_phrases:
         morae = tuple(mora.text for mora in phrase.moras)
         if not morae:
@@ -104,7 +135,32 @@ def accent_phrases_to_pronunciation(
             )
         )
 
-    return Pronunciation(tuple(core_phrases), terminator=terminator)
+    if punctuation is None:
+        return Pronunciation(tuple(core_phrases), terminator=terminator)
+
+    punctuation_by_phrase: dict[int, list[str]] = {}
+    previous_index = -1
+    for entry in punctuation:
+        index = entry.afterAccentPhrase
+        if index >= len(core_phrases):
+            raise ValueError(
+                "pronunciation punctuation phrase index is out of bounds"
+            )
+        if index < previous_index:
+            raise ValueError(
+                "pronunciation punctuation positions must be ordered"
+            )
+        previous_index = index
+        punctuation_by_phrase.setdefault(index, []).append(entry.mark)
+
+    items: list[CoreAccentPhrase | CorePronunciationPunctuation] = []
+    for phrase_index, phrase in enumerate(core_phrases):
+        items.append(phrase)
+        items.extend(
+            CorePronunciationPunctuation(mark)
+            for mark in punctuation_by_phrase.get(phrase_index, ())
+        )
+    return Pronunciation(items=tuple(items))
 
 
 def build_audio_query(
@@ -125,4 +181,5 @@ def build_audio_query(
         outputSamplingRate=output_sampling_rate,
         outputStereo=False,
         kana=format_pronunciation(pronunciation),
+        pronunciationPunctuation=pronunciation_punctuation(pronunciation),
     )
