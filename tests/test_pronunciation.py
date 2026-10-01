@@ -1,6 +1,7 @@
 import unittest
 
 from voiceger_accent_adapter.pronunciation import (
+    PronunciationPunctuation,
     PronunciationSyntaxError,
     format_pronunciation,
     parse_pronunciation,
@@ -37,16 +38,56 @@ class PronunciationParserTests(unittest.TestCase):
             "あしたの'/て'んきわ/はれ'。",
         )
 
-    def test_terminators_round_trip(self):
-        for suffix in ("", "。", "？", "！"):
-            with self.subTest(suffix=suffix):
+    def test_supported_punctuation_round_trips_at_any_position(self):
+        source = "ソ'ウ？ソ'ウナノダ！デ'モ、ホント'ウ…"
+        value = parse_pronunciation(source)
+
+        self.assertEqual(format_pronunciation(value), source)
+        self.assertEqual(
+            [
+                item.mark
+                for item in value.items
+                if isinstance(item, PronunciationPunctuation)
+            ],
+            ["？", "！", "、", "…"],
+        )
+        self.assertIsNone(value.terminator)
+        self.assertEqual(value.trailing_punctuation, "…")
+
+    def test_ascii_and_comma_like_aliases_are_canonicalized(self):
+        cases = (
+            ("ア'メ.", "ア'メ。"),
+            ("ア'メ,", "ア'メ、"),
+            ("ア'メ?", "ア'メ？"),
+            ("ア'メ!", "ア'メ！"),
+            ("ア'メ，", "ア'メ、"),
+            ("ア'メ：", "ア'メ、"),
+            ("ア'メ；", "ア'メ、"),
+            ("ア'メ·", "ア'メ、"),
+        )
+        for source, expected in cases:
+            with self.subTest(source=source):
                 self.assertEqual(
-                    format_pronunciation(parse_pronunciation("ア'メ" + suffix)),
-                    "ア'メ" + suffix,
+                    format_pronunciation(parse_pronunciation(source)),
+                    expected,
                 )
 
-    def test_sentence_terminators_are_only_supported_at_the_end(self):
-        for source in ("ア。'メ", "ア'メ/？", "ア'！メ"):
+    def test_terminator_compatibility_view(self):
+        for suffix in ("", "。", "？", "！", "、", "…"):
+            with self.subTest(suffix=suffix):
+                value = parse_pronunciation("ア'メ" + suffix)
+                expected = suffix if suffix in {"。", "？", "！"} else None
+                self.assertEqual(value.terminator, expected)
+
+    def test_multiple_punctuation_tokens_preserve_order(self):
+        value = parse_pronunciation("エ'？ソ'ウ！…ホント'ウナノダ、")
+        self.assertEqual(
+            format_pronunciation(value),
+            "エ'？ソ'ウ！…ホント'ウナノダ、",
+        )
+
+    def test_punctuation_cannot_start_pronunciation_or_follow_slash(self):
+        for source in ("？ア'メ", "ア'メ/？", "ア'メ/"):
             with self.subTest(source=source):
                 with self.assertRaises(PronunciationSyntaxError):
                     parse_pronunciation(source)
