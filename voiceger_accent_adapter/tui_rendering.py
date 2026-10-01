@@ -151,20 +151,30 @@ class TuiRenderer:
 
     def __init__(self) -> None:
         self._color_attr = 0
+        self._error_color_attr = 0
+        self._warning_color_attr = 0
 
     def initialize_colors(self) -> None:
-        """Set up optional theme-default colors; attributes remain the main cue."""
+        """Use semantic foreground colors on the terminal's own background."""
 
         self._color_attr = 0
+        self._error_color_attr = 0
+        self._warning_color_attr = 0
         try:
             if not curses.has_colors():
                 return
             curses.start_color()
             curses.use_default_colors()
             curses.init_pair(1, curses.COLOR_CYAN, -1)
+            curses.init_pair(2, curses.COLOR_RED, -1)
+            curses.init_pair(3, curses.COLOR_MAGENTA, -1)
             self._color_attr = curses.color_pair(1)
+            self._error_color_attr = curses.color_pair(2)
+            self._warning_color_attr = curses.color_pair(3)
         except (AttributeError, curses.error):
             self._color_attr = 0
+            self._error_color_attr = 0
+            self._warning_color_attr = 0
 
     @staticmethod
     def _attribute(name: str) -> int:
@@ -172,6 +182,18 @@ class TuiRenderer:
 
     def _focus_attribute(self) -> int:
         return self._attribute("A_REVERSE") | self._color_attr
+
+    def _status_attribute(self, status: str) -> int:
+        attr = self._attribute("A_BOLD")
+        if status.startswith("Error:"):
+            return attr | (
+                self._error_color_attr or self._attribute("A_REVERSE")
+            )
+        if status.startswith("Warning:"):
+            return attr | (
+                self._warning_color_attr or self._attribute("A_REVERSE")
+            )
+        return attr
 
     @staticmethod
     def _adjustment_press_direction(
@@ -362,9 +384,7 @@ class TuiRenderer:
                 )
 
         if status_lines:
-            status_attr = self._attribute("A_BOLD")
-            if status.startswith(("Error:", "Warning:")):
-                status_attr |= self._attribute("A_REVERSE")
+            status_attr = self._status_attribute(status)
             for offset, line in enumerate(status_lines):
                 safe_add(
                     screen,
