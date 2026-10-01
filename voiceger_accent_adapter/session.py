@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 from typing import Any, Iterator
 
 from .mixed_language import build_mixed_audio_query
@@ -34,6 +35,34 @@ def _validate_settings(settings: Settings) -> None:
 def _validate_query(query: AudioQuery) -> None:
     if not isinstance(query, AudioQuery):
         raise TypeError("query must be an AudioQuery instance")
+
+
+_PREVIEW_TOP_K = 1
+_PREVIEW_TOP_P = 1.0
+_PREVIEW_TEMPERATURE = 1.0
+
+
+def _preview_cache_key(
+    *,
+    adapter: VoicegerAdapter,
+    query: AudioQuery,
+    style: VoicegerStyle,
+) -> tuple[str, int, str, str, str, str]:
+    serialized_query = json.dumps(
+        query.model_dump(mode="json"),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return (
+        serialized_query,
+        style.id,
+        style.name,
+        style.filename,
+        style.prompt_text,
+        str(style.reference_path(adapter.voiceger_root)),
+    )
 
 
 class UtteranceSession:
@@ -71,6 +100,10 @@ class UtteranceSession:
         self._settings = settings
         self._style = style
         self._active_batch: TakeBatch | None = None
+        self._preview_cache: dict[
+            tuple[str, int, str, str, str, str],
+            dict[str, Any],
+        ] = {}
         self._utterance_manually_edited = False
 
     @classmethod
@@ -229,22 +262,32 @@ class UtteranceSession:
         self._query = replacement_query
 
     def preview_synthesis(self, query: AudioQuery) -> dict[str, Any]:
-        """Synthesize a transient query without changing utterance or take state."""
+        """Synthesize or reuse a transient deterministic Preview result."""
 
         _validate_query(query)
         query_snapshot = AudioQuery.model_validate(query.model_dump())
-        settings_snapshot = deepcopy(self._settings)
         style_snapshot = deepcopy(self._style)
         adapter = self._adapter
-        query_snapshot.speedScale = settings_snapshot.speed
-        return synthesize_audio_query(
+        query_snapshot.speedScale = self._settings.speed
+        cache_key = _preview_cache_key(
             adapter=adapter,
             query=query_snapshot,
             style=style_snapshot,
-            top_k=settings_snapshot.top_k,
-            top_p=settings_snapshot.top_p,
-            temperature=settings_snapshot.temperature,
         )
+        cached = self._preview_cache.get(cache_key)
+        if cached is not None:
+            return dict(cached)
+
+        result = synthesize_audio_query(
+            adapter=adapter,
+            query=query_snapshot,
+            style=style_snapshot,
+            top_k=_PREVIEW_TOP_K,
+            top_p=_PREVIEW_TOP_P,
+            temperature=_PREVIEW_TEMPERATURE,
+        )
+        self._preview_cache[cache_key] = dict(result)
+        return dict(result)
 
     def generate_takes(
         self,
