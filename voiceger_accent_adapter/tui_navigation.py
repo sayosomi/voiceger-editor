@@ -142,10 +142,10 @@ class TuiNavigation:
                 for index in range(context.pronunciation_count)
             )
             items.append(("add_section", None))
-            items.append(("generate", None))
             items.extend(
                 ("candidate", number) for number in context.candidate_numbers
             )
+            items.append(("generate", None))
             if context.candidate_numbers:
                 items.append(("clear_candidates", None))
         items.extend(
