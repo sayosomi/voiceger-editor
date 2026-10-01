@@ -173,6 +173,51 @@ def _parse_local_lab(content: str) -> list[tuple[int, int, str]]:
     return rows
 
 
+def _normalize_region_boundary_coverage(
+    rows: list[tuple[int, int, str]],
+    *,
+    region_index: int,
+    local_duration_units: int,
+) -> list[tuple[int, int, str]]:
+    """Extend only boundary pauses to the exact attention-defined crop edges."""
+
+    if local_duration_units <= 0:
+        raise ValueError("mixed LAB local duration must be positive")
+    first_start = rows[0][0]
+    last_end = rows[-1][1]
+    if first_start < 0 or last_end > local_duration_units:
+        raise RuntimeError(
+            f"mixed LAB region {region_index} extends outside its audio crop: "
+            f"coverage={first_start}:{last_end}, "
+            f"expected=0:{local_duration_units}"
+        )
+
+    normalized = list(rows)
+    if first_start > 0:
+        start, end, phoneme = normalized[0]
+        if phoneme != "pau":
+            raise RuntimeError(
+                f"mixed LAB region {region_index} leaves an uncovered leading "
+                f"crop edge before non-pause {phoneme!r}: "
+                f"coverage={first_start}:{last_end}, "
+                f"expected=0:{local_duration_units}"
+            )
+        normalized[0] = (0, end, phoneme)
+
+    if last_end < local_duration_units:
+        start, end, phoneme = normalized[-1]
+        if phoneme != "pau":
+            raise RuntimeError(
+                f"mixed LAB region {region_index} leaves an uncovered trailing "
+                f"crop edge after non-pause {phoneme!r}: "
+                f"coverage={first_start}:{last_end}, "
+                f"expected=0:{local_duration_units}"
+            )
+        normalized[-1] = (start, local_duration_units, phoneme)
+
+    return normalized
+
+
 def stitch_mixed_lab_regions(
     contents: tuple[str, ...],
     *,
@@ -201,10 +246,11 @@ def stitch_mixed_lab_regions(
             * LAB_UNITS_PER_SECOND
             / sample_rate
         )
-        if rows[0][0] != 0 or rows[-1][1] != local_duration_units:
-            raise RuntimeError(
-                "mixed LAB region does not cover its complete audio crop"
-            )
+        rows = _normalize_region_boundary_coverage(
+            rows,
+            region_index=index,
+            local_duration_units=local_duration_units,
+        )
 
         segment_start_units = round(
             start_sample * LAB_UNITS_PER_SECOND / sample_rate
