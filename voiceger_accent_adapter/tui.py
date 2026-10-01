@@ -8,7 +8,7 @@ import os
 from typing import Any, Sequence
 
 from .session import UtteranceSession
-from .settings import Settings, save_settings
+from .settings import Settings, SettingsError, save_settings
 from .styles import available_styles
 from .tui_cli import build_argument_parser, settings_for_invocation
 from .tui_display import _adjustable_value, format_english_phonemes
