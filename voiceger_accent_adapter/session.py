@@ -309,7 +309,9 @@ class UtteranceSession:
         return self._require_active_batch().regenerate(take_number)
 
     def regenerate_all_takes(self) -> Iterator[TakeCandidate]:
-        return self._require_active_batch().regenerate_all()
+        return self._require_active_batch().regenerate_all(
+            self._settings.take_count
+        )
 
     def accept_take(self, take_number: int) -> SavedOutput:
         batch = self._require_active_batch()
