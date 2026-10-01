@@ -34,7 +34,7 @@ Repository = "https://github.com/sayosomi/voiceger-accent-adapter"
 Issues = "https://github.com/sayosomi/voiceger-accent-adapter/issues"
 
 [project.scripts]
-voiceger-accent-adapter = "voiceger_accent_adapter.tui:main"
+voiceger-accent-adapter = "voiceger_accent_adapter.entrypoint:main"
 
 [tool.setuptools.packages.find]
 include = ["voiceger_accent_adapter*"]
