@@ -2,7 +2,7 @@ import curses
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from voiceger_accent_adapter.settings import Settings
 from voiceger_accent_adapter.tui_editors import (
@@ -210,6 +210,61 @@ class TuiRenderingTests(unittest.TestCase):
         )
         self.assertEqual(editor.payload["draft"], draft)
         return [line for line, _key in draft_lines]
+
+    def test_semantic_colors_use_terminal_default_background(self):
+        renderer = TuiRenderer()
+        with patch(
+            "voiceger_accent_adapter.tui_rendering.curses.has_colors",
+            return_value=True,
+        ), patch(
+            "voiceger_accent_adapter.tui_rendering.curses.start_color"
+        ), patch(
+            "voiceger_accent_adapter.tui_rendering.curses.use_default_colors"
+        ) as use_default_colors, patch(
+            "voiceger_accent_adapter.tui_rendering.curses.init_pair"
+        ) as init_pair, patch(
+            "voiceger_accent_adapter.tui_rendering.curses.color_pair",
+            side_effect=lambda pair: {1: 101, 2: 202, 3: 303}[pair],
+        ):
+            renderer.initialize_colors()
+
+        use_default_colors.assert_called_once_with()
+        self.assertEqual(
+            init_pair.call_args_list,
+            [
+                call(1, curses.COLOR_CYAN, -1),
+                call(2, curses.COLOR_RED, -1),
+                call(3, curses.COLOR_MAGENTA, -1),
+            ],
+        )
+        self.assertEqual(renderer._color_attr, 101)
+        self.assertEqual(renderer._error_color_attr, 202)
+        self.assertEqual(renderer._warning_color_attr, 303)
+        self.assertEqual(
+            renderer._status_attribute("Error: failed"),
+            curses.A_BOLD | 202,
+        )
+        self.assertEqual(
+            renderer._status_attribute("Warning: failed"),
+            curses.A_BOLD | 303,
+        )
+
+    def test_semantic_status_colors_fall_back_to_reverse_without_color(self):
+        renderer = TuiRenderer()
+        with patch(
+            "voiceger_accent_adapter.tui_rendering.curses.has_colors",
+            return_value=False,
+        ):
+            renderer.initialize_colors()
+
+        self.assertEqual(
+            renderer._status_attribute("Error: failed"),
+            curses.A_BOLD | curses.A_REVERSE,
+        )
+        self.assertEqual(
+            renderer._status_attribute("Warning: failed"),
+            curses.A_BOLD | curses.A_REVERSE,
+        )
 
     def test_main_header_shows_product_title_without_navigation_label(self):
         screen = FakeScreen()
@@ -1067,6 +1122,58 @@ class TuiRenderingTests(unittest.TestCase):
             screen, render_state(session=session), screen.rows, screen.columns
         )
         self.assertFalse(any(text.startswith("Status:") for _row, _col, text, _attr in screen.drawn))
+
+    def test_long_warning_wraps_at_bottom_without_overlapping_navigation(self):
+        session = FakeSession(candidates=(candidate(1),))
+        warning = (
+            "Warning: Saved saved.wav. LAB generation failed: "
+            "mixed-language timing provenance is unavailable: "
+            "mixed LAB timing capture failed: detailed runtime reason"
+        )
+        screen = FakeScreen(rows=14, columns=42)
+        with patch(
+            "voiceger_accent_adapter.tui_rendering.available_styles",
+            return_value=(),
+        ):
+            self.renderer.render_navigation(
+                screen,
+                render_state(
+                    session=session,
+                    focus_key=("generate", None),
+                    status=warning,
+                ),
+                screen.rows,
+                screen.columns,
+            )
+
+        first_status = next(
+            row
+            for row, _column, text, _attr in screen.drawn
+            if text.startswith("Warning:")
+        )
+        status_rows = [
+            (row, text, attr)
+            for row, column, text, attr in screen.drawn
+            if row >= first_status and column == 0
+        ]
+        self.assertGreater(len(status_rows), 1)
+        self.assertEqual(status_rows[-1][0], screen.rows - 1)
+        self.assertTrue(
+            all(attr & curses.A_BOLD for _row, _text, attr in status_rows)
+        )
+        self.assertTrue(
+            all(attr & curses.A_REVERSE for _row, _text, attr in status_rows)
+        )
+        self.assertIn("detailed runtime reason", " ".join(
+            text for _row, text, _attr in status_rows
+        ))
+        navigation_rows = [
+            row
+            for row, column, text, _attr in screen.drawn
+            if 4 <= row < first_status and column == 0 and text
+        ]
+        self.assertTrue(navigation_rows)
+        self.assertLess(max(navigation_rows), first_status)
 
     def test_main_action_and_candidate_rows_show_visible_shortcuts(self):
         state = render_state(
