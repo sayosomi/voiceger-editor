@@ -6,6 +6,7 @@ import argparse
 from dataclasses import replace
 from pathlib import Path
 
+from ._version import __version__
 from .settings import Settings
 
 
@@ -16,6 +17,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("text", nargs="?", help="one utterance to edit and synthesize")
     actions = parser.add_mutually_exclusive_group()
+    actions.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="show the installed adapter version and exit",
+    )
     actions.add_argument(
         "--check",
         action="store_true",
