@@ -2734,7 +2734,7 @@ class TuiTests(unittest.TestCase):
 
         cleanup.assert_called_once_with()
 
-    def test_first_use_requires_exact_accept_and_persists_before_tui(self):
+    def test_first_use_japanese_menu_accepts_and_persists_before_tui(self):
         environment = SimpleNamespace(
             ready=True,
             warnings=(),
@@ -2755,6 +2755,9 @@ class TuiTests(unittest.TestCase):
             "voiceger_accent_adapter.entrypoint.current_acceptance_status",
             return_value=status,
         ), patch(
+            "voiceger_accent_adapter.entrypoint.preferred_notice_language",
+            return_value="ja",
+        ), patch(
             "voiceger_accent_adapter.entrypoint.record_explicit_acceptance",
             side_effect=lambda: order.append("accepted"),
         ) as record_acceptance, patch(
@@ -2765,7 +2768,7 @@ class TuiTests(unittest.TestCase):
             SimpleNamespace(isatty=lambda: True),
         ), patch(
             "builtins.input",
-            return_value="ACCEPT",
+            return_value="A",
         ) as prompt, patch(
             "voiceger_accent_adapter.entrypoint.cleanup_stale_take_directories",
             side_effect=lambda: order.append("cleanup"),
@@ -2782,14 +2785,14 @@ class TuiTests(unittest.TestCase):
             result = main([])
 
         self.assertEqual(result, 0)
+        self.assertIn("必ずお読みください", stdout.getvalue())
+        self.assertIn("[E] English", stdout.getvalue())
         self.assertIn(OFFICIAL_TERMS_URL, stdout.getvalue())
-        prompt.assert_called_once_with(
-            "Type ACCEPT after reading the official terms to continue: "
-        )
+        prompt.assert_called_once_with("選択: ")
         record_acceptance.assert_called_once_with()
         self.assertEqual(order, ["accepted", "required", "cleanup", "adapter", "tui"])
 
-    def test_blank_and_non_affirmative_first_use_input_never_accepts(self):
+    def test_first_use_language_switching_and_quit_never_accepts(self):
         environment = SimpleNamespace(
             ready=True,
             warnings=(),
@@ -2802,8 +2805,12 @@ class TuiTests(unittest.TestCase):
             terms_url=OFFICIAL_TERMS_URL,
             detail="No acceptance record exists.",
         )
-        for answer in ("", "yes", " ACCEPT"):
-            with self.subTest(answer=answer):
+        cases = (
+            ("ja", ["E", "Q"], "必ずお読みください", "Please read before continuing"),
+            ("en", ["J", "Q"], "Please read before continuing", "必ずお読みください"),
+        )
+        for initial, answers, first_notice, switched_notice in cases:
+            with self.subTest(initial=initial):
                 with patch(
                     "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
                     return_value=environment,
@@ -2811,23 +2818,114 @@ class TuiTests(unittest.TestCase):
                     "voiceger_accent_adapter.entrypoint.current_acceptance_status",
                     return_value=status,
                 ), patch(
+                    "voiceger_accent_adapter.entrypoint.preferred_notice_language",
+                    return_value=initial,
+                ), patch(
                     "voiceger_accent_adapter.entrypoint.sys.stdin",
                     SimpleNamespace(isatty=lambda: True),
                 ), patch(
                     "builtins.input",
-                    return_value=answer,
+                    side_effect=answers,
                 ), patch(
                     "voiceger_accent_adapter.entrypoint.record_explicit_acceptance",
                 ) as record_acceptance, patch(
                     "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
                 ) as adapter, patch(
                     "voiceger_accent_adapter.entrypoint.curses.wrapper",
-                ) as wrapper:
+                ) as wrapper, redirect_stdout(io.StringIO()) as stdout:
                     self.assertEqual(main([]), 2)
 
+                self.assertIn(first_notice, stdout.getvalue())
+                self.assertIn(switched_notice, stdout.getvalue())
                 record_acceptance.assert_not_called()
                 adapter.assert_not_called()
                 wrapper.assert_not_called()
+
+    def test_blank_invalid_and_open_never_accept_before_quit(self):
+        environment = SimpleNamespace(
+            ready=True,
+            warnings=(),
+            voiceger_root=Path("/voiceger"),
+        )
+        status = TermsAcceptanceStatus(
+            accepted=False,
+            path=Path("/terms.json"),
+            notice_version=1,
+            terms_url=OFFICIAL_TERMS_URL,
+            detail="No acceptance record exists.",
+        )
+        with patch(
+            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            return_value=environment,
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            return_value=status,
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.preferred_notice_language",
+            return_value="ja",
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.sys.stdin",
+            SimpleNamespace(isatty=lambda: True),
+        ), patch(
+            "builtins.input",
+            side_effect=["", "x", "O", "Q"],
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.webbrowser.open",
+            return_value=True,
+        ) as open_browser, patch(
+            "voiceger_accent_adapter.entrypoint.record_explicit_acceptance",
+        ) as record_acceptance, patch(
+            "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
+        ) as adapter, patch(
+            "voiceger_accent_adapter.entrypoint.curses.wrapper",
+        ) as wrapper, redirect_stderr(io.StringIO()):
+            self.assertEqual(main([]), 2)
+
+        open_browser.assert_called_once_with(OFFICIAL_TERMS_URL)
+        record_acceptance.assert_not_called()
+        adapter.assert_not_called()
+        wrapper.assert_not_called()
+
+    def test_first_use_eof_exits_without_accepting(self):
+        environment = SimpleNamespace(
+            ready=True,
+            warnings=(),
+            voiceger_root=Path("/voiceger"),
+        )
+        status = TermsAcceptanceStatus(
+            accepted=False,
+            path=Path("/terms.json"),
+            notice_version=1,
+            terms_url=OFFICIAL_TERMS_URL,
+            detail="No acceptance record exists.",
+        )
+        with patch(
+            "voiceger_accent_adapter.entrypoint.check_voiceger_environment",
+            return_value=environment,
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.current_acceptance_status",
+            return_value=status,
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.preferred_notice_language",
+            return_value="en",
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.sys.stdin",
+            SimpleNamespace(isatty=lambda: True),
+        ), patch(
+            "builtins.input",
+            side_effect=EOFError,
+        ), patch(
+            "voiceger_accent_adapter.entrypoint.record_explicit_acceptance",
+        ) as record_acceptance, patch(
+            "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
+        ) as adapter, patch(
+            "voiceger_accent_adapter.entrypoint.curses.wrapper",
+        ) as wrapper:
+            self.assertEqual(main([]), 2)
+
+        record_acceptance.assert_not_called()
+        adapter.assert_not_called()
+        wrapper.assert_not_called()
 
     def test_persisted_acceptance_skips_first_use_prompt(self):
         environment = SimpleNamespace(
@@ -2966,7 +3064,7 @@ class TuiTests(unittest.TestCase):
             SimpleNamespace(isatty=lambda: True),
         ), patch(
             "builtins.input",
-            return_value="ACCEPT",
+            return_value="A",
         ), patch(
             "voiceger_accent_adapter.entrypoint.VoicegerAdapter",
         ) as adapter, patch(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import json
 import os
@@ -23,18 +24,25 @@ _RECORD_FIELDS = {
     "terms_url",
 }
 
-_NOTICE = f"""Before using Voiceger:Zundamon
+NOTICE_LANGUAGE_JAPANESE = "ja"
+NOTICE_LANGUAGE_ENGLISH = "en"
 
-Voiceger and the Voiceger:Zundamon voice model are separate from voiceger-accent-adapter.
+_NOTICES = {
+    NOTICE_LANGUAGE_JAPANESE: f"""必ずお読みください
 
-The adapter's MIT License covers only this adapter's code. It does not cover Voiceger, GPT-SoVITS, the Voiceger:Zundamon voice model, Voiceger reference audio, generated audio, the Zundamon character, name or voice, or other third-party materials.
+・このツールで生成した音声には「Voicegerずんだもん音源利用規約」が適用されます
+・生成音声の利用にはクレジット表記が必要です
 
-Use of Voiceger:Zundamon is subject to the official terms:
-{OFFICIAL_TERMS_URL}
+公式利用規約:
+{OFFICIAL_TERMS_URL}""",
+    NOTICE_LANGUAGE_ENGLISH: f"""Please read before continuing
 
-Open and read the official terms before continuing. Generated audio remains subject to the official credit requirement. This project currently documents the credit “Voiceger:Zundamon”; use it where the official terms require it.
+• Audio generated with this tool is subject to the Voiceger:Zundamon Voice Source Terms of Use
+• Credit is required when using generated audio
 
-This local notice is only a summary. It does not replace the official terms."""
+Official Terms of Use:
+{OFFICIAL_TERMS_URL}""",
+}
 
 
 class VoicegerTermsAcceptanceError(RuntimeError):
@@ -67,10 +75,32 @@ def default_acceptance_path() -> Path:
     return default_config_path().with_name(ACCEPTANCE_FILENAME)
 
 
-def format_current_notice() -> str:
-    """Return the notice shared by CLI and interactive startup paths."""
+def preferred_notice_language(
+    environ: Mapping[str, str] | None = None,
+) -> str:
+    """Select the initial notice language from the process locale."""
 
-    return _NOTICE
+    values = os.environ if environ is None else environ
+    locale_value = ""
+    for name in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        value = values.get(name)
+        if value and value.strip():
+            locale_value = value.strip()
+            break
+
+    normalized = locale_value.lower().replace("-", "_")
+    if normalized == "ja" or normalized.startswith("ja_"):
+        return NOTICE_LANGUAGE_JAPANESE
+    return NOTICE_LANGUAGE_ENGLISH
+
+
+def format_current_notice(language: str | None = None) -> str:
+    """Return the localized notice shared by CLI and interactive startup paths."""
+
+    selected = preferred_notice_language() if language is None else language
+    if selected not in _NOTICES:
+        raise ValueError(f"unsupported notice language: {selected!r}")
+    return _NOTICES[selected]
 
 
 def _resolve_acceptance_path(

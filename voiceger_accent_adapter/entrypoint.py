@@ -15,6 +15,7 @@ from .terms_acceptance import (
     current_acceptance_status,
     format_acceptance_status,
     format_current_notice,
+    preferred_notice_language,
     record_explicit_acceptance,
     require_current_acceptance,
 )
@@ -27,10 +28,30 @@ from .voiceger_environment import (
 )
 
 
+def _open_official_terms() -> bool:
+    try:
+        opened = webbrowser.open(OFFICIAL_TERMS_URL)
+    except Exception as exc:
+        opened = False
+        reason = str(exc)
+    else:
+        reason = ""
+
+    if opened:
+        return True
+
+    detail = f" ({reason})" if reason else ""
+    print(
+        "Could not open a browser. Open the official terms manually at "
+        f"{OFFICIAL_TERMS_URL}{detail}",
+        file=sys.stderr,
+    )
+    return False
+
+
 def _run_terms_action(args) -> int | None:
     if args.accept_voiceger_terms:
         print(format_current_notice())
-        print(f"Official terms: {OFFICIAL_TERMS_URL}")
         try:
             record_explicit_acceptance()
         except OSError as exc:
@@ -46,23 +67,7 @@ def _run_terms_action(args) -> int | None:
 
     if args.open_voiceger_terms:
         print(format_current_notice())
-        print(f"Official terms: {OFFICIAL_TERMS_URL}")
-        try:
-            opened = webbrowser.open(OFFICIAL_TERMS_URL)
-        except Exception as exc:
-            opened = False
-            reason = str(exc)
-        else:
-            reason = ""
-        if not opened:
-            detail = f" ({reason})" if reason else ""
-            print(
-                "Could not open a browser. Open the official terms manually at "
-                f"{OFFICIAL_TERMS_URL}{detail}",
-                file=sys.stderr,
-            )
-            return 2
-        return 0
+        return 0 if _open_official_terms() else 2
 
     return None
 
@@ -84,32 +89,59 @@ def _require_tui_terms_acceptance() -> bool:
             print(str(exc), file=sys.stderr)
         return False
 
-    print(format_current_notice())
-    print(f"Official terms: {OFFICIAL_TERMS_URL}")
-    print(f"Current acceptance status: {status.detail}")
-    try:
-        answer = input("Type ACCEPT after reading the official terms to continue: ")
-    except (EOFError, OSError):
-        answer = ""
+    language = preferred_notice_language()
+    while True:
+        print(format_current_notice(language))
+        print()
+        if language == "ja":
+            print("[O] 公式利用規約を開く")
+            print("[A] 同意して続ける")
+            print("[E] English")
+            print("[Q] 終了")
+            prompt = "選択: "
+            invalid_message = "O / A / E / Q のいずれかを入力してください。"
+        else:
+            print("[O] Open the official terms")
+            print("[A] Accept and continue")
+            print("[J] 日本語")
+            print("[Q] Quit")
+            prompt = "Choice: "
+            invalid_message = "Enter O, A, J, or Q."
 
-    if answer != "ACCEPT":
-        print(
-            "Voiceger terms were not accepted; the TUI will not start.",
-            file=sys.stderr,
-        )
-        return False
+        try:
+            answer = input(prompt).strip().lower()
+        except (EOFError, OSError):
+            return False
 
-    try:
-        record_explicit_acceptance()
-        require_current_acceptance()
-    except (OSError, VoicegerTermsAcceptanceError) as exc:
-        print(
-            "Cannot continue without current Voiceger terms acceptance: "
-            f"{exc}",
-            file=sys.stderr,
-        )
-        return False
-    return True
+        if answer == "a":
+            try:
+                record_explicit_acceptance()
+                require_current_acceptance()
+            except (OSError, VoicegerTermsAcceptanceError) as exc:
+                print(
+                    "Cannot continue without current Voiceger terms acceptance: "
+                    f"{exc}",
+                    file=sys.stderr,
+                )
+                return False
+            return True
+
+        if answer == "o":
+            _open_official_terms()
+            continue
+
+        if language == "ja" and answer == "e":
+            language = "en"
+            continue
+
+        if language == "en" and answer == "j":
+            language = "ja"
+            continue
+
+        if answer == "q":
+            return False
+
+        print(invalid_message, file=sys.stderr)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

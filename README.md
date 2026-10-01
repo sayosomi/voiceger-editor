@@ -40,11 +40,14 @@ License covers only this repository's code; it does not cover Voiceger, the
 Voiceger model, Voiceger reference audio, generated audio, the Zundamon
 character, name or voice, or other third-party materials.
 
-On an interactive first use, the adapter displays this notice and requires you
-to type `ACCEPT` exactly before starting the TUI. API and other headless users
-must run the explicit acceptance command before Voiceger-backed requests will
-work. Acceptance is stored locally beside the default settings file and is
-shared across the TUI, API, and direct adapter use.
+On interactive first use, the initial notice language follows the process
+locale: Japanese for Japanese locales and English otherwise. The first-use
+screen also lets you switch between Japanese and English. Press `A` to
+explicitly accept and continue. Opening the official terms or pressing Enter
+alone does not accept them. API and other headless users must run the explicit
+acceptance command before Voiceger-backed requests will work. Acceptance is
+stored locally beside the default settings file and is shared across the TUI,
+API, and direct adapter use.
 
 Review the official terms, explicitly accept them, or inspect the saved status
 with:
@@ -57,8 +60,8 @@ voiceger-accent-adapter --voiceger-terms-status
 
 The local notice is only a summary and does not replace the official terms.
 Generated audio remains subject to the official credit requirement documented
-below, including the `Voiceger:Zundamon` credit where the official terms require
-it.
+below. The official terms currently allow the Voiceger credit to be written in
+another language.
 
 ## Terminal Interface
 
@@ -205,9 +208,11 @@ https://github.com/zunzun999/voiceger_v2
 >
 > You must follow the official Voiceger Zundamon terms of use when using, publishing, or distributing generated audio.
 >
-> The official terms require the credit:
+> The official terms require Voiceger credit and allow it to be written in
+> another language. Examples:
 >
-> `Voiceger:Zundamon`
+> - Japanese: `Voicegerずんだもん`
+> - English: `Voiceger:Zundamon`
 >
 > Please read the latest official terms before using generated audio:
 >

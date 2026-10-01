@@ -158,6 +158,76 @@ class TermsAcceptanceTests(unittest.TestCase):
             self.assertTrue(terms.current_acceptance_status(self.path).accepted)
 
 
+    def test_short_notices_are_localized_and_include_official_url(self):
+        japanese = terms.format_current_notice("ja")
+        english = terms.format_current_notice("en")
+
+        self.assertIn("必ずお読みください", japanese)
+        self.assertIn("Voicegerずんだもん音源利用規約", japanese)
+        self.assertIn("クレジット表記が必要です", japanese)
+        self.assertIn(terms.OFFICIAL_TERMS_URL, japanese)
+        self.assertNotIn("Voiceger:Zundamon Voice Source Terms of Use", japanese)
+
+        self.assertIn("Please read before continuing", english)
+        self.assertIn("Voiceger:Zundamon Voice Source Terms of Use", english)
+        self.assertIn("Credit is required", english)
+        self.assertIn(terms.OFFICIAL_TERMS_URL, english)
+        self.assertNotIn("必ずお読みください", english)
+
+    def test_locale_selects_japanese_for_ja_locales(self):
+        for value in ("ja", "ja_JP.UTF-8", "ja-JP"):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    terms.preferred_notice_language({"LANG": value}),
+                    "ja",
+                )
+
+    def test_locale_selects_english_for_other_or_missing_locales(self):
+        for environ in (
+            {"LANG": "en_US.UTF-8"},
+            {"LANG": "C"},
+            {"LANG": "POSIX"},
+            {},
+        ):
+            with self.subTest(environ=environ):
+                self.assertEqual(
+                    terms.preferred_notice_language(environ),
+                    "en",
+                )
+
+    def test_locale_precedence_is_lc_all_then_lc_messages_then_lang(self):
+        self.assertEqual(
+            terms.preferred_notice_language(
+                {
+                    "LC_ALL": "en_US.UTF-8",
+                    "LC_MESSAGES": "ja_JP.UTF-8",
+                    "LANG": "ja_JP.UTF-8",
+                }
+            ),
+            "en",
+        )
+        self.assertEqual(
+            terms.preferred_notice_language(
+                {
+                    "LC_ALL": "",
+                    "LC_MESSAGES": "ja_JP.UTF-8",
+                    "LANG": "en_US.UTF-8",
+                }
+            ),
+            "ja",
+        )
+
+    def test_explicit_notice_language_overrides_locale_detection(self):
+        with patch.object(terms, "preferred_notice_language", return_value="ja"):
+            self.assertIn("必ずお読みください", terms.format_current_notice())
+            self.assertIn(
+                "Please read before continuing",
+                terms.format_current_notice("en"),
+            )
+
+    def test_current_notice_version_remains_one(self):
+        self.assertEqual(terms.CURRENT_NOTICE_VERSION, 1)
+
     def test_status_shows_current_version_and_official_url(self):
         formatted = terms.format_acceptance_status(
             terms.current_acceptance_status(self.path)
