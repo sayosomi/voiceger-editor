@@ -409,11 +409,7 @@ class TuiApp:
                 self._dispatch_operation_effects(
                     self._operations.start_regenerate_all(
                         self.session,
-                        take_count=(
-                            self.session.active_candidate_count
-                            if self.session is not None
-                            else 0
-                        ),
+                        take_count=self.settings.take_count,
                         navigation_revision=self._navigation.revision,
                     )
                 )
