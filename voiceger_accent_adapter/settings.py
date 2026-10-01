@@ -44,7 +44,7 @@ class Settings:
 
     output_dir: Path = field(default_factory=_default_output_dir)
     take_count: int = 4
-    style_id: int = 1
+    style_id: int = 3
     speed: float = 1.0
     top_k: int = VOICEGER_DEFAULT_TOP_K
     top_p: float = VOICEGER_DEFAULT_TOP_P
