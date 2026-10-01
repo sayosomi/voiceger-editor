@@ -151,20 +151,30 @@ class TuiRenderer:
 
     def __init__(self) -> None:
         self._color_attr = 0
+        self._error_color_attr = 0
+        self._warning_color_attr = 0
 
     def initialize_colors(self) -> None:
-        """Set up optional theme-default colors; attributes remain the main cue."""
+        """Use semantic foreground colors on the terminal's own background."""
 
         self._color_attr = 0
+        self._error_color_attr = 0
+        self._warning_color_attr = 0
         try:
             if not curses.has_colors():
                 return
             curses.start_color()
             curses.use_default_colors()
             curses.init_pair(1, curses.COLOR_CYAN, -1)
+            curses.init_pair(2, curses.COLOR_RED, -1)
+            curses.init_pair(3, curses.COLOR_MAGENTA, -1)
             self._color_attr = curses.color_pair(1)
+            self._error_color_attr = curses.color_pair(2)
+            self._warning_color_attr = curses.color_pair(3)
         except (AttributeError, curses.error):
             self._color_attr = 0
+            self._error_color_attr = 0
+            self._warning_color_attr = 0
 
     @staticmethod
     def _attribute(name: str) -> int:
@@ -172,6 +182,18 @@ class TuiRenderer:
 
     def _focus_attribute(self) -> int:
         return self._attribute("A_REVERSE") | self._color_attr
+
+    def _status_attribute(self, status: str) -> int:
+        attr = self._attribute("A_BOLD")
+        if status.startswith("Error:"):
+            return attr | (
+                self._error_color_attr or self._attribute("A_REVERSE")
+            )
+        if status.startswith("Warning:"):
+            return attr | (
+                self._warning_color_attr or self._attribute("A_REVERSE")
+            )
+        return attr
 
     @staticmethod
     def _adjustment_press_direction(
@@ -321,8 +343,17 @@ class TuiRenderer:
         )
 
         lines = self.navigation_document(state, width)
-        status_row = max(0, height - 1)
-        viewport_height = max(1, status_row - 4)
+        status = state.status
+        if status and not status.startswith(("Error:", "Warning:")):
+            status = f"Status: {status}"
+        status_lines = (
+            _wrap_text(status, max(1, width - 1))
+            if status
+            else []
+        )
+        status_height = max(1, len(status_lines))
+        status_start = max(0, height - status_height)
+        viewport_height = max(0, status_start - 4)
         focused_index = next(
             (
                 index
@@ -352,14 +383,17 @@ class TuiRenderer:
                     word_attr,
                 )
 
-        status = state.status
-        if status and not status.startswith("Error:"):
-            status = f"Status: {status}"
-        if status:
-            status_attr = self._attribute("A_BOLD")
-            if status.startswith("Error:"):
-                status_attr |= self._attribute("A_REVERSE")
-            safe_add(screen, status_row, 0, status, width, status_attr)
+        if status_lines:
+            status_attr = self._status_attribute(status)
+            for offset, line in enumerate(status_lines):
+                safe_add(
+                    screen,
+                    status_start + offset,
+                    0,
+                    line,
+                    width,
+                    status_attr,
+                )
 
     def navigation_document(
         self,
@@ -996,10 +1030,14 @@ class TuiRenderer:
         if not status and editor.active_field is not None:
             status = "Enter: Finish editing   Esc: Back"
         if status:
-            status_attr = self._attribute("A_BOLD")
-            if status.startswith("Error:"):
-                status_attr |= self._attribute("A_REVERSE")
-            safe_add(screen, status_row, 0, status, width, status_attr)
+            safe_add(
+                screen,
+                status_row,
+                0,
+                status,
+                width,
+                self._status_attribute(status),
+            )
         if cursor_line is not None and start <= cursor_line < start + viewport_height:
             try:
                 screen.move(

@@ -581,7 +581,7 @@ class TuiOperations:
         status = f"Saved {' and '.join(names)}."
         lab_warning = getattr(saved, "lab_warning", None)
         if lab_warning:
-            status += f" {lab_warning}"
+            status = f"Warning: {status} {lab_warning}"
         return (
             FocusEffect(("pronunciation", pronunciation_index)),
             UpdateStatusEffect(status),

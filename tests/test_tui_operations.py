@@ -901,7 +901,8 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(
             effects[-1],
             UpdateStatusEffect(
-                "Saved saved.wav. LAB generation failed: Julius executable not found"
+                "Warning: Saved saved.wav. "
+                "LAB generation failed: Julius executable not found"
             ),
         )
 
