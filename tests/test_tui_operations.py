@@ -232,7 +232,7 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertIsNone(self.operations.current_take)
         self.operations.join_worker()
 
-    def test_regenerate_all_progress_uses_existing_candidate_slots(self):
+    def test_regenerate_all_progress_uses_requested_take_count(self):
         session = FakeSession((candidate(1), candidate(2), candidate(3)))
 
         effects = self.operations.start_regenerate_all(
@@ -241,8 +241,8 @@ class TuiOperationsTests(unittest.TestCase):
             navigation_revision=2,
         )
 
-        self.assertEqual(effects, (UpdateStatusEffect("Regenerating 1/3"),))
-        self.assertEqual(self.operations.operation_total, 3)
+        self.assertEqual(effects, (UpdateStatusEffect("Regenerating 1/100"),))
+        self.assertEqual(self.operations.operation_total, 100)
         self.operations.join_worker()
         self.consume(session)
 
@@ -439,7 +439,7 @@ class TuiOperationsTests(unittest.TestCase):
             take_count=100,
             navigation_revision=0,
         )
-        self.assertEqual(effects, (UpdateStatusEffect("Regenerating 1/2"),))
+        self.assertEqual(effects, (UpdateStatusEffect("Regenerating 1/100"),))
         self.assertTrue(synthesis_started.wait(timeout=5))
         self.assertEqual(
             self.operations.request_batch_cancellation(),
