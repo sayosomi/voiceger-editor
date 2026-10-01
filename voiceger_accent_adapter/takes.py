@@ -203,18 +203,24 @@ class TakeBatch:
         if not self._candidates:
             raise RuntimeError("take regeneration requires a generated candidate")
 
-        target_count = self.take_count if take_count is None else take_count
-        if (
-            isinstance(target_count, bool)
-            or not isinstance(target_count, int)
-            or not 1 <= target_count <= 100
-        ):
-            raise ValueError(
-                "take_count must be an integer from 1 through 100"
-            )
+        resizing = take_count is not None
+        if resizing:
+            target_count = take_count
+            if (
+                isinstance(target_count, bool)
+                or not isinstance(target_count, int)
+                or not 1 <= target_count <= 100
+            ):
+                raise ValueError(
+                    "take_count must be an integer from 1 through 100"
+                )
+            numbers = tuple(range(1, target_count + 1))
+        else:
+            target_count = len(self._candidates)
+            numbers = tuple(sorted(self._candidates))
 
         original_take_count = self.take_count
-        if target_count > original_take_count:
+        if resizing and target_count > original_take_count:
             # Newly generated higher-numbered slots must remain valid even if
             # a later slot fails or the operation is cancelled.
             self.take_count = target_count
@@ -222,7 +228,7 @@ class TakeBatch:
         def regenerate() -> Iterator[TakeCandidate]:
             completed = False
             try:
-                for number in range(1, target_count + 1):
+                for number in numbers:
                     previous = self._candidates.get(number)
                     replacement = self._generate_candidate(number)
                     self._candidates[number] = replacement
@@ -231,7 +237,7 @@ class TakeBatch:
                     yield replacement
                 completed = True
             finally:
-                if completed:
+                if resizing and completed:
                     excess_numbers = tuple(
                         number
                         for number in sorted(self._candidates)
@@ -241,7 +247,10 @@ class TakeBatch:
                         removed = self._candidates.pop(number)
                         self._remove_candidate_file(removed)
                     self.take_count = target_count
-                elif target_count < original_take_count:
+                elif (
+                    resizing
+                    and target_count < original_take_count
+                ):
                     # A failed/cancelled shrink keeps the still-valid excess
                     # slots and their original acceptance range.
                     self.take_count = original_take_count
