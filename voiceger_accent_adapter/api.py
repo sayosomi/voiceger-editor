@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from functools import lru_cache
 import os
+import warnings
 from tempfile import NamedTemporaryFile
 from typing import List
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from ._version import __version__
 from .mixed_language import build_mixed_audio_query
@@ -20,6 +21,10 @@ from .pronunciation import (
 )
 from .synthesis import synthesize_audio_query
 from .styles import available_styles, get_style
+from .voiceger_environment import (
+    VoicegerEnvironmentError,
+    require_voiceger_environment,
+)
 from .voiceger_adapter import (
     VoicegerAdapter,
     VoicegerAdapterError,
@@ -44,7 +49,19 @@ app = FastAPI(
 
 @lru_cache(maxsize=1)
 def get_adapter() -> VoicegerAdapter:
-    return VoicegerAdapter()
+    environment = require_voiceger_environment()
+    for warning in environment.warnings:
+        warnings.warn(
+            f"Voiceger setup warning: {warning.message}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    return VoicegerAdapter(voiceger_root=environment.voiceger_root)
+
+
+@app.exception_handler(VoicegerEnvironmentError)
+async def _voiceger_environment_error(_request, exc: VoicegerEnvironmentError):
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 def _resolve_style(speaker: int):
@@ -239,6 +256,8 @@ def user_dict():
 
     try:
         return get_adapter().user_dictionary.list_japanese_entries()
+    except VoicegerEnvironmentError:
+        raise
     except Exception as exc:
         raise HTTPException(
             status_code=500,
@@ -266,6 +285,8 @@ def add_user_dict_word(
         )
     except UserDictionaryInputError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except VoicegerEnvironmentError:
+        raise
     except Exception as exc:
         raise HTTPException(
             status_code=500,
@@ -295,6 +316,8 @@ def update_user_dict_word(
         )
     except UserDictionaryInputError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except VoicegerEnvironmentError:
+        raise
     except Exception as exc:
         raise HTTPException(
             status_code=500,
@@ -310,6 +333,8 @@ def delete_user_dict_word(word_uuid: str):
         get_adapter().user_dictionary.delete_japanese_word(word_uuid)
     except UserDictionaryInputError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except VoicegerEnvironmentError:
+        raise
     except Exception as exc:
         raise HTTPException(
             status_code=500,
@@ -328,6 +353,8 @@ def import_user_dict(
         get_adapter().user_dictionary.import_japanese(entries, override=override)
     except UserDictionaryInputError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except VoicegerEnvironmentError:
+        raise
     except Exception as exc:
         raise HTTPException(
             status_code=500,
