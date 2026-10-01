@@ -27,7 +27,7 @@ class SettingsTests(unittest.TestCase):
             Path.home() / ".voiceger-accent-adapter" / "output",
         )
         self.assertEqual(settings.take_count, 4)
-        self.assertEqual(settings.style_id, 1)
+        self.assertEqual(settings.style_id, 3)
         self.assertEqual(settings.speed, 1.0)
         self.assertEqual(settings.top_k, 20)
         self.assertEqual(settings.top_p, 1.0)
@@ -41,7 +41,7 @@ class SettingsTests(unittest.TestCase):
             settings = Settings(
                 output_dir=Path(directory) / "生成音声",
                 take_count=8,
-                style_id=5,
+                style_id=38,
                 speed=1.25,
                 top_k=37,
                 top_p=0.45,
@@ -62,7 +62,7 @@ class SettingsTests(unittest.TestCase):
                 {
                     "output_dir": str(settings.output_dir),
                     "take_count": 8,
-                    "style_id": 5,
+                    "style_id": 38,
                     "speed": 1.25,
                     "top_k": 37,
                     "top_p": 0.45,
