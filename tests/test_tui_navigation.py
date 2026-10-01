@@ -167,7 +167,7 @@ class TuiNavigationTests(unittest.TestCase):
 
     def test_candidate_section_and_vertical_navigation_preserve_order(self):
         state = context(candidate_numbers=(4, 7))
-        self.navigation.focus_key = ("generate", None)
+        self.navigation.focus_key = ("add_section", None)
         self.assertEqual(
             self.navigation.move(state, 1),
             (ClearAdjustmentFeedback(), PlayCandidate(4)),
@@ -176,6 +176,11 @@ class TuiNavigationTests(unittest.TestCase):
             self.navigation.move(state, 1),
             (ClearAdjustmentFeedback(), PlayCandidate(7)),
         )
+        self.assertEqual(
+            self.navigation.move(state, 1),
+            (ClearAdjustmentFeedback(),),
+        )
+        self.assertEqual(self.navigation.focus_key, ("generate", None))
         self.assertEqual(
             self.navigation.move_section(state, 1),
             (ClearAdjustmentFeedback(),),
