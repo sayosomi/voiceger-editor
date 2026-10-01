@@ -103,6 +103,8 @@ class TakeCandidate:
     source_text: str
     style_name: str
     query: AudioQuery | None = None
+    mixed_lab_provenance: Any | None = None
+    mixed_lab_provenance_warning: str | None = None
 
 
 class TakeBatch:
@@ -245,6 +247,10 @@ class TakeBatch:
                 lab_result = save_lab_sidecar(
                     wav_path=saved.wav_path,
                     query=deepcopy(candidate.query),
+                    mixed_provenance=candidate.mixed_lab_provenance,
+                    mixed_provenance_warning=(
+                        candidate.mixed_lab_provenance_warning
+                    ),
                 )
             saved = replace(
                 saved,
@@ -311,6 +317,10 @@ class TakeBatch:
             source_text=self.source_text,
             style_name=self.style_name,
             query=deepcopy(self._query),
+            mixed_lab_provenance=result.get("mixed_lab_provenance"),
+            mixed_lab_provenance_warning=result.get(
+                "mixed_lab_provenance_warning"
+            ),
         )
 
     def _ensure_open(self) -> None:
