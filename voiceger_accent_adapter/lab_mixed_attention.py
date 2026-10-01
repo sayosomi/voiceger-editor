@@ -15,6 +15,7 @@ from .voicevox_query import accent_phrases_to_pronunciation
 
 
 _ONSET_THRESHOLDS_DB = (-40.0, -35.0, -30.0, -25.0)
+_ATTENTION_SMOOTHING_RADIUS_FRAMES = 2
 
 
 @dataclass(frozen=True)
@@ -208,7 +209,7 @@ def _select_consensus_head(
 
     vectors = np.asarray(tuple(transitions.values()), dtype=np.int64)
     spread = vectors.max(axis=0) - vectors.min(axis=0)
-    if np.any(spread > 1):
+    if np.any(spread > _ATTENTION_SMOOTHING_RADIUS_FRAMES):
         detail = ", ".join(
             f"{head}:{frames}" for head, frames in transitions.items()
         )
@@ -285,8 +286,14 @@ def derive_mixed_lab_provenance(
     smoothed = np.empty_like(masses)
     for head_index in range(head_count):
         for frame_index in range(frame_count):
-            start = max(0, frame_index - 2)
-            end = min(frame_count, frame_index + 3)
+            start = max(
+                0,
+                frame_index - _ATTENTION_SMOOTHING_RADIUS_FRAMES,
+            )
+            end = min(
+                frame_count,
+                frame_index + _ATTENTION_SMOOTHING_RADIUS_FRAMES + 1,
+            )
             smoothed[head_index, frame_index] = (
                 masses[head_index, start:end].mean(axis=0)
             )
