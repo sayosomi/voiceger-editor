@@ -2,117 +2,222 @@
 
 Voiceger Editor provides a keyboard-first terminal interface.
 
-## Workflow
+Start it with:
 
-The normal workflow is:
+```bash
+voiceger-editor
+```
 
-~~~text
+Or provide the first Caption:
+
+```bash
+voiceger-editor "このずんだ餅はvery sweetなのだ。"
+```
+
+## Basic workflow
+
+```text
 Caption
-→ build/check pronunciation
+→ check or edit pronunciation
 → Generate
 → listen to Takes
 → accept one Take
-~~~
+```
 
-Start with:
+## Main controls
 
-~~~bash
-voiceger-editor
-~~~
+- Up / Down: move through selectable rows.
+- Enter: open or activate the selected row.
+- Left / Right: adjust a supported value on the selected row.
+- Tab / Shift+Tab: move between major areas.
+- Space: replay the selected Take.
+- Esc: go back, stop playback, or request batch cancellation when available.
+- `?`: Help.
+- `q`: Quit.
 
-or:
+The TUI uses one vertical navigation flow. Editing opens a focused editor instead of changing values accidentally during normal navigation.
 
-~~~bash
-voiceger-editor "このずんだ餅はvery sweetなのだ。"
-~~~
+## Caption
 
-## Navigation
+Select the Caption row and press Enter to edit the source text.
 
-Main navigation uses:
+Example:
 
-- Up / Down — move between selectable rows.
-- Enter — activate the selected row.
-- Left / Right — adjust a value when the row supports it.
-- Tab / Shift+Tab — move between major sections.
-- Esc — go back, stop playback, or request batch cancellation when available.
-- ? — Help.
-- q — Quit.
+```text
+今日は雨なのだ。
+```
 
-The main screen also has direct shortcuts:
+Mixed Japanese-English text is also supported:
 
-- b — Build pronunciation.
-- a — Add section.
-- g — Generate or regenerate all Takes.
-- c — Clear candidates.
-- s — Settings.
-- d — Dictionary.
+```text
+このずんだ餅はvery sweetなのだ。
+```
 
-## Caption and sections
+After changing the Caption, apply the edit before continuing.
 
-Select Caption and press Enter to edit the source text. Apply the edit before returning to the main screen.
+## Build pronunciation
 
-Build pronunciation converts the current Caption into editable pronunciation sections. Rebuilding replaces manual pronunciation edits, so Voiceger Editor asks for confirmation when needed.
+`Build pronunciation` rebuilds pronunciation from the current Caption.
 
-Japanese and English sections can be edited separately. Add section can append another section to the utterance.
+Shortcut:
+
+```text
+b
+```
+
+If manual pronunciation edits already exist, the TUI asks for confirmation before replacing them.
+
+Rebuilding pronunciation clears existing candidate Takes.
 
 ## Japanese pronunciation
 
 A Japanese pronunciation row shows the current reading and accent.
 
-On the main screen, Left / Right moves the accent position by one mora. Press Enter for the detailed editor.
+- Left / Right moves the accent by one mora.
+- Enter opens the Japanese pronunciation editor.
 
-The detailed editor can:
+The editor can:
 
-- edit the pronunciation;
-- preview the current draft;
-- apply it;
-- save it to the Japanese dictionary;
+- edit the reading;
+- preview the draft;
+- apply the draft;
+- save the pronunciation to the Japanese dictionary;
 - edit the section text.
+
+Preview generates temporary audio from the draft. Preview does not apply the edit and does not create a normal Take batch.
+
+Applying a pronunciation change clears existing candidate Takes.
 
 See [Pronunciation](pronunciation.md).
 
 ## English pronunciation
 
-English pronunciation is edited in word groups.
+English text is edited by word group.
 
-Left / Right moves primary stress between stress-bearing vowels when possible. Press Enter to edit the ARPAbet phonemes directly.
+- Left / Right moves primary stress between stress-bearing vowels when possible.
+- Enter opens the ARPAbet editor.
 
-The detailed editor can preview, apply, save to the English dictionary, or edit section text.
+The editor can:
 
-## Preview
+- edit phoneme tokens;
+- preview the draft;
+- apply the draft;
+- save the pronunciation to the English dictionary;
+- edit the section text.
 
-Preview synthesizes temporary audio from the current draft. It does not apply the draft and does not create the normal Take batch.
+See [Pronunciation](pronunciation.md).
+
+## Sections
+
+Mixed text is stored as Japanese and English sections.
+
+Use `Add section` or shortcut:
+
+```text
+a
+```
+
+In the Add Section editor:
+
+- Left / Right changes the language;
+- Enter edits the text;
+- Apply adds the section.
+
+Existing section text can also be edited from a pronunciation editor.
 
 ## Generate Takes
 
-Select Generate and press Enter, or press g.
+Select `Generate` and press Enter, or press:
 
-The default Take count is 4 and can be changed in Settings. Generation is sequential.
+```text
+g
+```
 
-If Takes already exist, Generate regenerates the full set. A selected Take can also be regenerated individually from the candidate controls.
+The default number of Takes is 4.
 
-Esc requests cancellation of a running batch. Cancellation occurs at a safe Take boundary rather than interrupting a synthesis call in the middle.
+The Generate row can adjust the Take count with Left / Right.
 
-## Listen and accept
+If Takes already exist, Generate replaces the complete candidate set.
 
-Moving focus onto a generated Take plays it automatically. Space can replay the selected Take.
+During a multi-Take generation batch, Esc requests cancellation. Cancellation occurs at a safe Take boundary rather than interrupting synthesis in the middle of one Take.
 
-Press Enter on a Take to accept it. The accepted WAV is copied to the configured output directory. TXT and LAB sidecars are also created when those options are enabled.
+## Listen to Takes
 
-After acceptance, the temporary candidate set is cleared.
+Moving onto a Take selects it for review.
+
+Use:
+
+- Space to replay the selected Take;
+- number keys `1` through `9` to jump to a visible candidate;
+- `r` to regenerate only the selected Take when that action is available.
+
+Regenerating one Take leaves the other candidates unchanged.
+
+## Accept a Take
+
+Select a Take and press Enter.
+
+The accepted Take is saved as WAV.
+
+If enabled, TXT and LAB sidecars are saved with the same basename.
+
+After acceptance, temporary candidates are cleared and the TUI returns to the pronunciation workflow.
 
 ## Clear candidates
 
-Use Clear candidates or press c. Voiceger Editor asks for confirmation.
+Use `Clear candidates` or shortcut:
 
-Candidates cannot be cleared while synthesis is active.
+```text
+c
+```
 
-Changes to synthesis-affecting values clear old candidates because those Takes no longer match the current utterance settings. This includes pronunciation, section text, Style, Speed, Top K, Top P, and Temperature.
+The TUI asks for confirmation before deleting the current candidate set.
 
-## Settings, Dictionary, Help
+Candidate clearing is not available while synthesis is actively running.
 
-Settings controls reusable synthesis and output values. See [Settings](settings.md).
+## Changes that clear Takes
 
-Dictionary manages Japanese and English reusable pronunciations. See [User Dictionary](dictionary.md).
+Applying a synthesis-affecting change clears existing candidate Takes.
 
-Help shows the current controls, installed Voiceger Editor version, and documentation link.
+This includes:
+
+- Japanese pronunciation or accent;
+- English phonemes or stress;
+- section text;
+- rebuilt pronunciation;
+- Style;
+- Speed;
+- Top K;
+- Top P;
+- Temperature.
+
+Changing the configured Take count does not change the synthesis parameters of Takes that already exist.
+
+## Main shortcuts
+
+| Key | Action |
+| --- | --- |
+| `b` | Build pronunciation |
+| `a` | Add section |
+| `g` | Generate / regenerate all Takes |
+| `c` | Clear candidates |
+| `s` | Settings |
+| `d` | Dictionary |
+| `?` | Help |
+| `q` | Quit |
+
+## Settings and dictionary
+
+Settings contain style, speed, Take count, output, sidecars, and sampling controls.
+
+See [Settings](settings.md).
+
+The Dictionary screen contains separate Japanese and English dictionaries.
+
+See [User Dictionary](dictionary.md).
+
+## Quit
+
+Press `q` from the Main screen to quit.
+
+If synthesis is running, Voiceger Editor performs safe cleanup. A cancellable batch stops at a supported boundary rather than leaving partial application state.

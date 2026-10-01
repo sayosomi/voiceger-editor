@@ -2,14 +2,13 @@
 
 Voiceger Editor is a pronunciation and synthesis editor for [Voiceger](https://github.com/zunzun999/voiceger_v2).
 
-It provides:
+It adds:
 
 - a keyboard-first TUI;
 - Japanese pronunciation and pitch-accent editing;
 - English ARPAbet pronunciation and stress editing;
 - multiple generated Takes;
 - Japanese and English user dictionaries;
-- Voiceger reference-audio styles;
 - optional TXT and LAB output;
 - a VOICEVOX-style HTTP API.
 
@@ -22,41 +21,47 @@ Voiceger itself is not included or modified.
 >
 > https://zunko.jp/con_ongen_kiyaku.html
 >
-> Credit is required when using generated audio. See [Generated Audio and License](#generated-audio-and-license).
+> Credit is required when using generated audio.
 
 ## Quick Start
 
-Install Voiceger separately, then set its path:
+Install Voiceger separately and set its path:
 
-~~~bash
+```bash
 export VOICEGER_ROOT="$HOME/voiceger_v2"
 source "$VOICEGER_ROOT/.venv/bin/activate"
-~~~
+```
+
+Voiceger Editor v1 is tested with Voiceger revision:
+
+```text
+f77c1172baf1f490bb962f2d2acd01c852ef3464
+```
 
 Install Voiceger Editor from PyPI:
 
-~~~bash
+```bash
 python -m pip install 'voiceger-editor[tui]'
-~~~
+```
 
 Check the installation:
 
-~~~bash
+```bash
 voiceger-editor --version
 voiceger-editor --check
-~~~
+```
 
 Start the TUI:
 
-~~~bash
+```bash
 voiceger-editor
-~~~
+```
 
 Or start with text:
 
-~~~bash
+```bash
 voiceger-editor "このずんだ餅はvery sweetなのだ。"
-~~~
+```
 
 On first use, read and explicitly accept the Voiceger:Zundamon terms before synthesis.
 
@@ -64,13 +69,13 @@ See [Setup](docs/en/setup.md) for the complete installation guide.
 
 ## Basic Workflow
 
-~~~text
+```text
 Caption
 → check or edit pronunciation
 → Generate
 → listen to Takes
 → accept one Take
-~~~
+```
 
 The supported v1 speech scope is:
 
@@ -83,25 +88,28 @@ See [Compatibility](docs/en/compatibility.md) for details.
 
 Install API support:
 
-~~~bash
+```bash
 python -m pip install 'voiceger-editor[api]'
-~~~
+```
 
-Start the API:
+Start it with:
 
-~~~bash
-python -m uvicorn   voiceger_editor.api:app   --host 127.0.0.1   --port 8001
-~~~
+```bash
+python -m uvicorn \
+  voiceger_editor.api:app \
+  --host 127.0.0.1 \
+  --port 8001
+```
 
 The API provides a VOICEVOX-style workflow:
 
-~~~text
+```text
 text
 → /audio_query
 → edit query
 → /synthesis
 → WAV
-~~~
+```
 
 The corresponding Zundamon style IDs match VOICEVOX.
 
@@ -130,10 +138,10 @@ https://zunko.jp/con_ongen_kiyaku.html
 
 The official terms require Voiceger credit. Examples:
 
-~~~text
+```text
 Voicegerずんだもん
 Voiceger:Zundamon
-~~~
+```
 
 The official terms are authoritative. The notice shown by Voiceger Editor does not replace them.
 

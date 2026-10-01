@@ -1,121 +1,213 @@
 # LAB Output
 
-Voiceger Editor can optionally save a .lab phoneme-timing file beside an accepted Take.
+Voiceger Editor can optionally save a `.lab` phoneme-timing file beside an accepted Take.
 
-LAB output is disabled by default.
+LAB output is useful for lip sync, animation, speech analysis, and tools that need phoneme timing.
 
-## What a LAB file contains
+LAB is optional and disabled by default.
 
-Each row contains a start time, end time, and phoneme:
-
-~~~text
-<start_100ns> <end_100ns> <phoneme>
-~~~
-
-One second is 10,000,000 timestamp units.
-
-LAB output can be useful for lip sync, animation, and tools that need phoneme timing.
-
-## Install
+## Install LAB support
 
 Install the LAB extra:
 
-~~~bash
+```bash
 python -m pip install 'voiceger-editor[tui,lab]'
-~~~
+```
 
-English alignment uses the pinned PocketSphinx 5.1.1 dependency.
+English alignment uses the pinned PocketSphinx 5.1.1 dependency from this extra.
 
-Japanese alignment also requires a Julius executable. The adapter downloads its pinned small Julius acoustic model into an application cache when first needed, so the first Japanese LAB may require internet access.
+Japanese LAB output also requires a `julius` executable.
 
-## Enable LAB
+The Japanese acoustic model is a pinned external runtime asset. Voiceger Editor downloads and caches it when needed.
 
-Turn LAB on in Settings, or use the one-run CLI option:
+The first Japanese LAB operation may therefore require network access.
 
-~~~bash
-voiceger-editor --save-lab
-~~~
+## Enable LAB output
 
-Disable it for one run with:
+Open Settings and set:
 
-~~~bash
-voiceger-editor --no-save-lab
-~~~
+```text
+LAB: ON
+```
 
-LAB is created only for an accepted Take. Candidate Takes are not aligned in advance.
+For one CLI invocation, use:
 
-## Output files
+```text
+--save-lab
+```
 
-Accepted output uses minute-resolution local time and source text:
+To disable it for one invocation:
 
-~~~text
+```text
+--no-save-lab
+```
+
+## Saved files
+
+LAB is generated only for the accepted Take.
+
+Candidate Takes are not aligned in advance.
+
+Example:
+
+```text
+202610020307_今日は雨なのだ。.wav
+202610020307_今日は雨なのだ。.lab
+```
+
+If TXT is also enabled:
+
+```text
+202610020307_今日は雨なのだ。.txt
+```
+
+All sidecars use the same collision-safe basename.
+
+If the basename already exists, Voiceger Editor adds:
+
+```text
+-2
+-3
+...
+```
+
+before the extension.
+
+## Filename format
+
+Accepted TUI Takes use:
+
+```text
 YYYYMMDDHHMM_テキスト.wav
-YYYYMMDDHHMM_テキスト.lab
-~~~
+```
 
-If TXT is enabled:
+The timestamp uses local time and minute resolution.
 
-~~~text
-YYYYMMDDHHMM_テキスト.txt
-~~~
+Style is not included in the filename.
 
-Style is not part of the filename.
+Characters that are invalid in filenames are removed.
 
-Characters that are invalid in common filenames are removed.
+Voiceger Editor does not silently shorten source text if the resulting filename is too long. Saving fails with a clear filename-too-long error instead.
 
-If the basename already exists, Voiceger Editor adds -2, -3, and so on before the extension. WAV, TXT, and LAB use the same collision-safe stem.
+## LAB format
 
-Source text is not silently shortened. If the resulting filename is too long for the filesystem, saving reports an error.
+Each LAB line contains:
 
-## Supported languages
+```text
+<start> <end> <phoneme>
+```
 
-| Utterance | LAB |
-| --- | --- |
-| Japanese | Supported with Julius |
-| English alignment used by the editor | Supported with PocketSphinx |
-| Japanese-English mixed | Supported with both aligners and recorded mixed timing |
-| Other languages | Unsupported |
+Times use 100-nanosecond units.
 
-Japanese alignment uses the pronunciation already chosen by Voiceger Editor. Julius measures timing; it does not choose a new reading.
+One second is:
 
-English alignment uses the stored ARPAbet pronunciation. PocketSphinx measures timing; it does not replace the editor pronunciation.
+```text
+10000000
+```
 
-## Mixed Japanese-English Takes
+Boundary silence is written as:
 
-Mixed LAB needs language-boundary timing captured during the exact synthesis that created the candidate.
+```text
+pau
+```
 
-For that reason, enable LAB **before** generating a mixed Take that you want to save with LAB.
+The final LAB covers the complete accepted WAV.
 
-Recommended flow:
+## Japanese
 
-~~~text
+Japanese alignment uses Julius.
+
+Voiceger Editor aligns the pronunciation already stored in the accepted Take.
+
+Julius does not choose a new pronunciation.
+
+Japanese LAB requires:
+
+- the `julius` executable;
+- the pinned Voiceger Editor alignment model.
+
+## English
+
+English alignment uses PocketSphinx 5.1.1.
+
+Voiceger Editor constrains the aligner to the stored ARPAbet pronunciation.
+
+PocketSphinx does not replace the pronunciation with its own dictionary or G2P result.
+
+If an unusual name or coined word sounds wrong, fix its pronunciation before generating a new Take.
+
+## Japanese-English mixed Takes
+
+Mixed LAB output uses timing information captured from the exact synthesis that generated the candidate.
+
+Because this information is captured during generation, LAB must be enabled **before** generating a mixed Take.
+
+Use this order:
+
+```text
 LAB ON
 → Generate
 → listen
 → accept
-~~~
+```
 
-If a mixed candidate was generated while LAB was off, turning LAB on afterward does not retroactively add the required timing data. Regenerate the Take after enabling LAB.
+This does not work for an already-generated mixed candidate:
+
+```text
+LAB OFF
+→ Generate
+→ LAB ON
+→ accept existing candidate
+```
+
+The WAV can still be accepted, but mixed LAB timing information is missing.
+
+Regenerate the Take after enabling LAB.
 
 ## Failure behavior
 
-The WAV is the primary output.
+The accepted WAV is the primary output.
 
 If LAB generation fails:
 
-1. the accepted WAV is kept;
-2. TXT is kept if it was requested and saved;
-3. no partial final .lab is left behind;
-4. Voiceger Editor reports that WAV saving succeeded but LAB generation failed.
+- the WAV is kept;
+- the TXT sidecar is kept if it was requested and saved successfully;
+- no partial final `.lab` is left behind;
+- Voiceger Editor reports that WAV saving succeeded but LAB generation failed.
 
-Common causes include a missing Julius executable, model download failure, missing PocketSphinx, an alignment mismatch, or missing mixed-language timing data.
+Possible causes include:
 
-## Cache and overrides
+- Julius is missing;
+- the Japanese alignment model cannot be downloaded or loaded;
+- PocketSphinx is unavailable;
+- alignment fails;
+- an unsupported phone is present;
+- mixed timing information is unavailable.
 
-The Julius model is cached outside the output directory.
+LAB failure does not discard the accepted Take.
 
-VOICEGER_LAB_CACHE_DIR can override the LAB cache location. Additional Julius runtime/model overrides are intended for advanced troubleshooting.
+## Cache
+
+On macOS, the default Japanese LAB cache is:
+
+```text
+~/Library/Caches/voiceger-editor/lab
+```
+
+On other platforms, the normal XDG cache location is used.
+
+Advanced overrides include:
+
+```text
+VOICEGER_LAB_CACHE_DIR
+VOICEGER_JULIUS
+VOICEGER_JULIUS_HMM
+```
 
 ## HTTP API
 
-The VOICEVOX-style /synthesis endpoint returns WAV data directly. It does not create accepted-Take TXT or LAB sidecars.
+The HTTP `/synthesis` endpoint returns WAV data directly.
+
+It does not save accepted-Take WAV, TXT, or LAB files.
+
+LAB sidecars belong to the accepted-Take workflow in the TUI.

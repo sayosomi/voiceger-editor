@@ -2,105 +2,154 @@
 
 Voiceger Editor lets you edit pronunciation before generating Takes.
 
-Japanese uses editable reading and pitch accent. English sections use ARPAbet-style phonemes and stress.
+Japanese and English use different editing models.
 
-## Japanese notation
+## Japanese pronunciation
 
-An apostrophe marks the accent position immediately after the accented mora.
+Japanese text is converted to a kana reading with pitch-accent information.
+
+Example:
+
+```text
+雨 → ア'メ
+飴 → アメ'
+```
+
+The apostrophe `'` is placed immediately after the accented mora.
 
 Examples:
 
-~~~text
+```text
 ア'メ
 アメ'
-~~~
+```
 
-For the common minimal pair:
+Small kana belong to the same mora as the preceding kana.
 
-~~~text
-雨 → ア'メ
-飴 → アメ'
-~~~
+For example:
 
-Small kana belong to the same mora as the preceding kana. For example:
-
-~~~text
+```text
 きゃ'
-~~~
+```
 
 is one accented mora.
 
-The TUI displays separate accent phrases with spaces. The VOICEVOX-style API kana form uses / between phrases.
+Both hiragana and katakana are accepted while editing.
 
-Example TUI form:
+Supported punctuation includes:
 
-~~~text
+```text
+。 、 ？ ！ …
+```
+
+ASCII punctuation such as `.`, `,`, `?`, and `!` is converted to the corresponding Japanese form.
+
+## Accent phrases
+
+A Japanese utterance can contain several accent phrases.
+
+In the TUI, phrases are displayed as a readable sequence separated by spaces.
+
+Example:
+
+```text
 キョ'ーワ ア'メデスネ。
-~~~
+```
 
-Equivalent API-style phrase separation:
+Each phrase has one accent position.
 
-~~~text
+The TUI does not require you to type `/` between phrases.
+
+The VOICEVOX-style API kana form uses `/`:
+
+```text
 キョ'ーワ/ア'メデスネ。
-~~~
-
-Do not type / as a phrase separator in the normal TUI pronunciation field.
-
-Supported punctuation includes Japanese full stop, comma, question mark, exclamation mark, and ellipsis. Common ASCII punctuation is normalized where supported.
+```
 
 ## Move Japanese accent
 
-Select a Japanese pronunciation row on the main screen.
+On the Main screen, select a Japanese pronunciation row.
 
-Left / Right moves the accent by one mora.
+Use Left / Right to move the accent by one mora.
 
-Press Enter when you need to edit the reading itself or make a more complex change.
+Press Enter for detailed editing.
 
-Preview lets you hear the draft before Apply. Applying a pronunciation change clears existing Takes because they were generated from older pronunciation state.
+Changing pronunciation or accent does not take effect until the edit is applied.
 
-## English ARPAbet
+Applying the change clears existing Takes because they were generated with the previous pronunciation.
 
-English pronunciation is stored as ARPAbet-style phonemes.
+## Preview
+
+The pronunciation editor can preview a draft before you apply it.
+
+Preview:
+
+- synthesizes temporary audio from the draft;
+- does not change the active pronunciation;
+- does not create a normal Take batch.
+
+Use Apply when you want to keep the edit.
+
+## English pronunciation
+
+English pronunciation uses ARPAbet-style phoneme tokens.
 
 Example:
 
-~~~text
+```text
 very → V EH1 R IY0
-sweet → S W IY1 T
-~~~
+```
 
-Vowel stress digits are:
+Vowels can have a stress digit:
 
-- 0 — unstressed.
-- 1 — primary stress.
-- 2 — secondary stress.
+- `0`: no lexical stress;
+- `1`: primary stress;
+- `2`: secondary stress.
 
 Consonants do not use stress digits.
 
-On an English pronunciation row, Left / Right moves the primary stress between available vowels when possible.
+## Move English primary stress
+
+On an English word row, Left / Right moves primary stress between available vowels when possible.
+
+For example:
+
+```text
+V EH1 R IY0
+```
+
+can become:
+
+```text
+V EH0 R IY1
+```
+
+Press Enter to edit the phoneme sequence directly.
 
 Example:
 
-~~~text
-V EH1 R IY0
-→
-V EH0 R IY1
-~~~
+```text
+S W IY1 T
+```
 
-Press Enter to edit the phoneme sequence directly. Unsupported tokens are rejected.
+Voiceger Editor validates supported phoneme tokens before applying the edit.
 
-## Mixed text
+## Mixed Japanese-English text
 
-Japanese and English can be used in one Caption:
+Japanese and English can appear in the same Caption.
 
-~~~text
+Example:
+
+```text
 このずんだ餅はvery sweetなのだ。
-~~~
+```
 
-Voiceger Editor keeps Japanese accent information and English phonemes separately so both can be edited before synthesis.
+Japanese sections keep editable Japanese pronunciation and accent.
 
-## Save reusable pronunciations
+English sections keep editable ARPAbet pronunciation and stress.
 
-A pronunciation can be saved from its editor to the user dictionary.
+## Save pronunciation to the dictionary
+
+Both Japanese and English pronunciation editors can save the current pronunciation to a user dictionary.
 
 See [User Dictionary](dictionary.md).

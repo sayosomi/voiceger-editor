@@ -4,33 +4,54 @@ Voiceger Editor provides a VOICEVOX-style HTTP API.
 
 The basic workflow is:
 
-~~~text
+```text
 text
 → AudioQuery
 → edit the query if needed
 → synthesis
 → WAV
-~~~
+```
 
-It implements a useful subset of the VOICEVOX Engine API. It is not a complete replacement for VOICEVOX Engine.
+It implements a useful subset of the VOICEVOX Engine API.
 
-## Install and start
+It is not a complete replacement for VOICEVOX Engine.
+
+## Install
 
 Install API support from PyPI:
 
-~~~bash
+```bash
 python -m pip install 'voiceger-editor[api]'
-~~~
+```
 
-Voiceger must already be installed and the Voiceger:Zundamon terms must already be accepted.
+Voiceger must already be installed and `VOICEGER_ROOT` must point to it.
 
-Start the API:
+API use also requires prior Voiceger:Zundamon terms acceptance:
 
-~~~bash
-python -m uvicorn   voiceger_editor.api:app   --host 127.0.0.1   --port 8001
-~~~
+```bash
+voiceger-editor --accept-voiceger-terms
+```
 
-FastAPI documentation is available at http://127.0.0.1:8001/docs.
+## Start
+
+```bash
+python -m uvicorn \
+  voiceger_editor.api:app \
+  --host 127.0.0.1 \
+  --port 8001
+```
+
+The examples below use:
+
+```text
+http://127.0.0.1:8001
+```
+
+FastAPI documentation is available at:
+
+```text
+http://127.0.0.1:8001/docs
+```
 
 ## Endpoints
 
@@ -38,88 +59,137 @@ Main endpoints:
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| GET | / | Engine information |
-| GET | /version | Voiceger Editor version |
-| GET | /speakers | Available Voiceger styles |
-| POST | /audio_query | Create an AudioQuery from text |
-| POST | /accent_phrases | Create accent phrases |
-| POST | /synthesis | Generate WAV audio |
+| GET | `/` | Engine information |
+| GET | `/version` | Voiceger Editor version |
+| GET | `/speakers` | Available Voiceger styles |
+| POST | `/audio_query` | Create an AudioQuery from text |
+| POST | `/accent_phrases` | Create accent phrases |
+| POST | `/synthesis` | Generate WAV audio |
 
 Japanese dictionary endpoints:
 
-~~~text
-GET    /user_dict
-POST   /user_dict_word
-PUT    /user_dict_word/{word_uuid}
-DELETE /user_dict_word/{word_uuid}
-POST   /import_user_dict
-~~~
+| Method | Endpoint |
+| --- | --- |
+| GET | `/user_dict` |
+| POST | `/user_dict_word` |
+| PUT | `/user_dict_word/{word_uuid}` |
+| DELETE | `/user_dict_word/{word_uuid}` |
+| POST | `/import_user_dict` |
 
 ## Speakers and styles
 
-/speakers exposes local Voiceger reference WAVs as VOICEVOX-style talk styles.
+```bash
+curl http://127.0.0.1:8001/speakers
+```
+
+Voiceger reference WAVs are exposed as VOICEVOX-style talk styles.
 
 The corresponding Zundamon style IDs match VOICEVOX:
 
 | Style | ID |
 | --- | ---: |
-| Sweet | 1 |
-| Neutral | 3 |
-| Sexy | 5 |
-| Snippy | 7 |
-| Whispering | 22 |
-| Murmuring | 38 |
-| Exhausted | 75 |
-| Sobbing | 76 |
+| Sweet | `1` |
+| Neutral | `3` |
+| Sexy | `5` |
+| Snippy | `7` |
+| Whispering | `22` |
+| Murmuring | `38` |
+| Exhausted | `75` |
+| Sobbing | `76` |
 
-The Voiceger Editor speaker UUID is:
+Only styles available in the local Voiceger installation are returned.
 
-~~~text
+The speaker UUID is specific to Voiceger Editor:
+
+```text
 voiceger-editor-zundamon
-~~~
-
-Only locally available reference styles are returned.
+```
 
 ## Create an AudioQuery
 
-~~~bash
-curl -s -G -X POST   'http://127.0.0.1:8001/audio_query'   --data-urlencode 'text=今日は雨なのだ。'   --data-urlencode 'speaker=3'   > query.json
-~~~
+Example:
 
-Japanese-English mixed text can be passed in the same way.
+```bash
+curl -s -G -X POST \
+  'http://127.0.0.1:8001/audio_query' \
+  --data-urlencode 'text=今日は雨なのだ。' \
+  --data-urlencode 'speaker=3' \
+  > query.json
+```
+
+`speaker=3` selects Neutral.
+
+Japanese-English mixed text can be used in the same request:
+
+```text
+このずんだ餅はvery sweetなのだ。
+```
 
 ## Synthesize
 
-~~~bash
-curl -s -X POST   'http://127.0.0.1:8001/synthesis?speaker=3'   -H 'Content-Type: application/json'   --data-binary @query.json   --output output.wav
-~~~
+Send the AudioQuery to `/synthesis`:
 
-The response is WAV data. The API does not save the WAV into the normal Voiceger Editor output directory and does not create TXT or LAB sidecars.
+```bash
+curl -s -X POST \
+  'http://127.0.0.1:8001/synthesis?speaker=3' \
+  -H 'Content-Type: application/json' \
+  --data-binary @query.json \
+  --output output.wav
+```
 
-## Edit pronunciation
+The response is WAV data.
 
-The JSON returned by /audio_query can be edited before /synthesis.
+The API does not save the WAV in the normal Voiceger Editor output directory.
 
-For Japanese, accent_phrases contains morae and the 1-based accent position. Changing an accent value changes the Japanese accent used for synthesis.
+TXT and LAB sidecars are not created by `/synthesis`.
 
-The /accent_phrases endpoint can also accept editable kana notation with is_kana=true. API kana notation uses / between accent phrases.
+## Edit the AudioQuery
+
+You can edit the JSON returned by `/audio_query` before synthesis.
+
+For Japanese pronunciation, `accent_phrases` contains morae and accent positions.
+
+Changing an accent value changes the selected accent position.
+
+## `/accent_phrases`
+
+Normal text:
+
+```bash
+curl -s -G -X POST \
+  'http://127.0.0.1:8001/accent_phrases' \
+  --data-urlencode 'text=今日は雨なのだ。' \
+  --data-urlencode 'speaker=3'
+```
+
+Editable kana notation can be used with `is_kana=true`:
+
+```bash
+curl -s -G -X POST \
+  'http://127.0.0.1:8001/accent_phrases' \
+  --data-urlencode "text=キョ'ーワ/ア'メナノダ。" \
+  --data-urlencode 'speaker=3' \
+  --data-urlencode 'is_kana=true'
+```
+
+API kana notation uses `/` between accent phrases.
 
 See [Pronunciation](pronunciation.md).
 
 ## AudioQuery controls
 
-Applied controls include:
+These fields are applied:
 
 | Field | Behavior |
 | --- | --- |
-| accent_phrases | Japanese pronunciation and accent |
-| speedScale | Voiceger speech speed |
-| outputSamplingRate | Output sample rate |
-| outputStereo | Mono or duplicated stereo |
+| `accent_phrases` | Japanese pronunciation and accent |
+| `speedScale` | Voiceger speech speed |
+| `outputSamplingRate` | Output sample rate |
+| `outputStereo` | Mono or duplicated stereo |
 
-These known VOICEVOX fields are accepted, but Voiceger currently has no matching control:
+These VOICEVOX fields are accepted, but Voiceger does not currently provide equivalent controls:
 
-~~~text
+```text
 pitchScale
 intonationScale
 volumeScale
@@ -127,55 +197,91 @@ prePhonemeLength
 postPhonemeLength
 pauseLength
 pauseLengthScale
-~~~
+```
 
-Non-default values are ignored with a warning instead of causing the whole request to fail.
+Non-default values are ignored with a warning instead of causing the complete request to fail.
 
 ## Voiceger Editor extensions
 
 An AudioQuery may contain:
 
-~~~text
+```text
 voicegerSegments
 pronunciationPunctuation
-~~~
+```
 
-voicegerSegments preserves mixed-language sections and English phonemes.
+`voicegerSegments` preserves language sections and English phonemes for mixed Japanese-English speech.
 
-pronunciationPunctuation preserves Japanese punctuation information.
+`pronunciationPunctuation` preserves Japanese punctuation information.
 
-Keep these fields when passing a query from /audio_query to /synthesis.
+If `/audio_query` returns these fields, keep them when sending the query to `/synthesis`.
 
-## Sampling
+## Sampling settings
 
-The HTTP API currently uses the Voiceger defaults:
+The HTTP API currently uses the Voiceger sampling defaults:
 
-~~~text
+```text
 Top K:       20
 Top P:       1.00
 Temperature: 1.00
-~~~
+```
 
-These are not currently AudioQuery fields.
+Top K, Top P, and Temperature are not currently AudioQuery fields.
 
-## Japanese dictionary
+See [Settings](settings.md).
 
-The API and TUI share the same Japanese dictionary. /import_user_dict accepts the UUID-keyed expanded VOICEVOX UserDictWord form.
+## Japanese user dictionary
 
-The separate English pronunciation dictionary is currently managed through the TUI.
+The HTTP API and TUI use the same persistent Japanese dictionary.
+
+List entries:
+
+```bash
+curl http://127.0.0.1:8001/user_dict
+```
+
+Add an entry:
+
+```bash
+curl -s -X POST \
+  'http://127.0.0.1:8001/user_dict_word' \
+  --data-urlencode 'surface=ずんだもん' \
+  --data-urlencode 'pronunciation=ズンダモン' \
+  --data-urlencode 'accent_type=3'
+```
+
+The default priority is `5`, with a supported range of `0–10`.
+
+The API also supports update, delete, and import operations.
+
+`/import_user_dict` accepts the UUID-keyed expanded VOICEVOX `UserDictWord` format.
+
+The HTTP dictionary API covers the Japanese dictionary.
+
+The English pronunciation dictionary is managed through the TUI.
 
 See [User Dictionary](dictionary.md).
 
 ## Errors
 
-Common status codes:
+Common responses:
 
 | Status | Meaning |
 | --- | --- |
-| 400 | Invalid pronunciation or query |
-| 403 | Terms acceptance is required |
-| 422 | Invalid style or request value |
-| 500 | Synthesis or dictionary operation failed |
-| 503 | Voiceger environment is not ready |
+| `400` | Invalid pronunciation or query |
+| `403` | Terms acceptance is required |
+| `422` | Invalid style or request value |
+| `500` | Synthesis or dictionary operation failed |
+| `503` | Voiceger environment is not ready |
 
-See [Compatibility](compatibility.md) for the supported boundary.
+Errors contain a `detail` field.
+
+## Compatibility
+
+VOICEVOX-style compatibility does not mean that synthesis is performed by VOICEVOX.
+
+The synthesis engine remains Voiceger.
+
+Programs that depend on unsupported VOICEVOX endpoints or exact VOICEVOX Engine behavior may require changes.
+
+See [Compatibility](compatibility.md).
