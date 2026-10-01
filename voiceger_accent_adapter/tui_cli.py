@@ -40,7 +40,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, help="settings file path")
     parser.add_argument("--output-dir", type=Path, help="override output directory")
     parser.add_argument("--take-count", type=int, help="override take count (1–100)")
-    parser.add_argument("--style", type=int, help="override reference style ID")
+    parser.add_argument("--style", type=int, help="override VOICEVOX Zundamon style ID")
     parser.add_argument("--speed", type=float, help="override speech speed")
     save_group = parser.add_mutually_exclusive_group()
     save_group.add_argument(

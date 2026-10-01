@@ -22,14 +22,14 @@ class VoicegerStyle:
 
 
 KNOWN_STYLES: Tuple[VoicegerStyle, ...] = (
-    VoicegerStyle(1, "Neutral", "01_ref_emoNormal026.wav"),
-    VoicegerStyle(2, "Sweet", "02_ref_emoAma026.wav"),
-    VoicegerStyle(3, "Snippy", "03_ref_emoTsun026.wav"),
-    VoicegerStyle(4, "Sexy", "04_ref_emoSexy026.wav"),
-    VoicegerStyle(5, "Whispering", "05_ref_emoSasa026.wav"),
-    VoicegerStyle(6, "Murmuring", "06_ref_emoMurmur026.wav"),
-    VoicegerStyle(7, "Exhausted", "07_ref_emoHero026.wav"),
-    VoicegerStyle(8, "Sobbing", "08_ref_emoSobbing026.wav"),
+    VoicegerStyle(3, "Neutral", "01_ref_emoNormal026.wav"),
+    VoicegerStyle(1, "Sweet", "02_ref_emoAma026.wav"),
+    VoicegerStyle(7, "Snippy", "03_ref_emoTsun026.wav"),
+    VoicegerStyle(5, "Sexy", "04_ref_emoSexy026.wav"),
+    VoicegerStyle(22, "Whispering", "05_ref_emoSasa026.wav"),
+    VoicegerStyle(38, "Murmuring", "06_ref_emoMurmur026.wav"),
+    VoicegerStyle(75, "Exhausted", "07_ref_emoHero026.wav"),
+    VoicegerStyle(76, "Sobbing", "08_ref_emoSobbing026.wav"),
 )
 
 

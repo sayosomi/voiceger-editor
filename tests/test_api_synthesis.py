@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 import struct
+from tempfile import TemporaryDirectory
 import unittest
 import warnings
 import wave
@@ -66,6 +67,7 @@ class FakeAdapter:
         import numpy as np
 
         self.voiceger_root = Path("/voiceger")
+        self.character_name = "ずんだもん"
         self.synthesize_audio = Mock(
             return_value={
                 "audio": np.array(
@@ -80,10 +82,57 @@ class FakeAdapter:
 
 
 class ApiSynthesisCompatibilityTests(unittest.TestCase):
+    def test_speakers_exposes_voicevox_ids_for_available_references(self):
+        adapter = FakeAdapter()
+        with TemporaryDirectory() as directory:
+            adapter.voiceger_root = Path(directory)
+            references = adapter.voiceger_root / "reference"
+            references.mkdir()
+            for filename in (
+                "01_ref_emoNormal026.wav",
+                "02_ref_emoAma026.wav",
+                "05_ref_emoSasa026.wav",
+            ):
+                (references / filename).write_bytes(b"")
+
+            with patch(
+                "voiceger_accent_adapter.api.get_adapter",
+                return_value=adapter,
+            ), TestClient(app) as client:
+                response = client.get("/speakers")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        styles = response.json()[0]["styles"]
+        self.assertEqual(
+            [(style["id"], style["name"]) for style in styles],
+            [(3, "Neutral"), (1, "Sweet"), (22, "Whispering")],
+        )
+
+    def test_unavailable_speaker_id_fails_clearly(self):
+        adapter = FakeAdapter()
+        with TemporaryDirectory() as directory:
+            adapter.voiceger_root = Path(directory)
+            references = adapter.voiceger_root / "reference"
+            references.mkdir()
+            (references / "01_ref_emoNormal026.wav").write_bytes(b"")
+
+            with patch(
+                "voiceger_accent_adapter.api.get_adapter",
+                return_value=adapter,
+            ), TestClient(app) as client:
+                response = client.post(
+                    "/audio_query",
+                    params={"text": "雨", "speaker": 2},
+                )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("unsupported speaker/style id 2", response.json()["detail"])
+        self.assertIn("available style ids: 3", response.json()["detail"])
+
     def test_synthesis_accepts_unsupported_controls_and_honors_wav_format(self):
         adapter = FakeAdapter()
         style = VoicegerStyle(
-            id=1,
+            id=3,
             name="Test",
             filename="reference.wav",
             prompt_text="style prompt",
@@ -101,7 +150,7 @@ class ApiSynthesisCompatibilityTests(unittest.TestCase):
             warnings.simplefilter("always")
             with TestClient(app) as client:
                 response = client.post(
-                    "/synthesis?speaker=1",
+                    "/synthesis?speaker=3",
                     json=_audio_query_payload(),
                 )
 
@@ -154,7 +203,7 @@ class ApiSynthesisCompatibilityTests(unittest.TestCase):
             "voiceger_accent_adapter.api.synthesize_audio_query",
         ) as synthesize_audio_query, TestClient(app) as client:
             response = client.post(
-                "/synthesis?speaker=1",
+                "/synthesis?speaker=3",
                 json=_audio_query_payload(),
             )
 

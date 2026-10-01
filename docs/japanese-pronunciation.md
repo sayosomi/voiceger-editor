@@ -59,7 +59,7 @@ The internal `accent` value is 1-based and matches the mora immediately before `
 VOICEVOX-style query creation:
 
 ```http
-POST /audio_query?text=今日は雨ですね。&speaker=1
+POST /audio_query?text=今日は雨ですね。&speaker=3
 ```
 
 For pure Japanese, the response contains the normal VOICEVOX-like fields:
@@ -95,13 +95,13 @@ For Japanese-English mixed input, `voicegerSegments` is additionally present to 
 Ordinary Japanese text:
 
 ```http
-POST /accent_phrases?text=今日は雨ですね。&speaker=1
+POST /accent_phrases?text=今日は雨ですね。&speaker=3
 ```
 
 Editable kana:
 
 ```http
-POST /accent_phrases?text=キョ'ーワ/アメデスネ'。&speaker=1&is_kana=true
+POST /accent_phrases?text=キョ'ーワ/アメデスネ'。&speaker=3&is_kana=true
 ```
 
 This provides the VOICEVOX-style path for converting AquesTalk-style notation back into structured accent phrases.
@@ -109,7 +109,7 @@ This provides the VOICEVOX-style path for converting AquesTalk-style notation ba
 ### POST /synthesis
 
 ```http
-POST /synthesis?speaker=1
+POST /synthesis?speaker=3
 Content-Type: application/json
 
 <AudioQuery JSON>
@@ -123,14 +123,14 @@ The adapter exposes Voiceger's numbered WAV files under the local `reference/` d
 
 | speaker | style | reference WAV |
 | ---: | --- | --- |
-| 1 | Neutral | `01_ref_emoNormal026.wav` |
-| 2 | Sweet | `02_ref_emoAma026.wav` |
-| 3 | Snippy | `03_ref_emoTsun026.wav` |
-| 4 | Sexy | `04_ref_emoSexy026.wav` |
-| 5 | Whispering | `05_ref_emoSasa026.wav` |
-| 6 | Murmuring | `06_ref_emoMurmur026.wav` |
-| 7 | Exhausted | `07_ref_emoHero026.wav` |
-| 8 | Sobbing | `08_ref_emoSobbing026.wav` |
+| 3 | Neutral | `01_ref_emoNormal026.wav` |
+| 1 | Sweet | `02_ref_emoAma026.wav` |
+| 7 | Snippy | `03_ref_emoTsun026.wav` |
+| 5 | Sexy | `04_ref_emoSexy026.wav` |
+| 22 | Whispering | `05_ref_emoSasa026.wav` |
+| 38 | Murmuring | `06_ref_emoMurmur026.wav` |
+| 75 | Exhausted | `07_ref_emoHero026.wav` |
+| 76 | Sobbing | `08_ref_emoSobbing026.wav` |
 
 Only locally existing WAVs are advertised by `GET /speakers`.
 
@@ -320,7 +320,7 @@ Initial v1 scope:
 - Japanese-English mixed talk synthesis.
 - One utterance per request; embedded newlines are rejected.
 - `speaker` is a VOICEVOX-style style ID selecting a local Voiceger reference WAV.
-- Known preset styles are Neutral, Sweet, Snippy, Sexy, Whispering, Murmuring, Exhausted, and Sobbing (IDs 1–8 when the corresponding WAV files exist).
+- Known preset styles use the VOICEVOX Zundamon IDs: Neutral 3, Sweet 1, Snippy 7, Sexy 5, Whispering 22, Murmuring 38, Exhausted 75, and Sobbing 76 when the corresponding WAV files exist.
 - Editable Japanese kana accepts hiragana and katakana.
 - Adapter integration should be tested against known Voiceger revisions because it relies on upstream runtime internals.
 

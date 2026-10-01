@@ -158,19 +158,19 @@ class UtteranceSessionTests(unittest.TestCase):
         FakeTakeBatch.instances = []
         self.adapter = FakeAdapter()
         self.style = VoicegerStyle(
-            id=1,
+            id=3,
             name="Neutral",
             filename="01.wav",
         )
         self.other_style = VoicegerStyle(
-            id=2,
+            id=1,
             name="Sweet",
             filename="02.wav",
         )
         self.settings = Settings(
             output_dir=Path("/output"),
             take_count=3,
-            style_id=1,
+            style_id=3,
             speed=1.25,
             save_text=True,
         )
@@ -445,7 +445,7 @@ class UtteranceSessionTests(unittest.TestCase):
         self.assertFalse(session.utterance_manually_edited)
         session.replace_caption("new caption")
         self.assertFalse(session.utterance_manually_edited)
-        replacement_settings = Settings(style_id=2, speed=0.9)
+        replacement_settings = Settings(style_id=1, speed=0.9)
 
         with patch(
             "voiceger_accent_adapter.session.get_style",
@@ -587,7 +587,7 @@ class UtteranceSessionTests(unittest.TestCase):
         replacement_settings = Settings(
             output_dir=Path("/new-output"),
             take_count=2,
-            style_id=2,
+            style_id=1,
             speed=0.9,
             save_text=False,
         )
@@ -611,7 +611,7 @@ class UtteranceSessionTests(unittest.TestCase):
 
     def test_synthesis_setting_changes_each_invalidate_the_active_batch(self):
         changes = (
-            ({"style_id": 2}, self.other_style),
+            ({"style_id": 1}, self.other_style),
             ({"speed": 0.9}, self.style),
             ({"top_k": 37}, self.style),
             ({"top_p": 0.45}, self.style),
@@ -670,7 +670,7 @@ class UtteranceSessionTests(unittest.TestCase):
         old_style = session.style
         old_query = session.query
         old_candidates = session.candidates
-        replacement_settings = Settings(style_id=2, speed=1.8)
+        replacement_settings = Settings(style_id=1, speed=1.8)
 
         with patch(
             "voiceger_accent_adapter.session.get_style",
