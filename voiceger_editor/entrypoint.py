@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import curses
 import sys
 from typing import Sequence
 import webbrowser
@@ -26,6 +25,14 @@ from .voiceger_environment import (
     check_voiceger_environment,
     format_voiceger_environment_report,
 )
+
+
+def _load_curses():
+    """Load the optional terminal backend at the point TUI startup begins."""
+
+    import curses
+
+    return curses
 
 
 def _open_official_terms() -> bool:
@@ -189,8 +196,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         output_dir=settings.output_dir,
     )
 
-    # Import after the environment preflight so --check and setup failures do not
-    # require the full terminal composition root.
+    # Load curses after preflight and setup so management actions and setup
+    # failures do not require the optional terminal backend.
+    try:
+        curses = _load_curses()
+    except ModuleNotFoundError as exc:
+        if exc.name != "curses":
+            raise
+        print(
+            "The terminal UI requires the TUI extra. Install it with: "
+            "python -m pip install 'voiceger-editor[tui]'",
+            file=sys.stderr,
+        )
+        return 2
+
+    # Import curses before TuiApp because voiceger_editor.tui imports curses.
     from .tui import TuiApp
 
     app = TuiApp(
