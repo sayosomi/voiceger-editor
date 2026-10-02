@@ -128,6 +128,12 @@ See [HTTP API](docs/en/api.md).
 
 See [User Documentation](docs/en/README.md) for the full index.
 
+## Development
+
+All production code in this repository is written by AI coding agents.
+
+The human role focuses on product decisions, supervision, and final UI/UX judgment.
+
 ## Generated Audio and License
 
 Voiceger Editor is an unofficial project. It is not made, approved, or supported by the Voiceger project or the Tohoku Zunko / Zundamon Project.
