@@ -212,12 +212,12 @@ class VoicegerEnvironmentFrontendTests(unittest.TestCase):
             "voiceger_editor.entrypoint.check_voiceger_environment",
             return_value=failed,
         ), patch(
-            "voiceger_editor.entrypoint.curses.wrapper"
-        ) as wrapper, redirect_stderr(error):
+            "voiceger_editor.entrypoint._load_curses"
+        ) as load_curses, redirect_stderr(error):
             result = main([])
 
         self.assertEqual(result, 2)
-        wrapper.assert_not_called()
+        load_curses.assert_not_called()
         self.assertIn("Voiceger setup is not ready.", error.getvalue())
         self.assertIn(VOICEGER_REPOSITORY_URL, error.getvalue())
 

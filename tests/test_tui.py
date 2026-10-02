@@ -2741,7 +2741,7 @@ class TuiTests(unittest.TestCase):
         ), patch(
             "voiceger_editor.entrypoint.VoicegerAdapter",
         ), patch(
-            "voiceger_editor.entrypoint.curses.wrapper",
+            "curses.wrapper",
         ):
             self.assertEqual(main([]), 0)
 
@@ -2792,7 +2792,7 @@ class TuiTests(unittest.TestCase):
             "voiceger_editor.entrypoint.VoicegerAdapter",
             side_effect=lambda **_kwargs: order.append("adapter") or Mock(),
         ), patch(
-            "voiceger_editor.entrypoint.curses.wrapper",
+            "curses.wrapper",
             side_effect=lambda _run: order.append("tui"),
         ), redirect_stdout(io.StringIO()) as stdout:
             result = main([])
@@ -2844,7 +2844,7 @@ class TuiTests(unittest.TestCase):
                 ) as record_acceptance, patch(
                     "voiceger_editor.entrypoint.VoicegerAdapter",
                 ) as adapter, patch(
-                    "voiceger_editor.entrypoint.curses.wrapper",
+                    "curses.wrapper",
                 ) as wrapper, redirect_stdout(io.StringIO()) as stdout:
                     self.assertEqual(main([]), 2)
 
@@ -2890,7 +2890,7 @@ class TuiTests(unittest.TestCase):
         ) as record_acceptance, patch(
             "voiceger_editor.entrypoint.VoicegerAdapter",
         ) as adapter, patch(
-            "voiceger_editor.entrypoint.curses.wrapper",
+            "curses.wrapper",
         ) as wrapper, redirect_stderr(io.StringIO()):
             self.assertEqual(main([]), 2)
 
@@ -2932,7 +2932,7 @@ class TuiTests(unittest.TestCase):
         ) as record_acceptance, patch(
             "voiceger_editor.entrypoint.VoicegerAdapter",
         ) as adapter, patch(
-            "voiceger_editor.entrypoint.curses.wrapper",
+            "curses.wrapper",
         ) as wrapper:
             self.assertEqual(main([]), 2)
 
@@ -2965,7 +2965,7 @@ class TuiTests(unittest.TestCase):
         ), patch(
             "voiceger_editor.entrypoint.VoicegerAdapter",
         ), patch(
-            "voiceger_editor.entrypoint.curses.wrapper",
+            "curses.wrapper",
         ):
             self.assertEqual(main([]), 0)
 
@@ -2998,7 +2998,7 @@ class TuiTests(unittest.TestCase):
         ) as prompt, patch(
             "voiceger_editor.entrypoint.VoicegerAdapter",
         ) as adapter, patch(
-            "voiceger_editor.entrypoint.curses.wrapper",
+            "curses.wrapper",
         ) as wrapper, redirect_stderr(io.StringIO()) as stderr:
             self.assertEqual(main([]), 2)
 
@@ -3081,7 +3081,7 @@ class TuiTests(unittest.TestCase):
         ), patch(
             "voiceger_editor.entrypoint.VoicegerAdapter",
         ) as adapter, patch(
-            "voiceger_editor.entrypoint.curses.wrapper",
+            "curses.wrapper",
         ) as wrapper, redirect_stderr(io.StringIO()) as stderr:
             self.assertEqual(main([]), 2)
 

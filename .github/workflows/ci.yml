@@ -36,6 +36,76 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
 
+  windows-startup:
+    name: Windows Python 3.9 startup boundary
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.9"
+
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m build --wheel
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install base package and smoke management commands
+        run: |
+          $wheels = @(Get-ChildItem "dist\*.whl")
+          if ($wheels.Count -ne 1) { throw "Expected one wheel, found $($wheels.Count)" }
+          $wheel = $wheels[0].FullName
+          python -m venv .ci-smoke-base
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $basePython = (Resolve-Path ".ci-smoke-base\Scripts\python.exe").Path
+          & $basePython -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $basePython -m pip install $wheel
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $baseCli = (Resolve-Path ".ci-smoke-base\Scripts\voiceger-editor.exe").Path
+          Push-Location $env:RUNNER_TEMP
+          & $baseCli --help
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $baseCli --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
+      - name: Install TUI extra, verify curses and run entrypoint tests
+        run: |
+          $wheels = @(Get-ChildItem "dist\*.whl")
+          if ($wheels.Count -ne 1) { throw "Expected one wheel, found $($wheels.Count)" }
+          $wheelUri = ([System.Uri]::new($wheels[0].FullName)).AbsoluteUri
+          $tuiRequirement = "voiceger-editor[tui] @ $wheelUri"
+          python -m venv .ci-smoke-tui
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tuiPython = (Resolve-Path ".ci-smoke-tui\Scripts\python.exe").Path
+          & $tuiPython -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $tuiPython -m pip install $tuiRequirement
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $tuiPython -c "import curses; import voiceger_editor.tui"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tuiCli = (Resolve-Path ".ci-smoke-tui\Scripts\voiceger-editor.exe").Path
+          Push-Location $env:RUNNER_TEMP
+          & $tuiCli --help
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $tuiCli --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+          Push-Location $env:GITHUB_WORKSPACE
+          & $tuiPython -m unittest tests.test_entrypoint -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
   package:
     name: Build and clean-install smoke test
     runs-on: ubuntu-latest
