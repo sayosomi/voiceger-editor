@@ -186,6 +186,40 @@ class SettingsTests(unittest.TestCase):
                     with self.assertRaisesRegex(SettingsError, message):
                         load_settings(config_path)
 
+    def test_config_path_uses_windows_appdata_and_ignores_xdg(self):
+        with patch("voiceger_editor.settings.sys.platform", "win32"), patch.dict(
+            os.environ,
+            {
+                "APPDATA": "C:/Users/example/AppData/Roaming",
+                "XDG_CONFIG_HOME": "/tmp/xdg",
+            },
+            clear=True,
+        ):
+            self.assertEqual(
+                default_config_path(),
+                Path("C:/Users/example/AppData/Roaming")
+                / "voiceger-editor"
+                / "config.json",
+            )
+
+    def test_config_path_windows_falls_back_to_userprofile(self):
+        with patch("voiceger_editor.settings.sys.platform", "win32"), patch.dict(
+            os.environ,
+            {
+                "USERPROFILE": "C:/Users/example",
+                "XDG_CONFIG_HOME": "/tmp/xdg",
+            },
+            clear=True,
+        ):
+            self.assertEqual(
+                default_config_path(),
+                Path("C:/Users/example")
+                / "AppData"
+                / "Roaming"
+                / "voiceger-editor"
+                / "config.json",
+            )
+
     def test_config_path_uses_macos_application_support(self):
         home = Path("/home/example")
         with patch("voiceger_editor.settings.Path.home", return_value=home), patch(

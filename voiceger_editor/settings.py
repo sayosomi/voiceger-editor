@@ -124,10 +124,21 @@ class Settings:
             raise SettingsError("save_lab must be a boolean")
 
 
+def _windows_config_home() -> Path:
+    configured = os.environ.get("APPDATA")
+    if configured:
+        return Path(configured).expanduser()
+    user_profile = os.environ.get("USERPROFILE")
+    home = Path(user_profile).expanduser() if user_profile else Path.home()
+    return home / "AppData" / "Roaming"
+
+
 def default_config_path() -> Path:
     """Return the platform-appropriate path for the user settings file."""
 
-    if sys.platform == "darwin":
+    if sys.platform == "win32":
+        config_home = _windows_config_home()
+    elif sys.platform == "darwin":
         config_home = Path.home() / "Library" / "Application Support"
     else:
         xdg_config_home = os.environ.get("XDG_CONFIG_HOME")

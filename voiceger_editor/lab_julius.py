@@ -257,6 +257,15 @@ def _default_cache_dir() -> Path:
     override = os.environ.get("VOICEGER_LAB_CACHE_DIR")
     if override:
         return Path(override).expanduser()
+    if sys.platform == "win32":
+        configured = os.environ.get("LOCALAPPDATA")
+        if configured:
+            root = Path(configured).expanduser()
+        else:
+            user_profile = os.environ.get("USERPROFILE")
+            home = Path(user_profile).expanduser() if user_profile else Path.home()
+            root = home / "AppData" / "Local"
+        return root / "voiceger-editor" / "lab"
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Caches" / "voiceger-editor" / "lab"
     xdg_cache = os.environ.get("XDG_CACHE_HOME")
