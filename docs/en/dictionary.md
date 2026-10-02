@@ -158,17 +158,31 @@ English:
 english_user_dict.json
 ```
 
-On macOS, the default directory is:
+On Windows, the default directory is:
+
+```text
+%APPDATA%\voiceger-editor\
+```
+
+If `APPDATA` is unavailable, the fallback is under:
+
+```text
+%USERPROFILE%\AppData\Roaming\voiceger-editor\
+```
+
+On macOS:
 
 ```text
 ~/Library/Application Support/voiceger-editor/
 ```
 
-On systems using XDG configuration directories, it is normally:
+On Linux and other XDG-style systems, the default is normally:
 
 ```text
 ~/.config/voiceger-editor/
 ```
+
+If `XDG_CONFIG_HOME` is set on those systems, Voiceger Editor uses it instead.
 
 These are Voiceger Editor files. They are not files inside the Voiceger repository.
 

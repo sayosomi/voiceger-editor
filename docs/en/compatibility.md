@@ -34,6 +34,24 @@ Python 3.9
 
 It is intended to run inside Voiceger's Python environment.
 
+## Windows
+
+The v1 package and TUI startup boundary are automatically verified on GitHub-hosted Windows with Python 3.9.
+
+The Windows CI verifies:
+
+- building and installing the package;
+- `--help` and `--version` without the TUI extra;
+- installing the TUI extra and its Windows curses backend;
+- importing `curses` and the Voiceger Editor TUI;
+- focused entrypoint tests.
+
+TUI playback on Windows requires `ffplay.exe` in `PATH`.
+
+This automated verification does not run a real Voiceger synthesis, an interactive keyboard TUI session, or LAB alignment on Windows.
+
+LAB output is not part of the verified v1 Windows support boundary. See [LAB Output](lab-output.md).
+
 ## Supported speech scope
 
 The documented v1 scope is:
@@ -166,11 +184,13 @@ The English pronunciation dictionary is a Voiceger Editor feature and is separat
 
 ## LAB output
 
-Optional LAB output supports the Voiceger Editor Japanese, English, and Japanese-English alignment workflows.
+On the platforms where the LAB dependencies are available and verified, optional LAB output supports the Voiceger Editor Japanese, English, and Japanese-English alignment workflows.
 
 Japanese alignment uses Julius.
 
 English alignment uses PocketSphinx 5.1.1.
+
+Windows LAB is not verified for v1.
 
 LAB sidecars belong to the accepted-Take workflow. They are not returned by the HTTP `/synthesis` endpoint.
 

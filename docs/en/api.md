@@ -34,11 +34,10 @@ voiceger-editor --accept-voiceger-terms
 
 ## Start
 
-```bash
-python -m uvicorn \
-  voiceger_editor.api:app \
-  --host 127.0.0.1 \
-  --port 8001
+This command works in both POSIX shells and Windows PowerShell:
+
+```text
+python -m uvicorn voiceger_editor.api:app --host 127.0.0.1 --port 8001
 ```
 
 The examples below use:
@@ -52,6 +51,8 @@ FastAPI documentation is available at:
 ```text
 http://127.0.0.1:8001/docs
 ```
+
+The multiline `curl` examples below use a POSIX shell. In Windows PowerShell, use `curl.exe` to call the curl executable directly. Key PowerShell equivalents are shown below.
 
 ## Endpoints
 
@@ -119,6 +120,12 @@ curl -s -G -X POST \
 
 `speaker=3` selects Neutral.
 
+Windows PowerShell:
+
+```powershell
+curl.exe -s -G -X POST "http://127.0.0.1:8001/audio_query" --data-urlencode "text=今日は雨なのだ。" --data-urlencode "speaker=3" --output query.json
+```
+
 Japanese-English mixed text can be used in the same request:
 
 ```text
@@ -135,6 +142,12 @@ curl -s -X POST \
   -H 'Content-Type: application/json' \
   --data-binary @query.json \
   --output output.wav
+```
+
+Windows PowerShell:
+
+```powershell
+curl.exe -s -X POST "http://127.0.0.1:8001/synthesis?speaker=3" -H "Content-Type: application/json" --data-binary "@query.json" --output output.wav
 ```
 
 The response is WAV data.

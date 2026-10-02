@@ -25,11 +25,20 @@ Voiceger itself is not included or modified.
 
 ## Quick Start
 
-Install Voiceger separately and set its path:
+Install Voiceger separately and set its path.
+
+On macOS or Linux:
 
 ```bash
 export VOICEGER_ROOT="$HOME/voiceger_v2"
 source "$VOICEGER_ROOT/.venv/bin/activate"
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:VOICEGER_ROOT = "$HOME\voiceger_v2"
+& "$env:VOICEGER_ROOT\.venv\Scripts\Activate.ps1"
 ```
 
 Voiceger Editor v1 is tested with Voiceger revision:
@@ -40,9 +49,11 @@ f77c1172baf1f490bb962f2d2acd01c852ef3464
 
 Install Voiceger Editor from PyPI:
 
-```bash
-python -m pip install 'voiceger-editor[tui]'
+```text
+python -m pip install "voiceger-editor[tui]"
 ```
+
+On Windows, TUI playback requires `ffplay.exe` in `PATH`. Use an FFmpeg build that includes `ffplay.exe`.
 
 Check the installation:
 
@@ -94,11 +105,8 @@ python -m pip install 'voiceger-editor[api]'
 
 Start it with:
 
-```bash
-python -m uvicorn \
-  voiceger_editor.api:app \
-  --host 127.0.0.1 \
-  --port 8001
+```text
+python -m uvicorn voiceger_editor.api:app --host 127.0.0.1 --port 8001
 ```
 
 The API provides a VOICEVOX-style workflow:
