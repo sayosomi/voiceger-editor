@@ -24,11 +24,11 @@ The first Japanese LAB operation may therefore require network access.
 
 ### Windows status
 
-LAB output is not part of the verified Voiceger Editor v1 Windows support boundary.
+LAB output is not part of the verified Voiceger Editor 0.1 Windows support boundary.
 
-Voiceger Editor v1 requires Python 3.9. The PocketSphinx 5.1.1 release used for English LAB does not currently provide a CPython 3.9 Windows wheel on PyPI. Installing the `lab` extra can therefore require building PocketSphinx from source on Windows, and that build path has not been verified by this project.
+Voiceger Editor 0.1 requires Python 3.9. The PocketSphinx 5.1.1 release used for English LAB does not currently provide a CPython 3.9 Windows wheel on PyPI. Installing the `lab` extra can therefore require building PocketSphinx from source on Windows, and that build path has not been verified by this project.
 
-Japanese LAB also has not been manually verified with Julius on Windows for v1. Julius supports Windows builds, but Voiceger Editor does not claim the Windows Japanese alignment workflow as verified.
+Japanese LAB also has not been manually verified with Julius on Windows for 0.1. Julius supports Windows builds, but Voiceger Editor does not claim the Windows Japanese alignment workflow as verified.
 
 The core TUI and HTTP API do not require the `lab` extra.
 
@@ -238,7 +238,7 @@ You can also override the cache directory:
 $env:VOICEGER_LAB_CACHE_DIR = "C:\path\to\voiceger-lab-cache"
 ```
 
-These overrides configure discovery and storage. They do not make the Windows LAB workflow part of the verified v1 support boundary.
+These overrides configure discovery and storage. They do not make the Windows LAB workflow part of the verified 0.1 support boundary.
 
 ## HTTP API
 
