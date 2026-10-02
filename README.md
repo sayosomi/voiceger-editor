@@ -41,7 +41,7 @@ $env:VOICEGER_ROOT = "$HOME\voiceger_v2"
 & "$env:VOICEGER_ROOT\.venv\Scripts\Activate.ps1"
 ```
 
-Voiceger Editor v1 is tested with Voiceger revision:
+Voiceger Editor 0.1 is tested with Voiceger revision:
 
 ```text
 f77c1172baf1f490bb962f2d2acd01c852ef3464
@@ -88,10 +88,12 @@ Caption
 → accept one Take
 ```
 
-The supported v1 speech scope is:
+The supported 0.1 speech scope is:
 
 - Japanese;
 - Japanese with English sections.
+
+0.1.0 is the initial public release. Interfaces may still change before 1.0.
 
 See [Compatibility](docs/en/compatibility.md) for details.
 

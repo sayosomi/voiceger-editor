@@ -1,12 +1,18 @@
 # Compatibility
 
-This page describes the supported Voiceger Editor v1 compatibility scope.
+This page describes the supported Voiceger Editor 0.1 compatibility scope.
 
 Something outside this scope may still work, but it is not guaranteed.
 
+## Version stability
+
+0.1.0 is the initial public release.
+
+Before 1.0, user-facing interfaces may still change as the project gains real-world usage. This includes TUI behavior, settings and dictionary formats, and Voiceger Editor API extensions. Breaking changes will be documented in release notes.
+
 ## Voiceger
 
-Voiceger Editor v1 is tested with:
+Voiceger Editor 0.1 is tested with:
 
 ```text
 f77c1172baf1f490bb962f2d2acd01c852ef3464
@@ -26,7 +32,7 @@ A different revision normally produces a warning rather than an automatic failur
 
 ## Python
 
-Voiceger Editor v1 supports:
+Voiceger Editor 0.1 supports:
 
 ```text
 Python 3.9
@@ -36,7 +42,7 @@ It is intended to run inside Voiceger's Python environment.
 
 ## Windows
 
-The v1 package and TUI startup boundary are automatically verified on GitHub-hosted Windows with Python 3.9.
+The 0.1 package and TUI startup boundary are automatically verified on GitHub-hosted Windows with Python 3.9.
 
 The Windows CI verifies:
 
@@ -50,11 +56,11 @@ TUI playback on Windows requires `ffplay.exe` in `PATH`.
 
 This automated verification does not run a real Voiceger synthesis, an interactive keyboard TUI session, or LAB alignment on Windows.
 
-LAB output is not part of the verified v1 Windows support boundary. See [LAB Output](lab-output.md).
+LAB output is not part of the verified 0.1 Windows support boundary. See [LAB Output](lab-output.md).
 
 ## Supported speech scope
 
-The documented v1 scope is:
+The documented 0.1 scope is:
 
 - Japanese;
 - Japanese with English sections.
@@ -91,7 +97,7 @@ Example:
 
 ### Other languages
 
-Other Voiceger language modes are not part of the Voiceger Editor v1 compatibility guarantee.
+Other Voiceger language modes are not part of the Voiceger Editor 0.1 compatibility guarantee.
 
 ## Styles
 
@@ -190,7 +196,7 @@ Japanese alignment uses Julius.
 
 English alignment uses PocketSphinx 5.1.1.
 
-Windows LAB is not verified for v1.
+Windows LAB is not verified for 0.1.
 
 LAB sidecars belong to the accepted-Take workflow. They are not returned by the HTTP `/synthesis` endpoint.
 
@@ -222,7 +228,7 @@ The HTTP `/synthesis` endpoint returns WAV data directly and does not use this n
 
 ## Application identity
 
-The v1 public names are:
+The 0.1 public names are:
 
 ```text
 Product:        Voiceger Editor

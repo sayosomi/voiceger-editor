@@ -43,7 +43,7 @@ def _ensure_single_utterance(text: str) -> str:
         raise ValueError("text must not be empty")
     if "\n" in text or "\r" in text:
         raise ValueError(
-            "v1 supports one utterance per request; newlines are not supported"
+            "0.1 supports one utterance per request; newlines are not supported"
         )
     return text.strip()
 

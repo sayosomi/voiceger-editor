@@ -16,14 +16,14 @@ The public API intentionally follows the VOICEVOX workflow:
 
 The older experimental `/pronunciation` and `/tts` APIs are not retained.
 
-### v1 language scope
+### 0.1 language scope
 
-The documented and validated v1 language scope is:
+The documented and validated 0.1 language scope is:
 
 - Japanese
 - Japanese + English mixed text
 
-Other multilingual combinations are not part of the v1 compatibility guarantee.
+Other multilingual combinations are not part of the 0.1 compatibility guarantee.
 
 ## 2. Pronunciation notation
 
@@ -289,7 +289,7 @@ Automatic segmentation uses Voiceger's bundled LangSegment.
 
 The Japanese-English mixed path has been validated locally end to end.
 
-Other language combinations are intentionally outside the documented v1 scope. The implementation may expose underlying Voiceger multilingual behavior, but it is not currently guaranteed or treated as a compatibility target.
+Other language combinations are intentionally outside the documented 0.1 scope. The implementation may expose underlying Voiceger multilingual behavior, but it is not currently guaranteed or treated as a compatibility target.
 
 ## 9. AudioQuery support
 
@@ -314,7 +314,7 @@ Changing an unsupported field returns an error rather than silently ignoring it.
 
 ## 10. Compatibility scope
 
-Initial v1 scope:
+Initial 0.1 scope:
 
 - Japanese talk synthesis.
 - Japanese-English mixed talk synthesis.
@@ -324,7 +324,7 @@ Initial v1 scope:
 - Editable Japanese kana accepts hiragana and katakana.
 - Adapter integration should be tested against known Voiceger revisions because it relies on upstream runtime internals.
 
-Not guaranteed in v1:
+Not guaranteed in 0.1:
 
 - Chinese/Japanese mixed automatic classification.
 - Korean or other multilingual combinations.
