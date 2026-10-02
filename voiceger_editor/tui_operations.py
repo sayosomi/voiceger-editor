@@ -490,11 +490,7 @@ class TuiOperations:
             if command is None:
                 if preview_temporary_directory is not None:
                     preview_temporary_directory.cleanup()
-                return (
-                    UpdateStatusEffect(
-                        "Error: Playback needs afplay (macOS) or ffplay (other systems)."
-                    ),
-                )
+                return (UpdateStatusEffect(self._missing_player_status()),)
             self.playback_process = self._popen(
                 command,
                 stdin=subprocess.DEVNULL,
@@ -509,6 +505,15 @@ class TuiOperations:
             if preview_temporary_directory is not None:
                 preview_temporary_directory.cleanup()
             return (UpdateStatusEffect(f"Error: {error_prefix}: {exc}"),)
+
+    def _missing_player_status(self) -> str:
+        if self._platform() == "win32":
+            return (
+                "Error: Playback on Windows requires ffplay.exe in PATH. "
+                "Install an FFmpeg build that includes ffplay.exe and add its bin "
+                "directory to PATH."
+            )
+        return "Error: Playback needs afplay (macOS) or ffplay (other systems)."
 
     def _player_command(self, wav_path: Path) -> list[str] | None:
         if self._platform() == "darwin":

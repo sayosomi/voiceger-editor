@@ -722,6 +722,24 @@ class TuiOperationsTests(unittest.TestCase):
                     ]
                 )
 
+    def test_windows_uses_ffplay_executable(self):
+        player = r"C:\ffmpeg\bin\ffplay.exe"
+        with patch("voiceger_editor.tui_operations.sys.platform", "win32"):
+            with patch(
+                "voiceger_editor.tui_operations.shutil.which",
+                return_value=player,
+            ):
+                self.assert_playback_command(
+                    [
+                        player,
+                        "-nodisp",
+                        "-autoexit",
+                        "-loglevel",
+                        "error",
+                        "/tmp/take-3.wav",
+                    ]
+                )
+
     def test_preview_playback_temp_wav_is_replaced_stopped_and_keeps_take_selection(self):
         first_process = Mock()
         first_process.poll.return_value = None
@@ -764,6 +782,19 @@ class TuiOperationsTests(unittest.TestCase):
         operations.stop_playback()
 
     def test_missing_player_and_playback_oserror_preserve_status_text(self):
+        with patch("voiceger_editor.tui_operations.sys.platform", "win32"):
+            with patch("voiceger_editor.tui_operations.shutil.which", return_value=None):
+                self.assertEqual(
+                    self.operations.play_take(self.playback_session(), 3),
+                    (
+                        UpdateStatusEffect(
+                            "Error: Playback on Windows requires ffplay.exe in PATH. "
+                            "Install an FFmpeg build that includes ffplay.exe and add its "
+                            "bin directory to PATH."
+                        ),
+                    ),
+                )
+
         with patch("voiceger_editor.tui_operations.sys.platform", "linux"):
             with patch("voiceger_editor.tui_operations.shutil.which", return_value=None):
                 self.assertEqual(
