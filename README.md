@@ -99,8 +99,8 @@ See [Compatibility](docs/en/compatibility.md) for details.
 
 Install API support:
 
-```bash
-python -m pip install 'voiceger-editor[api]'
+```text
+python -m pip install "voiceger-editor[api]"
 ```
 
 Start it with:

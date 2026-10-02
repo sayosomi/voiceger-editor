@@ -20,8 +20,8 @@ It is not a complete replacement for VOICEVOX Engine.
 
 Install API support from PyPI:
 
-```bash
-python -m pip install 'voiceger-editor[api]'
+```text
+python -m pip install "voiceger-editor[api]"
 ```
 
 Voiceger must already be installed and `VOICEGER_ROOT` must point to it.

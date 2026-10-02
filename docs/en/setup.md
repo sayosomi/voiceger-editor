@@ -102,28 +102,28 @@ voiceger-editor 1.0.0
 
 Install the API extra with:
 
-```bash
-python -m pip install 'voiceger-editor[api]'
+```text
+python -m pip install "voiceger-editor[api]"
 ```
 
 Or install both TUI and API support:
 
-```bash
-python -m pip install 'voiceger-editor[tui,api]'
+```text
+python -m pip install "voiceger-editor[tui,api]"
 ```
 
 ### LAB support
 
 Install LAB support with:
 
-```bash
-python -m pip install 'voiceger-editor[tui,lab]'
+```text
+python -m pip install "voiceger-editor[tui,lab]"
 ```
 
 To install all optional Python features:
 
-```bash
-python -m pip install 'voiceger-editor[tui,api,lab]'
+```text
+python -m pip install "voiceger-editor[tui,api,lab]"
 ```
 
 Japanese LAB output also requires Julius.
@@ -331,8 +331,8 @@ See [HTTP API](api.md).
 
 Upgrade the published package with:
 
-```bash
-python -m pip install --upgrade 'voiceger-editor[tui]'
+```text
+python -m pip install --upgrade "voiceger-editor[tui]"
 ```
 
 Include any extras you use.
