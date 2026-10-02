@@ -222,18 +222,36 @@ Select `Apply and save` afterward to persist the reset values.
 
 ## Settings file
 
+On Windows:
+
+```text
+%APPDATA%\voiceger-editor\config.json
+```
+
+If `APPDATA` is unavailable, Voiceger Editor falls back to:
+
+```text
+%USERPROFILE%\AppData\Roaming\voiceger-editor\config.json
+```
+
 On macOS:
 
 ```text
 ~/Library/Application Support/voiceger-editor/config.json
 ```
 
-If `XDG_CONFIG_HOME` is set, Voiceger Editor uses it.
-
-Otherwise, non-macOS systems normally use:
+On Linux and other XDG-style systems, `XDG_CONFIG_HOME` is used when set. Otherwise:
 
 ```text
 ~/.config/voiceger-editor/config.json
+```
+
+The Japanese dictionary, English dictionary, and Voiceger terms acceptance record are stored beside this file:
+
+```text
+user_dict.json
+english_user_dict.json
+voiceger-terms-acceptance.json
 ```
 
 Example:
@@ -258,11 +276,8 @@ Some settings can be overridden for one invocation.
 
 Example:
 
-```bash
-voiceger-editor \
-  --take-count 8 \
-  --style 1 \
-  --speed 0.95
+```text
+voiceger-editor --take-count 8 --style 1 --speed 0.95
 ```
 
 Available overrides include:

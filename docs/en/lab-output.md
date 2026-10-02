@@ -22,6 +22,16 @@ The Japanese acoustic model is a pinned external runtime asset. Voiceger Editor 
 
 The first Japanese LAB operation may therefore require network access.
 
+### Windows status
+
+LAB output is not part of the verified Voiceger Editor v1 Windows support boundary.
+
+Voiceger Editor v1 requires Python 3.9. The PocketSphinx 5.1.1 release used for English LAB does not currently provide a CPython 3.9 Windows wheel on PyPI. Installing the `lab` extra can therefore require building PocketSphinx from source on Windows, and that build path has not been verified by this project.
+
+Japanese LAB also has not been manually verified with Julius on Windows for v1. Julius supports Windows builds, but Voiceger Editor does not claim the Windows Japanese alignment workflow as verified.
+
+The core TUI and HTTP API do not require the `lab` extra.
+
 ## Enable LAB output
 
 Open Settings and set:
@@ -186,15 +196,27 @@ Possible causes include:
 
 LAB failure does not discard the accepted Take.
 
-## Cache
+## Cache and Julius overrides
 
-On macOS, the default Japanese LAB cache is:
+On Windows, the default Japanese LAB cache is:
+
+```text
+%LOCALAPPDATA%\voiceger-editor\lab
+```
+
+If `LOCALAPPDATA` is unavailable, Voiceger Editor falls back under:
+
+```text
+%USERPROFILE%\AppData\Local\voiceger-editor\lab
+```
+
+On macOS:
 
 ```text
 ~/Library/Caches/voiceger-editor/lab
 ```
 
-On other platforms, the normal XDG cache location is used.
+On Linux and other XDG-style systems, `XDG_CACHE_HOME` is used when set. Otherwise the cache is under `~/.cache/voiceger-editor/lab`.
 
 Advanced overrides include:
 
@@ -203,6 +225,20 @@ VOICEGER_LAB_CACHE_DIR
 VOICEGER_JULIUS
 VOICEGER_JULIUS_HMM
 ```
+
+For example, if you already have a working Julius executable on Windows PowerShell:
+
+```powershell
+$env:VOICEGER_JULIUS = "C:\path\to\julius.exe"
+```
+
+You can also override the cache directory:
+
+```powershell
+$env:VOICEGER_LAB_CACHE_DIR = "C:\path\to\voiceger-lab-cache"
+```
+
+These overrides configure discovery and storage. They do not make the Windows LAB workflow part of the verified v1 support boundary.
 
 ## HTTP API
 

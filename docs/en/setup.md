@@ -34,19 +34,19 @@ Other revisions may work, but they are not part of the v1 compatibility guarante
 
 Set `VOICEGER_ROOT` to the Voiceger repository directory.
 
-For example:
+On macOS or Linux:
 
 ```bash
 export VOICEGER_ROOT="$HOME/voiceger_v2"
 ```
 
-If it is not set, Voiceger Editor tries:
+On Windows PowerShell:
 
-```text
-~/voiceger_v2
+```powershell
+$env:VOICEGER_ROOT = "$HOME\voiceger_v2"
 ```
 
-and reports a warning.
+If it is not set, Voiceger Editor tries the `voiceger_v2` directory in your home directory and reports a warning.
 
 ## 3. Activate Voiceger's Python environment
 
@@ -56,6 +56,12 @@ On macOS or Linux:
 
 ```bash
 source "$VOICEGER_ROOT/.venv/bin/activate"
+```
+
+On Windows PowerShell:
+
+```powershell
+& "$env:VOICEGER_ROOT\.venv\Scripts\Activate.ps1"
 ```
 
 Check the Python version:
@@ -70,14 +76,14 @@ It should report Python 3.9.
 
 Install the TUI from PyPI:
 
-```bash
-python -m pip install 'voiceger-editor[tui]'
+```text
+python -m pip install "voiceger-editor[tui]"
 ```
 
 For the exact v1.0.0 release:
 
-```bash
-python -m pip install 'voiceger-editor[tui]==1.0.0'
+```text
+python -m pip install "voiceger-editor[tui]==1.0.0"
 ```
 
 Check the installed version:
@@ -96,33 +102,33 @@ voiceger-editor 1.0.0
 
 Install the API extra with:
 
-```bash
-python -m pip install 'voiceger-editor[api]'
+```text
+python -m pip install "voiceger-editor[api]"
 ```
 
 Or install both TUI and API support:
 
-```bash
-python -m pip install 'voiceger-editor[tui,api]'
+```text
+python -m pip install "voiceger-editor[tui,api]"
 ```
 
 ### LAB support
 
 Install LAB support with:
 
-```bash
-python -m pip install 'voiceger-editor[tui,lab]'
+```text
+python -m pip install "voiceger-editor[tui,lab]"
 ```
 
 To install all optional Python features:
 
-```bash
-python -m pip install 'voiceger-editor[tui,api,lab]'
+```text
+python -m pip install "voiceger-editor[tui,api,lab]"
 ```
 
 Japanese LAB output also requires Julius.
 
-See [LAB Output](lab-output.md).
+Windows LAB output is not part of the verified v1 Windows support boundary. See [LAB Output](lab-output.md) before installing the `lab` extra on Windows.
 
 ## 5. Check the Voiceger environment
 
@@ -159,25 +165,27 @@ An error means the setup is not ready.
 
 ### `VOICEGER_ROOT` is wrong
 
-Check it with:
+On macOS or Linux, check and set it with:
 
 ```bash
 echo "$VOICEGER_ROOT"
+export VOICEGER_ROOT=/path/to/voiceger_v2
 ```
 
-Then set the correct path:
+On Windows PowerShell:
 
-```bash
-export VOICEGER_ROOT=/path/to/voiceger_v2
+```powershell
+$env:VOICEGER_ROOT
+$env:VOICEGER_ROOT = "C:\path\to\voiceger_v2"
 ```
 
 You can test another path without changing the environment variable:
 
-```bash
-voiceger-editor \
-  --voiceger-root /path/to/voiceger_v2 \
-  --check
+```text
+voiceger-editor --voiceger-root /path/to/voiceger_v2 --check
 ```
+
+On Windows, replace the example path with a Windows path such as `C:\path\to\voiceger_v2`.
 
 ### Voiceger's `.venv` is missing
 
@@ -191,11 +199,18 @@ VOICEGER_ROOT/.venv
 
 ### The wrong Python environment is active
 
-Check:
+On macOS or Linux:
 
 ```bash
 which python
 which voiceger-editor
+```
+
+On Windows PowerShell:
+
+```powershell
+Get-Command python
+Get-Command voiceger-editor
 ```
 
 Both should point to Voiceger's `.venv`.
@@ -205,6 +220,14 @@ Both should point to Voiceger's `.venv`.
 Complete the Voiceger model and reference-audio setup.
 
 Voiceger Editor does not download or replace Voiceger models.
+
+### Windows TUI playback does not work
+
+Voiceger Editor uses `ffplay.exe` for TUI playback on Windows.
+
+Install an FFmpeg build that includes `ffplay.exe`, then add its `bin` directory to `PATH`.
+
+Synthesis and saving are separate from playback. A missing player does not mean that Voiceger synthesis itself failed.
 
 ## 6. Read and accept the Voiceger:Zundamon terms
 
@@ -280,17 +303,20 @@ See [TUI](tui.md).
 
 If the API extra is installed:
 
-```bash
-python -m uvicorn \
-  voiceger_editor.api:app \
-  --host 127.0.0.1 \
-  --port 8001
+```text
+python -m uvicorn voiceger_editor.api:app --host 127.0.0.1 --port 8001
 ```
 
-Check it with:
+On macOS or Linux, check it with:
 
 ```bash
 curl http://127.0.0.1:8001/version
+```
+
+On Windows PowerShell:
+
+```powershell
+curl.exe http://127.0.0.1:8001/version
 ```
 
 Interactive FastAPI documentation is available at:
@@ -305,8 +331,8 @@ See [HTTP API](api.md).
 
 Upgrade the published package with:
 
-```bash
-python -m pip install --upgrade 'voiceger-editor[tui]'
+```text
+python -m pip install --upgrade "voiceger-editor[tui]"
 ```
 
 Include any extras you use.
