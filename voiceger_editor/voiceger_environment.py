@@ -19,6 +19,15 @@ from .styles import available_styles
 VOICEGER_REPOSITORY_URL = "https://github.com/zunzun999/voiceger_v2"
 
 
+def _voiceger_root_setup_hint() -> str:
+    if sys.platform == "win32":
+        return (
+            'Set VOICEGER_ROOT in PowerShell, for example: '
+            '$env:VOICEGER_ROOT = "$HOME\\voiceger_v2"'
+        )
+    return 'Set VOICEGER_ROOT, for example: export VOICEGER_ROOT="/path/to/voiceger_v2"'
+
+
 class CheckStatus(str, Enum):
     OK = "OK"
     WARN = "WARN"
@@ -68,7 +77,7 @@ class VoicegerEnvironmentError(RuntimeError):
         lines.extend(
             (
                 f"Voiceger: {VOICEGER_REPOSITORY_URL}",
-                'Set VOICEGER_ROOT, for example: export VOICEGER_ROOT="/path/to/voiceger_v2"',
+                _voiceger_root_setup_hint(),
                 f"Tested Voiceger revision: {SUPPORTED_VOICEGER_REVISION}",
                 "Run voiceger-editor --check for the full report.",
             )
@@ -372,7 +381,7 @@ def format_voiceger_environment_report(report: VoicegerEnvironmentReport) -> str
             "",
             f"READY: {'YES' if report.ready else 'NO'}",
             f"Voiceger: {VOICEGER_REPOSITORY_URL}",
-            'Set VOICEGER_ROOT: export VOICEGER_ROOT="/path/to/voiceger_v2"',
+            _voiceger_root_setup_hint(),
             f"Tested Voiceger revision: {SUPPORTED_VOICEGER_REVISION}",
         )
     )

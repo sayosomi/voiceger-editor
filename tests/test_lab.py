@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
@@ -11,6 +12,7 @@ from voiceger_editor.lab import (
     save_lab_sidecar,
 )
 from voiceger_editor.lab_julius import (
+    _default_cache_dir,
     JuliusAlignment,
     julius_strip_time_map,
     render_julius_lab,
@@ -160,6 +162,40 @@ class LabCoreTests(unittest.TestCase):
 
 
 class JapaneseLabTests(unittest.TestCase):
+    def test_windows_cache_uses_localappdata_and_ignores_xdg(self):
+        with patch("voiceger_editor.lab_julius.sys.platform", "win32"), patch.dict(
+            os.environ,
+            {
+                "LOCALAPPDATA": "C:/Users/example/AppData/Local",
+                "XDG_CACHE_HOME": "/tmp/xdg-cache",
+            },
+            clear=True,
+        ):
+            self.assertEqual(
+                _default_cache_dir(),
+                Path("C:/Users/example/AppData/Local")
+                / "voiceger-editor"
+                / "lab",
+            )
+
+    def test_windows_cache_falls_back_to_userprofile(self):
+        with patch("voiceger_editor.lab_julius.sys.platform", "win32"), patch.dict(
+            os.environ,
+            {
+                "USERPROFILE": "C:/Users/example",
+                "XDG_CACHE_HOME": "/tmp/xdg-cache",
+            },
+            clear=True,
+        ):
+            self.assertEqual(
+                _default_cache_dir(),
+                Path("C:/Users/example")
+                / "AppData"
+                / "Local"
+                / "voiceger-editor"
+                / "lab",
+            )
+
     def test_mapping_matches_production_contract(self):
         self.assertEqual(to_julius_phoneme("cl"), "q")
         self.assertEqual(to_julius_phoneme("pau"), "sp")

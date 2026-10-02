@@ -181,6 +181,22 @@ class VoicegerEnvironmentTests(unittest.TestCase):
         self.assertIn("[ERROR]", rendered)
         self.assertIn("READY: NO", rendered)
 
+    def test_windows_setup_guidance_uses_powershell_not_export(self):
+        report = _report(
+            EnvironmentCheck(
+                "voiceger-root", CheckStatus.ERROR, "Voiceger root does not exist.",
+            )
+        )
+        with patch("voiceger_editor.voiceger_environment.sys.platform", "win32"):
+            message = str(VoicegerEnvironmentError(report))
+            rendered = format_voiceger_environment_report(report)
+
+        expected = '$env:VOICEGER_ROOT = "$HOME\\voiceger_v2"'
+        self.assertIn(expected, message)
+        self.assertIn(expected, rendered)
+        self.assertNotIn("export VOICEGER_ROOT", message)
+        self.assertNotIn("export VOICEGER_ROOT", rendered)
+
 
 class VoicegerEnvironmentFrontendTests(unittest.TestCase):
     def tearDown(self):
