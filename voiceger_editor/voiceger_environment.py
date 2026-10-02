@@ -223,7 +223,7 @@ def check_voiceger_environment(
             EnvironmentCheck(
                 "python-version",
                 CheckStatus.OK,
-                f"Python {sys.version.split()[0]} matches the v1 supported runtime.",
+                f"Python {sys.version.split()[0]} matches the 0.1 supported runtime.",
             )
         )
     else:
@@ -231,7 +231,7 @@ def check_voiceger_environment(
             EnvironmentCheck(
                 "python-version",
                 CheckStatus.ERROR,
-                f"Python {sys.version.split()[0]} is not supported by v1; use Python 3.9.",
+                f"Python {sys.version.split()[0]} is not supported by 0.1; use Python 3.9.",
             )
         )
 
