@@ -2525,11 +2525,19 @@ class TuiTests(unittest.TestCase):
 
     def test_enter_on_candidate_accepts_and_saves_when_not_busy(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        session = app.session
+        item = app._batch.batch.items[0]
         app._operations.play_take = Mock(return_value=())
         focus_candidate(app, 1)
+
         app._handle_key("\n")
-        self.assertEqual(app.session.accept_calls, [1])
-        self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
+
+        self.assertEqual(session.accept_calls, [1])
+        self.assertTrue(item.is_accepted)
+        self.assertEqual(item.accepted_take_number, 1)
+        self.assertFalse(app._batch.in_item)
+        self.assertIsNone(app.session)
+        self.assertEqual(app._batch.focus_key, ("caption", 0))
 
     def test_english_word_phoneme_edit_commits_directly_to_flat_query(self):
         phones = ["HH", "AY1", "!", "DH", "EH1", "R"]
