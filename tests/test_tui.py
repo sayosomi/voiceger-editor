@@ -1189,7 +1189,7 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(item.is_accepted)
         self.assertEqual(item.accepted_take_number, 1)
         self.assertIn(
-            "Error: Could not start generation: cannot start",
+            "Error: Could not start take generation: cannot start",
             app._status,
         )
 
