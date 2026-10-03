@@ -291,7 +291,7 @@ class TuiRenderingTests(unittest.TestCase):
         header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
         self.assertEqual(header, "BATCH ITEM 2/4")
 
-    def test_batch_list_renders_selection_counts_requested_takes_and_actions(self):
+    def test_batch_list_header_summarizes_selection_requested_takes_and_actions(self):
         batch = CaptionBatch(default_take_count=4)
         batch.add_captions_from_text(
             "first caption\nsecond caption",
@@ -304,8 +304,8 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("  Takes < 4 >", labels)
         self.assertIn("▶ [x] 1  first caption", labels)
         self.assertIn("  [ ] 2  second caption", labels)
-        self.assertIn("Selected: 1/2", labels)
-        self.assertIn("Requested: 4 takes", labels)
+        self.assertFalse(any(label.startswith("Selected:") for label in labels))
+        self.assertFalse(any(label.startswith("Requested:") for label in labels))
         for action in (
             "[A] Add captions",
             "[G] Generate selected",
@@ -321,7 +321,19 @@ class TuiRenderingTests(unittest.TestCase):
             screen, batch, ("caption", 0), "", screen.rows, screen.columns
         )
         header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
-        self.assertEqual(header, "BATCH LIST")
+        self.assertEqual(header, "BATCH LIST · 1/2 selected · 4 takes")
+
+        single = CaptionBatch(default_take_count=1)
+        single.add_caption(
+            "only caption",
+            session_factory=lambda caption: SimpleNamespace(caption=caption),
+        )
+        screen.drawn.clear()
+        self.renderer.render_batch_list(
+            screen, single, ("caption", 0), "", screen.rows, screen.columns
+        )
+        header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
+        self.assertEqual(header, "BATCH LIST · 1/1 selected · 1 take")
 
     def test_batch_delete_confirmation_shows_target_and_explicit_actions(self):
         batch = CaptionBatch(default_take_count=4)
