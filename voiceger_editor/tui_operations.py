@@ -45,6 +45,11 @@ class DiscardInitialBatchEffect:
 
 
 @dataclass(frozen=True)
+class CandidateReplacedEffect:
+    number: int
+
+
+@dataclass(frozen=True)
 class PlayPreviewEffect:
     audio: Any
     sampling_rate: int
@@ -100,6 +105,7 @@ OperationEffect = Union[
     PlayPreviewEffect,
     StopPlaybackEffect,
     DiscardInitialBatchEffect,
+    CandidateReplacedEffect,
 ]
 
 
@@ -578,12 +584,14 @@ class TuiOperations:
                         effects.append(FocusEffect(("candidate", value.number)))
                         effects.append(PlayTakeEffect(value.number))
                 elif operation == "regenerate_one":
+                    effects.append(CandidateReplacedEffect(value.number))
                     if (
                         value.number == self.worker_target
                         and self.current_take == value.number
                     ):
                         effects.append(PlayTakeEffect(value.number))
                 elif operation == "regenerate_all":
+                    effects.append(CandidateReplacedEffect(value.number))
                     if value.number == self.current_take:
                         effects.append(PlayTakeEffect(value.number))
 
