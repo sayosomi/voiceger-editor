@@ -66,6 +66,19 @@ class CaptionBatchTests(unittest.TestCase):
         self.assertEqual(second.item_id, original_ids["second"])
         self.assertEqual(inserted.item_id, original_ids["inserted"])
 
+    def test_remove_item_targets_stable_identity_and_preserves_remaining_order(self):
+        first = self.make_item("first", item_id="first-id")
+        second = self.make_item("second", item_id="second-id")
+        third = self.make_item("third", item_id="third-id")
+        batch = CaptionBatch(default_take_count=4, items=[first, second, third])
+
+        removed = batch.remove_item("second-id")
+
+        self.assertIs(removed, second)
+        self.assertEqual(batch.items, (first, third))
+        with self.assertRaises(KeyError):
+            batch.get_item("second-id")
+
     def test_effective_take_count_uses_batch_default_and_optional_override(self):
         defaulted = self.make_item("default")
         overridden = self.make_item("override", take_count_override=2)

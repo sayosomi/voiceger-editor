@@ -30,7 +30,12 @@ from .tui_display import (
     _wrap_text,
 )
 from .tui_editors import PronunciationRow
-from .tui_shortcuts import batch_list_shortcut, main_shortcut, menu_item
+from .tui_shortcuts import (
+    batch_list_caption_shortcut,
+    batch_list_shortcut,
+    main_shortcut,
+    menu_item,
+)
 
 
 _HELP_ITEMS = (
@@ -44,6 +49,10 @@ _HELP_ITEMS = (
         ": open a Batch List Caption or activate the focused Batch Item row",
     ),
     ("Space", ": toggle Batch List inclusion or replay a focused Take"),
+    (
+        batch_list_caption_shortcut("delete_caption").shortcut.upper(),
+        ": delete focused Batch List Caption through confirmation",
+    ),
     (
         "Esc",
         ": one level back; active synthesis cancellation takes precedence",
@@ -306,6 +315,58 @@ class TuiRenderer:
         )
         return scroll
 
+    def render_batch_delete_confirmation(
+        self,
+        screen: Any,
+        caption: str,
+        height: int,
+        width: int,
+    ) -> None:
+        """Render the focused Caption deletion confirmation."""
+
+        safe_add = self._safe_add
+        safe_add(
+            screen,
+            0,
+            0,
+            "DELETE CAPTION?",
+            width,
+            self._attribute("A_BOLD"),
+        )
+        body_limit = max(2, height - 3)
+        row = 2
+        for piece in _wrap_text(caption, max(1, width - 3)) or [""]:
+            if row >= body_limit:
+                break
+            safe_add(screen, row, 2, piece, width)
+            row += 1
+        if row + 1 < body_limit:
+            safe_add(
+                screen,
+                row + 1,
+                2,
+                "This Caption and its temporary Takes will be removed.",
+                width,
+            )
+
+        delete_row = max(1, height - 2)
+        cancel_row = max(1, height - 1)
+        safe_add(
+            screen,
+            delete_row,
+            0,
+            f"▶ {menu_item('batch_delete_confirmation', 'delete').display_label}",
+            width,
+            self._focus_attribute(),
+        )
+        safe_add(
+            screen,
+            cancel_row,
+            0,
+            f"  Esc {menu_item('batch_delete_confirmation', 'cancel').label}",
+            width,
+        )
+
     def batch_list_document(
         self,
         batch: CaptionBatch,
@@ -368,8 +429,19 @@ class TuiRenderer:
         status: str,
         height: int,
         width: int,
+        *,
+        delete_confirmation_caption: str | None = None,
     ) -> None:
         """Render the top-level Batch List screen."""
+
+        if delete_confirmation_caption is not None:
+            self.render_batch_delete_confirmation(
+                screen,
+                delete_confirmation_caption,
+                height,
+                width,
+            )
+            return
 
         safe_add = self._safe_add
         safe_add(

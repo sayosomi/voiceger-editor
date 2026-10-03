@@ -865,7 +865,13 @@ class TuiApp:
             )
         elif not self._batch.in_item:
             self._renderer.render_batch_list(
-                screen, self._batch.batch, self._batch.focus_key, self._status, height, width
+                screen,
+                self._batch.batch,
+                self._batch.focus_key,
+                self._status,
+                height,
+                width,
+                delete_confirmation_caption=self._batch.delete_confirmation_caption,
             )
         else:
             self._dispatch_navigation_actions(

@@ -30,9 +30,10 @@ BATCH LIST
 
 On `BATCH LIST`, Space toggles whether the focused Caption is selected for
 outer batch generation. Left / Right on `Takes` changes the batch default Take
-count. `Generate selected` is the entry point for the sequential multi-Caption
-generation workflow; the scheduling behavior is implemented separately from the
-navigation layer.
+count. `X` on a focused Caption opens an explicit deletion confirmation; `D`
+confirms deletion and Esc cancels it. `Generate selected` is the entry point for
+the sequential multi-Caption generation workflow; the scheduling behavior is
+implemented separately from the navigation layer.
 
 ## Main controls
 
@@ -212,6 +213,7 @@ Changing the configured Take count does not change the synthesis parameters of T
 | Space | Toggle focused Caption `[x] / [ ]` |
 | Enter | Open focused Caption |
 | Left / Right | Change batch default Takes when `Takes` is focused |
+| `x` | Delete focused Caption (with confirmation) |
 | `a` | Add captions |
 | `g` | Generate selected |
 | `s` | Settings |

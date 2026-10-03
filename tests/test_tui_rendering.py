@@ -323,6 +323,33 @@ class TuiRenderingTests(unittest.TestCase):
         header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
         self.assertEqual(header, "BATCH LIST")
 
+    def test_batch_delete_confirmation_shows_target_and_explicit_actions(self):
+        batch = CaptionBatch(default_take_count=4)
+        batch.add_captions_from_text(
+            "first caption\nsecond caption",
+            session_factory=lambda caption: SimpleNamespace(caption=caption),
+        )
+        screen = FakeScreen()
+
+        self.renderer.render_batch_list(
+            screen,
+            batch,
+            ("caption", 1),
+            "",
+            screen.rows,
+            screen.columns,
+            delete_confirmation_caption="second caption",
+        )
+
+        visible = self.rendered(screen)
+        self.assertIn("DELETE CAPTION?", visible)
+        self.assertIn("second caption", visible)
+        self.assertIn("[D] Delete caption", visible)
+        self.assertIn("Esc Cancel", visible)
+        self.assertNotIn("BATCH LIST", visible)
+        delete = next(item for item in screen.drawn if "[D] Delete caption" in item[2])
+        self.assertTrue(delete[3] & curses.A_REVERSE)
+
     def test_main_japanese_phrases_use_fixed_separator_and_compound_mora_tokens(self):
         state = render_state(session=FakeSession(), focus_key=("pronunciation", 0))
         lines = self.renderer.navigation_document(state, 80)
@@ -573,6 +600,7 @@ class TuiRenderingTests(unittest.TestCase):
             "Batch List Takes",
             "open a Batch List Caption",
             "toggle Batch List inclusion",
+            "delete focused Batch List Caption through confirmation",
             "one level back",
             "E / P / A / G",
             "Caption / Build pronunciation / Add section / Generate or regenerate all",

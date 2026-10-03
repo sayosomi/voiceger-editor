@@ -66,6 +66,10 @@ _BATCH_LIST_SHORTCUTS: tuple[MainShortcut, ...] = (
     MainShortcut("quit", "Quit", "q"),
 )
 
+_BATCH_LIST_CAPTION_SHORTCUTS: tuple[MainShortcut, ...] = (
+    MainShortcut("delete_caption", "Delete caption", "x"),
+)
+
 
 def _escape_action(key: str, label: str) -> MenuItem:
     return MenuItem(
@@ -277,6 +281,10 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("dictionary", "Dictionary menu", "d", "action", "activate"),
         _escape_action("back", "Back"),
     ),
+    "batch_delete_confirmation": (
+        MenuItem("delete", "Delete caption", "d", "action", "activate"),
+        _escape_action("cancel", "Cancel"),
+    ),
     "dictionary_delete_confirmation": (
         MenuItem("delete", "Delete", "d", "action", "activate"),
         _escape_action("cancel", "Cancel"),
@@ -309,6 +317,12 @@ def batch_list_shortcuts() -> tuple[MainShortcut, ...]:
     """Return the visible primary Batch List shortcut declarations."""
 
     return _BATCH_LIST_SHORTCUTS
+
+
+def batch_list_caption_shortcuts() -> tuple[MainShortcut, ...]:
+    """Return contextual shortcuts active while a Batch List Caption is focused."""
+
+    return _BATCH_LIST_CAPTION_SHORTCUTS
 
 
 def main_shortcut(navigation_key: str) -> MainShortcut:
@@ -346,6 +360,28 @@ def resolve_batch_list_shortcut(key: Any) -> MainShortcut | None:
     if not isinstance(key, str) or len(key) != 1:
         return None
     for item in _BATCH_LIST_SHORTCUTS:
+        if item.shortcut == key:
+            return item
+    return None
+
+
+def batch_list_caption_shortcut(navigation_key: str) -> MainShortcut:
+    """Return one contextual Batch List Caption shortcut."""
+
+    for item in _BATCH_LIST_CAPTION_SHORTCUTS:
+        if item.navigation_key == navigation_key:
+            return item
+    raise KeyError(
+        f"Batch List Caption has no shortcut declaration for {navigation_key!r}"
+    )
+
+
+def resolve_batch_list_caption_shortcut(key: Any) -> MainShortcut | None:
+    """Resolve one contextual lowercase Batch List Caption shortcut."""
+
+    if not isinstance(key, str) or len(key) != 1:
+        return None
+    for item in _BATCH_LIST_CAPTION_SHORTCUTS:
         if item.shortcut == key:
             return item
     return None
@@ -463,6 +499,7 @@ def validate_menu_definitions() -> tuple[str, ...]:
     for menu_name, shortcuts in (
         ("main", _MAIN_SHORTCUTS),
         ("batch_list", _BATCH_LIST_SHORTCUTS),
+        ("batch_list_caption", _BATCH_LIST_CAPTION_SHORTCUTS),
     ):
         seen_main_keys: set[str] = set()
         seen_main_shortcuts: set[str] = set()

@@ -18,9 +18,11 @@ class FakeSession:
     def __init__(self, caption):
         self.caption = caption
         self.closed = False
+        self.close_calls = 0
 
     def close(self):
         self.closed = True
+        self.close_calls += 1
 
 
 class TuiBatchControllerTests(unittest.TestCase):
@@ -58,6 +60,81 @@ class TuiBatchControllerTests(unittest.TestCase):
 
         controller.handle_key(" ")
         self.assertTrue(controller.batch.items[1].included_for_generation)
+
+    def test_x_requests_delete_only_for_focused_caption_and_escape_cancels(self):
+        controller = self.make_controller("first\nsecond")
+        target = controller.batch.items[1]
+        controller.focus_key = ("takes", None)
+
+        self.assertEqual(controller.handle_key("x"), ())
+        self.assertFalse(controller.delete_confirmation_active)
+
+        controller.focus_key = ("caption", 1)
+        self.assertEqual(controller.handle_key("x"), ())
+        self.assertTrue(controller.delete_confirmation_active)
+        self.assertEqual(controller.delete_confirmation_caption, "second")
+        self.assertTrue(target.included_for_generation)
+
+        self.assertEqual(controller.handle_key(" "), ())
+        self.assertTrue(target.included_for_generation)
+        self.assertEqual(controller.handle_key("\x1b"), ())
+        self.assertFalse(controller.delete_confirmation_active)
+        self.assertEqual(controller.focus_key, ("caption", 1))
+        self.assertEqual(
+            [item.caption for item in controller.batch.items],
+            ["first", "second"],
+        )
+        self.assertEqual(target.session.close_calls, 0)
+
+    def test_confirmed_delete_targets_pending_stable_id_and_closes_only_removed_session(self):
+        controller = self.make_controller("first\nsecond\nthird")
+        target = controller.batch.items[1]
+        survivors = (controller.batch.items[0], controller.batch.items[2])
+        controller.focus_key = ("caption", 1)
+        controller.handle_key("x")
+
+        controller.batch.move_item(target.item_id, 0)
+        controller.handle_key("d")
+
+        self.assertFalse(controller.delete_confirmation_active)
+        self.assertEqual(
+            [item.caption for item in controller.batch.items],
+            ["first", "third"],
+        )
+        self.assertEqual(target.session.close_calls, 1)
+        self.assertEqual([item.session.close_calls for item in survivors], [0, 0])
+        self.assertEqual(controller.focus_key, ("caption", 0))
+
+        controller.close_sessions()
+        self.assertEqual(target.session.close_calls, 1)
+        self.assertEqual([item.session.close_calls for item in survivors], [1, 1])
+
+    def test_delete_repairs_focus_for_first_middle_last_and_final_caption(self):
+        cases = (
+            (0, ["second", "third"], ("caption", 0)),
+            (1, ["first", "third"], ("caption", 1)),
+            (2, ["first", "second"], ("caption", 1)),
+        )
+        for index, expected_captions, expected_focus in cases:
+            with self.subTest(index=index):
+                controller = self.make_controller("first\nsecond\nthird")
+                controller.focus_key = ("caption", index)
+                controller.handle_key("x")
+                controller.handle_key("d")
+                self.assertEqual(
+                    [item.caption for item in controller.batch.items],
+                    expected_captions,
+                )
+                self.assertEqual(controller.focus_key, expected_focus)
+
+        final = self.make_controller("only")
+        only_session = final.batch.items[0].session
+        final.focus_key = ("caption", 0)
+        final.handle_key("x")
+        final.handle_key("d")
+        self.assertEqual(final.batch.items, ())
+        self.assertEqual(final.focus_key, ("takes", None))
+        self.assertEqual(only_session.close_calls, 1)
 
     def test_enter_opens_focused_caption_by_list_position(self):
         controller = self.make_controller("first\nsecond")

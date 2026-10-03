@@ -232,6 +232,13 @@ class CaptionBatch:
         self._items.insert(new_index, item)
         return item
 
+    def remove_item(self, item_id: str) -> CaptionBatchItem:
+        """Remove and return one item by stable identity."""
+
+        item = self.get_item(item_id)
+        self._items.remove(item)
+        return item
+
     def set_included(self, item_id: str, included: bool) -> CaptionBatchItem:
         item = self.get_item(item_id)
         item.included_for_generation = included

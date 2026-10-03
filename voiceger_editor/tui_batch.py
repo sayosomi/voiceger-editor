@@ -7,13 +7,18 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional, Union
 
 from .caption_batch import CaptionBatch
-from .tui_shortcuts import resolve_batch_list_shortcut
+from .tui_shortcuts import (
+    resolve_batch_list_caption_shortcut,
+    resolve_batch_list_shortcut,
+    resolve_shortcut,
+)
 
 
 BatchFocusKey = tuple[str, Optional[int]]
 SessionFactory = Callable[[str], Any]
 
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
+_ESCAPE = "\x1b"
 
 
 @dataclass(frozen=True)
@@ -75,6 +80,7 @@ class TuiBatchController:
         self.batch = CaptionBatch(default_take_count=default_take_count)
         self.focus_key: BatchFocusKey = ("takes", None)
         self.item_index: int | None = None
+        self._pending_delete_item_id: str | None = None
 
     @property
     def in_item(self) -> bool:
@@ -83,6 +89,21 @@ class TuiBatchController:
     @property
     def sessions(self) -> tuple[Any, ...]:
         return tuple(item.session for item in self.batch.items)
+
+    @property
+    def delete_confirmation_active(self) -> bool:
+        return self._pending_delete_item_id is not None
+
+    @property
+    def delete_confirmation_caption(self) -> str | None:
+        if self._pending_delete_item_id is None:
+            return None
+        try:
+            return self.batch.get_item(self._pending_delete_item_id).caption
+        except KeyError:
+            self._pending_delete_item_id = None
+            self._repair_focus()
+            return None
 
     @property
     def item_title(self) -> str:
@@ -139,9 +160,33 @@ class TuiBatchController:
         if key in ("Q", "\x03"):
             return (QuitBatch(),)
 
+        if self.delete_confirmation_active:
+            if key == "q":
+                return (QuitBatch(),)
+            if key == _ESCAPE:
+                self._pending_delete_item_id = None
+                self._repair_focus()
+                return ()
+            shortcut = resolve_shortcut("batch_delete_confirmation", key)
+            if shortcut is not None and shortcut.key == "delete":
+                self._confirm_delete()
+            return ()
+
         shortcut = resolve_batch_list_shortcut(key)
         if shortcut is not None:
             return self._activate((shortcut.navigation_key, None))
+
+        caption_shortcut = resolve_batch_list_caption_shortcut(key)
+        if caption_shortcut is not None:
+            if (
+                caption_shortcut.navigation_key == "delete_caption"
+                and self.focus_key[0] == "caption"
+                and self.focus_key[1] is not None
+            ):
+                index = self.focus_key[1]
+                if 0 <= index < len(self.batch):
+                    self._pending_delete_item_id = self.batch.items[index].item_id
+            return ()
 
         if key == curses.KEY_UP:
             self.move(-1)
@@ -182,6 +227,20 @@ class TuiBatchController:
         if name == "quit":
             return (QuitBatch(),)
         return ()
+
+    def _confirm_delete(self) -> None:
+        item_id = self._pending_delete_item_id
+        if item_id is None:
+            return
+        item = self.batch.get_item(item_id)
+        index = self.batch.items.index(item)
+        removed = self.batch.remove_item(item_id)
+        self._pending_delete_item_id = None
+        removed.session.close()
+        if len(self.batch):
+            self.focus_key = ("caption", min(index, len(self.batch) - 1))
+        else:
+            self.focus_key = ("takes", None)
 
     def _repair_focus(self) -> None:
         items = self.navigation_items()
