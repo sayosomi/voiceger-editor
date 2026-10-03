@@ -138,6 +138,7 @@ class FakeSession:
         self.close_calls = 0
         self.accept_calls = []
         self.accept_error = None
+        self.generate_error = None
 
     @property
     def has_active_batch(self):
@@ -175,6 +176,8 @@ class FakeSession:
         self.candidates = ()
 
     def generate_takes(self):
+        if self.generate_error is not None:
+            raise self.generate_error
         return iter(())
 
     def replace_settings(self, settings):
@@ -1179,15 +1182,14 @@ class TuiTests(unittest.TestCase):
         app = self.make_app(query=mixed_query(), candidates=())
         item = app._batch.batch.items[0]
         app._batch.batch.mark_accepted(item.item_id, 1)
-        app._operations.busy = True
-        app._operations.worker_operation = "preview"
+        app.session.generate_error = RuntimeError("cannot start")
 
         app._handle_key("g")
 
         self.assertTrue(item.is_accepted)
         self.assertEqual(item.accepted_take_number, 1)
         self.assertIn(
-            "A sequential take operation is already running.",
+            "Error: Could not start generation: cannot start",
             app._status,
         )
 
