@@ -412,13 +412,6 @@ class TuiRenderer:
 
         if batch.items:
             plain()
-        selected_count = len(batch.included_items)
-        requested = sum(
-            batch.effective_take_count(item) for item in batch.included_items
-        )
-        plain(f"Selected: {selected_count}/{len(batch)}")
-        plain(f"Requested: {requested} takes")
-        plain()
         for name in (
             "add_captions",
             "generate_selected",
@@ -455,11 +448,20 @@ class TuiRenderer:
             return
 
         safe_add = self._safe_add
+        selected_count = len(batch.included_items)
+        requested = sum(
+            batch.effective_take_count(item) for item in batch.included_items
+        )
+        take_label = "take" if requested == 1 else "takes"
+        header = (
+            f"BATCH LIST · {selected_count}/{len(batch)} selected · "
+            f"{requested} {take_label}"
+        )
         safe_add(
             screen,
             0,
             0,
-            "BATCH LIST",
+            header,
             width,
             self._attribute("A_BOLD"),
         )
