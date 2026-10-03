@@ -257,6 +257,12 @@ class TuiApp:
         if key in ("Q", "\x03"):
             self._activate_quit()
             return
+        if key in ("[", "]"):
+            self._batch.move_open_item(
+                -1 if key == "[" else 1,
+                bindings=self._batch_action_bindings,
+            )
+            return
         main_shortcut = resolve_main_shortcut(key)
         if main_shortcut is not None:
             self._dispatch_navigation_actions(
@@ -279,7 +285,12 @@ class TuiApp:
             return
         if key in (curses.KEY_LEFT, curses.KEY_RIGHT):
             direction = -1 if key == curses.KEY_LEFT else 1
-            if self._navigation.focus_key[0] == "generate":
+            if self._navigation.focus_key[0] == "batch_item":
+                self._batch.move_open_item(
+                    direction,
+                    bindings=self._batch_action_bindings,
+                )
+            elif self._navigation.focus_key[0] == "generate":
                 self._adjust_take_count(direction)
             elif (
                 self._navigation.focus_key[0] == "pronunciation"
@@ -350,6 +361,7 @@ class TuiApp:
             has_active_batch=(
                 session.has_active_batch if session is not None else False
             ),
+            has_item_navigator=self._batch.in_item,
         )
 
     def _dispatch_navigation_actions(
@@ -833,6 +845,9 @@ class TuiApp:
                 else self._editor_controller.editor
             ),
             accepted_take_number=self._batch.open_item_accepted_take_number,
+            batch_item_position=(
+                self._batch.item_position if self._batch.in_item else None
+            ),
         )
 
     def _render(self) -> None:
