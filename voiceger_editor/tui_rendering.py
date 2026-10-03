@@ -106,6 +106,7 @@ class TuiRenderState:
     operation_total: int
     pressed_adjustment: tuple[str, str, int] | None
     editor: EditorRenderState | None
+    accepted_take_number: int | None = None
 
 
 @dataclass(frozen=True)
@@ -799,10 +800,13 @@ class TuiRenderer:
                     candidate.frame_count,
                     candidate.sampling_rate,
                 )
+                accepted_marker = (
+                    "✓ " if candidate.number == state.accepted_take_number else ""
+                )
                 label = (
-                    f"[{candidate.number}] Take {candidate.number}  {duration:.2f}s"
+                    f"[{candidate.number}] {accepted_marker}Take {candidate.number}  {duration:.2f}s"
                     if candidate.number <= 9
-                    else f"Take {candidate.number}  {duration:.2f}s"
+                    else f"{accepted_marker}Take {candidate.number}  {duration:.2f}s"
                 )
                 action(
                     ("candidate", candidate.number),
