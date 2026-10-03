@@ -512,7 +512,9 @@ class TuiTests(unittest.TestCase):
         app = self.make_app(query=mixed_query())
         set_navigation_focus(app, ("settings_summary", None))
         app._handle_key(curses.KEY_UP)
-        self.assertEqual(app._navigation.focus_key, ("settings_summary", None))
+        self.assertEqual(app._navigation.focus_key, ("batch_item", None))
+        app._handle_key(curses.KEY_UP)
+        self.assertEqual(app._navigation.focus_key, ("batch_item", None))
         while app._navigation.focus_key != ("generate", None):
             app._handle_key(curses.KEY_DOWN)
         navigation_revision = app._navigation.revision
