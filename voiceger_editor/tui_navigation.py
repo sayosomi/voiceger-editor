@@ -82,6 +82,11 @@ class OpenClearCandidatesConfirmation:
 
 
 @dataclass(frozen=True)
+class DeleteCaption:
+    pass
+
+
+@dataclass(frozen=True)
 class PlayCandidate:
     number: int
 
@@ -114,6 +119,7 @@ NavigationAction = Union[
     AcceptCandidate,
     RegenerateCandidate,
     OpenClearCandidatesConfirmation,
+    DeleteCaption,
     PlayCandidate,
     OpenHelp,
     OpenDictionary,
@@ -148,6 +154,7 @@ class TuiNavigation:
             items.append(("generate", None))
             if context.candidate_numbers:
                 items.append(("clear_candidates", None))
+            items.append(("delete_caption", None))
         items.extend(
             (("settings", None), ("dictionary", None), ("help", None), ("quit", None))
         )
@@ -324,6 +331,10 @@ class TuiNavigation:
             return (AcceptCandidate(number),)
         if name == "clear_candidates":
             return (OpenClearCandidatesConfirmation(),)
+        if name == "delete_caption":
+            if context.busy:
+                return (UpdateNavigationStatus("Finish or cancel synthesis before deleting Caption."),)
+            return (DeleteCaption(),)
         if name == "settings":
             return (OpenSettingsEditor("style_id"),)
         if name == "dictionary":

@@ -32,7 +32,7 @@ from .tui_shortcuts import resolve_main_shortcut, resolve_shortcut
 from .tui_navigation import (
     AcceptCandidate, AddSectionEditor, BuildPronunciation, ClearAdjustmentFeedback,
     EditPronunciationItem, NavigationAction, NavigationContext,
-    OpenClearCandidatesConfirmation, OpenHelp, OpenDictionary, OpenSettingsEditor,
+    OpenClearCandidatesConfirmation, DeleteCaption, OpenHelp, OpenDictionary, OpenSettingsEditor,
     OpenCaptionEditor, PlayCandidate, Quit, RegenerateAll, RegenerateCandidate,
     StartGeneration, TuiNavigation, UpdateNavigationStatus,
 )
@@ -224,8 +224,9 @@ class TuiApp:
             self._dispatch_editor_intents(intents)
             return
 
-        if not self._batch.in_item:
+        if self._batch.delete_confirmation_active or not self._batch.in_item:
             self._dispatch_batch_actions(self._batch.handle_key(key))
+            self.session = self.session if self._batch.in_item else None
             return
         if key == _ESCAPE:
             self._operations.stop_playback()
@@ -378,6 +379,9 @@ class TuiApp:
                 self._open_settings_editor(action.selected_field, edit=action.edit)
             elif isinstance(action, OpenCaptionEditor):
                 self._open_caption_editor()
+            elif isinstance(action, DeleteCaption):
+                self._operations.stop_playback()
+                self._batch.request_delete_open_item()
             elif isinstance(action, OpenClearCandidatesConfirmation):
                 if self._operations.busy:
                     self._status = "Finish or cancel synthesis before clearing candidates."
@@ -863,7 +867,7 @@ class TuiApp:
             self._renderer.render_editor(
                 screen, self._render_state(segments=()), height, width
             )
-        elif not self._batch.in_item:
+        elif self._batch.delete_confirmation_active or not self._batch.in_item:
             self._renderer.render_batch_list(
                 screen,
                 self._batch.batch,
@@ -884,8 +888,6 @@ class TuiApp:
             )
         screen.refresh()
         self._pressed_adjustment = None
-
-
 
 
 def main(argv: Sequence[str] | None = None) -> int:

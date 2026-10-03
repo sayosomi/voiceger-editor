@@ -31,7 +31,6 @@ from .tui_display import (
 )
 from .tui_editors import PronunciationRow
 from .tui_shortcuts import (
-    batch_list_caption_shortcut,
     batch_list_shortcut,
     main_shortcut,
     menu_item,
@@ -50,8 +49,8 @@ _HELP_ITEMS = (
     ),
     ("Space", ": toggle Batch List inclusion or replay a focused Take"),
     (
-        batch_list_caption_shortcut("delete_caption").shortcut.upper(),
-        ": delete focused Batch List Caption through confirmation",
+        main_shortcut("delete_caption").shortcut.upper(),
+        ": delete current Batch Item Caption through confirmation",
     ),
     (
         "Esc",
@@ -322,7 +321,7 @@ class TuiRenderer:
         height: int,
         width: int,
     ) -> None:
-        """Render the focused Caption deletion confirmation."""
+        """Render Caption deletion with the standard modal layout."""
 
         safe_add = self._safe_add
         safe_add(
@@ -331,41 +330,42 @@ class TuiRenderer:
             0,
             "DELETE CAPTION?",
             width,
-            self._attribute("A_BOLD"),
+            self._attribute("A_REVERSE") | self._attribute("A_BOLD"),
         )
-        body_limit = max(2, height - 3)
-        row = 2
-        for piece in _wrap_text(caption, max(1, width - 3)) or [""]:
-            if row >= body_limit:
-                break
-            safe_add(screen, row, 2, piece, width)
-            row += 1
-        if row + 1 < body_limit:
+        document: list[tuple[str, str | None]] = [("", None), ("Caption", None)]
+        pieces = _wrap_text(caption, max(1, width - 3)) or [""]
+        document.extend((f"  {piece}", None) for piece in pieces)
+        document.extend(
+            (
+                ("", None),
+                ("This Caption and its temporary Takes will be removed.", None),
+                ("", None),
+                (
+                    f"▶ {menu_item('batch_delete_confirmation', 'delete').display_label}",
+                    "delete",
+                ),
+                (
+                    f"  {menu_item('batch_delete_confirmation', 'cancel').label}",
+                    "cancel",
+                ),
+            )
+        )
+        viewport_height = max(1, height - 2)
+        focused_index = next(
+            index for index, (_line, key) in enumerate(document) if key == "delete"
+        )
+        start = max(0, focused_index - viewport_height // 3)
+        if start + viewport_height > len(document):
+            start = max(0, len(document) - viewport_height)
+        for offset, (line, key) in enumerate(document[start : start + viewport_height]):
             safe_add(
                 screen,
-                row + 1,
-                2,
-                "This Caption and its temporary Takes will be removed.",
+                offset + 1,
+                0,
+                line,
                 width,
+                self._focus_attribute() if key == "delete" else 0,
             )
-
-        delete_row = max(1, height - 2)
-        cancel_row = max(1, height - 1)
-        safe_add(
-            screen,
-            delete_row,
-            0,
-            f"▶ {menu_item('batch_delete_confirmation', 'delete').display_label}",
-            width,
-            self._focus_attribute(),
-        )
-        safe_add(
-            screen,
-            cancel_row,
-            0,
-            f"  Esc {menu_item('batch_delete_confirmation', 'cancel').label}",
-            width,
-        )
 
     def batch_list_document(
         self,
@@ -793,6 +793,10 @@ class TuiRenderer:
                     ("clear_candidates", None),
                     main_shortcut("clear_candidates").display_label,
                 )
+            action(
+                ("delete_caption", None),
+                main_shortcut("delete_caption").display_label,
+            )
             plain()
 
         action(("settings", None), main_shortcut("settings").display_label)

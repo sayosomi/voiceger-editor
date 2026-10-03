@@ -81,6 +81,7 @@ class TuiBatchController:
         self.focus_key: BatchFocusKey = ("takes", None)
         self.item_index: int | None = None
         self._pending_delete_item_id: str | None = None
+        self._pending_delete_from_item = False
 
     @property
     def in_item(self) -> bool:
@@ -102,6 +103,7 @@ class TuiBatchController:
             return self.batch.get_item(self._pending_delete_item_id).caption
         except KeyError:
             self._pending_delete_item_id = None
+            self._pending_delete_from_item = False
             self._repair_focus()
             return None
 
@@ -118,6 +120,12 @@ class TuiBatchController:
     def add_caption(self, caption: str, *, session_factory: SessionFactory) -> None:
         self.batch.add_caption(caption, session_factory=session_factory)
         self.focus_key = ("caption", len(self.batch) - 1)
+
+    def request_delete_open_item(self) -> None:
+        if self.item_index is None or not 0 <= self.item_index < len(self.batch):
+            return
+        self._pending_delete_item_id = self.batch.items[self.item_index].item_id
+        self._pending_delete_from_item = True
 
     def open_item(self, index: int) -> Any:
         if not 0 <= index < len(self.batch):
@@ -165,6 +173,7 @@ class TuiBatchController:
                 return (QuitBatch(),)
             if key == _ESCAPE:
                 self._pending_delete_item_id = None
+                self._pending_delete_from_item = False
                 self._repair_focus()
                 return ()
             shortcut = resolve_shortcut("batch_delete_confirmation", key)
@@ -186,6 +195,7 @@ class TuiBatchController:
                 index = self.focus_key[1]
                 if 0 <= index < len(self.batch):
                     self._pending_delete_item_id = self.batch.items[index].item_id
+                    self._pending_delete_from_item = False
             return ()
 
         if key == curses.KEY_UP:
@@ -234,9 +244,13 @@ class TuiBatchController:
             return
         item = self.batch.get_item(item_id)
         index = self.batch.items.index(item)
+        from_item = self._pending_delete_from_item
         removed = self.batch.remove_item(item_id)
         self._pending_delete_item_id = None
+        self._pending_delete_from_item = False
         removed.session.close()
+        if from_item:
+            self.item_index = None
         if len(self.batch):
             self.focus_key = ("caption", min(index, len(self.batch) - 1))
         else:

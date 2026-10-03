@@ -51,6 +51,7 @@ _MAIN_SHORTCUTS: tuple[MainShortcut, ...] = (
     MainShortcut("add_section", "Add section", "a"),
     MainShortcut("generate", "Generate", "g"),
     MainShortcut("clear_candidates", "Clear candidates", "c"),
+    MainShortcut("delete_caption", "Delete caption", "x"),
     MainShortcut("settings", "Settings", "s"),
     MainShortcut("dictionary", "Dictionary", "d"),
     MainShortcut("help", "Help", "?"),
