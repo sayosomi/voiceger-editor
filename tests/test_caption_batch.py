@@ -97,6 +97,26 @@ class CaptionBatchTests(unittest.TestCase):
         overridden.take_count_override = None
         self.assertEqual(batch.effective_take_count(overridden), 7)
 
+    def test_acceptance_state_tracks_stable_item_identity_across_reordering(self):
+        first = self.make_item("first", item_id="first-id")
+        second = self.make_item("second", item_id="second-id")
+        batch = CaptionBatch(default_take_count=4, items=[first, second])
+
+        marked = batch.mark_accepted("second-id", 2)
+        batch.move_item("second-id", 0)
+
+        self.assertIs(marked, second)
+        self.assertTrue(second.is_accepted)
+        self.assertEqual(second.accepted_take_number, 2)
+        self.assertEqual(batch.accepted_items, (second,))
+        self.assertFalse(first.is_accepted)
+
+        cleared = batch.clear_acceptance("second-id")
+        self.assertIs(cleared, second)
+        self.assertFalse(second.is_accepted)
+        self.assertIsNone(second.accepted_take_number)
+        self.assertEqual(batch.accepted_items, ())
+
     def test_nullable_take_override_survives_ordinary_session_edits(self):
         item = self.make_item("before")
         batch = CaptionBatch(default_take_count=6, items=[item])
