@@ -20,6 +20,7 @@ from voiceger_editor.tui_batch import (
 class FakeSession:
     def __init__(self, caption):
         self.caption = caption
+        self.candidates = []
         self.closed = False
         self.close_calls = 0
 
@@ -37,6 +38,8 @@ class TuiBatchControllerTests(unittest.TestCase):
 
     def make_bindings(self):
         operations = Mock()
+        operations.busy = False
+        operations.worker_operation = None
         operations.start_batch_generation.return_value = ()
         navigation = SimpleNamespace(
             focus_key=("takes", None),
@@ -218,6 +221,33 @@ class TuiBatchControllerTests(unittest.TestCase):
         self.assertEqual(final.focus_key, ("takes", None))
         self.assertEqual(only_session.close_calls, 1)
 
+    def test_open_item_identity_survives_reordering(self):
+        controller = self.make_controller("first\nsecond")
+        target = controller.batch.items[1]
+        controller.open_item(1)
+
+        controller.batch.move_item(target.item_id, 0)
+
+        self.assertEqual(controller.open_item_id, target.item_id)
+        self.assertEqual(controller.item_index, 0)
+        self.assertEqual(controller.item_title, "BATCH ITEM 1/2")
+
+    def test_complete_acceptance_marks_stable_item_and_focuses_next_generated_item(self):
+        controller = self.make_controller("first\nsecond\nthird")
+        target = controller.batch.items[1]
+        next_item = controller.batch.items[2]
+        next_item.session.candidates = [SimpleNamespace(number=1)]
+        controller.open_item(1)
+
+        controller.batch.move_item(target.item_id, 0)
+        controller.complete_acceptance(target.item_id, 2)
+
+        self.assertTrue(target.is_accepted)
+        self.assertEqual(target.accepted_take_number, 2)
+        self.assertFalse(controller.in_item)
+        self.assertEqual(controller.focus_key, ("caption", 2))
+        self.assertIs(controller.batch.items[2], next_item)
+
     def test_enter_opens_focused_caption_by_list_position(self):
         controller = self.make_controller("first\nsecond")
         controller.focus_key = ("caption", 1)
@@ -287,6 +317,25 @@ class TuiBatchControllerTests(unittest.TestCase):
             navigation_revision=7,
         )
         bindings.dispatch_operation_effects.assert_called_once_with(effects)
+
+    def test_dispatch_generation_clears_only_selected_acceptance_after_start(self):
+        controller = self.make_controller("first\nsecond")
+        first, second = controller.batch.items
+        controller.batch.mark_accepted(first.item_id, 1)
+        controller.batch.mark_accepted(second.item_id, 1)
+        second.included_for_generation = False
+        bindings = self.make_bindings()
+
+        def start_batch_generation(_batch, *, navigation_revision):
+            bindings.operations.busy = True
+            bindings.operations.worker_operation = "batch_generate"
+            return ()
+
+        bindings.operations.start_batch_generation.side_effect = start_batch_generation
+        controller.dispatch_actions((GenerateSelected(),), bindings)
+
+        self.assertFalse(first.is_accepted)
+        self.assertTrue(second.is_accepted)
 
     def test_dispatch_take_adjustment_keeps_batch_default_as_source_of_truth(self):
         controller = self.make_controller("first")
