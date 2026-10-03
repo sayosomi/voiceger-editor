@@ -156,6 +156,7 @@ def render_state(
     pressed_adjustment=None,
     editor=None,
     accepted_take_number=None,
+    batch_item_position=None,
 ):
     return TuiRenderState(
         voiceger_root=Path("/nonexistent/voiceger"),
@@ -176,6 +177,7 @@ def render_state(
         pressed_adjustment=pressed_adjustment,
         editor=editor,
         accepted_take_number=accepted_take_number,
+        batch_item_position=batch_item_position,
     )
 
 
@@ -285,13 +287,19 @@ class TuiRenderingTests(unittest.TestCase):
         with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
             self.renderer.render_navigation(
                 screen,
-                render_state(),
+                render_state(
+                    focus_key=("batch_item", None),
+                    batch_item_position=(2, 4),
+                ),
                 screen.rows,
                 screen.columns,
-                title="BATCH ITEM 2/4",
+                title="BATCH ITEM",
             )
-        header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
-        self.assertEqual(header, "BATCH ITEM 2/4")
+        header_row = next(item for item in screen.drawn if item[0] == 0)
+        header = header_row[2]
+        self.assertTrue(header.startswith("BATCH ITEM"))
+        self.assertTrue(header.endswith("< 2 / 4 >"))
+        self.assertTrue(header_row[3] & curses.A_REVERSE)
 
     def test_batch_list_header_summarizes_selection_requested_takes_and_actions(self):
         batch = CaptionBatch(default_take_count=4)
