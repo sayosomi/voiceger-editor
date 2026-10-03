@@ -51,6 +51,7 @@ class CaptionBatchItem:
         self._item_id = resolved_item_id
         self._included_for_generation = included_for_generation
         self._take_count_override = take_count_override
+        self._accepted_take_number: int | None = None
 
     @property
     def item_id(self) -> str:
@@ -92,6 +93,25 @@ class CaptionBatchItem:
             nullable=True,
         )
         self._take_count_override = value
+
+    @property
+    def accepted_take_number(self) -> int | None:
+        return self._accepted_take_number
+
+    @property
+    def is_accepted(self) -> bool:
+        return self._accepted_take_number is not None
+
+    def mark_accepted(self, take_number: int) -> None:
+        _validate_take_count(
+            take_number,
+            name="accepted_take_number",
+            nullable=False,
+        )
+        self._accepted_take_number = take_number
+
+    def clear_acceptance(self) -> None:
+        self._accepted_take_number = None
 
 
 class CaptionBatch:
@@ -143,6 +163,10 @@ class CaptionBatch:
         return tuple(
             item for item in self._items if item.included_for_generation
         )
+
+    @property
+    def accepted_items(self) -> tuple[CaptionBatchItem, ...]:
+        return tuple(item for item in self._items if item.is_accepted)
 
     def get_item(self, item_id: str) -> CaptionBatchItem:
         for item in self._items:
@@ -247,6 +271,16 @@ class CaptionBatch:
     def toggle_included(self, item_id: str) -> CaptionBatchItem:
         item = self.get_item(item_id)
         item.included_for_generation = not item.included_for_generation
+        return item
+
+    def mark_accepted(self, item_id: str, take_number: int) -> CaptionBatchItem:
+        item = self.get_item(item_id)
+        item.mark_accepted(take_number)
+        return item
+
+    def clear_acceptance(self, item_id: str) -> CaptionBatchItem:
+        item = self.get_item(item_id)
+        item.clear_acceptance()
         return item
 
     def effective_take_count(self, item: CaptionBatchItem) -> int:
