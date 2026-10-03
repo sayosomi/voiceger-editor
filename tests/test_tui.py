@@ -137,6 +137,7 @@ class FakeSession:
         self.discard_calls = 0
         self.close_calls = 0
         self.accept_calls = []
+        self.accept_error = None
 
     @property
     def has_active_batch(self):
@@ -191,7 +192,13 @@ class FakeSession:
 
     def accept_take(self, number):
         self.accept_calls.append(number)
-        return SimpleNamespace(wav_path=Path(f"/tmp/accepted-{number}.wav"), text_path=None)
+        if self.accept_error is not None:
+            raise self.accept_error
+        self.candidates = ()
+        return SimpleNamespace(
+            wav_path=Path(f"/tmp/accepted-{number}.wav"),
+            text_path=None,
+        )
 
     def close(self):
         self.close_calls += 1
@@ -1141,6 +1148,53 @@ class TuiTests(unittest.TestCase):
         self.assertFalse(app._batch.delete_confirmation_active)
         self.assertTrue(app._batch.in_item)
         self.assertIn("Finish or cancel synthesis before deleting Caption.", app._status)
+
+    def test_accepting_batch_item_returns_to_list_and_focuses_next_generated_item(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        accepted_session = app.session
+        accepted_item = app._batch.batch.items[0]
+        next_session = FakeSession(
+            query=mixed_query(),
+            candidates=(candidate(1), candidate(2)),
+        )
+        next_session.caption = "next caption"
+        app._batch.batch.add_item(CaptionBatchItem(next_session))
+        focus_candidate(app, 1)
+
+        app._handle_key("\n")
+
+        self.assertEqual(accepted_session.accept_calls, [1])
+        self.assertTrue(accepted_item.is_accepted)
+        self.assertEqual(accepted_item.accepted_take_number, 1)
+        self.assertFalse(app._batch.in_item)
+        self.assertIsNone(app.session)
+        self.assertEqual(app._batch.focus_key, ("caption", 1))
+        self.assertEqual(
+            [item.number for item in next_session.candidates],
+            [1, 2],
+        )
+        self.assertIn("Saved accepted-1.wav.", app._status)
+
+    def test_failed_batch_item_acceptance_stays_on_same_item(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        session = app.session
+        item = app._batch.batch.items[0]
+        session.accept_error = RuntimeError("disk full")
+        focus_candidate(app, 1)
+
+        app._handle_key("\n")
+
+        self.assertTrue(app._batch.in_item)
+        self.assertIs(app.session, session)
+        self.assertFalse(item.is_accepted)
+        self.assertEqual(
+            [candidate.number for candidate in session.candidates],
+            [1],
+        )
+        self.assertIn(
+            "Error: Could not save take 1: disk full",
+            app._status,
+        )
 
     def test_batch_list_take_count_updates_default_and_existing_item_session(self):
         with tempfile.TemporaryDirectory() as directory:
