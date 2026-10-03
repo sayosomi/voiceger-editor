@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 
 from voiceger_editor.caption_batch import CaptionBatch, CaptionBatchItem
 from voiceger_editor.tui_operations import (
+    CandidateReplacedEffect,
     DiscardInitialBatchEffect,
     FocusEffect,
     PlayPreviewEffect,
@@ -515,6 +516,7 @@ class TuiOperationsTests(unittest.TestCase):
             self.consume(FakeSession((candidate(1), replacement))),
             (
                 UpdateStatusEffect("Take 2 replacement ready."),
+                CandidateReplacedEffect(2),
                 PlayTakeEffect(2),
             ),
         )
@@ -528,7 +530,13 @@ class TuiOperationsTests(unittest.TestCase):
         self.operations.busy = True
         self.operations.events.put(("candidate", replacement))
         effects = self.consume(FakeSession((candidate(1), replacement)))
-        self.assertEqual(effects, (UpdateStatusEffect("Take 2 replacement ready."),))
+        self.assertEqual(
+            effects,
+            (
+                UpdateStatusEffect("Take 2 replacement ready."),
+                CandidateReplacedEffect(2),
+            ),
+        )
         self.assertEqual(self.operations.current_take, 1)
 
     def test_regenerate_all_preserves_selection_and_plays_only_its_replacement(self):
@@ -543,7 +551,9 @@ class TuiOperationsTests(unittest.TestCase):
             self.consume(FakeSession((one, two, three))),
             (
                 UpdateStatusEffect("Regenerating 2/3 · 1 ready"),
+                CandidateReplacedEffect(1),
                 UpdateStatusEffect("Regenerating 3/3 · 2 ready"),
+                CandidateReplacedEffect(3),
             ),
         )
         self.assertEqual(self.operations.current_take, 2)
@@ -552,6 +562,7 @@ class TuiOperationsTests(unittest.TestCase):
             self.consume(FakeSession((one, two, three))),
             (
                 UpdateStatusEffect("Regenerating 3/3 · 3 ready"),
+                CandidateReplacedEffect(2),
                 PlayTakeEffect(2),
             ),
         )
