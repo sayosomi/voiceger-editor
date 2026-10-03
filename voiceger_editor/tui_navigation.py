@@ -18,6 +18,7 @@ class NavigationContext:
     candidate_numbers: tuple[int, ...]
     busy: bool
     has_active_batch: bool
+    has_item_navigator: bool = False
 
 
 @dataclass(frozen=True)
@@ -136,11 +137,14 @@ class TuiNavigation:
         self.revision = 0
 
     def navigation_items(self, context: NavigationContext) -> tuple[FocusKey, ...]:
-        items: list[FocusKey] = [
+        items: list[FocusKey] = []
+        if context.has_item_navigator:
+            items.append(("batch_item", None))
+        items.extend([
             ("settings_summary", None),
             ("output", None),
             ("caption", None),
-        ]
+        ])
         if context.has_session:
             items.append(("build_pronunciation", None))
             items.extend(
