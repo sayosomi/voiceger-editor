@@ -292,6 +292,7 @@ class UtteranceSession:
     def generate_takes(
         self,
         *,
+        take_count: int | None = None,
         top_k: int | None = None,
         top_p: float | None = None,
         temperature: float | None = None,
@@ -306,6 +307,9 @@ class UtteranceSession:
         settings_snapshot = deepcopy(self._settings)
         source_text_snapshot = self.synthesis_source_text
         adapter = self._adapter
+        resolved_take_count = (
+            settings_snapshot.take_count if take_count is None else take_count
+        )
         resolved_top_k = settings_snapshot.top_k if top_k is None else top_k
         resolved_top_p = settings_snapshot.top_p if top_p is None else top_p
         resolved_temperature = (
@@ -333,7 +337,7 @@ class UtteranceSession:
             return synthesize_audio_query(**synthesis_kwargs)
 
         batch = TakeBatch(
-            take_count=settings_snapshot.take_count,
+            take_count=resolved_take_count,
             synthesize_one=synthesize_one,
             style_name=style_snapshot.name,
             source_text=source_text_snapshot,
@@ -351,10 +355,15 @@ class UtteranceSession:
     def regenerate_take(self, take_number: int) -> TakeCandidate:
         return self._require_active_batch().regenerate(take_number)
 
-    def regenerate_all_takes(self) -> Iterator[TakeCandidate]:
-        return self._require_active_batch().regenerate_all(
-            self._settings.take_count
+    def regenerate_all_takes(
+        self,
+        *,
+        take_count: int | None = None,
+    ) -> Iterator[TakeCandidate]:
+        resolved_take_count = (
+            self._settings.take_count if take_count is None else take_count
         )
+        return self._require_active_batch().regenerate_all(resolved_take_count)
 
     def accept_take(self, take_number: int) -> SavedOutput:
         batch = self._require_active_batch()

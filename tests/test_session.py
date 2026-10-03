@@ -726,6 +726,20 @@ class UtteranceSessionTests(unittest.TestCase):
             self.assertEqual(call.kwargs["top_p"], 0.42)
             self.assertEqual(call.kwargs["temperature"], 0.83)
 
+    def test_generate_takes_accepts_per_operation_take_count_override(self):
+        session = self.make_session()
+        batch_instance = Mock()
+        batch_instance.generate_all.return_value = iter(())
+
+        with patch(
+            "voiceger_editor.session.TakeBatch",
+            return_value=batch_instance,
+        ) as take_batch:
+            session.generate_takes(take_count=7)
+
+        self.assertEqual(take_batch.call_args.kwargs["take_count"], 7)
+        self.assertEqual(session.settings.take_count, self.settings.take_count)
+
     def test_generate_takes_uses_active_sampling_settings_when_not_overridden(self):
         session = self.make_session(caption="sampling source")
         sampling_settings = replace(
@@ -980,13 +994,15 @@ class UtteranceSessionTests(unittest.TestCase):
 
         regenerated = session.regenerate_take(2)
         all_regenerated = session.regenerate_all_takes()
+        overridden = session.regenerate_all_takes(take_count=7)
 
         self.assertEqual(batch.regenerate_calls, [2])
         self.assertEqual(regenerated.number, 2)
         self.assertEqual(list(all_regenerated), ["regenerated"])
+        self.assertEqual(list(overridden), ["regenerated"])
         self.assertEqual(
             batch.regenerate_all_calls,
-            [session.settings.take_count],
+            [session.settings.take_count, 7],
         )
 
     def test_successful_acceptance_clears_active_batch(self):
