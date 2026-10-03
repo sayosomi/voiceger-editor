@@ -65,6 +65,7 @@ _HELP_ITEMS = (
         ": Caption / Build pronunciation / Add section / Generate or regenerate all",
     ),
     ("1-9", ": focus and play an available Take"),
+    ("[ / ]", ": previous / next Batch Item Caption"),
     (main_shortcut("clear_candidates").shortcut.upper(), ": clear candidates through confirmation"),
     ("R", ": regenerate the focused Take"),
     (main_shortcut("settings").shortcut.upper(), ": open Settings"),
@@ -107,6 +108,7 @@ class TuiRenderState:
     pressed_adjustment: tuple[str, str, int] | None
     editor: EditorRenderState | None
     accepted_take_number: int | None = None
+    batch_item_position: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -535,13 +537,33 @@ class TuiRenderer:
         title: str = "Voiceger Editor",
     ) -> None:
         safe_add = self._safe_add
+        header = title
+        if state.batch_item_position is not None:
+            current, total = state.batch_item_position
+            position = f"< {current} / {total} >"
+            available = max(1, width - 1)
+            title_width = max(
+                0,
+                available - _display_width(position) - 1,
+            )
+            title_part = _truncate_display(title, title_width)
+            gap = max(
+                1,
+                available
+                - _display_width(title_part)
+                - _display_width(position),
+            )
+            header = title_part + (" " * gap) + position
+        header_attr = self._attribute("A_BOLD")
+        if state.focus_key == ("batch_item", None):
+            header_attr |= self._focus_attribute()
         safe_add(
             screen,
             0,
             0,
-            title,
+            header,
             width,
-            self._attribute("A_BOLD"),
+            header_attr,
         )
         settings = state.settings
         style_name = next(
