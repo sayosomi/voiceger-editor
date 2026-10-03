@@ -197,7 +197,6 @@ class FakeSession:
         self.accept_calls.append(number)
         if self.accept_error is not None:
             raise self.accept_error
-        self.candidates = ()
         return SimpleNamespace(
             wav_path=Path(f"/tmp/accepted-{number}.wav"),
             text_path=None,
@@ -2535,6 +2534,7 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(session.accept_calls, [1])
         self.assertTrue(item.is_accepted)
         self.assertEqual(item.accepted_take_number, 1)
+        self.assertEqual([item.number for item in session.candidates], [1])
         self.assertFalse(app._batch.in_item)
         self.assertIsNone(app.session)
         self.assertEqual(app._batch.focus_key, ("caption", 0))
