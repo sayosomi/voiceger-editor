@@ -100,10 +100,25 @@ class TuiBatchController:
     def __init__(self, *, default_take_count: int) -> None:
         self.batch = CaptionBatch(default_take_count=default_take_count)
         self.focus_key: BatchFocusKey = ("takes", None)
-        self.item_index: int | None = None
+        self._open_item_id: str | None = None
         self._pending_delete_item_id: str | None = None
         self._pending_delete_from_item = False
         self._delete_confirmation_selection = "delete"
+
+    @property
+    def item_index(self) -> int | None:
+        if self._open_item_id is None:
+            return None
+        try:
+            item = self.batch.get_item(self._open_item_id)
+        except KeyError:
+            self._open_item_id = None
+            return None
+        return self.batch.items.index(item)
+
+    @property
+    def open_item_id(self) -> str | None:
+        return self._open_item_id
 
     @property
     def in_item(self) -> bool:
@@ -149,21 +164,64 @@ class TuiBatchController:
         self.focus_key = ("caption", len(self.batch) - 1)
 
     def request_delete_open_item(self) -> None:
-        if self.item_index is None or not 0 <= self.item_index < len(self.batch):
+        item_id = self.open_item_id
+        if item_id is None:
             return
-        self._pending_delete_item_id = self.batch.items[self.item_index].item_id
+        self._pending_delete_item_id = item_id
         self._pending_delete_from_item = True
         self._delete_confirmation_selection = "delete"
 
     def open_item(self, index: int) -> Any:
         if not 0 <= index < len(self.batch):
             raise IndexError(index)
-        self.item_index = index
-        return self.batch.items[index].session
+        item = self.batch.items[index]
+        self._open_item_id = item.item_id
+        return item.session
 
     def close_item(self) -> None:
-        self.item_index = None
+        self._open_item_id = None
         self._repair_focus()
+
+    def clear_open_item_acceptance(self) -> None:
+        item_id = self.open_item_id
+        if item_id is not None:
+            self.batch.clear_acceptance(item_id)
+
+    def complete_acceptance(self, item_id: str, take_number: int) -> None:
+        item = self.batch.mark_accepted(item_id, take_number)
+        current_index = self.batch.items.index(item)
+        self._open_item_id = None
+        next_index = self._next_unaccepted_generated_index(current_index)
+        self.focus_key = (
+            "caption",
+            current_index if next_index is None else next_index,
+        )
+
+    def accept_open_item(
+        self,
+        number: int,
+        *,
+        pronunciation_index: int,
+        bindings: BatchActionBindings,
+    ) -> None:
+        item_id = self.open_item_id
+        if item_id is None:
+            return
+        item = self.batch.get_item(item_id)
+        session = item.session
+        had_active_batch = session.has_active_batch
+        effects = bindings.operations.accept_take(
+            session,
+            number,
+            busy=bindings.operations.busy,
+            pronunciation_index=pronunciation_index,
+        )
+        bindings.dispatch_operation_effects(effects)
+        if not had_active_batch or session.has_active_batch:
+            return
+        self.complete_acceptance(item_id, number)
+        bindings.editor_controller.clear_groupings()
+        bindings.set_session(None)
 
     def close_sessions(self) -> None:
         for session in self.sessions:
@@ -188,10 +246,19 @@ class TuiBatchController:
             elif isinstance(action, AddCaptions):
                 bindings.open_caption_editor("")
             elif isinstance(action, GenerateSelected):
+                selected_ids = tuple(
+                    item.item_id for item in self.batch.included_items
+                )
                 effects = bindings.operations.start_batch_generation(
                     self.batch,
                     navigation_revision=bindings.navigation.revision,
                 )
+                if (
+                    bindings.operations.busy
+                    and bindings.operations.worker_operation == "batch_generate"
+                ):
+                    for item_id in selected_ids:
+                        self.batch.clear_acceptance(item_id)
                 bindings.dispatch_operation_effects(effects)
             elif isinstance(action, AdjustBatchTakeCount):
                 count = self.batch.default_take_count
@@ -348,11 +415,21 @@ class TuiBatchController:
         self._delete_confirmation_selection = "delete"
         removed.session.close()
         if from_item:
-            self.item_index = None
+            self._open_item_id = None
         if len(self.batch):
             self.focus_key = ("caption", min(index, len(self.batch) - 1))
         else:
             self.focus_key = ("takes", None)
+
+    def _next_unaccepted_generated_index(self, current_index: int) -> int | None:
+        if len(self.batch) < 2:
+            return None
+        for offset in range(1, len(self.batch)):
+            index = (current_index + offset) % len(self.batch)
+            item = self.batch.items[index]
+            if not item.is_accepted and item.session.candidates:
+                return index
+        return None
 
     def _repair_focus(self) -> None:
         items = self.navigation_items()
