@@ -318,6 +318,7 @@ class TuiRenderer:
         self,
         screen: Any,
         caption: str,
+        selection: str,
         height: int,
         width: int,
     ) -> None:
@@ -341,11 +342,19 @@ class TuiRenderer:
                 ("This Caption and its temporary Takes will be removed.", None),
                 ("", None),
                 (
-                    f"▶ {menu_item('batch_delete_confirmation', 'delete').display_label}",
+                    (
+                        "▶ " if selection == "delete" else "  "
+                    ) + menu_item(
+                        "batch_delete_confirmation", "delete"
+                    ).display_label,
                     "delete",
                 ),
                 (
-                    f"  {menu_item('batch_delete_confirmation', 'cancel').label}",
+                    (
+                        "▶ " if selection == "cancel" else "  "
+                    ) + "[Esc] " + menu_item(
+                        "batch_delete_confirmation", "cancel"
+                    ).label,
                     "cancel",
                 ),
             )
@@ -364,7 +373,7 @@ class TuiRenderer:
                 0,
                 line,
                 width,
-                self._focus_attribute() if key == "delete" else 0,
+                self._focus_attribute() if key == selection else 0,
             )
 
     def batch_list_document(
@@ -431,6 +440,7 @@ class TuiRenderer:
         width: int,
         *,
         delete_confirmation_caption: str | None = None,
+        delete_confirmation_selection: str = "delete",
     ) -> None:
         """Render the top-level Batch List screen."""
 
@@ -438,6 +448,7 @@ class TuiRenderer:
             self.render_batch_delete_confirmation(
                 screen,
                 delete_confirmation_caption,
+                delete_confirmation_selection,
                 height,
                 width,
             )
@@ -793,6 +804,7 @@ class TuiRenderer:
                     ("clear_candidates", None),
                     main_shortcut("clear_candidates").display_label,
                 )
+            plain()
             action(
                 ("delete_caption", None),
                 main_shortcut("delete_caption").display_label,

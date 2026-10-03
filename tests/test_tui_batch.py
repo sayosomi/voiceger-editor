@@ -112,6 +112,35 @@ class TuiBatchControllerTests(unittest.TestCase):
         self.assertEqual(controller.focus_key, ("caption", 0))
         self.assertEqual(target.session.close_calls, 1)
 
+    def test_delete_confirmation_uses_modal_arrow_and_enter_semantics(self):
+        controller = self.make_controller("first\nsecond")
+        controller.focus_key = ("caption", 1)
+        controller.handle_key("x")
+
+        self.assertEqual(controller.delete_confirmation_selection, "delete")
+        controller.handle_key(curses.KEY_DOWN)
+        self.assertEqual(controller.delete_confirmation_selection, "cancel")
+        controller.handle_key(curses.KEY_DOWN)
+        self.assertEqual(controller.delete_confirmation_selection, "cancel")
+        controller.handle_key("\n")
+
+        self.assertFalse(controller.delete_confirmation_active)
+        self.assertEqual(
+            [item.caption for item in controller.batch.items],
+            ["first", "second"],
+        )
+
+        controller.handle_key("x")
+        controller.handle_key(curses.KEY_DOWN)
+        controller.handle_key(curses.KEY_UP)
+        self.assertEqual(controller.delete_confirmation_selection, "delete")
+        controller.handle_key("\n")
+
+        self.assertEqual(
+            [item.caption for item in controller.batch.items],
+            ["first"],
+        )
+
     def test_confirmed_delete_targets_pending_stable_id_and_closes_only_removed_session(self):
         controller = self.make_controller("first\nsecond\nthird")
         target = controller.batch.items[1]

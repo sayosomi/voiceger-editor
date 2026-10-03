@@ -69,8 +69,10 @@ Mixed Japanese-English text is also supported:
 After changing the Caption, apply the edit before continuing.
 
 Use `[X] Delete caption` from the Batch Item action menu to remove the current
-Caption. Deletion requires explicit confirmation with `D`; Esc cancels and
-returns to the same Batch Item.
+Caption. The confirmation is a normal two-row modal: Up/Down selects
+`[D] Delete caption` or `[Esc] Cancel`, Enter activates the selected row,
+`D` confirms directly, and Esc cancels directly and returns to the same Batch
+Item.
 
 ## Build pronunciation
 

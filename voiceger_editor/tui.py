@@ -876,6 +876,7 @@ class TuiApp:
                 height,
                 width,
                 delete_confirmation_caption=self._batch.delete_confirmation_caption,
+                delete_confirmation_selection=self._batch.delete_confirmation_selection,
             )
         else:
             self._dispatch_navigation_actions(
@@ -888,7 +889,6 @@ class TuiApp:
             )
         screen.refresh()
         self._pressed_adjustment = None
-
 
 def main(argv: Sequence[str] | None = None) -> int:
     from .entrypoint import main as run

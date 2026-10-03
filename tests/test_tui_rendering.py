@@ -339,20 +339,35 @@ class TuiRenderingTests(unittest.TestCase):
             screen.rows,
             screen.columns,
             delete_confirmation_caption="second caption",
+            delete_confirmation_selection="delete",
         )
 
         visible = self.rendered(screen)
         self.assertIn("DELETE CAPTION?", visible)
         self.assertIn("second caption", visible)
         self.assertIn("[D] Delete caption", visible)
-        self.assertIn("Cancel", visible)
-        self.assertNotIn("Esc Cancel", visible)
+        self.assertIn("[Esc] Cancel", visible)
         self.assertNotIn("BATCH LIST", visible)
         header = next(item for item in screen.drawn if item[0] == 0)
         self.assertTrue(header[3] & curses.A_REVERSE)
         self.assertTrue(header[3] & curses.A_BOLD)
         delete = next(item for item in screen.drawn if "[D] Delete caption" in item[2])
         self.assertTrue(delete[3] & curses.A_REVERSE)
+
+        screen.drawn.clear()
+        self.renderer.render_batch_list(
+            screen,
+            batch,
+            ("caption", 1),
+            "",
+            screen.rows,
+            screen.columns,
+            delete_confirmation_caption="second caption",
+            delete_confirmation_selection="cancel",
+        )
+        cancel = next(item for item in screen.drawn if "[Esc] Cancel" in item[2])
+        self.assertTrue(cancel[2].startswith("▶ "))
+        self.assertTrue(cancel[3] & curses.A_REVERSE)
 
     def test_main_japanese_phrases_use_fixed_separator_and_compound_mora_tokens(self):
         state = render_state(session=FakeSession(), focus_key=("pronunciation", 0))
@@ -1382,7 +1397,9 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(lines[candidate_index + 1].text, "")
         self.assertEqual(generate_index, candidate_index + 2)
         self.assertEqual(clear_index, generate_index + 1)
-        self.assertEqual(delete_index, clear_index + 1)
+        self.assertEqual(lines[clear_index + 1].text, "")
+        self.assertEqual(delete_index, clear_index + 2)
+        self.assertEqual(lines[delete_index + 1].text, "")
         self.assertEqual(labels[("settings", None)], "  [S] Settings")
         self.assertEqual(labels[("dictionary", None)], "  [D] Dictionary")
         self.assertEqual(labels[("help", None)], "  [?] Help")

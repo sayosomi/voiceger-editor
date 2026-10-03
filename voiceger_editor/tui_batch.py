@@ -82,6 +82,7 @@ class TuiBatchController:
         self.item_index: int | None = None
         self._pending_delete_item_id: str | None = None
         self._pending_delete_from_item = False
+        self._delete_confirmation_selection = "delete"
 
     @property
     def in_item(self) -> bool:
@@ -96,6 +97,10 @@ class TuiBatchController:
         return self._pending_delete_item_id is not None
 
     @property
+    def delete_confirmation_selection(self) -> str:
+        return self._delete_confirmation_selection
+
+    @property
     def delete_confirmation_caption(self) -> str | None:
         if self._pending_delete_item_id is None:
             return None
@@ -104,6 +109,7 @@ class TuiBatchController:
         except KeyError:
             self._pending_delete_item_id = None
             self._pending_delete_from_item = False
+            self._delete_confirmation_selection = "delete"
             self._repair_focus()
             return None
 
@@ -126,6 +132,7 @@ class TuiBatchController:
             return
         self._pending_delete_item_id = self.batch.items[self.item_index].item_id
         self._pending_delete_from_item = True
+        self._delete_confirmation_selection = "delete"
 
     def open_item(self, index: int) -> Any:
         if not 0 <= index < len(self.batch):
@@ -172,13 +179,23 @@ class TuiBatchController:
             if key == "q":
                 return (QuitBatch(),)
             if key == _ESCAPE:
-                self._pending_delete_item_id = None
-                self._pending_delete_from_item = False
-                self._repair_focus()
+                self._cancel_delete()
+                return ()
+            if key in (curses.KEY_UP, curses.KEY_DOWN):
+                self._move_delete_confirmation(
+                    -1 if key == curses.KEY_UP else 1
+                )
                 return ()
             shortcut = resolve_shortcut("batch_delete_confirmation", key)
             if shortcut is not None and shortcut.key == "delete":
+                self._delete_confirmation_selection = "delete"
                 self._confirm_delete()
+                return ()
+            if key in _ENTER_KEYS:
+                if self._delete_confirmation_selection == "delete":
+                    self._confirm_delete()
+                else:
+                    self._cancel_delete()
             return ()
 
         shortcut = resolve_batch_list_shortcut(key)
@@ -196,6 +213,7 @@ class TuiBatchController:
                 if 0 <= index < len(self.batch):
                     self._pending_delete_item_id = self.batch.items[index].item_id
                     self._pending_delete_from_item = False
+                    self._delete_confirmation_selection = "delete"
             return ()
 
         if key == curses.KEY_UP:
@@ -238,6 +256,21 @@ class TuiBatchController:
             return (QuitBatch(),)
         return ()
 
+    def _move_delete_confirmation(self, delta: int) -> None:
+        keys = ("delete", "cancel")
+        try:
+            index = keys.index(self._delete_confirmation_selection)
+        except ValueError:
+            index = 0
+        target = min(max(index + delta, 0), len(keys) - 1)
+        self._delete_confirmation_selection = keys[target]
+
+    def _cancel_delete(self) -> None:
+        self._pending_delete_item_id = None
+        self._pending_delete_from_item = False
+        self._delete_confirmation_selection = "delete"
+        self._repair_focus()
+
     def _confirm_delete(self) -> None:
         item_id = self._pending_delete_item_id
         if item_id is None:
@@ -248,6 +281,7 @@ class TuiBatchController:
         removed = self.batch.remove_item(item_id)
         self._pending_delete_item_id = None
         self._pending_delete_from_item = False
+        self._delete_confirmation_selection = "delete"
         removed.session.close()
         if from_item:
             self.item_index = None
