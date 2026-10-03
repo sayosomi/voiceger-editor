@@ -108,6 +108,7 @@ class TuiShortcutTests(unittest.TestCase):
             "a": "add_section",
             "g": "generate",
             "c": "clear_candidates",
+            "x": "delete_caption",
             "s": "settings",
             "d": "dictionary",
             "?": "help",
@@ -124,7 +125,7 @@ class TuiShortcutTests(unittest.TestCase):
                     f"[{shortcut.upper()}] "
                 ))
 
-        for removed in (curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "o", "x", "l"):
+        for removed in (curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "o", "l"):
             with self.subTest(removed=removed):
                 self.assertIsNone(resolve_main_shortcut(removed))
 

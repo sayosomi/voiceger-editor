@@ -86,6 +86,32 @@ class TuiBatchControllerTests(unittest.TestCase):
         )
         self.assertEqual(target.session.close_calls, 0)
 
+    def test_open_item_delete_cancel_keeps_item_and_confirm_returns_to_list(self):
+        controller = self.make_controller("first\nsecond")
+        target = controller.batch.items[1]
+        controller.focus_key = ("caption", 1)
+        controller.open_item(1)
+
+        controller.request_delete_open_item()
+        self.assertTrue(controller.delete_confirmation_active)
+        self.assertEqual(controller.delete_confirmation_caption, "second")
+        controller.handle_key("\x1b")
+
+        self.assertTrue(controller.in_item)
+        self.assertEqual(controller.item_title, "BATCH ITEM 2/2")
+        self.assertEqual(target.session.close_calls, 0)
+
+        controller.request_delete_open_item()
+        controller.handle_key("d")
+
+        self.assertFalse(controller.in_item)
+        self.assertEqual(
+            [item.caption for item in controller.batch.items],
+            ["first"],
+        )
+        self.assertEqual(controller.focus_key, ("caption", 0))
+        self.assertEqual(target.session.close_calls, 1)
+
     def test_confirmed_delete_targets_pending_stable_id_and_closes_only_removed_session(self):
         controller = self.make_controller("first\nsecond\nthird")
         target = controller.batch.items[1]
