@@ -257,11 +257,11 @@ class TuiApp:
         if key in ("Q", "\x03"):
             self._activate_quit()
             return
-        if key in ("[", "]"):
-            self._batch.move_open_item(
-                -1 if key == "[" else 1,
-                bindings=self._batch_action_bindings,
-            )
+        if self._batch.handle_item_navigation_key(
+            key,
+            focus_key=self._navigation.focus_key,
+            bindings=self._batch_action_bindings,
+        ):
             return
         main_shortcut = resolve_main_shortcut(key)
         if main_shortcut is not None:
@@ -285,12 +285,7 @@ class TuiApp:
             return
         if key in (curses.KEY_LEFT, curses.KEY_RIGHT):
             direction = -1 if key == curses.KEY_LEFT else 1
-            if self._navigation.focus_key[0] == "batch_item":
-                self._batch.move_open_item(
-                    direction,
-                    bindings=self._batch_action_bindings,
-                )
-            elif self._navigation.focus_key[0] == "generate":
+            if self._navigation.focus_key[0] == "generate":
                 self._adjust_take_count(direction)
             elif (
                 self._navigation.focus_key[0] == "pronunciation"
