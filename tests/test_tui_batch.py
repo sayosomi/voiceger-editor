@@ -303,7 +303,8 @@ class TuiBatchControllerTests(unittest.TestCase):
         self.assertEqual(bindings.navigation.focus_key, ("batch_item", None))
         bindings.navigation.reset_pronunciation_index.assert_called_once_with()
         bindings.set_status.assert_called_once_with("")
-        self.assertEqual(controller.item_title, "BATCH ITEM 2/2")
+        self.assertEqual(controller.item_title, "BATCH ITEM")
+        self.assertEqual(controller.item_position, (2, 2))
 
     def test_move_open_item_switches_sessions_without_wrapping(self):
         controller = self.make_controller("first\nsecond")
