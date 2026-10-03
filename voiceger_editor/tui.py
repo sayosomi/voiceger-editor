@@ -258,9 +258,7 @@ class TuiApp:
             self._activate_quit()
             return
         if self._batch.handle_item_navigation_key(
-            key,
-            focus_key=self._navigation.focus_key,
-            bindings=self._batch_action_bindings,
+            key, focus_key=self._navigation.focus_key, bindings=self._batch_action_bindings
         ):
             return
         main_shortcut = resolve_main_shortcut(key)
@@ -840,9 +838,7 @@ class TuiApp:
                 else self._editor_controller.editor
             ),
             accepted_take_number=self._batch.open_item_accepted_take_number,
-            batch_item_position=(
-                self._batch.item_position if self._batch.in_item else None
-            ),
+            batch_item_position=self._batch.item_position if self._batch.in_item else None,
         )
 
     def _render(self) -> None:
