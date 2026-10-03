@@ -295,15 +295,19 @@ class TuiRenderingTests(unittest.TestCase):
         batch = CaptionBatch(default_take_count=4)
         batch.add_captions_from_text(
             "first caption\nsecond caption",
-            session_factory=lambda caption: SimpleNamespace(caption=caption),
+            session_factory=lambda caption: SimpleNamespace(
+                caption=caption, candidates=()
+            ),
         )
         batch.toggle_included(batch.items[1].item_id)
+        batch.items[0].session.candidates = (SimpleNamespace(number=1),)
+        batch.mark_accepted(batch.items[1].item_id, 2)
 
         lines = self.renderer.batch_list_document(batch, ("caption", 0), 80)
         labels = [line.text for line in lines]
         self.assertIn("  Takes < 4 >", labels)
-        self.assertIn("▶ [x] 1  first caption", labels)
-        self.assertIn("  [ ] 2  second caption", labels)
+        self.assertIn("▶ [x] 1  [1 TAKE] first caption", labels)
+        self.assertIn("  [ ] 2  [ACCEPTED] second caption", labels)
         self.assertFalse(any(label.startswith("Selected:") for label in labels))
         self.assertFalse(any(label.startswith("Requested:") for label in labels))
         for action in (
@@ -321,25 +325,35 @@ class TuiRenderingTests(unittest.TestCase):
             screen, batch, ("caption", 0), "", screen.rows, screen.columns
         )
         header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
-        self.assertEqual(header, "BATCH LIST · 1/2 selected · 4 takes")
+        self.assertEqual(
+            header,
+            "BATCH LIST · 1/2 selected · 4 takes · Accepted 1/2",
+        )
 
         single = CaptionBatch(default_take_count=1)
         single.add_caption(
             "only caption",
-            session_factory=lambda caption: SimpleNamespace(caption=caption),
+            session_factory=lambda caption: SimpleNamespace(
+                caption=caption, candidates=()
+            ),
         )
         screen.drawn.clear()
         self.renderer.render_batch_list(
             screen, single, ("caption", 0), "", screen.rows, screen.columns
         )
         header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
-        self.assertEqual(header, "BATCH LIST · 1/1 selected · 1 take")
+        self.assertEqual(
+            header,
+            "BATCH LIST · 1/1 selected · 1 take · Accepted 0/1",
+        )
 
     def test_batch_delete_confirmation_shows_target_and_explicit_actions(self):
         batch = CaptionBatch(default_take_count=4)
         batch.add_captions_from_text(
             "first caption\nsecond caption",
-            session_factory=lambda caption: SimpleNamespace(caption=caption),
+            session_factory=lambda caption: SimpleNamespace(
+                caption=caption, candidates=()
+            ),
         )
         screen = FakeScreen()
 
