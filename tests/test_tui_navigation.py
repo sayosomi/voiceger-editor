@@ -102,6 +102,7 @@ class TuiNavigationTests(unittest.TestCase):
                 ("candidate", 5),
                 ("generate", None),
                 ("clear_candidates", None),
+                ("delete_caption", None),
                 ("settings", None),
                 ("dictionary", None),
                 ("help", None),

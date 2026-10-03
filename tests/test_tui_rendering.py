@@ -604,7 +604,7 @@ class TuiRenderingTests(unittest.TestCase):
             "Batch List Takes",
             "open a Batch List Caption",
             "toggle Batch List inclusion",
-            "delete focused Batch List Caption through confirmation",
+            "delete current Batch Item Caption through confirmation",
             "one level back",
             "E / P / A / G",
             "Caption / Build pronunciation / Add section / Generate or regenerate all",
