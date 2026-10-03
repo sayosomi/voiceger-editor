@@ -393,6 +393,7 @@ class TuiApp:
                     )
                 )
             elif isinstance(action, StartGeneration):
+                self._batch.clear_open_item_acceptance()
                 self._dispatch_operation_effects(
                     self._operations.start_generation(
                         self.session,
@@ -411,13 +412,10 @@ class TuiApp:
             elif isinstance(action, BuildPronunciation):
                 self._request_build_pronunciation()
             elif isinstance(action, AcceptCandidate):
-                self._dispatch_operation_effects(
-                    self._operations.accept_take(
-                        self.session,
-                        action.number,
-                        busy=self._operations.busy,
-                        pronunciation_index=self._navigation.pronunciation_index,
-                    )
+                self._batch.accept_open_item(
+                    action.number,
+                    pronunciation_index=self._navigation.pronunciation_index,
+                    bindings=self._batch_action_bindings,
                 )
             elif isinstance(action, RegenerateCandidate):
                 self._dispatch_operation_effects(
