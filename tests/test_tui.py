@@ -18,7 +18,7 @@ from voiceger_editor.terms_acceptance import (
     VoicegerTermsAcceptanceError,
 )
 from voiceger_editor.tui_editors import PreviewIntent, ReplaceQueryIntent
-from voiceger_editor.tui_operations import PlayPreviewEffect
+from voiceger_editor.tui_operations import CandidateReplacedEffect, PlayPreviewEffect
 from voiceger_editor.tui import (
     TuiApp,
     build_argument_parser,
@@ -634,6 +634,8 @@ class TuiTests(unittest.TestCase):
     def test_clear_candidates_confirmation_cancel_and_confirmed_clear(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
         app._operations.current_take = 2
+        item = app._batch.batch.items[0]
+        app._batch.batch.mark_accepted(item.item_id, 2)
         query_before = app.session.query.model_dump()
         settings_before = app.settings
         caption_before = app.session.caption
@@ -651,6 +653,7 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app.session.candidates, candidates_before)
         self.assertEqual(app.session.discard_calls, 0)
         self.assertEqual(app._operations.current_take, 2)
+        self.assertTrue(item.is_accepted)
 
         app._handle_key("c")
         app._handle_key("c")
@@ -659,6 +662,7 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app.session.discard_calls, 1)
         self.assertEqual(app.session.candidates, ())
         self.assertIsNone(app._operations.current_take)
+        self.assertFalse(item.is_accepted)
         self.assertEqual(app.session.caption, caption_before)
         self.assertEqual(app.session.query.model_dump(), query_before)
         self.assertEqual(app.settings, settings_before)
@@ -1176,6 +1180,24 @@ class TuiTests(unittest.TestCase):
             [1, 2],
         )
         self.assertIn("Saved accepted-1.wav.", app._status)
+
+    def test_candidate_replacement_clears_only_matching_acceptance(self):
+        app = self.make_app(
+            query=mixed_query(),
+            candidates=(candidate(1), candidate(2)),
+        )
+        item = app._batch.batch.items[0]
+        app._batch.batch.mark_accepted(item.item_id, 1)
+
+        app._dispatch_operation_effects((CandidateReplacedEffect(2),))
+
+        self.assertTrue(item.is_accepted)
+        self.assertEqual(item.accepted_take_number, 1)
+
+        app._dispatch_operation_effects((CandidateReplacedEffect(1),))
+
+        self.assertFalse(item.is_accepted)
+        self.assertIsNone(item.accepted_take_number)
 
     def test_failed_generation_start_preserves_existing_acceptance(self):
         app = self.make_app(query=mixed_query(), candidates=())
