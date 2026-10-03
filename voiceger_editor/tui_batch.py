@@ -231,6 +231,28 @@ class TuiBatchController:
             return
         self.complete_acceptance(item_id, number)
 
+    def handle_item_navigation_key(
+        self,
+        key: Any,
+        *,
+        focus_key: tuple[str, int | None],
+        bindings: BatchActionBindings,
+    ) -> bool:
+        direction: int | None = None
+        if key == "[":
+            direction = -1
+        elif key == "]":
+            direction = 1
+        elif focus_key == ("batch_item", None):
+            if key == curses.KEY_LEFT:
+                direction = -1
+            elif key == curses.KEY_RIGHT:
+                direction = 1
+        if direction is None:
+            return False
+        self.move_open_item(direction, bindings=bindings)
+        return True
+
     def move_open_item(
         self,
         direction: int,
