@@ -827,6 +827,7 @@ class TuiApp:
                 if self._dictionary_controller.active
                 else self._editor_controller.editor
             ),
+            accepted_take_number=self._batch.open_item_accepted_take_number,
         )
 
     def _render(self) -> None:
