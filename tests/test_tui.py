@@ -1175,6 +1175,22 @@ class TuiTests(unittest.TestCase):
         )
         self.assertIn("Saved accepted-1.wav.", app._status)
 
+    def test_failed_generation_start_preserves_existing_acceptance(self):
+        app = self.make_app(query=mixed_query(), candidates=())
+        item = app._batch.batch.items[0]
+        app._batch.batch.mark_accepted(item.item_id, 1)
+        app._operations.busy = True
+        app._operations.worker_operation = "preview"
+
+        app._handle_key("g")
+
+        self.assertTrue(item.is_accepted)
+        self.assertEqual(item.accepted_take_number, 1)
+        self.assertIn(
+            "A sequential take operation is already running.",
+            app._status,
+        )
+
     def test_failed_batch_item_acceptance_stays_on_same_item(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
         session = app.session
