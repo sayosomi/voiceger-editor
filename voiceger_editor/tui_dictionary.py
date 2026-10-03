@@ -24,7 +24,7 @@ from .tui_editors import (
     QuitIntent,
     UpdateStatusIntent,
 )
-from .tui_shortcuts import resolve_shortcut
+from .tui_shortcuts import menu_items, resolve_shortcut
 from .user_dictionary import JapaneseWordType, UserDictionaryCore
 from .voicevox_api_models import AccentPhrase, AudioQuery, Mora, VoicegerSegment
 
@@ -438,6 +438,17 @@ class TuiDictionaryController:
                 "entry",
                 min(max(index + delta, 0), len(entries) - 1),
             )
+            return ()
+        if editor.kind == "dictionary_delete_confirmation":
+            keys = [
+                item.key
+                for item in menu_items(editor.kind, editor.payload)
+            ]
+            try:
+                index = keys.index(editor.selection)
+            except ValueError:
+                index = 0
+            editor.selection = keys[min(max(index + delta, 0), len(keys) - 1)]
             return ()
         return ()
 

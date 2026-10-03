@@ -1125,7 +1125,10 @@ class TuiRenderer:
             selectable("back")
         elif editor.kind == "dictionary_delete_confirmation":
             plain()
-            plain(editor.payload["surface"])
+            plain("Surface")
+            wrap("  ", editor.payload["surface"])
+            plain()
+            plain("Pronunciation")
             if editor.payload["language"] == "ja":
                 display = " ".join(
                     _japanese_mora_tokens(
@@ -1137,8 +1140,11 @@ class TuiRenderer:
                 display = " ".join(editor.payload["phonemes"])
             wrap("  ", display)
             plain()
+            wrap("", "This dictionary word will be removed.")
+            plain()
             selectable("delete")
-            selectable("cancel")
+            cancel_marker = "▶ " if editor.selection == "cancel" else "  "
+            lines.append((f"{cancel_marker}[Esc] Cancel", "cancel"))
         elif editor.kind == "dictionary_discard_confirmation":
             plain()
             wrap("", "Unsaved dictionary changes will be discarded.")

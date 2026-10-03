@@ -423,6 +423,43 @@ class TuiDictionaryControllerTests(unittest.TestCase):
             ["R", "EH0", "K", "ER1", "D"],
         )
 
+    def test_delete_confirmation_uses_common_modal_navigation_for_both_languages(self):
+        self.core.japanese["ja"] = ja_word("ずんだもん", "ズンダモン", 3)
+        self.core.english["hello"] = en_word(
+            "hello", ["HH", "AH0", "L", "OW1"]
+        )
+
+        self.controller.open_menu()
+        self.key("j")
+        self.controller.editor.selection = ("entry", 0)
+        self.key("x")
+
+        self.assertEqual(
+            self.controller.editor.kind,
+            "dictionary_delete_confirmation",
+        )
+        self.assertEqual(self.controller.editor.selection, "delete")
+        self.key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.selection, "cancel")
+        self.key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.selection, "cancel")
+        self.key("\n")
+
+        self.assertEqual(self.controller.editor.kind, "dictionary_japanese_list")
+        self.assertIn("ja", self.core.japanese)
+
+        self.key("\x1b")
+        self.key("e")
+        self.controller.editor.selection = ("entry", 0)
+        self.key("x")
+        self.key(curses.KEY_DOWN)
+        self.key(curses.KEY_UP)
+        self.assertEqual(self.controller.editor.selection, "delete")
+        self.key("\n")
+
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_list")
+        self.assertEqual(self.core.english, {})
+
     def test_management_crud_and_delete_confirmation_for_both_languages(self):
         self.controller.open_menu()
         self.key("\n")
