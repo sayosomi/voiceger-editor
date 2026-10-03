@@ -256,7 +256,8 @@ class TuiBatchControllerTests(unittest.TestCase):
         session = controller.open_item(1)
         self.assertIs(session, controller.batch.items[1].session)
         self.assertTrue(controller.in_item)
-        self.assertEqual(controller.item_title, "BATCH ITEM 2/2")
+        self.assertEqual(controller.item_title, "BATCH ITEM")
+        self.assertEqual(controller.item_position, (2, 2))
 
         controller.close_item()
         self.assertFalse(controller.in_item)
