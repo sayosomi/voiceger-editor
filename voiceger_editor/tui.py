@@ -314,9 +314,7 @@ class TuiApp:
                 self._navigation.activate_focused_item(self._navigation_context())
             )
 
-    def _dispatch_batch_actions(
-        self, actions: Sequence[tui_batch.BatchAction]
-    ) -> None:
+    def _dispatch_batch_actions(self, actions: Sequence[tui_batch.BatchAction]) -> None:
         for action in actions:
             if isinstance(action, tui_batch.OpenBatchItem):
                 self._operations.stop_playback()
