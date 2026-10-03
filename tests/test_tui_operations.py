@@ -17,6 +17,7 @@ from voiceger_editor.tui_operations import (
     PreviewFailedEvent,
     PreviewReadyEvent,
     StopPlaybackEffect,
+    TakeAcceptedEffect,
     TuiOperations,
     UpdateStatusEffect,
 )
@@ -885,7 +886,7 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(process.wait.call_args_list[0].kwargs, {"timeout": 0.25})
         self.assertEqual(process.wait.call_args_list[1].args, ())
 
-    def test_candidate_acceptance_stops_playback_clears_current_and_requests_focus(self):
+    def test_candidate_acceptance_stops_playback_and_keeps_navigation_focus(self):
         session = FakeSession((candidate(3),))
         process = Mock()
         process.poll.return_value = None
@@ -903,7 +904,7 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(
             effects,
             (
-                FocusEffect(("pronunciation", 2)),
+                TakeAcceptedEffect(3),
                 UpdateStatusEffect("Saved saved.wav and saved.txt."),
             ),
         )
