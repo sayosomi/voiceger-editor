@@ -265,7 +265,7 @@ class TakeBatch:
         save_text: bool,
         save_lab: bool = False,
     ) -> SavedOutput:
-        """Save the selected candidate using its generation provenance."""
+        """Save the selected candidate while keeping the review batch open."""
 
         self._ensure_open()
         number = self._validate_take_number(take_number)
@@ -303,7 +303,6 @@ class TakeBatch:
                 lab_path=lab_result.path,
                 lab_warning=lab_result.warning,
             )
-        self.close()
         return saved
 
     def close(self) -> None:
