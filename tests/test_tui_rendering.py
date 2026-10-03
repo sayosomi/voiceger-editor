@@ -306,8 +306,19 @@ class TuiRenderingTests(unittest.TestCase):
         lines = self.renderer.batch_list_document(batch, ("caption", 0), 80)
         labels = [line.text for line in lines]
         self.assertIn("  Takes < 4 >", labels)
-        self.assertIn("▶ [x] 1  [1 TAKE] first caption", labels)
-        self.assertIn("  [ ] 2  [ACCEPTED] second caption", labels)
+        self.assertIn("▶ [x] 1  [25%] first caption", labels)
+        self.assertIn("  [ ] 2  [✓] second caption", labels)
+
+        batch.items[0].session.candidates = tuple(
+            SimpleNamespace(number=number) for number in range(1, 5)
+        )
+        labels = [
+            line.text
+            for line in self.renderer.batch_list_document(
+                batch, ("caption", 0), 80
+            )
+        ]
+        self.assertIn("▶ [x] 1  [!] first caption", labels)
         self.assertFalse(any(label.startswith("Selected:") for label in labels))
         self.assertFalse(any(label.startswith("Requested:") for label in labels))
         for action in (
