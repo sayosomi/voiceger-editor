@@ -138,7 +138,10 @@ Select an existing dictionary entry and press Enter to edit it.
 
 Use the Delete action from the list to remove an entry.
 
-Deletion requires confirmation.
+Deletion requires confirmation. The confirmation uses the same two-row modal
+pattern as other destructive actions: Up/Down selects `[D] Delete` or
+`[Esc] Cancel`, Enter activates the selected row, `D` confirms directly,
+and Esc cancels directly and returns to the dictionary list.
 
 If you try to leave an entry editor with unsaved changes, Voiceger Editor asks before discarding them.
 

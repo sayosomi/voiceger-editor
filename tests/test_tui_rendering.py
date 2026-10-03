@@ -990,6 +990,62 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn(("  [E] English       1 words", "english"), document)
         self.assertIn(("  Back", "back"), document)
 
+    def test_dictionary_delete_confirmation_matches_common_modal(self):
+        cases = (
+            (
+                "ja",
+                {
+                    "language": "ja",
+                    "surface": "ずんだもん",
+                    "moras": ("ズ", "ン", "ダ", "モ", "ン"),
+                    "accent": 3,
+                },
+                "ズ ン [ダ] モ ン",
+            ),
+            (
+                "en",
+                {
+                    "language": "en",
+                    "surface": "Voiceger",
+                    "phonemes": ("V", "OY1", "AH0", "JH", "ER0"),
+                },
+                "V OY1 AH0 JH ER0",
+            ),
+        )
+        for language, payload, pronunciation in cases:
+            with self.subTest(language=language):
+                editor = SimpleNamespace(
+                    kind="dictionary_delete_confirmation",
+                    title="DELETE DICTIONARY WORD?",
+                    selection="delete",
+                    payload=payload,
+                    active_field=None,
+                    input_value="",
+                    input_cursor=0,
+                    error="",
+                    scroll=0,
+                )
+
+                document, _cursor_line, _cursor_column = self.renderer.editor_document(
+                    render_state(editor=editor), 80
+                )
+                labels = [line for line, _key in document]
+
+                self.assertEqual(labels[0], "DELETE DICTIONARY WORD?")
+                self.assertIn("Surface", labels)
+                self.assertIn(f"  {payload['surface']}", labels)
+                self.assertIn("Pronunciation", labels)
+                self.assertIn(f"  {pronunciation}", labels)
+                self.assertIn("This dictionary word will be removed.", labels)
+                self.assertEqual(labels[-2:], ["▶ [D] Delete", "  [Esc] Cancel"])
+
+                editor.selection = "cancel"
+                document, _cursor_line, _cursor_column = self.renderer.editor_document(
+                    render_state(editor=editor), 80
+                )
+                labels = [line for line, _key in document]
+                self.assertEqual(labels[-2:], ["  [D] Delete", "▶ [Esc] Cancel"])
+
     def test_empty_dictionary_list_renders_add_and_back(self):
         editor = SimpleNamespace(
             kind="dictionary_japanese_list",
