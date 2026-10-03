@@ -30,7 +30,8 @@ BATCH LIST
 
 On `BATCH LIST`, Space toggles whether the focused Caption is selected for
 outer batch generation. Left / Right on `Takes` changes the batch default Take
-count. `Generate selected` is the entry point for the sequential multi-Caption
+count. Open a Caption to use its visible Batch Item actions, including Caption
+deletion. `Generate selected` is the entry point for the sequential multi-Caption
 generation workflow; the scheduling behavior is implemented separately from the
 navigation layer.
 
@@ -66,6 +67,12 @@ Mixed Japanese-English text is also supported:
 ```
 
 After changing the Caption, apply the edit before continuing.
+
+Use `[X] Delete caption` from the Batch Item action menu to remove the current
+Caption. The confirmation is a normal two-row modal: Up/Down selects
+`[D] Delete caption` or `[Esc] Cancel`, Enter activates the selected row,
+`D` confirms directly, and Esc cancels directly and returns to the same Batch
+Item.
 
 ## Build pronunciation
 
@@ -228,6 +235,7 @@ Changing the configured Take count does not change the synthesis parameters of T
 | `a` | Add section |
 | `g` | Generate / regenerate all Takes |
 | `c` | Clear candidates |
+| `x` | Delete caption (with confirmation) |
 | `s` | Settings |
 | `d` | Dictionary |
 | `?` | Help |

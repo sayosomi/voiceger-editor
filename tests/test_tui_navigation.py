@@ -5,6 +5,7 @@ from voiceger_editor.tui_navigation import (
     AddSectionEditor,
     BuildPronunciation,
     ClearAdjustmentFeedback,
+    DeleteCaption,
     EditPronunciationItem,
     NavigationContext,
     OpenClearCandidatesConfirmation,
@@ -62,6 +63,7 @@ class TuiNavigationTests(unittest.TestCase):
                 ("candidate", 2),
                 ("generate", None),
                 ("clear_candidates", None),
+                ("delete_caption", None),
                 ("settings", None),
                 ("dictionary", None),
                 ("help", None),
@@ -100,6 +102,7 @@ class TuiNavigationTests(unittest.TestCase):
                 ("candidate", 5),
                 ("generate", None),
                 ("clear_candidates", None),
+                ("delete_caption", None),
                 ("settings", None),
                 ("dictionary", None),
                 ("help", None),
@@ -235,6 +238,7 @@ class TuiNavigationTests(unittest.TestCase):
             (("build_pronunciation", None), BuildPronunciation()),
             (("candidate", 1), AcceptCandidate(1)),
             (("clear_candidates", None), OpenClearCandidatesConfirmation()),
+            (("delete_caption", None), DeleteCaption()),
             (("settings", None), OpenSettingsEditor("style_id")),
             (("dictionary", None), OpenDictionary()),
             (("help", None), OpenHelp()),
@@ -262,6 +266,7 @@ class TuiNavigationTests(unittest.TestCase):
             ("build_pronunciation", None),
             ("add_section", None),
             ("generate", None),
+            ("delete_caption", None),
         ):
             with self.subTest(focus_key=focus_key):
                 state = context()
@@ -311,6 +316,10 @@ class TuiNavigationTests(unittest.TestCase):
                     "Wait for synthesis to finish before adding a section."
                 ),
             ),
+        )
+        self.assertEqual(
+            self.navigation.activate_item(busy, ("delete_caption", None)),
+            (UpdateNavigationStatus("Finish or cancel synthesis before deleting Caption."),),
         )
         self.assertEqual(
             self.navigation.activate_item(busy, ("generate", None)),

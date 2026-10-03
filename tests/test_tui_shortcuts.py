@@ -13,12 +13,15 @@ from voiceger_editor.tui_editors import (
 )
 from voiceger_editor.tui_rendering import TuiRenderer, TuiRenderState
 from voiceger_editor.tui_shortcuts import (
+    batch_list_caption_shortcut,
+    batch_list_caption_shortcuts,
     batch_list_shortcut,
     batch_list_shortcuts,
     main_shortcut,
     main_shortcuts,
     menu_definitions,
     menu_items,
+    resolve_batch_list_caption_shortcut,
     resolve_batch_list_shortcut,
     resolve_main_shortcut,
     resolve_shortcut,
@@ -81,6 +84,7 @@ class TuiShortcutTests(unittest.TestCase):
                 "g": "generate_pronunciation", "p": "preview",
                 "s": "save", "d": "dictionary",
             },
+            "batch_delete_confirmation": {"d": "delete"},
             "dictionary_delete_confirmation": {"d": "delete"},
             "dictionary_discard_confirmation": {"d": "discard"},
             "delete_confirmation": {"d": "delete"},
@@ -104,6 +108,7 @@ class TuiShortcutTests(unittest.TestCase):
             "a": "add_section",
             "g": "generate",
             "c": "clear_candidates",
+            "x": "delete_caption",
             "s": "settings",
             "d": "dictionary",
             "?": "help",
@@ -120,7 +125,7 @@ class TuiShortcutTests(unittest.TestCase):
                     f"[{shortcut.upper()}] "
                 ))
 
-        for removed in (curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "o", "x", "l"):
+        for removed in (curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "o", "l"):
             with self.subTest(removed=removed):
                 self.assertIsNone(resolve_main_shortcut(removed))
 
@@ -144,6 +149,21 @@ class TuiShortcutTests(unittest.TestCase):
                 self.assertTrue(resolved.display_label.startswith(
                     f"[{shortcut.upper()}] "
                 ))
+
+    def test_batch_list_caption_shortcut_matches_issue_143_contract(self):
+        expected = {"x": "delete_caption"}
+        actual = {
+            item.shortcut: item.navigation_key
+            for item in batch_list_caption_shortcuts()
+        }
+        self.assertEqual(actual, expected)
+        resolved = resolve_batch_list_caption_shortcut("x")
+        self.assertEqual(
+            resolved,
+            batch_list_caption_shortcut("delete_caption"),
+        )
+        self.assertEqual(resolved.display_label, "[X] Delete caption")
+        self.assertIsNone(resolve_batch_list_caption_shortcut("X"))
 
     def test_back_and_cancel_rows_have_no_visible_b_shortcut(self):
         for screen_kind, definitions in menu_definitions().items():

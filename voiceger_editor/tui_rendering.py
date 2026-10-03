@@ -30,7 +30,11 @@ from .tui_display import (
     _wrap_text,
 )
 from .tui_editors import PronunciationRow
-from .tui_shortcuts import batch_list_shortcut, main_shortcut, menu_item
+from .tui_shortcuts import (
+    batch_list_shortcut,
+    main_shortcut,
+    menu_item,
+)
 
 
 _HELP_ITEMS = (
@@ -44,6 +48,10 @@ _HELP_ITEMS = (
         ": open a Batch List Caption or activate the focused Batch Item row",
     ),
     ("Space", ": toggle Batch List inclusion or replay a focused Take"),
+    (
+        main_shortcut("delete_caption").shortcut.upper(),
+        ": delete current Batch Item Caption through confirmation",
+    ),
     (
         "Esc",
         ": one level back; active synthesis cancellation takes precedence",
@@ -306,6 +314,68 @@ class TuiRenderer:
         )
         return scroll
 
+    def render_batch_delete_confirmation(
+        self,
+        screen: Any,
+        caption: str,
+        selection: str,
+        height: int,
+        width: int,
+    ) -> None:
+        """Render Caption deletion with the standard modal layout."""
+
+        safe_add = self._safe_add
+        safe_add(
+            screen,
+            0,
+            0,
+            "DELETE CAPTION?",
+            width,
+            self._attribute("A_REVERSE") | self._attribute("A_BOLD"),
+        )
+        document: list[tuple[str, str | None]] = [("", None), ("Caption", None)]
+        pieces = _wrap_text(caption, max(1, width - 3)) or [""]
+        document.extend((f"  {piece}", None) for piece in pieces)
+        document.extend(
+            (
+                ("", None),
+                ("This Caption and its temporary Takes will be removed.", None),
+                ("", None),
+                (
+                    (
+                        "▶ " if selection == "delete" else "  "
+                    ) + menu_item(
+                        "batch_delete_confirmation", "delete"
+                    ).display_label,
+                    "delete",
+                ),
+                (
+                    (
+                        "▶ " if selection == "cancel" else "  "
+                    ) + "[Esc] " + menu_item(
+                        "batch_delete_confirmation", "cancel"
+                    ).label,
+                    "cancel",
+                ),
+            )
+        )
+        viewport_height = max(1, height - 2)
+        focused_index = next(
+            index for index, (_line, key) in enumerate(document) if key == "delete"
+        )
+        start = max(0, focused_index - viewport_height // 3)
+        if start + viewport_height > len(document):
+            start = max(0, len(document) - viewport_height)
+        for offset, (line, key) in enumerate(document[start : start + viewport_height]):
+            safe_add(
+                screen,
+                offset + 1,
+                0,
+                line,
+                width,
+                self._focus_attribute() if key == selection else 0,
+            )
+
     def batch_list_document(
         self,
         batch: CaptionBatch,
@@ -368,8 +438,21 @@ class TuiRenderer:
         status: str,
         height: int,
         width: int,
+        *,
+        delete_confirmation_caption: str | None = None,
+        delete_confirmation_selection: str = "delete",
     ) -> None:
         """Render the top-level Batch List screen."""
+
+        if delete_confirmation_caption is not None:
+            self.render_batch_delete_confirmation(
+                screen,
+                delete_confirmation_caption,
+                delete_confirmation_selection,
+                height,
+                width,
+            )
+            return
 
         safe_add = self._safe_add
         safe_add(
@@ -721,6 +804,11 @@ class TuiRenderer:
                     ("clear_candidates", None),
                     main_shortcut("clear_candidates").display_label,
                 )
+            plain()
+            action(
+                ("delete_caption", None),
+                main_shortcut("delete_caption").display_label,
+            )
             plain()
 
         action(("settings", None), main_shortcut("settings").display_label)

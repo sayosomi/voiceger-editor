@@ -323,6 +323,52 @@ class TuiRenderingTests(unittest.TestCase):
         header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
         self.assertEqual(header, "BATCH LIST")
 
+    def test_batch_delete_confirmation_shows_target_and_explicit_actions(self):
+        batch = CaptionBatch(default_take_count=4)
+        batch.add_captions_from_text(
+            "first caption\nsecond caption",
+            session_factory=lambda caption: SimpleNamespace(caption=caption),
+        )
+        screen = FakeScreen()
+
+        self.renderer.render_batch_list(
+            screen,
+            batch,
+            ("caption", 1),
+            "",
+            screen.rows,
+            screen.columns,
+            delete_confirmation_caption="second caption",
+            delete_confirmation_selection="delete",
+        )
+
+        visible = self.rendered(screen)
+        self.assertIn("DELETE CAPTION?", visible)
+        self.assertIn("second caption", visible)
+        self.assertIn("[D] Delete caption", visible)
+        self.assertIn("[Esc] Cancel", visible)
+        self.assertNotIn("BATCH LIST", visible)
+        header = next(item for item in screen.drawn if item[0] == 0)
+        self.assertTrue(header[3] & curses.A_REVERSE)
+        self.assertTrue(header[3] & curses.A_BOLD)
+        delete = next(item for item in screen.drawn if "[D] Delete caption" in item[2])
+        self.assertTrue(delete[3] & curses.A_REVERSE)
+
+        screen.drawn.clear()
+        self.renderer.render_batch_list(
+            screen,
+            batch,
+            ("caption", 1),
+            "",
+            screen.rows,
+            screen.columns,
+            delete_confirmation_caption="second caption",
+            delete_confirmation_selection="cancel",
+        )
+        cancel = next(item for item in screen.drawn if "[Esc] Cancel" in item[2])
+        self.assertTrue(cancel[2].startswith("▶ "))
+        self.assertTrue(cancel[3] & curses.A_REVERSE)
+
     def test_main_japanese_phrases_use_fixed_separator_and_compound_mora_tokens(self):
         state = render_state(session=FakeSession(), focus_key=("pronunciation", 0))
         lines = self.renderer.navigation_document(state, 80)
@@ -573,6 +619,7 @@ class TuiRenderingTests(unittest.TestCase):
             "Batch List Takes",
             "open a Batch List Caption",
             "toggle Batch List inclusion",
+            "delete current Batch Item Caption through confirmation",
             "one level back",
             "E / P / A / G",
             "Caption / Build pronunciation / Add section / Generate or regenerate all",
@@ -1327,6 +1374,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(labels[("candidate", 1)], "  [1] Take 1  0.01s")
         self.assertEqual(labels[("candidate", 2)], "  [2] Take 2  0.01s")
         self.assertEqual(labels[("clear_candidates", None)], "  [C] Clear candidates")
+        self.assertEqual(labels[("delete_caption", None)], "  [X] Delete caption")
         keyed = [line.key for line in lines if line.key is not None]
         self.assertLess(keyed.index(("candidate", 2)), keyed.index(("generate", None)))
         self.assertLess(keyed.index(("generate", None)), keyed.index(("clear_candidates", None)))
@@ -1342,9 +1390,16 @@ class TuiRenderingTests(unittest.TestCase):
             index for index, line in enumerate(lines)
             if line.key == ("clear_candidates", None)
         )
+        delete_index = next(
+            index for index, line in enumerate(lines)
+            if line.key == ("delete_caption", None)
+        )
         self.assertEqual(lines[candidate_index + 1].text, "")
         self.assertEqual(generate_index, candidate_index + 2)
         self.assertEqual(clear_index, generate_index + 1)
+        self.assertEqual(lines[clear_index + 1].text, "")
+        self.assertEqual(delete_index, clear_index + 2)
+        self.assertEqual(lines[delete_index + 1].text, "")
         self.assertEqual(labels[("settings", None)], "  [S] Settings")
         self.assertEqual(labels[("dictionary", None)], "  [D] Dictionary")
         self.assertEqual(labels[("help", None)], "  [?] Help")

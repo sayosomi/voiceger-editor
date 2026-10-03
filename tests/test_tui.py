@@ -1062,6 +1062,86 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._batch.focus_key, ("caption", 0))
         self.assertEqual(session.candidates, (candidate(1),))
 
+    def test_batch_list_delete_confirmation_uses_batch_owner_and_cleans_removed_session(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        session = app.session
+        app._batch.close_item()
+        app.session = None
+        app._batch.focus_key = ("caption", 0)
+
+        app._handle_key("x")
+        self.assertTrue(app._batch.delete_confirmation_active)
+        self.assertEqual(session.close_calls, 0)
+
+        screen = FakeScreen()
+        app._screen = screen
+        app._render()
+        rendered = self.rendered(screen)
+        self.assertIn("DELETE CAPTION?", rendered)
+        self.assertIn("[D] Delete caption", rendered)
+
+        app._handle_key("\x1b")
+        self.assertFalse(app._batch.delete_confirmation_active)
+        self.assertEqual(len(app._batch.batch.items), 1)
+        self.assertEqual(session.close_calls, 0)
+
+        app._handle_key("x")
+        app._handle_key("d")
+        self.assertEqual(app._batch.batch.items, ())
+        self.assertEqual(app._batch.focus_key, ("takes", None))
+        self.assertEqual(session.close_calls, 1)
+        self.assertIsNone(app.session)
+
+    def test_batch_item_delete_is_visible_cancelable_and_returns_to_batch_list(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        session = app.session
+        stop_playback = Mock()
+        app._operations.stop_playback = stop_playback
+
+        screen = FakeScreen(columns=100)
+        app._screen = screen
+        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
+            app._render()
+        self.assertIn("[X] Delete caption", self.rendered(screen))
+
+        app._handle_key("x")
+        self.assertTrue(app._batch.delete_confirmation_active)
+        self.assertTrue(app._batch.in_item)
+        self.assertIs(app.session, session)
+
+        screen.drawn.clear()
+        app._render()
+        rendered = self.rendered(screen)
+        self.assertIn("DELETE CAPTION?", rendered)
+        self.assertIn("[D] Delete caption", rendered)
+        self.assertIn("Cancel", rendered)
+        self.assertNotIn("Esc Cancel", rendered)
+
+        app._handle_key("\x1b")
+        self.assertFalse(app._batch.delete_confirmation_active)
+        self.assertTrue(app._batch.in_item)
+        self.assertIs(app.session, session)
+        self.assertEqual(session.close_calls, 0)
+
+        app._handle_key("x")
+        app._handle_key("d")
+        self.assertFalse(app._batch.in_item)
+        self.assertIsNone(app.session)
+        self.assertEqual(app._batch.batch.items, ())
+        self.assertEqual(app._batch.focus_key, ("takes", None))
+        self.assertEqual(session.close_calls, 1)
+        self.assertEqual(stop_playback.call_count, 2)
+
+    def test_batch_item_delete_shortcut_is_blocked_while_synthesis_is_busy(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        app._operations.busy = True
+
+        app._handle_key("x")
+
+        self.assertFalse(app._batch.delete_confirmation_active)
+        self.assertTrue(app._batch.in_item)
+        self.assertIn("Finish or cancel synthesis before deleting Caption.", app._status)
+
     def test_batch_list_take_count_updates_default_and_existing_item_session(self):
         with tempfile.TemporaryDirectory() as directory:
             app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
