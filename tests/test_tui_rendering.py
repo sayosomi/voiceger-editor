@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import call, patch
 
 from voiceger_editor import __version__
+from voiceger_editor.caption_batch import CaptionBatch
 from voiceger_editor.project_info import DOCUMENTATION_URL
 from voiceger_editor.settings import Settings
 from voiceger_editor.tui_editors import (
@@ -268,14 +269,59 @@ class TuiRenderingTests(unittest.TestCase):
             curses.A_BOLD | curses.A_REVERSE,
         )
 
-    def test_main_header_shows_product_title_without_navigation_label(self):
+    def test_batch_item_header_uses_current_product_name_or_explicit_item_title(self):
         screen = FakeScreen()
         with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
-            self.renderer.render_navigation(screen, render_state(), screen.rows, screen.columns)
-
+            self.renderer.render_navigation(
+                screen, render_state(), screen.rows, screen.columns
+            )
         header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
-        self.assertEqual(header, "Voiceger Accent Adapter")
-        self.assertNotIn("NAVIGATION", header)
+        self.assertEqual(header, "Voiceger Editor")
+        self.assertNotIn("Voiceger Accent Adapter", header)
+
+        screen.drawn.clear()
+        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
+            self.renderer.render_navigation(
+                screen,
+                render_state(),
+                screen.rows,
+                screen.columns,
+                title="BATCH ITEM 2/4",
+            )
+        header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
+        self.assertEqual(header, "BATCH ITEM 2/4")
+
+    def test_batch_list_renders_selection_counts_requested_takes_and_actions(self):
+        batch = CaptionBatch(default_take_count=4)
+        batch.add_captions_from_text(
+            "first caption\nsecond caption",
+            session_factory=lambda caption: SimpleNamespace(caption=caption),
+        )
+        batch.toggle_included(batch.items[1].item_id)
+
+        lines = self.renderer.batch_list_document(batch, ("caption", 0), 80)
+        labels = [line.text for line in lines]
+        self.assertIn("  Takes < 4 >", labels)
+        self.assertIn("▶ [x] 1  first caption", labels)
+        self.assertIn("  [ ] 2  second caption", labels)
+        self.assertIn("Selected: 1/2", labels)
+        self.assertIn("Requested: 4 takes", labels)
+        for action in (
+            "[A] Add captions",
+            "[G] Generate selected",
+            "[S] Settings",
+            "[D] Dictionary",
+            "[?] Help",
+            "[Q] Quit",
+        ):
+            self.assertTrue(any(action in label for label in labels))
+
+        screen = FakeScreen()
+        self.renderer.render_batch_list(
+            screen, batch, ("caption", 0), "", screen.rows, screen.columns
+        )
+        header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
+        self.assertEqual(header, "BATCH LIST")
 
     def test_main_japanese_phrases_use_fixed_separator_and_compound_mora_tokens(self):
         state = render_state(session=FakeSession(), focus_key=("pronunciation", 0))
@@ -284,7 +330,7 @@ class TuiRenderingTests(unittest.TestCase):
 
         labels = [line.text for line in lines]
         caption_index = next(index for index, value in enumerate(labels) if "Caption :" in value)
-        build_index = labels.index("  [B] Build pronunciation")
+        build_index = labels.index("  [P] Build pronunciation")
         add_index = labels.index("  [A] Add section")
         generate_index = next(index for index, value in enumerate(labels) if value.startswith("  [G] Generate"))
         pronunciation_index = next(
@@ -292,7 +338,7 @@ class TuiRenderingTests(unittest.TestCase):
             if line.key and line.key[0] == "pronunciation"
         )
         self.assertEqual(build_index, caption_index + 1)
-        self.assertTrue(labels[caption_index].endswith("Caption : 明日はhello everyoneまた明日"))
+        self.assertTrue(labels[caption_index].endswith("[E] Caption : 明日はhello everyoneまた明日"))
         self.assertLess(build_index, pronunciation_index)
         self.assertLess(pronunciation_index, add_index)
         self.assertLess(add_index, generate_index)
@@ -516,50 +562,39 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("AA0", wrapped)
         self.assertIn("OW2", wrapped)
 
-    def test_help_contains_pronunciation_controls_and_separate_settings_shortcuts(self):
-        screen = FakeScreen(rows=80, columns=80)
+    def test_help_describes_batch_hierarchy_and_has_no_direct_item_settings_jumps(self):
+        screen = FakeScreen(rows=80, columns=120)
         self.renderer.render_help(screen, screen.columns)
         visible = self.rendered(screen)
         self.assertIn(f"Voiceger Editor {__version__}", visible)
         self.assertIn(f"Docs: {DOCUMENTATION_URL}", visible)
         for text in (
-            "Up/Down", "JA accent/mora",
-            "EN primary stress/vowel",
-            "on JA: edit segment pronunciation",
-            "on EN: edit word phonemes",
-            "Generate/Regenerate Takes",
-            "b / a / g",
-            "Build pronunciation / Add section / Generate or regenerate all",
-            "initial/regenerate-all",
-            "cooperatively",
+            "Up/Down",
+            "Batch List Takes",
+            "open a Batch List Caption",
+            "toggle Batch List inclusion",
+            "one level back",
+            "E / P / A / G",
+            "Caption / Build pronunciation / Add section / Generate or regenerate all",
             "1-9",
             "clear candidates through confirmation",
+            "Batch List Add captions / Generate selected",
             "Menu mode: editor/modal action letters are active.",
             "Editing: Enter finishes; printable shortcut letters insert text.",
         ):
             self.assertIn(text, visible)
+        for removed in (
+            "open Settings at speed",
+            "open Settings at takes",
+            "open Settings at output",
+            "open Settings at TXT",
+            "open Settings at LAB",
+            "Voiceger Accent Adapter",
+        ):
+            self.assertNotIn(removed, visible)
         self.assertNotIn("F5", visible)
         self.assertNotIn("Ctrl+G", visible)
-        settings_shortcuts = (("s", "style"), ("v", "speed"), ("n", "takes"), ("o", "output"), ("x", "TXT"), ("l", "LAB"))
-        rows = []
-        for shortcut, label in settings_shortcuts:
-            found = next(item for item in screen.drawn if item[2] == shortcut and item[3] & curses.A_BOLD)
-            rows.append(found[0])
-            self.assertIn(label, next(text for row, _column, text, _attr in screen.drawn if row == found[0] and text.startswith(": open Settings")))
-        dictionary = next(
-            item
-            for item in screen.drawn
-            if item[2] == "d" and item[3] & curses.A_BOLD
-        )
-        self.assertEqual(dictionary[0], rows[0] + 1)
-        self.assertEqual(
-            rows[1:],
-            list(range(rows[0] + 2, rows[0] + len(settings_shortcuts) + 1)),
-        )
-        self.assertNotIn("Return to Navigation", visible)
-        self.assertNotIn("| q Quit", visible)
-        self.assertIn("q", [text for _row, _column, text, _attr in screen.drawn])
-        back = next(item for item in screen.drawn if item[2] == "▶ [B] Back")
+        back = next(item for item in screen.drawn if item[2] == "▶ Back")
         self.assertEqual(back[0], screen.rows - 1)
         self.assertTrue(back[3] & curses.A_REVERSE)
 
@@ -568,7 +603,7 @@ class TuiRenderingTests(unittest.TestCase):
             with self.subTest(height=height):
                 screen = FakeScreen(rows=height, columns=80)
                 self.renderer.render_help(screen, screen.columns)
-                back = next(item for item in screen.drawn if item[2] == "▶ [B] Back")
+                back = next(item for item in screen.drawn if item[2] == "▶ Back")
                 self.assertEqual(back[0], height - 1)
                 self.assertTrue(back[3] & curses.A_REVERSE)
                 self.assertFalse(
@@ -576,7 +611,7 @@ class TuiRenderingTests(unittest.TestCase):
                 )
 
     def test_help_scrolls_body_and_clamps_offset(self):
-        screen = FakeScreen(rows=24, columns=80)
+        screen = FakeScreen(rows=12, columns=80)
         max_scroll = self.renderer.help_max_scroll(screen.rows, screen.columns)
         self.assertGreater(max_scroll, 0)
 
@@ -592,7 +627,7 @@ class TuiRenderingTests(unittest.TestCase):
         bottom_visible = self.rendered(screen)
         self.assertIn(": Quit", bottom_visible)
         self.assertNotIn(f"Docs: {DOCUMENTATION_URL}", bottom_visible)
-        back = next(item for item in screen.drawn if item[2] == "▶ [B] Back")
+        back = next(item for item in screen.drawn if item[2] == "▶ Back")
         self.assertEqual(back[0], screen.rows - 1)
         self.assertTrue(back[3] & curses.A_REVERSE)
 
@@ -621,7 +656,7 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line for line, _key in document]
         self.assertEqual(document[0][0], "EDIT CAPTION TEXT")
         self.assertEqual(
-            labels[-4:], ["  [A] Apply", "  [C] Clear", "  [R] Reset", "  [B] Back"]
+            labels[-4:], ["  [A] Apply", "  [C] Clear", "  [R] Reset", "  Back"]
         )
         self.assertEqual(labels.index(""), 1)
         self.assertEqual(labels.index("", 2), labels.index("▶ hello") + 1)
@@ -848,7 +883,7 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line for line, _key in document]
         self.assertEqual(document[0][0], "REBUILD PRONUNCIATION?")
         self.assertIn("Manual pronunciation or utterance edits will be replaced.", labels)
-        self.assertEqual(labels[-2:], ["▶ [R] Rebuild", "  [B] Cancel"])
+        self.assertEqual(labels[-2:], ["▶ [R] Rebuild", "  Cancel"])
         self.assertIsNone(cursor_line)
 
     def test_japanese_editor_shows_wrapped_source_and_active_direct_notation(self):
@@ -883,7 +918,7 @@ class TuiRenderingTests(unittest.TestCase):
                 "  [E] Edit text",
                 "  [C] Clear",
                 "  [R] Reset",
-                "  [B] Back",
+                "  Back",
             ],
         )
 
@@ -906,7 +941,7 @@ class TuiRenderingTests(unittest.TestCase):
 
         self.assertIn(("▶ [J] Japanese      2 words", "japanese"), document)
         self.assertIn(("  [E] English       1 words", "english"), document)
-        self.assertIn(("  [B] Back", "back"), document)
+        self.assertIn(("  Back", "back"), document)
 
     def test_empty_dictionary_list_renders_add_and_back(self):
         editor = SimpleNamespace(
@@ -929,7 +964,7 @@ class TuiRenderingTests(unittest.TestCase):
             any("No Japanese dictionary words." in line for line, _key in document)
         )
         self.assertIn(("▶ [A] Add", "add"), document)
-        self.assertIn(("  [B] Back", "back"), document)
+        self.assertIn(("  Back", "back"), document)
         self.assertFalse(any("[X] Delete" in line for line, _key in document))
 
     def test_japanese_dictionary_list_uses_main_mora_accent_display(self):
@@ -964,7 +999,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertNotIn("Enter Edit", visible)
         self.assertIn(("  [A] Add", "add"), document)
         self.assertIn(("  [X] Delete", "delete"), document)
-        self.assertIn(("  [B] Back", "back"), document)
+        self.assertIn(("  Back", "back"), document)
 
     def test_english_dictionary_list_renders_selectable_actions(self):
         entry = SimpleNamespace(
@@ -990,7 +1025,7 @@ class TuiRenderingTests(unittest.TestCase):
 
         self.assertIn(("▶ [A] Add", "add"), document)
         self.assertIn(("  [X] Delete", "delete"), document)
-        self.assertIn(("  [B] Back", "back"), document)
+        self.assertIn(("  Back", "back"), document)
         self.assertNotIn("Enter Edit", visible)
 
     def test_english_word_editor_opens_on_full_stressed_phoneme_input(self):
@@ -1023,7 +1058,7 @@ class TuiRenderingTests(unittest.TestCase):
                 "  [E] Edit text",
                 "  [C] Clear",
                 "  [R] Reset",
-                "  [B] Back",
+                "  Back",
             ],
         )
 
@@ -1057,7 +1092,7 @@ class TuiRenderingTests(unittest.TestCase):
                 "  [A] Apply",
                 "  [R] Reset",
                 "  [D] Delete section",
-                "  [B] Back",
+                "  Back",
             ],
         )
         self.assertIsNotNone(cursor_line)
@@ -1083,7 +1118,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("▶ ", labels)
         self.assertEqual(
             labels[-4:],
-            ["  [A] Add", "  [C] Clear", "  [R] Reset", "  [B] Back"],
+            ["  [A] Add", "  [C] Clear", "  [R] Reset", "  Back"],
         )
 
     def test_delete_confirmation_document_uses_required_warning_and_choices(self):
@@ -1104,7 +1139,7 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line for line, _key in document]
         self.assertEqual(labels[0], "DELETE SECTION?")
         self.assertIn("This section will be removed from the synthesized utterance.", labels)
-        self.assertEqual(labels[-2:], ["▶ [D] Delete", "  [B] Cancel"])
+        self.assertEqual(labels[-2:], ["▶ [D] Delete", "  Cancel"])
 
     def test_clear_candidates_confirmation_names_discarded_wav_files(self):
         editor = SimpleNamespace(
@@ -1126,7 +1161,7 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line for line, _key in document]
         self.assertEqual(labels[0], "CLEAR CANDIDATES?")
         self.assertIn("All generated candidate WAV files will be discarded.", labels)
-        self.assertEqual(labels[-2:], ["▶ [C] Clear candidates", "  [B] Cancel"])
+        self.assertEqual(labels[-2:], ["▶ [C] Clear candidates", "  Cancel"])
 
     def test_settings_use_sections_shortcuts_and_candidate_clearing_markers(self):
         editor = SimpleNamespace(
@@ -1156,7 +1191,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("[D] Reset sampling to Voiceger defaults", visible)
         self.assertIn("[A] Apply and save", visible)
         self.assertIn("[R] Reset", visible)
-        self.assertIn("[B] Back", visible)
+        self.assertIn("Back", visible)
         self.assertIn(
             "* Applying this setting clears existing candidates.",
             visible,
@@ -1286,7 +1321,7 @@ class TuiRenderingTests(unittest.TestCase):
         )
         lines = self.renderer.navigation_document(state, 100)
         labels = {line.key: line.text for line in lines if line.key is not None}
-        self.assertEqual(labels[("build_pronunciation", None)], "  [B] Build pronunciation")
+        self.assertEqual(labels[("build_pronunciation", None)], "  [P] Build pronunciation")
         self.assertEqual(labels[("add_section", None)], "  [A] Add section")
         self.assertEqual(labels[("generate", None)], "▶ [G] Regenerate all <<6 > takes")
         self.assertEqual(labels[("candidate", 1)], "  [1] Take 1  0.01s")
@@ -1315,7 +1350,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(labels[("help", None)], "  [?] Help")
         self.assertEqual(labels[("quit", None)], "  [Q] Quit")
         caption = labels[("caption", None)]
-        self.assertIn("Caption : ", caption)
+        self.assertIn("[E] Caption : ", caption)
         self.assertNotIn("[T]", caption)
 
     def test_candidates_above_nine_have_no_direct_numeric_shortcut_label(self):

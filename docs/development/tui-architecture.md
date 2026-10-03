@@ -8,12 +8,13 @@ The TUI is split between a composition root and focused owners. The composition 
 | --- | --- |
 | `voiceger_editor/tui.py` | TUI composition root; curses run loop and cleanup lifecycle; top-level mode/key dispatch; shared session/settings application orchestration; dispatch between focused subsystems; CLI entrypoint. |
 | `voiceger_editor/tui_cli.py` | CLI argument declarations and per-invocation settings overrides, re-exported by the composition root for compatibility. |
+| `voiceger_editor/tui_batch.py` | Top-level Batch List collection ownership, focus/navigation state, inclusion toggling, Batch Item selection, and Batch List key interpretation. |
 | `voiceger_editor/tui_dictionary.py` | User-dictionary modal state, keyboard interaction, quick-save resolution, CRUD drafts, confirmation policy, and dictionary preview intents. |
 | `voiceger_editor/tui_navigation.py` | Selectable item ordering; focus state; remembered pronunciation segment; navigation revision; Up/Down and major-section movement; navigation action interpretation. |
 | `voiceger_editor/tui_editors.py` | Editor state and drafts; text, Japanese, English, and settings interaction policy; English grouping cache; editor validation; typed editor intents and results. |
 | `voiceger_editor/tui_shortcuts.py` | Declarative Main primary-action shortcuts plus editor/modal selectable-item metadata; visible shortcut labels and dispatch share the same declarations, while editor/modal declarations also own selection order, shortcut behavior, conditions, and explicit no-shortcut exceptions. |
 | `voiceger_editor/tui_operations.py` | Synthesis worker lifecycle and event queue; operation progress; candidate playback and acceptance; typed operation effects. |
-| `voiceger_editor/tui_rendering.py` | Navigation, editor, and help document construction; terminal rendering; render-state presentation; terminal drawing behavior. |
+| `voiceger_editor/tui_rendering.py` | Batch List, Batch Item navigation, editor, and help document construction; terminal rendering; render-state presentation; terminal drawing behavior. |
 | `voiceger_editor/tui_display.py` | Pure display-cell width; wrapping and truncation; cursor movement across wrapped input; phoneme and display-formatting helpers. |
 
 ## Dependency direction

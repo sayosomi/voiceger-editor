@@ -122,7 +122,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
             [normalize_surface("あめ"), normalize_surface("ぶどう")],
         )
 
-        self.key("b")
+        self.key("\x1b")
         self.key(curses.KEY_DOWN)
         self.key("\n")
         self.assertEqual(self.controller.editor.kind, "dictionary_english_list")
@@ -137,7 +137,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.key("e")
         self.assertEqual(self.controller.editor.kind, "dictionary_english_list")
 
-        self.key("b")
+        self.key("\x1b")
         self.assertEqual(self.controller.editor.kind, "dictionary_menu")
 
         self.key("j")
@@ -171,8 +171,8 @@ class TuiDictionaryControllerTests(unittest.TestCase):
             normalize_surface("ぶどう"),
         )
 
-        self.key("b")
-        self.key("b")
+        self.key("\x1b")
+        self.key("\x1b")
         self.core.english["hello"] = en_word(
             "hello", ["HH", "AH0", "L", "OW1"]
         )
@@ -381,13 +381,13 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         editor = self.controller.editor
         editor.payload["surface"] = "Voiceger2"
 
-        self.key("b")
+        self.key("\x1b")
         self.assertEqual(
             self.controller.editor.kind,
             "dictionary_discard_confirmation",
         )
 
-        self.key("b")
+        self.key("\x1b")
         self.assertEqual(self.controller.editor.kind, "dictionary_english_entry")
         self.key("\x1b")
         self.assertEqual(
@@ -447,7 +447,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.key("d")
         self.assertEqual(self.core.japanese, {})
 
-        self.key("b")
+        self.key("\x1b")
         self.assertEqual(self.controller.editor.kind, "dictionary_menu")
         self.assertEqual(self.controller.editor.payload["japanese_count"], 0)
         self.key(curses.KEY_DOWN)
@@ -483,7 +483,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.assertEqual(self.controller.editor.kind, "dictionary_japanese_list")
         self.assertEqual(self.core.japanese["existing-ja"].surface, normalize_surface("飴"))
 
-        self.key("b")
+        self.key("\x1b")
         self.key(curses.KEY_DOWN)
         self.key("\n")
         self.key("\n")
@@ -511,7 +511,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
 
         self.assertEqual(self.controller.editor.kind, "dictionary_menu")
 
-        self.key("b")
+        self.key("\x1b")
 
         self.assertEqual(self.controller.editor.kind, "dictionary_english_entry")
         self.assertEqual(self.controller.editor.payload["surface"], "hello-draft")

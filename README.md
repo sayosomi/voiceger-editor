@@ -81,7 +81,9 @@ See [Setup](docs/en/setup.md) for the complete installation guide.
 ## Basic Workflow
 
 ```text
-Caption
+BATCH LIST
+→ Enter a Caption
+→ BATCH ITEM n/m
 → check or edit pronunciation
 → Generate
 → listen to Takes

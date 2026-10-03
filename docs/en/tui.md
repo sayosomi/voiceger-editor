@@ -16,22 +16,32 @@ voiceger-editor "このずんだ餅はvery sweetなのだ。"
 
 ## Basic workflow
 
+Voiceger Editor starts at the top-level `BATCH LIST`.
+
 ```text
-Caption
+BATCH LIST
+→ Enter a Caption
+→ BATCH ITEM n/m
 → check or edit pronunciation
 → Generate
 → listen to Takes
 → accept one Take
 ```
 
+On `BATCH LIST`, Space toggles whether the focused Caption is selected for
+outer batch generation. Left / Right on `Takes` changes the batch default Take
+count. `Generate selected` is the entry point for the sequential multi-Caption
+generation workflow; the scheduling behavior is implemented separately from the
+navigation layer.
+
 ## Main controls
 
 - Up / Down: move through selectable rows.
-- Enter: open or activate the selected row.
-- Left / Right: adjust a supported value on the selected row.
-- Tab / Shift+Tab: move between major areas.
-- Space: replay the selected Take.
-- Esc: go back, stop playback, or request batch cancellation when available.
+- Enter: open the focused Batch List Caption or activate the selected Batch Item row.
+- Left / Right: adjust Batch List Takes or a supported Batch Item value.
+- Tab / Shift+Tab: move between major areas inside a Batch Item.
+- Space: toggle Batch List inclusion, or replay the selected Take inside a Batch Item.
+- Esc: go back one level; active synthesis cancellation takes precedence when available.
 - `?`: Help.
 - `q`: Quit.
 
@@ -39,7 +49,9 @@ The TUI uses one vertical navigation flow. Editing opens a focused editor instea
 
 ## Caption
 
-Select the Caption row and press Enter to edit the source text.
+From `BATCH LIST`, select a Caption and press Enter to open its `BATCH ITEM n/m`
+screen. Inside the Batch Item, select the Caption row and press Enter, or press
+`e` from anywhere on the screen, to edit the source text.
 
 Example:
 
@@ -62,7 +74,7 @@ After changing the Caption, apply the edit before continuing.
 Shortcut:
 
 ```text
-b
+p
 ```
 
 If manual pronunciation edits already exist, the TUI asks for confirmation before replacing them.
@@ -193,11 +205,26 @@ This includes:
 
 Changing the configured Take count does not change the synthesis parameters of Takes that already exist.
 
-## Main shortcuts
+## Batch List shortcuts
 
 | Key | Action |
 | --- | --- |
-| `b` | Build pronunciation |
+| Space | Toggle focused Caption `[x] / [ ]` |
+| Enter | Open focused Caption |
+| Left / Right | Change batch default Takes when `Takes` is focused |
+| `a` | Add captions |
+| `g` | Generate selected |
+| `s` | Settings |
+| `d` | Dictionary |
+| `?` | Help |
+| `q` | Quit |
+
+## Batch Item shortcuts
+
+| Key | Action |
+| --- | --- |
+| `e` | Caption |
+| `p` | Build pronunciation |
 | `a` | Add section |
 | `g` | Generate / regenerate all Takes |
 | `c` | Clear candidates |
@@ -205,6 +232,9 @@ Changing the configured Take count does not change the synthesis parameters of T
 | `d` | Dictionary |
 | `?` | Help |
 | `q` | Quit |
+
+Settings-local shortcuts such as Speed or Output are available after opening
+Settings; they are not direct Batch Item jumps.
 
 ## Settings and dictionary
 
@@ -218,6 +248,6 @@ See [User Dictionary](dictionary.md).
 
 ## Quit
 
-Press `q` from the Main screen to quit.
+Press `q` from Batch List or Batch Item to quit.
 
 If synthesis is running, Voiceger Editor performs safe cleanup. A cancellable batch stops at a supported boundary rather than leaving partial application state.

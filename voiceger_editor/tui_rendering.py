@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol, Sequence
 
 from ._version import __version__
+from .caption_batch import CaptionBatch
 from .project_info import DOCUMENTATION_URL
 from .pronunciation import parse_pronunciation
 from .session import UtteranceSession
@@ -29,47 +30,42 @@ from .tui_display import (
     _wrap_text,
 )
 from .tui_editors import PronunciationRow
-from .tui_shortcuts import main_shortcut, menu_item
+from .tui_shortcuts import batch_list_shortcut, main_shortcut, menu_item
 
 
 _HELP_ITEMS = (
     ("Up/Down", ": move one selectable item"),
     (
         "Left/Right",
-        ": Generate/Regenerate Takes; JA accent/mora; EN primary stress/vowel",
+        ": Batch List Takes; Batch Item generation count or pronunciation controls",
     ),
     (
         "Enter",
-        ": on JA: edit segment pronunciation; on EN: edit word phonemes",
+        ": open a Batch List Caption or activate the focused Batch Item row",
     ),
-    ("Space", ": replay a focused candidate"),
+    ("Space", ": toggle Batch List inclusion or replay a focused Take"),
     (
         "Esc",
-        ": initial/regenerate-all cancels cooperatively; otherwise back/editor",
+        ": one level back; active synthesis cancellation takes precedence",
     ),
-    ("Tab / Shift+Tab", ": next / previous major section/action"),
+    ("Tab / Shift+Tab", ": next / previous major Batch Item section"),
     (
         " / ".join(
-            main_shortcut(name).shortcut
-            for name in ("build_pronunciation", "add_section", "generate")
+            main_shortcut(name).shortcut.upper()
+            for name in ("caption", "build_pronunciation", "add_section", "generate")
         ),
-        ": Build pronunciation / Add section / Generate or regenerate all",
+        ": Caption / Build pronunciation / Add section / Generate or regenerate all",
     ),
-    ("1-9", ": focus and play an available candidate"),
-    (main_shortcut("clear_candidates").shortcut, ": clear candidates through confirmation"),
-    ("r", ": regenerate the focused candidate"),
-    ("t", ": edit Caption"),
-    (main_shortcut("settings").shortcut, ": open Settings at style"),
-    (main_shortcut("dictionary").shortcut, ": open Dictionary"),
-    ("v", ": open Settings at speed"),
-    ("n", ": open Settings at takes"),
-    ("o", ": open Settings at output"),
-    ("x", ": open Settings at TXT"),
-    ("l", ": open Settings at LAB"),
+    ("1-9", ": focus and play an available Take"),
+    (main_shortcut("clear_candidates").shortcut.upper(), ": clear candidates through confirmation"),
+    ("R", ": regenerate the focused Take"),
+    (main_shortcut("settings").shortcut.upper(), ": open Settings"),
+    (main_shortcut("dictionary").shortcut.upper(), ": open Dictionary"),
+    ("A / G", ": Batch List Add captions / Generate selected"),
     (None, "Menu mode: editor/modal action letters are active."),
     (None, "Editing: Enter finishes; printable shortcut letters insert text."),
     (main_shortcut("help").shortcut, ": open or close Help"),
-    (main_shortcut("quit").shortcut, ": Quit"),
+    (main_shortcut("quit").shortcut.upper(), ": Quit"),
 )
 
 
@@ -310,19 +306,141 @@ class TuiRenderer:
         )
         return scroll
 
+    def batch_list_document(
+        self,
+        batch: CaptionBatch,
+        focus_key: tuple[str, int | None],
+        width: int,
+    ) -> list[NavigationLine]:
+        """Build the top-level Batch List document."""
+
+        lines: list[NavigationLine] = []
+
+        def plain(value: str = "") -> None:
+            lines.append(NavigationLine(value, None))
+
+        def action(key: tuple[str, int | None], label: str) -> None:
+            marker = "▶ " if key == focus_key else "  "
+            lines.append(NavigationLine(marker + label, key, key))
+
+        action(("takes", None), f"Takes < {batch.default_take_count} >")
+        plain()
+
+        for index, item in enumerate(batch.items):
+            key = ("caption", index)
+            marker = "▶ " if key == focus_key else "  "
+            selected = "x" if item.included_for_generation else " "
+            prefix = f"{marker}[{selected}] {index + 1}  "
+            available = max(1, width - 1 - _display_width(prefix))
+            pieces = _wrap_text(item.caption, available) or [""]
+            lines.append(NavigationLine(prefix + pieces[0], key, key))
+            continuation = " " * _display_width(prefix)
+            lines.extend(
+                NavigationLine(continuation + piece, None, key)
+                for piece in pieces[1:]
+            )
+
+        if batch.items:
+            plain()
+        selected_count = len(batch.included_items)
+        requested = sum(
+            batch.effective_take_count(item) for item in batch.included_items
+        )
+        plain(f"Selected: {selected_count}/{len(batch)}")
+        plain(f"Requested: {requested} takes")
+        plain()
+        for name in (
+            "add_captions",
+            "generate_selected",
+            "settings",
+            "dictionary",
+            "help",
+            "quit",
+        ):
+            action((name, None), batch_list_shortcut(name).display_label)
+        return lines
+
+    def render_batch_list(
+        self,
+        screen: Any,
+        batch: CaptionBatch,
+        focus_key: tuple[str, int | None],
+        status: str,
+        height: int,
+        width: int,
+    ) -> None:
+        """Render the top-level Batch List screen."""
+
+        safe_add = self._safe_add
+        safe_add(
+            screen,
+            0,
+            0,
+            "BATCH LIST",
+            width,
+            self._attribute("A_BOLD"),
+        )
+        lines = self.batch_list_document(batch, focus_key, width)
+        visible_status = status
+        if visible_status and not visible_status.startswith(("Error:", "Warning:")):
+            visible_status = f"Status: {visible_status}"
+        status_lines = (
+            _wrap_text(visible_status, max(1, width - 1))
+            if visible_status
+            else []
+        )
+        status_height = max(1, len(status_lines))
+        status_start = max(1, height - status_height)
+        viewport_height = max(0, status_start - 2)
+        focused_index = next(
+            (
+                index
+                for index, line in enumerate(lines)
+                if line.focus_owner == focus_key
+            ),
+            0,
+        )
+        start = max(0, focused_index - viewport_height // 3)
+        if start + viewport_height > len(lines):
+            start = max(0, len(lines) - viewport_height)
+        for offset, line in enumerate(lines[start : start + viewport_height]):
+            row = 2 + offset
+            focused = line.focus_owner == focus_key
+            safe_add(
+                screen,
+                row,
+                0,
+                line.text,
+                width,
+                self._focus_attribute() if focused else 0,
+            )
+        if status_lines:
+            status_attr = self._status_attribute(visible_status)
+            for offset, line in enumerate(status_lines):
+                safe_add(
+                    screen,
+                    status_start + offset,
+                    0,
+                    line,
+                    width,
+                    status_attr,
+                )
+
     def render_navigation(
         self,
         screen: Any,
         state: TuiRenderState,
         height: int,
         width: int,
+        *,
+        title: str = "Voiceger Editor",
     ) -> None:
         safe_add = self._safe_add
         safe_add(
             screen,
             0,
             0,
-            "Voiceger Accent Adapter",
+            title,
             width,
             self._attribute("A_BOLD"),
         )
@@ -436,7 +554,9 @@ class TuiRenderer:
 
         def caption_action(key: tuple[str, int | None], value: str) -> None:
             marker = "▶ " if key == state.focus_key else "  "
-            prefix = f"{marker}Caption : "
+            prefix = (
+                f"{marker}{main_shortcut('caption').display_with_label('Caption')} : "
+            )
             available = max(1, width - 1 - _display_width(prefix))
             pieces = _wrap_text(value, available) or [""]
             lines.append(NavigationLine(prefix + pieces[0], key, key))

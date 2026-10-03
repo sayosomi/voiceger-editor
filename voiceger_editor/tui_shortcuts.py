@@ -46,7 +46,8 @@ class MainShortcut:
 
 
 _MAIN_SHORTCUTS: tuple[MainShortcut, ...] = (
-    MainShortcut("build_pronunciation", "Build pronunciation", "b"),
+    MainShortcut("caption", "Caption", "e"),
+    MainShortcut("build_pronunciation", "Build pronunciation", "p"),
     MainShortcut("add_section", "Add section", "a"),
     MainShortcut("generate", "Generate", "g"),
     MainShortcut("clear_candidates", "Clear candidates", "c"),
@@ -55,6 +56,25 @@ _MAIN_SHORTCUTS: tuple[MainShortcut, ...] = (
     MainShortcut("help", "Help", "?"),
     MainShortcut("quit", "Quit", "q"),
 )
+
+_BATCH_LIST_SHORTCUTS: tuple[MainShortcut, ...] = (
+    MainShortcut("add_captions", "Add captions", "a"),
+    MainShortcut("generate_selected", "Generate selected", "g"),
+    MainShortcut("settings", "Settings", "s"),
+    MainShortcut("dictionary", "Dictionary", "d"),
+    MainShortcut("help", "Help", "?"),
+    MainShortcut("quit", "Quit", "q"),
+)
+
+
+def _escape_action(key: str, label: str) -> MenuItem:
+    return MenuItem(
+        key,
+        label,
+        None,
+        "action",
+        no_shortcut_reason="Esc is the common one-level-back key.",
+    )
 
 
 _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
@@ -69,11 +89,11 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("apply", "Apply", "a", "action", "activate"),
         MenuItem("clear", "Clear", "c", "action", "activate"),
         MenuItem("reset", "Reset", "r", "action", "activate"),
-        MenuItem("back", "Back", "b", "action", "activate"),
+        _escape_action("back", "Back"),
     ),
     "build_confirmation": (
         MenuItem("rebuild", "Rebuild", "r", "action", "activate"),
-        MenuItem("cancel", "Cancel", "b", "action", "activate"),
+        _escape_action("cancel", "Cancel"),
     ),
     "japanese": (
         MenuItem(
@@ -90,7 +110,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("edit_text", "Edit text", "e", "action", "activate"),
         MenuItem("clear", "Clear", "c", "action", "activate"),
         MenuItem("reset", "Reset", "r", "action", "activate"),
-        MenuItem("back", "Back", "b", "action", "activate"),
+        _escape_action("back", "Back"),
     ),
     "english_word": (
         MenuItem(
@@ -107,7 +127,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("edit_text", "Edit text", "e", "action", "activate"),
         MenuItem("clear", "Clear", "c", "action", "activate"),
         MenuItem("reset", "Reset", "r", "action", "activate"),
-        MenuItem("back", "Back", "b", "action", "activate"),
+        _escape_action("back", "Back"),
     ),
     "section_text": (
         MenuItem(
@@ -128,7 +148,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
             "activate",
             condition_key="can_delete",
         ),
-        MenuItem("back", "Back", "b", "action", "activate"),
+        _escape_action("back", "Back"),
     ),
     "add_section": (
         MenuItem(
@@ -148,7 +168,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("add", "Add", "a", "action", "activate"),
         MenuItem("clear", "Clear", "c", "action", "activate"),
         MenuItem("reset", "Reset", "r", "action", "activate"),
-        MenuItem("back", "Back", "b", "action", "activate"),
+        _escape_action("back", "Back"),
     ),
     "settings": (
         MenuItem("style_id", "Style", "s", "adjustable", "focus"),
@@ -169,25 +189,25 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         ),
         MenuItem("apply", "Apply and save", "a", "action", "activate"),
         MenuItem("reset", "Reset", "r", "action", "activate"),
-        MenuItem("back", "Back", "b", "action", "activate"),
+        _escape_action("back", "Back"),
     ),
     "dictionary_menu": (
         MenuItem("japanese", "Japanese", "j", "action", "activate"),
         MenuItem("english", "English", "e", "action", "activate"),
-        MenuItem("back", "Back", "b", "action", "activate"),
+        _escape_action("back", "Back"),
     ),
     "dictionary_japanese_list": (
         MenuItem("add", "Add", "a", "action", "activate"),
         MenuItem("delete", "Delete", "x", "action", "activate"),
-        MenuItem("back", "Back", "b", "action", "activate"),
+        _escape_action("back", "Back"),
     ),
     "dictionary_english_list": (
         MenuItem("add", "Add", "a", "action", "activate"),
         MenuItem("delete", "Delete", "x", "action", "activate"),
-        MenuItem("back", "Back", "b", "action", "activate"),
+        _escape_action("back", "Back"),
     ),
     "dictionary_japanese_duplicates": (
-        MenuItem("back", "Back", "b", "action", "activate"),
+        _escape_action("back", "Back"),
     ),
     "dictionary_japanese_entry": (
         MenuItem(
@@ -228,7 +248,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("preview", "Preview", "p", "action", "activate"),
         MenuItem("save", "Save", "s", "action", "activate"),
         MenuItem("dictionary", "Dictionary menu", "d", "action", "activate"),
-        MenuItem("back", "Back", "b", "action", "activate"),
+        _escape_action("back", "Back"),
     ),
     "dictionary_english_entry": (
         MenuItem(
@@ -255,34 +275,40 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("preview", "Preview", "p", "action", "activate"),
         MenuItem("save", "Save", "s", "action", "activate"),
         MenuItem("dictionary", "Dictionary menu", "d", "action", "activate"),
-        MenuItem("back", "Back", "b", "action", "activate"),
+        _escape_action("back", "Back"),
     ),
     "dictionary_delete_confirmation": (
         MenuItem("delete", "Delete", "d", "action", "activate"),
-        MenuItem("cancel", "Cancel", "b", "action", "activate"),
+        _escape_action("cancel", "Cancel"),
     ),
     "dictionary_discard_confirmation": (
         MenuItem("discard", "Discard", "d", "action", "activate"),
-        MenuItem("cancel", "Cancel", "b", "action", "activate"),
+        _escape_action("cancel", "Cancel"),
     ),
     "delete_confirmation": (
         MenuItem("delete", "Delete", "d", "action", "activate"),
-        MenuItem("cancel", "Cancel", "b", "action", "activate"),
+        _escape_action("cancel", "Cancel"),
     ),
     "clear_candidates_confirmation": (
         MenuItem("clear", "Clear candidates", "c", "action", "activate"),
-        MenuItem("cancel", "Cancel", "b", "action", "activate"),
+        _escape_action("cancel", "Cancel"),
     ),
     "help": (
-        MenuItem("back", "Back", "b", "action", "activate"),
+        _escape_action("back", "Back"),
     ),
 }
 
 
 def main_shortcuts() -> tuple[MainShortcut, ...]:
-    """Return the visible primary Main-screen shortcut declarations."""
+    """Return the visible primary Batch Item shortcut declarations."""
 
     return _MAIN_SHORTCUTS
+
+
+def batch_list_shortcuts() -> tuple[MainShortcut, ...]:
+    """Return the visible primary Batch List shortcut declarations."""
+
+    return _BATCH_LIST_SHORTCUTS
 
 
 def main_shortcut(navigation_key: str) -> MainShortcut:
@@ -295,11 +321,31 @@ def main_shortcut(navigation_key: str) -> MainShortcut:
 
 
 def resolve_main_shortcut(key: Any) -> MainShortcut | None:
-    """Resolve one lowercase visible Main shortcut."""
+    """Resolve one lowercase visible Batch Item shortcut."""
 
     if not isinstance(key, str) or len(key) != 1:
         return None
     for item in _MAIN_SHORTCUTS:
+        if item.shortcut == key:
+            return item
+    return None
+
+
+def batch_list_shortcut(navigation_key: str) -> MainShortcut:
+    """Return one declared Batch List shortcut by navigation key."""
+
+    for item in _BATCH_LIST_SHORTCUTS:
+        if item.navigation_key == navigation_key:
+            return item
+    raise KeyError(f"Batch List has no shortcut declaration for {navigation_key!r}")
+
+
+def resolve_batch_list_shortcut(key: Any) -> MainShortcut | None:
+    """Resolve one lowercase visible Batch List shortcut."""
+
+    if not isinstance(key, str) or len(key) != 1:
+        return None
+    for item in _BATCH_LIST_SHORTCUTS:
         if item.shortcut == key:
             return item
     return None
@@ -414,19 +460,25 @@ def validate_menu_definitions() -> tuple[str, ...]:
                 errors.append(
                     f"{screen_kind}:{item.key}: shortcut target is not declared selectable"
                 )
-    seen_main_keys: set[str] = set()
-    seen_main_shortcuts: set[str] = set()
-    for item in _MAIN_SHORTCUTS:
-        if item.navigation_key in seen_main_keys:
-            errors.append(
-                f"main: duplicate navigation key {item.navigation_key!r}"
-            )
-        seen_main_keys.add(item.navigation_key)
-        if len(item.shortcut) != 1 or item.shortcut != item.shortcut.lower():
-            errors.append(
-                f"main:{item.navigation_key}: shortcut must be one lowercase character"
-            )
-        if item.shortcut in seen_main_shortcuts:
-            errors.append(f"main: duplicate shortcut {item.shortcut!r}")
-        seen_main_shortcuts.add(item.shortcut)
+    for menu_name, shortcuts in (
+        ("main", _MAIN_SHORTCUTS),
+        ("batch_list", _BATCH_LIST_SHORTCUTS),
+    ):
+        seen_main_keys: set[str] = set()
+        seen_main_shortcuts: set[str] = set()
+        for item in shortcuts:
+            if item.navigation_key in seen_main_keys:
+                errors.append(
+                    f"{menu_name}: duplicate navigation key {item.navigation_key!r}"
+                )
+            seen_main_keys.add(item.navigation_key)
+            if len(item.shortcut) != 1 or item.shortcut != item.shortcut.lower():
+                errors.append(
+                    f"{menu_name}:{item.navigation_key}: shortcut must be one lowercase character"
+                )
+            if item.shortcut in seen_main_shortcuts:
+                errors.append(f"{menu_name}: duplicate shortcut {item.shortcut!r}")
+            seen_main_shortcuts.add(item.shortcut)
     return tuple(errors)
+
+
