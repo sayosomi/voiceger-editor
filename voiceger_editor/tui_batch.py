@@ -8,7 +8,7 @@ from typing import Any, Callable, Optional, Sequence, Union
 
 from .caption_batch import CaptionBatch
 from .tui_navigation import TuiNavigation
-from .tui_operations import OperationEffect, TuiOperations
+from .tui_operations import FocusEffect, OperationEffect, TuiOperations
 from .tui_shortcuts import (
     resolve_batch_list_caption_shortcut,
     resolve_batch_list_shortcut,
@@ -217,7 +217,8 @@ class TuiBatchController:
             pronunciation_index=pronunciation_index,
         )
         bindings.dispatch_operation_effects(effects)
-        if not had_active_batch or session.has_active_batch:
+        saved = any(isinstance(effect, FocusEffect) for effect in effects)
+        if not had_active_batch or not saved:
             return
         self.complete_acceptance(item_id, number)
         bindings.editor_controller.clear_groupings()
