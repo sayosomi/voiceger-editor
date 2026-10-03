@@ -1190,7 +1190,7 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(app._batch.in_item)
         self.assertIn("Finish or cancel synthesis before deleting Caption.", app._status)
 
-    def test_accepting_batch_item_returns_to_list_and_focuses_next_generated_item(self):
+    def test_accepting_batch_item_stays_on_same_item_until_explicit_navigation(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
         accepted_session = app.session
         accepted_item = app._batch.batch.items[0]
@@ -1207,9 +1207,10 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(accepted_session.accept_calls, [1])
         self.assertTrue(accepted_item.is_accepted)
         self.assertEqual(accepted_item.accepted_take_number, 1)
-        self.assertFalse(app._batch.in_item)
-        self.assertIsNone(app.session)
-        self.assertEqual(app._batch.focus_key, ("caption", 1))
+        self.assertTrue(app._batch.in_item)
+        self.assertIs(app.session, accepted_session)
+        self.assertEqual(app._batch.item_position, (1, 2))
+        self.assertEqual(app._navigation.focus_key, ("candidate", 1))
         self.assertEqual(
             [item.number for item in next_session.candidates],
             [1, 2],
