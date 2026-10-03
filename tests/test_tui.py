@@ -1061,19 +1061,54 @@ class TuiTests(unittest.TestCase):
         app._handle_key("\n")
         self.assertTrue(app._batch.in_item)
         self.assertIs(app.session, session)
-        self.assertEqual(app._batch.item_title, "BATCH ITEM 1/1")
+        self.assertEqual(app._batch.item_title, "BATCH ITEM")
+        self.assertEqual(app._batch.item_position, (1, 1))
+        self.assertEqual(app._navigation.focus_key, ("batch_item", None))
 
         screen = FakeScreen()
         app._screen = screen
         with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
             app._render()
-        self.assertIn("BATCH ITEM 1/1", self.rendered(screen))
+        rendered = self.rendered(screen)
+        self.assertIn("BATCH ITEM", rendered)
+        self.assertIn("< 1 / 1 >", rendered)
 
         app._handle_key("\x1b")
         self.assertFalse(app._batch.in_item)
         self.assertIsNone(app.session)
         self.assertEqual(app._batch.focus_key, ("caption", 0))
         self.assertEqual(session.candidates, (candidate(1),))
+
+    def test_batch_item_title_and_shortcuts_move_between_captions(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        first = app.session
+        second = FakeSession(query=mixed_query(), candidates=(candidate(1),))
+        second.caption = "second"
+        app._batch.batch.add_item(CaptionBatchItem(second))
+        app._navigation.focus_key = ("batch_item", None)
+
+        app._handle_key(curses.KEY_RIGHT)
+
+        self.assertIs(app.session, second)
+        self.assertEqual(app._batch.item_position, (2, 2))
+        self.assertEqual(app._navigation.focus_key, ("batch_item", None))
+
+        app._navigation.focus_key = ("caption", None)
+        app._handle_key("[")
+
+        self.assertIs(app.session, first)
+        self.assertEqual(app._batch.item_position, (1, 2))
+        self.assertEqual(app._navigation.focus_key, ("batch_item", None))
+
+        app._handle_key("[")
+        self.assertIs(app.session, first)
+        self.assertEqual(app._status, "First Caption.")
+
+        app._handle_key("]")
+        self.assertIs(app.session, second)
+        app._handle_key("]")
+        self.assertIs(app.session, second)
+        self.assertEqual(app._status, "Last Caption.")
 
     def test_batch_list_delete_confirmation_uses_batch_owner_and_cleans_removed_session(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
@@ -2557,9 +2592,9 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(item.is_accepted)
         self.assertEqual(item.accepted_take_number, 1)
         self.assertEqual([item.number for item in session.candidates], [1])
-        self.assertFalse(app._batch.in_item)
-        self.assertIsNone(app.session)
-        self.assertEqual(app._batch.focus_key, ("caption", 0))
+        self.assertTrue(app._batch.in_item)
+        self.assertIs(app.session, session)
+        self.assertEqual(app._navigation.focus_key, ("candidate", 1))
 
     def test_english_word_phoneme_edit_commits_directly_to_flat_query(self):
         phones = ["HH", "AY1", "!", "DH", "EH1", "R"]
