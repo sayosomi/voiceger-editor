@@ -125,6 +125,16 @@ class TuiBatchController:
         return self.item_index is not None
 
     @property
+    def open_item_accepted_take_number(self) -> int | None:
+        item_id = self.open_item_id
+        if item_id is None:
+            return None
+        try:
+            return self.batch.get_item(item_id).accepted_take_number
+        except KeyError:
+            return None
+
+    @property
     def sessions(self) -> tuple[Any, ...]:
         return tuple(item.session for item in self.batch.items)
 
