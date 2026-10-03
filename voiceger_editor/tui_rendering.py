@@ -402,10 +402,14 @@ class TuiRenderer:
             selected = "x" if item.included_for_generation else " "
             candidate_count = len(item.session.candidates)
             if item.is_accepted:
-                review_state = "[ACCEPTED] "
+                review_state = "[✓] "
             elif candidate_count:
-                take_label = "TAKE" if candidate_count == 1 else "TAKES"
-                review_state = f"[{candidate_count} {take_label}] "
+                target_count = batch.effective_take_count(item)
+                if candidate_count >= target_count:
+                    review_state = "[!] "
+                else:
+                    percent = round(candidate_count * 100 / target_count)
+                    review_state = f"[{percent}%] "
             else:
                 review_state = ""
             prefix = f"{marker}[{selected}] {index + 1}  {review_state}"
