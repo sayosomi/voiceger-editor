@@ -144,7 +144,6 @@ class FakeTakeBatch:
         self.accept_calls.append((take_number, save_settings))
         if self.accept_error is not None:
             raise self.accept_error
-        self.close()
         return self.accept_result
 
     def close(self):
@@ -340,7 +339,7 @@ class UtteranceSessionTests(unittest.TestCase):
                 self.assertEqual(candidate.source_text, "old-jaold-enold-end")
                 saved = session.accept_take(candidate.number)
 
-            self.assertFalse(candidate_wav.exists())
+            self.assertTrue(candidate_wav.exists())
             self.assertEqual(saved.wav_path.read_bytes(), b"candidate wav bytes")
             self.assertTrue(saved.wav_path.name[:12].isdigit())
             self.assertEqual(
@@ -353,6 +352,10 @@ class UtteranceSessionTests(unittest.TestCase):
                 saved.text_path.read_text(encoding="utf-8"), "old-jaold-enold-end"
             )
             self.assertEqual(saved.wav_path.parent, output_dir)
+            self.assertTrue(session.has_active_batch)
+
+            session.close()
+            self.assertFalse(candidate_wav.exists())
             self.assertFalse(session.has_active_batch)
 
     def test_final_session_close_removes_real_candidate_temporary_wav(self):
@@ -1005,9 +1008,11 @@ class UtteranceSessionTests(unittest.TestCase):
             [session.settings.take_count, 7],
         )
 
-    def test_successful_acceptance_clears_active_batch(self):
+    def test_successful_acceptance_preserves_active_batch_and_candidates(self):
         session = self.make_session()
         batch = self.activate_batch(session)
+        candidate = _candidate(2, "/tmp/existing.wav")
+        batch._candidates.append(candidate)
         saved = SavedOutput(
             wav_path=Path("/output/accepted.wav"),
             text_path=None,
@@ -1029,8 +1034,9 @@ class UtteranceSessionTests(unittest.TestCase):
                 )
             ],
         )
-        self.assertFalse(session.has_active_batch)
-        self.assertEqual(session.candidates, ())
+        self.assertTrue(session.has_active_batch)
+        self.assertEqual(session.candidates, (candidate,))
+        self.assertFalse(batch.closed)
 
     def test_acceptance_uses_current_save_preferences_without_caption_provenance(self):
         session = self.make_session(caption="old caption")
