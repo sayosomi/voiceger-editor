@@ -9,6 +9,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
+from voiceger_editor.caption_batch import CaptionBatchItem
 from voiceger_editor.settings import Settings
 from voiceger_editor.terms_acceptance import (
     ACCEPTANCE_COMMAND,
@@ -274,7 +275,7 @@ def editor_document(app, width):
 
 class TuiTests(unittest.TestCase):
     @staticmethod
-    def make_app(*, query=None, candidates=(), groups=None):
+    def make_app(*, query=None, candidates=(), groups=None, batch_item=True):
         adapter = Mock()
         adapter.voiceger_root = Path("/nonexistent/voiceger")
         adapter.user_dictionary.list_japanese_entries.return_value = {}
@@ -294,6 +295,9 @@ class TuiTests(unittest.TestCase):
         )
         if query.voicegerSegments is None:
             app.session._pure_japanese_utterance_text = app.session.caption
+        if batch_item:
+            app._batch.batch.add_item(CaptionBatchItem(app.session))
+            app._batch.open_item(0)
         return app
 
     @staticmethod
@@ -513,6 +517,7 @@ class TuiTests(unittest.TestCase):
 
     def test_help_and_quit_actions_activate_from_the_continuous_list(self):
         app = self.make_app(query=mixed_query())
+        app._screen = FakeScreen(rows=12, columns=80)
         help_action = next(
             line for line, key in navigation_document(app, 80)
             if key == ("help", None)
@@ -527,14 +532,17 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._help_scroll, 0)
         app._handle_key(curses.KEY_DOWN)
         self.assertEqual(app._help_scroll, 1)
-        max_scroll = app._renderer.help_max_scroll(24, 80)
+        height, width = app._screen.getmaxyx()
+        max_scroll = app._renderer.help_max_scroll(height, width)
+        self.assertGreater(max_scroll, 0)
+        page_step = max(1, height - 3)
         app._handle_key(curses.KEY_NPAGE)
-        expected_after_page_down = min(max_scroll, 22)
+        expected_after_page_down = min(max_scroll, 1 + page_step)
         self.assertEqual(app._help_scroll, expected_after_page_down)
         app._handle_key(curses.KEY_PPAGE)
         self.assertEqual(
             app._help_scroll,
-            max(0, expected_after_page_down - 21),
+            max(0, expected_after_page_down - page_step),
         )
         self.assertTrue(app._help_open)
         app._handle_key("\n")
@@ -629,7 +637,7 @@ class TuiTests(unittest.TestCase):
             app._editor_controller.editor.kind,
             "clear_candidates_confirmation",
         )
-        app._handle_key("b")
+        app._handle_key("\x1b")
         self.assertIsNone(app._editor_controller.editor)
         self.assertEqual(app.session.candidates, candidates_before)
         self.assertEqual(app.session.discard_calls, 0)
@@ -713,7 +721,7 @@ class TuiTests(unittest.TestCase):
         self.assertIn("HELP", self.rendered(screen))
         self.assertNotIn("EDIT SETTINGS", self.rendered(screen))
 
-        app._handle_key("b")
+        app._handle_key("\x1b")
         self.assertFalse(app._help_open)
         self.assertIs(app._editor_controller.editor, editor)
         self.assertEqual(editor.selection, "output_dir")
@@ -1025,10 +1033,82 @@ class TuiTests(unittest.TestCase):
             self.assertNotIn("<<", rendered)
             self.assertNotIn(">>", rendered)
 
-    def test_run_without_initial_caption_starts_on_main_with_caption_focused(self):
+    def test_batch_list_enter_opens_item_and_escape_returns_to_same_list_entry(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        session = app.session
+        app._batch.close_item()
+        app.session = None
+        app._batch.focus_key = ("caption", 0)
+
+        app._handle_key(" ")
+        self.assertFalse(app._batch.batch.items[0].included_for_generation)
+        app._handle_key(" ")
+        self.assertTrue(app._batch.batch.items[0].included_for_generation)
+
+        app._handle_key("\n")
+        self.assertTrue(app._batch.in_item)
+        self.assertIs(app.session, session)
+        self.assertEqual(app._batch.item_title, "BATCH ITEM 1/1")
+
+        screen = FakeScreen()
+        app._screen = screen
+        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
+            app._render()
+        self.assertIn("BATCH ITEM 1/1", self.rendered(screen))
+
+        app._handle_key("\x1b")
+        self.assertFalse(app._batch.in_item)
+        self.assertIsNone(app.session)
+        self.assertEqual(app._batch.focus_key, ("caption", 0))
+        self.assertEqual(session.candidates, (candidate(1),))
+
+    def test_batch_list_take_count_updates_default_and_existing_item_session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+            session = app.session
+            app.config_path = Path(directory) / "settings.json"
+            app._batch.close_item()
+            app.session = None
+            app._batch.focus_key = ("takes", None)
+
+            app._handle_key(curses.KEY_RIGHT)
+
+            self.assertEqual(app.settings.take_count, 5)
+            self.assertEqual(app._batch.batch.default_take_count, 5)
+            self.assertEqual(session.replace_settings_calls[-1].take_count, 5)
+            self.assertEqual(session.candidates, (candidate(1),))
+
+    def test_batch_list_add_caption_uses_existing_caption_editor(self):
+        app = self.make_app(batch_item=False)
+        app.session = None
+        new_session = FakeSession(query=mixed_query())
+        new_session.caption = "new caption"
+        app._new_session = Mock(return_value=new_session)
+
+        app._handle_key("a")
+
+        editor = app._editor_controller.editor
+        self.assertEqual(editor.kind, "caption")
+        self.assertEqual(editor.origin, ("takes", None))
+        self.assertEqual(editor.active_field, "draft")
+        editor.input_value = "new caption"
+        editor.input_cursor = len(editor.input_value)
+        app._handle_key("\n")
+        app._handle_key(curses.KEY_DOWN)
+        app._handle_key("\n")
+
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(
+            [item.caption for item in app._batch.batch.items],
+            ["new caption"],
+        )
+        self.assertFalse(app._batch.in_item)
+        self.assertIsNone(app.session)
+
+    def test_run_without_initial_caption_starts_on_batch_list(self):
         for initial_caption in (None, "", "   "):
             with self.subTest(initial_caption=initial_caption):
-                app = self.make_app()
+                app = self.make_app(batch_item=False)
                 app.session = None
                 app._initial_caption = initial_caption
                 screen = FakeScreen(keys=("q",))
@@ -1037,14 +1117,16 @@ class TuiTests(unittest.TestCase):
 
                 self.assertIsNone(app.session)
                 self.assertIsNone(app._editor_controller.editor)
-                self.assertEqual(app._navigation.focus_key, ("caption", None))
+                self.assertEqual(app._batch.focus_key, ("takes", None))
                 rendered = self.rendered(screen)
-                self.assertIn("Voiceger Accent Adapter", rendered)
-                self.assertIn("Caption :", rendered)
+                self.assertIn("BATCH LIST", rendered)
+                self.assertIn("Takes < 4 >", rendered)
+                self.assertIn("[A] Add captions", rendered)
+                self.assertNotIn("Voiceger Accent Adapter", rendered)
                 self.assertNotIn("EDIT CAPTION TEXT", rendered)
 
     def test_run_sets_fast_escape_delay_and_keeps_100ms_polling_with_blank_ready_status(self):
-        app = self.make_app()
+        app = self.make_app(batch_item=False)
         app._initial_caption = "example"
         screen = FakeScreen(keys=("q",))
         with patch(
@@ -1058,7 +1140,7 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._status, "")
 
     def test_preview_temporary_wav_is_cleaned_during_tui_shutdown(self):
-        app = self.make_app()
+        app = self.make_app(batch_item=False)
         app._initial_caption = "example"
         process = Mock()
         process.poll.return_value = None
@@ -1156,7 +1238,7 @@ class TuiTests(unittest.TestCase):
         self.assertIn("[A] Apply", rendered)
         self.assertIn("[C] Clear", rendered)
         self.assertIn("[R] Reset", rendered)
-        self.assertIn("[B] Back", rendered)
+        self.assertIn("Back", rendered)
         self.assertNotIn("NAVIGATION", rendered)
         self.assertIn("▶ ", rendered)
         for removed in ("Draft source", "Input:", "[Enter: Edit]", "Enter applies", "Enter Apply", "Esc Cancel"):
@@ -1241,7 +1323,7 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(session.utterance_manually_edited)
         self.assertIsNone(app._operations.current_take)
 
-    def test_first_caption_apply_creates_the_initial_session_query(self):
+    def test_first_caption_apply_adds_initial_batch_item_without_opening_it(self):
         adapter = Mock()
         adapter.voiceger_root = Path("/nonexistent/voiceger")
         seeded_session = FakeSession(query=mixed_query())
@@ -1261,7 +1343,10 @@ class TuiTests(unittest.TestCase):
             caption="initial caption",
             settings=app.settings,
         )
-        self.assertIs(app.session, seeded_session)
+        self.assertIsNone(app.session)
+        self.assertEqual(len(app._batch.batch.items), 1)
+        self.assertIs(app._batch.batch.items[0].session, seeded_session)
+        self.assertFalse(app._batch.in_item)
         self.assertEqual(app._status, "Caption set and pronunciation built.")
 
     def test_pure_japanese_source_display_uses_utterance_after_caption_changes(self):
@@ -2047,6 +2132,8 @@ class TuiTests(unittest.TestCase):
             )
             app.session = FakeSession(query=mixed_query(), candidates=(candidate(1),))
             app.session.settings = effective
+            app._batch.batch.add_item(CaptionBatchItem(app.session))
+            app._batch.open_item(0)
             app._open_settings_editor()
             editor = app._editor_controller.editor
             editor.payload["draft_settings"]["output_dir"] = "/tmp/explicit-output"
@@ -2185,9 +2272,9 @@ class TuiTests(unittest.TestCase):
             self.assertEqual(app.session.replace_settings_calls, [])
             self.assertFalse(app.config_path.exists())
 
-    def test_candidate_focus_arrows_play_and_escape_returns_to_last_segment(self):
+    def test_batch_item_escape_returns_to_list_and_preserves_candidates(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
-        app._navigation.pronunciation_index = 1
+        session = app.session
         app._operations.play_take = Mock(return_value=())
         focus_candidate(app, 1)
         app._handle_key(curses.KEY_DOWN)
@@ -2195,11 +2282,17 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._operations.current_take, 2)
         app._handle_key(" ")
         app._operations.play_take.assert_has_calls(
-            [call(app.session, 1), call(app.session, 2), call(app.session, 2)]
+            [call(session, 1), call(session, 2), call(session, 2)]
         )
+
         app._handle_key("\x1b")
-        self.assertEqual(app._navigation.focus_key, ("pronunciation", 1))
-        self.assertEqual(app._operations.current_take, 2)
+
+        self.assertFalse(app._batch.in_item)
+        self.assertIsNone(app.session)
+        self.assertIs(app._batch.batch.items[0].session, session)
+        self.assertEqual(session.candidates, (candidate(1), candidate(2)))
+        self.assertIsNone(app._operations.current_take)
+        self.assertEqual(app._batch.focus_key, ("takes", None))
 
     def test_acceptance_and_regeneration_are_unavailable_while_busy_but_replay_works(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
@@ -2494,10 +2587,14 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(app.settings is original_settings)
         self.assertEqual(app._editor_controller.editor.input_value, "abcq?sxt1abg")
 
-    def test_primary_main_shortcuts_activate_visible_actions_and_legacy_generation_keys_are_removed(self):
+    def test_primary_batch_item_shortcuts_activate_settled_visible_actions(self):
+        caption = self.make_app(query=mixed_query())
+        caption._handle_key("e")
+        self.assertEqual(caption._editor_controller.editor.kind, "caption")
+
         build = self.make_app(query=mixed_query())
         build._request_build_pronunciation = Mock()
-        build._handle_key("b")
+        build._handle_key("p")
         build._request_build_pronunciation.assert_called_once_with()
 
         add = self.make_app(query=mixed_query())
@@ -2524,7 +2621,9 @@ class TuiTests(unittest.TestCase):
             navigation_revision=regenerate._navigation.revision,
         )
 
-        for removed in (curses.KEY_F5, "\x07", "R"):
+        for removed in (
+            curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "o", "x", "l"
+        ):
             with self.subTest(removed=removed):
                 legacy = self.make_app(query=mixed_query())
                 legacy._operations.start_generation = Mock(return_value=())
@@ -2532,10 +2631,11 @@ class TuiTests(unittest.TestCase):
                 legacy._handle_key(removed)
                 legacy._operations.start_generation.assert_not_called()
                 legacy._operations.start_regenerate_all.assert_not_called()
+                self.assertIsNone(legacy._editor_controller.editor)
 
-    def test_navigation_shortcuts_open_the_same_visible_actions(self):
+    def test_batch_item_shortcuts_open_shared_actions_and_candidate_regeneration(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
-        app._handle_key("t")
+        app._handle_key("e")
         self.assertEqual(app._editor_controller.editor.kind, "caption")
         app._handle_key("\x1b")
         app._handle_key("s")
@@ -2553,23 +2653,6 @@ class TuiTests(unittest.TestCase):
             take_count=app.settings.take_count,
             navigation_revision=navigation_revision,
         )
-
-        for shortcut, field in (
-            ("s", "style_id"), ("v", "speed"), ("n", "take_count"),
-            ("x", "save_text"), ("l", "save_lab"),
-        ):
-            with self.subTest(shortcut=shortcut):
-                settings_shortcut = self.make_app(query=mixed_query())
-                settings_shortcut._handle_key(shortcut)
-                editor = settings_shortcut._editor_controller.editor
-                self.assertEqual(editor.kind, "settings")
-                self.assertEqual(editor.selection, field)
-                self.assertIsNone(editor.active_field)
-
-        output_shortcut = self.make_app(query=mixed_query())
-        output_shortcut._handle_key("o")
-        self.assertEqual(output_shortcut._editor_controller.editor.selection, "output_dir")
-        self.assertIsNone(output_shortcut._editor_controller.editor.active_field)
 
         help_shortcut = self.make_app(query=mixed_query())
         help_shortcut._handle_key("?")
@@ -2675,7 +2758,8 @@ class TuiTests(unittest.TestCase):
         self.assertIn(1, app._editor_controller.grouping_cache)
 
     def test_keyboard_interrupt_enters_visible_shutdown_drain_then_cleans_session(self):
-        app = self.make_app()
+        app = self.make_app(batch_item=False)
+        owned_session = app.session
         app._initial_caption = "example"
         app._operations.busy = True
         app._operations.worker_operation = "initial"
@@ -2705,7 +2789,7 @@ class TuiTests(unittest.TestCase):
         app._render = Mock(side_effect=record_render)
         with patch(
             "voiceger_editor.tui.UtteranceSession.from_text",
-            return_value=app.session,
+            return_value=owned_session,
         ), patch("voiceger_editor.tui.curses.set_escdelay"):
             app.run(screen)
 
@@ -2717,7 +2801,7 @@ class TuiTests(unittest.TestCase):
         app._operations.join_worker.assert_called_once_with()
         self.assertEqual(app._operations.stop_playback.call_count, 2)
         app._operations.stop_playback.assert_has_calls([call(), call()])
-        self.assertEqual(app.session.close_calls, 1)
+        self.assertEqual(owned_session.close_calls, 1)
 
     def test_main_sweeps_stale_take_directories_before_starting_tui(self):
         environment = SimpleNamespace(
@@ -3110,7 +3194,7 @@ class TuiTests(unittest.TestCase):
         self.assertIn(OFFICIAL_TERMS_URL, stderr.getvalue())
 
     def test_busy_shutdown_drains_worker_before_playback_and_session_cleanup(self):
-        app = self.make_app()
+        app = self.make_app(batch_item=False)
         app._initial_caption = "example"
         app._operations.busy = True
         timeout_read = Event()
@@ -3162,7 +3246,7 @@ class TuiTests(unittest.TestCase):
         )
 
     def test_run_exception_joins_worker_before_cleanup(self):
-        app = self.make_app()
+        app = self.make_app(batch_item=False)
         app._initial_caption = "example"
         app._operations.busy = True
         worker_release = Event()

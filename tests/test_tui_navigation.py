@@ -133,7 +133,7 @@ class TuiNavigationTests(unittest.TestCase):
         )
         self.assertEqual(self.navigation.focus_key, ("add_section", None))
 
-    def test_candidate_rows_play_on_arrow_and_escape_restores_last_child(self):
+    def test_candidate_rows_play_on_arrow_and_remember_last_pronunciation_child(self):
         state = context(pronunciation_count=3, candidate_numbers=(4, 7))
         self.navigation.set_focus_key(state, ("pronunciation", 2))
         self.assertEqual(self.navigation.pronunciation_index, 2)
@@ -143,14 +143,7 @@ class TuiNavigationTests(unittest.TestCase):
             (ClearAdjustmentFeedback(), PlayCandidate(7)),
         )
         self.assertEqual(self.navigation.focus_key, ("candidate", 7))
-        self.assertEqual(
-            self.navigation.escape_candidate(state),
-            (
-                ClearAdjustmentFeedback(),
-                UpdateNavigationStatus("Returned to pronunciation."),
-            ),
-        )
-        self.assertEqual(self.navigation.focus_key, ("pronunciation", 2))
+        self.assertEqual(self.navigation.pronunciation_index, 2)
 
     def test_major_section_navigation_from_later_child_uses_pronunciation_stop(self):
         state = context(pronunciation_count=4, candidate_numbers=(3, 6))

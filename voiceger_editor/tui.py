@@ -8,71 +8,33 @@ import os
 from typing import Any, Sequence
 
 from .session import UtteranceSession
+from . import tui_batch
 from .settings import Settings, SettingsError, save_settings
 from .styles import available_styles
 from .tui_cli import build_argument_parser, settings_for_invocation
 from .tui_display import _adjustable_value, format_english_phonemes
 from .tui_dictionary import TuiDictionaryController
-from .tui_rendering import (
-    TuiRenderer,
-    TuiRenderState,
-    _HELP_ITEMS,
-    _active_input_prefix,
-)
+from .tui_rendering import TuiRenderer, TuiRenderState, _HELP_ITEMS, _active_input_prefix
 from .tui_editors import (
-    AdjustmentPressedIntent,
-    ApplyCaptionIntent,
-    ApplySettingsIntent,
-    BuildPronunciationIntent,
-    BuildPronunciationResult,
-    CaptionApplicationResult,
-    ClearAdjustmentFeedbackIntent,
-    ClearCandidatesIntent,
-    CloseEditorIntent,
-    EditorIntent,
-    OpenHelpIntent,
-    OpenDictionaryIntent,
-    SaveToDictionaryIntent,
-    QuitIntent,
-    PreviewIntent,
-    QueryApplicationResult,
-    PronunciationRow,
-    ReplaceQueryIntent,
-    SettingsApplicationResult,
-    TuiEditorController,
+    AdjustmentPressedIntent, ApplyCaptionIntent, ApplySettingsIntent,
+    BuildPronunciationIntent, BuildPronunciationResult, CaptionApplicationResult,
+    ClearAdjustmentFeedbackIntent, ClearCandidatesIntent, CloseEditorIntent,
+    EditorIntent, OpenHelpIntent, OpenDictionaryIntent, SaveToDictionaryIntent,
+    QuitIntent, PreviewIntent, QueryApplicationResult, PronunciationRow,
+    ReplaceQueryIntent, SettingsApplicationResult, TuiEditorController,
     UpdateStatusIntent,
 )
 from .tui_operations import (
-    DiscardInitialBatchEffect,
-    FocusEffect,
-    OperationEffect,
-    PlayPreviewEffect,
-    PlayTakeEffect,
-    StopPlaybackEffect,
-    TuiOperations,
-    UpdateStatusEffect,
+    DiscardInitialBatchEffect, FocusEffect, OperationEffect, PlayPreviewEffect,
+    PlayTakeEffect, StopPlaybackEffect, TuiOperations, UpdateStatusEffect,
 )
 from .tui_shortcuts import resolve_main_shortcut, resolve_shortcut
 from .tui_navigation import (
-    AcceptCandidate,
-    AddSectionEditor,
-    BuildPronunciation,
-    ClearAdjustmentFeedback,
-    EditPronunciationItem,
-    NavigationAction,
-    NavigationContext,
-    OpenClearCandidatesConfirmation,
-    OpenHelp,
-    OpenDictionary,
-    OpenSettingsEditor,
-    OpenCaptionEditor,
-    PlayCandidate,
-    Quit,
-    RegenerateAll,
-    RegenerateCandidate,
-    StartGeneration,
-    TuiNavigation,
-    UpdateNavigationStatus,
+    AcceptCandidate, AddSectionEditor, BuildPronunciation, ClearAdjustmentFeedback,
+    EditPronunciationItem, NavigationAction, NavigationContext,
+    OpenClearCandidatesConfirmation, OpenHelp, OpenDictionary, OpenSettingsEditor,
+    OpenCaptionEditor, PlayCandidate, Quit, RegenerateAll, RegenerateCandidate,
+    StartGeneration, TuiNavigation, UpdateNavigationStatus,
 )
 from .voiceger_adapter import VoicegerAdapter
 
@@ -99,6 +61,9 @@ class TuiApp:
         self.config_path = config_path
         self.session: UtteranceSession | None = None
         self._initial_caption = source_text
+        self._batch = tui_batch.TuiBatchController(
+            default_take_count=settings.take_count
+        )
         self._screen: Any = None
         self._operations = TuiOperations()
         self._navigation = TuiNavigation()
@@ -122,6 +87,8 @@ class TuiApp:
 
     def run(self, screen: Any) -> None:
         self._screen = screen
+        self.session = None
+        self._batch.close_item()
         try:
             screen.keypad(True)
             curses.set_escdelay(25)
@@ -133,19 +100,11 @@ class TuiApp:
                 pass
 
             caption = self._initial_caption
-            if caption is None or not caption.strip():
-                self._navigation.focus_key = ("caption", None)
-            else:
+            if caption is not None and caption.strip():
                 try:
-                    self.session = UtteranceSession.from_text(
-                        adapter=self.adapter,
-                        caption=caption,
-                        settings=self.settings,
-                    )
-                    self._status = ""
+                    self._batch.add_captions(caption, session_factory=self._new_session)
                 except Exception as exc:
-                    self._status = f"Error: Unable to prepare utterance: {exc}"
-                    self._open_caption_editor(caption)
+                    self._status = f"Error: Unable to prepare Caption batch: {exc}"
 
             while not self._exit_requested:
                 self._consume_events()
@@ -167,10 +126,8 @@ class TuiApp:
                 try:
                     self._operations.stop_playback()
                 finally:
-                    if self.session is not None and (
-                        not self._operations.worker_is_alive()
-                    ):
-                        self.session.close()
+                    if not self._operations.worker_is_alive():
+                        self._batch.close_sessions()
 
     def _read_key(self) -> Any:
         try:
@@ -267,14 +224,16 @@ class TuiApp:
             self._dispatch_editor_intents(intents)
             return
 
+        if not self._batch.in_item:
+            self._dispatch_batch_actions(self._batch.handle_key(key))
+            return
         if key == _ESCAPE:
-            actions = self._navigation.escape_candidate(self._navigation_context())
-            if actions is None:
-                self._operations.stop_playback()
-                if self._operations.playback_process is None:
-                    self._status = "Playback stopped."
-            else:
-                self._dispatch_navigation_actions(actions)
+            self._operations.stop_playback()
+            self._operations.clear_current_take()
+            self._editor_controller.clear_groupings()
+            self._batch.close_item()
+            self.session = None
+            self._status = ""
             return
         if key in ("Q", "\x03"):
             self._activate_quit()
@@ -298,18 +257,6 @@ class TuiApp:
             self._dispatch_navigation_actions(
                 self._navigation.move_section(self._navigation_context(), -1)
             )
-            return
-        if key == "t":
-            self._open_caption_editor()
-            return
-        setting_shortcuts = {
-            "v": "speed",
-            "n": "take_count",
-            "o": "output_dir",
-            "x": "save_text", "l": "save_lab",
-        }
-        if key in setting_shortcuts:
-            self._open_settings_editor(setting_shortcuts[key])
             return
         if key in (curses.KEY_LEFT, curses.KEY_RIGHT):
             direction = -1 if key == curses.KEY_LEFT else 1
@@ -365,6 +312,38 @@ class TuiApp:
             self._dispatch_navigation_actions(
                 self._navigation.activate_focused_item(self._navigation_context())
             )
+
+    def _dispatch_batch_actions(
+        self, actions: Sequence[tui_batch.BatchAction]
+    ) -> None:
+        for action in actions:
+            if isinstance(action, tui_batch.OpenBatchItem):
+                self._operations.stop_playback()
+                self._operations.clear_current_take()
+                self._editor_controller.clear_groupings()
+                self.session = self._batch.open_item(action.index)
+                self._navigation.focus_key = ("caption", None)
+                self._navigation.reset_pronunciation_index()
+                self._status = ""
+            elif isinstance(action, tui_batch.AddCaptions):
+                self._open_caption_editor("")
+            elif isinstance(action, tui_batch.GenerateSelected):
+                self._status = "Batch generation is not available in this build."
+            elif isinstance(action, tui_batch.AdjustBatchTakeCount):
+                count = self._batch.batch.default_take_count
+                updated = min(100, max(1, count + action.direction))
+                if updated != count:
+                    self._change_settings(
+                        take_count=updated, report_success=False
+                    )
+            elif isinstance(action, tui_batch.OpenBatchSettings):
+                self._open_settings_editor("style_id")
+            elif isinstance(action, tui_batch.OpenBatchDictionary):
+                self._dispatch_editor_intents(self._dictionary_controller.open_menu())
+            elif isinstance(action, tui_batch.OpenBatchHelp):
+                self._open_help()
+            elif isinstance(action, tui_batch.QuitBatch):
+                self._activate_quit()
 
     def _navigation_context(self) -> NavigationContext:
         session = self.session
@@ -522,6 +501,11 @@ class TuiApp:
         self._exit_requested = True
         self._dispatch_operation_effects(self._operations.request_shutdown())
 
+    def _new_session(self, caption: str) -> UtteranceSession:
+        return UtteranceSession.from_text(
+            adapter=self.adapter, caption=caption, settings=self.settings
+        )
+
     def _segments(self) -> list[tuple[str, str, int | None]]:
         if self.session is None:
             return []
@@ -554,7 +538,7 @@ class TuiApp:
             current_caption=(
                 self.session.caption if self.session is not None else None
             ),
-            origin=self._navigation.focus_key,
+            origin=self._navigation.focus_key if self._batch.in_item else self._batch.focus_key,
             busy=self._operations.busy,
         )
         self._dispatch_editor_intents(intents)
@@ -567,7 +551,7 @@ class TuiApp:
     ) -> None:
         intents = self._editor_controller.open_settings(
             self.settings,
-            origin=self._navigation.focus_key,
+            origin=self._navigation.focus_key if self._batch.in_item else self._batch.focus_key,
             busy=self._operations.busy,
             selected_field=selected_field,
             edit=edit,
@@ -609,6 +593,12 @@ class TuiApp:
         self._operations.clear_current_take()
 
     def _apply_caption(self, caption: str) -> CaptionApplicationResult:
+        if not self._batch.in_item:
+            try:
+                self._batch.add_caption(caption, session_factory=self._new_session)
+            except Exception as exc:
+                return CaptionApplicationResult(error=str(exc))
+            return CaptionApplicationResult(initial_session_created=True)
         if self.session is not None and caption == self.session.caption:
             return CaptionApplicationResult(unchanged=True)
         if self.session is not None:
@@ -618,11 +608,7 @@ class TuiApp:
                 return CaptionApplicationResult(error=str(exc))
         else:
             try:
-                self.session = UtteranceSession.from_text(
-                    adapter=self.adapter,
-                    caption=caption,
-                    settings=self.settings,
-                )
+                self.session = self._new_session(caption)
             except Exception as exc:
                 return CaptionApplicationResult(error=str(exc))
             self._navigation.reset_pronunciation_index()
@@ -668,11 +654,14 @@ class TuiApp:
                     self._operations.clear_current_take()
             elif isinstance(intent, CloseEditorIntent):
                 self._pressed_adjustment = None
-                self._dispatch_navigation_actions(
-                    self._navigation.set_focus_key(
-                        self._navigation_context(), intent.origin
+                if self._batch.in_item:
+                    self._dispatch_navigation_actions(
+                        self._navigation.set_focus_key(
+                            self._navigation_context(), intent.origin
+                        )
                     )
-                )
+                else:
+                    self._batch.focus_key = intent.origin
                 self._status = intent.status
             elif isinstance(intent, ReplaceQueryIntent):
                 try:
@@ -716,14 +705,15 @@ class TuiApp:
                 getattr(updated, name) != getattr(self.settings, name)
                 for name in ("style_id", "speed", "top_k", "top_p", "temperature")
             )
-            if self.session is not None:
-                if synthesis_changed:
-                    self._operations.stop_playback()
-                self.session.replace_settings(updated)
+            if synthesis_changed:
+                self._operations.stop_playback()
+            for session in self._batch.sessions:
+                session.replace_settings(updated)
         except (SettingsError, ValueError) as exc:
             self._status = f"Error: Settings were not changed: {exc}"
             return
         self.settings = updated
+        self._batch.batch.default_take_count = updated.take_count
         try:
             persisted = replace(self._persisted_settings, **changes)
         except SettingsError as exc:
@@ -755,12 +745,13 @@ class TuiApp:
             try:
                 if synthesis_changed:
                     self._operations.stop_playback()
-                if self.session is not None:
-                    self.session.replace_settings(target)
+                for session in self._batch.sessions:
+                    session.replace_settings(target)
             except (SettingsError, ValueError) as exc:
                 self._status = f"Error: Settings were not changed: {exc}"
                 return SettingsApplicationResult(error_status=self._status)
             self.settings = target
+            self._batch.batch.default_take_count = target.take_count
             if synthesis_changed:
                 self._operations.clear_current_take()
 
@@ -825,11 +816,7 @@ class TuiApp:
     ) -> TuiRenderState:
         if segments is None:
             segments = self._segments() if self.session is not None else ()
-        pronunciation_rows = (
-            self._pronunciation_rows()
-            if self.session is not None
-            else ()
-        )
+        pronunciation_rows = self._pronunciation_rows() if self.session is not None else ()
         return TuiRenderState(
             voiceger_root=self.adapter.voiceger_root,
             settings=self.settings,
@@ -844,7 +831,11 @@ class TuiApp:
             operation_completed=self._operations.operation_completed,
             operation_total=self._operations.operation_total,
             pressed_adjustment=self._pressed_adjustment,
-            editor=self._dictionary_controller.editor if self._dictionary_controller.active else self._editor_controller.editor,
+            editor=(
+                self._dictionary_controller.editor
+                if self._dictionary_controller.active
+                else self._editor_controller.editor
+            ),
         )
 
     def _render(self) -> None:
@@ -868,12 +859,13 @@ class TuiApp:
             self._help_scroll = self._renderer.render_help(
                 screen, width, self._help_scroll
             )
-        elif (
-            self._dictionary_controller.active
-            or self._editor_controller.editor is not None
-        ):
+        elif self._dictionary_controller.active or self._editor_controller.editor is not None:
             self._renderer.render_editor(
                 screen, self._render_state(segments=()), height, width
+            )
+        elif not self._batch.in_item:
+            self._renderer.render_batch_list(
+                screen, self._batch.batch, self._batch.focus_key, self._status, height, width
             )
         else:
             self._dispatch_navigation_actions(
@@ -882,7 +874,7 @@ class TuiApp:
                 )
             )
             self._renderer.render_navigation(
-                screen, self._render_state(), height, width
+                screen, self._render_state(), height, width, title=self._batch.item_title
             )
         screen.refresh()
         self._pressed_adjustment = None
@@ -892,7 +884,6 @@ class TuiApp:
 
 def main(argv: Sequence[str] | None = None) -> int:
     from .entrypoint import main as run
-
     return run(argv)
 
 

@@ -13,10 +13,13 @@ from voiceger_editor.tui_editors import (
 )
 from voiceger_editor.tui_rendering import TuiRenderer, TuiRenderState
 from voiceger_editor.tui_shortcuts import (
+    batch_list_shortcut,
+    batch_list_shortcuts,
     main_shortcut,
     main_shortcuts,
     menu_definitions,
     menu_items,
+    resolve_batch_list_shortcut,
     resolve_main_shortcut,
     resolve_shortcut,
     validate_menu_definitions,
@@ -42,47 +45,47 @@ class TuiShortcutTests(unittest.TestCase):
 
     def test_declared_shortcuts_match_issue_47_contract(self):
         expected = {
-            "caption": {"a": "apply", "c": "clear", "r": "reset", "b": "back"},
-            "build_confirmation": {"r": "rebuild", "b": "cancel"},
+            "caption": {"a": "apply", "c": "clear", "r": "reset"},
+            "build_confirmation": {"r": "rebuild"},
             "japanese": {
                 "p": "preview", "a": "apply", "s": "save_dictionary",
                 "d": "dictionary", "e": "edit_text",
-                "c": "clear", "r": "reset", "b": "back",
+                "c": "clear", "r": "reset",
             },
             "english_word": {
                 "p": "preview", "a": "apply", "s": "save_dictionary",
                 "d": "dictionary", "e": "edit_text",
-                "c": "clear", "r": "reset", "b": "back",
+                "c": "clear", "r": "reset",
             },
             "section_text": {
                 "p": "preview", "a": "apply", "r": "reset",
-                "d": "delete_section", "b": "back",
+                "d": "delete_section",
             },
-            "add_section": {"a": "add", "c": "clear", "r": "reset", "b": "back"},
+            "add_section": {"a": "add", "c": "clear", "r": "reset"},
             "settings": {
                 "s": "style_id", "v": "speed", "n": "take_count",
                 "o": "output_dir", "x": "save_text", "l": "save_lab",
                 "k": "top_k", "p": "top_p", "t": "temperature",
                 "d": "reset_sampling",
-                "a": "apply", "r": "reset", "b": "back",
+                "a": "apply", "r": "reset",
             },
-            "dictionary_menu": {"j": "japanese", "e": "english", "b": "back"},
-            "dictionary_japanese_list": {"a": "add", "x": "delete", "b": "back"},
-            "dictionary_english_list": {"a": "add", "x": "delete", "b": "back"},
-            "dictionary_japanese_duplicates": {"b": "back"},
+            "dictionary_menu": {"j": "japanese", "e": "english"},
+            "dictionary_japanese_list": {"a": "add", "x": "delete"},
+            "dictionary_english_list": {"a": "add", "x": "delete"},
+            "dictionary_japanese_duplicates": {},
             "dictionary_japanese_entry": {
                 "g": "generate_pronunciation", "p": "preview",
-                "s": "save", "d": "dictionary", "b": "back",
+                "s": "save", "d": "dictionary",
             },
             "dictionary_english_entry": {
                 "g": "generate_pronunciation", "p": "preview",
-                "s": "save", "d": "dictionary", "b": "back",
+                "s": "save", "d": "dictionary",
             },
-            "dictionary_delete_confirmation": {"d": "delete", "b": "cancel"},
-            "dictionary_discard_confirmation": {"d": "discard", "b": "cancel"},
-            "delete_confirmation": {"d": "delete", "b": "cancel"},
-            "clear_candidates_confirmation": {"c": "clear", "b": "cancel"},
-            "help": {"b": "back"},
+            "dictionary_delete_confirmation": {"d": "delete"},
+            "dictionary_discard_confirmation": {"d": "discard"},
+            "delete_confirmation": {"d": "delete"},
+            "clear_candidates_confirmation": {"c": "clear"},
+            "help": {},
         }
         for screen_kind, mapping in expected.items():
             with self.subTest(screen_kind=screen_kind):
@@ -96,7 +99,8 @@ class TuiShortcutTests(unittest.TestCase):
 
     def test_main_shortcuts_match_issue_49_contract_and_share_display_metadata(self):
         expected = {
-            "b": "build_pronunciation",
+            "e": "caption",
+            "p": "build_pronunciation",
             "a": "add_section",
             "g": "generate",
             "c": "clear_candidates",
@@ -116,9 +120,39 @@ class TuiShortcutTests(unittest.TestCase):
                     f"[{shortcut.upper()}] "
                 ))
 
-        for removed in (curses.KEY_F5, "\x07", "R"):
+        for removed in (curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "o", "x", "l"):
             with self.subTest(removed=removed):
                 self.assertIsNone(resolve_main_shortcut(removed))
+
+    def test_batch_list_shortcuts_match_issue_130_contract(self):
+        expected = {
+            "a": "add_captions",
+            "g": "generate_selected",
+            "s": "settings",
+            "d": "dictionary",
+            "?": "help",
+            "q": "quit",
+        }
+        actual = {
+            item.shortcut: item.navigation_key for item in batch_list_shortcuts()
+        }
+        self.assertEqual(actual, expected)
+        for shortcut, navigation_key in expected.items():
+            with self.subTest(shortcut=shortcut):
+                resolved = resolve_batch_list_shortcut(shortcut)
+                self.assertEqual(resolved, batch_list_shortcut(navigation_key))
+                self.assertTrue(resolved.display_label.startswith(
+                    f"[{shortcut.upper()}] "
+                ))
+
+    def test_back_and_cancel_rows_have_no_visible_b_shortcut(self):
+        for screen_kind, definitions in menu_definitions().items():
+            for item in definitions:
+                if item.key not in {"back", "cancel"}:
+                    continue
+                with self.subTest(screen_kind=screen_kind, key=item.key):
+                    self.assertIsNone(item.shortcut)
+                    self.assertIn("Esc", item.no_shortcut_reason)
 
     def test_metadata_architecture_is_valid_and_no_shortcut_exception_is_explicit(self):
         self.assertEqual(validate_menu_definitions(), ())

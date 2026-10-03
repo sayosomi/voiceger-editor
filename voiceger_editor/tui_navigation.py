@@ -256,29 +256,6 @@ class TuiNavigation:
         actions.extend(self._candidate_playback_action(key))
         return tuple(actions)
 
-    def escape_candidate(
-        self,
-        context: NavigationContext,
-    ) -> tuple[NavigationAction, ...] | None:
-        if self.focus_key[0] != "candidate":
-            return None
-        return_key = ("pronunciation", self.pronunciation_index)
-        if return_key not in self.navigation_items(context):
-            return_key = (
-                ("pronunciation", 0)
-                if ("pronunciation", 0) in self.navigation_items(context)
-                else ("build_pronunciation", None)
-            )
-        actions = list(
-            self.set_focus_key(
-                context,
-                return_key,
-                moved=True,
-            )
-        )
-        actions.append(UpdateNavigationStatus("Returned to pronunciation."))
-        return tuple(actions)
-
     def activate_focused_item(
         self,
         context: NavigationContext,

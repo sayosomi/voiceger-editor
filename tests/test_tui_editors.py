@@ -2053,7 +2053,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(confirmation.title, "CLEAR CANDIDATES?")
         self.assertIn("candidate WAV files will be discarded", confirmation.payload["warning"])
         canceled = controller.handle_key(
-            "b", settings=self.settings(), query=None, current_caption="Caption"
+            "\x1b", settings=self.settings(), query=None, current_caption="Caption"
         )
 
         self.assertIsNone(controller.editor)
