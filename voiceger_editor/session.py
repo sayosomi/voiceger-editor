@@ -373,12 +373,10 @@ class UtteranceSession:
         }
         if self._settings.save_lab:
             accept_kwargs["save_lab"] = True
-        saved = batch.accept(
+        return batch.accept(
             take_number,
             **accept_kwargs,
         )
-        self._active_batch = None
-        return saved
 
     def discard_takes(self) -> None:
         batch = self._active_batch
