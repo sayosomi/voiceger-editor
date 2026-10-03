@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
+from voiceger_editor.caption_batch import CaptionBatch, CaptionBatchItem
 from voiceger_editor.tui_operations import (
     DiscardInitialBatchEffect,
     FocusEffect,
@@ -964,6 +965,266 @@ class TuiOperationsTests(unittest.TestCase):
             (),
         )
         self.assertEqual(session.accept_calls, [])
+
+
+class BatchFakeSession:
+    def __init__(
+        self,
+        name,
+        log,
+        *,
+        existing=False,
+        fail_take=None,
+        block_take=None,
+        blocked_event=None,
+        release_event=None,
+        concurrency=None,
+    ):
+        self.name = name
+        self.log = log
+        self.has_active_batch = existing
+        self.fail_take = fail_take
+        self.block_take = block_take
+        self.blocked_event = blocked_event
+        self.release_event = release_event
+        self.concurrency = concurrency
+        self.candidates = []
+        self.generate_take_counts = []
+        self.regenerate_take_counts = []
+
+    def generate_takes(self, *, take_count=None):
+        self.generate_take_counts.append(take_count)
+        self.has_active_batch = True
+        return self._values(take_count, "initial")
+
+    def regenerate_all_takes(self, *, take_count=None):
+        self.regenerate_take_counts.append(take_count)
+        return self._values(take_count, "regenerate")
+
+    def _values(self, take_count, mode):
+        for number in range(1, take_count + 1):
+            if self.concurrency is not None:
+                self.concurrency["active"] += 1
+                self.concurrency["max"] = max(
+                    self.concurrency["max"], self.concurrency["active"]
+                )
+            self.log.append((self.name, mode, "start", number))
+            try:
+                if number == self.block_take:
+                    if self.blocked_event is not None:
+                        self.blocked_event.set()
+                    if self.release_event is not None:
+                        self.release_event.wait(timeout=2)
+                if number == self.fail_take:
+                    raise RuntimeError(f"{self.name} failed at take {number}")
+                item = SimpleNamespace(number=number, owner=self.name)
+                self.candidates = [
+                    candidate
+                    for candidate in self.candidates
+                    if candidate.number != number
+                ]
+                self.candidates.append(item)
+                self.log.append((self.name, mode, "done", number))
+            finally:
+                if self.concurrency is not None:
+                    self.concurrency["active"] -= 1
+            yield item
+
+
+class TuiBatchGenerationTests(unittest.TestCase):
+    def make_batch(self, *items, default_take_count=2):
+        return CaptionBatch(
+            default_take_count=default_take_count,
+            items=items,
+        )
+
+    def consume(self, operations):
+        return operations.consume_pending_events(
+            None,
+            navigation_revision=0,
+            pronunciation_index=0,
+            exit_requested=False,
+        )
+
+    def test_selected_items_generate_caption_major_with_effective_counts(self):
+        log = []
+        concurrency = {"active": 0, "max": 0}
+        first = BatchFakeSession("first", log, concurrency=concurrency)
+        second = BatchFakeSession(
+            "second", log, existing=True, concurrency=concurrency
+        )
+        excluded = BatchFakeSession("excluded", log, concurrency=concurrency)
+        batch = self.make_batch(
+            CaptionBatchItem(first, item_id="first"),
+            CaptionBatchItem(
+                second,
+                item_id="second",
+                take_count_override=3,
+            ),
+            CaptionBatchItem(
+                excluded,
+                item_id="excluded",
+                included_for_generation=False,
+            ),
+        )
+        operations = TuiOperations()
+
+        effects = operations.start_batch_generation(
+            batch, navigation_revision=0
+        )
+        self.assertEqual(operations.operation_total, 5)
+        self.assertIn("2 selected Caption(s), 5 take(s) total", effects[0].status)
+
+        operations.join_worker()
+        consumed = self.consume(operations)
+        starts = [
+            (name, mode, number)
+            for name, mode, phase, number in log
+            if phase == "start"
+        ]
+        self.assertEqual(
+            starts,
+            [
+                ("first", "initial", 1),
+                ("first", "initial", 2),
+                ("second", "regenerate", 1),
+                ("second", "regenerate", 2),
+                ("second", "regenerate", 3),
+            ],
+        )
+        self.assertEqual(first.generate_take_counts, [2])
+        self.assertEqual(second.regenerate_take_counts, [3])
+        self.assertEqual(excluded.generate_take_counts, [])
+        self.assertEqual(concurrency["max"], 1)
+        self.assertEqual(
+            [(item.number, item.owner) for item in first.candidates],
+            [(1, "first"), (2, "first")],
+        )
+        self.assertEqual(
+            [(item.number, item.owner) for item in second.candidates],
+            [(1, "second"), (2, "second"), (3, "second")],
+        )
+        statuses = [
+            effect.status
+            for effect in consumed
+            if isinstance(effect, UpdateStatusEffect)
+        ]
+        self.assertIn(
+            "Caption 2/2 · Take 3/3 · Overall 5/5",
+            statuses,
+        )
+        self.assertEqual(
+            statuses[-1],
+            "Batch generation finished. 5/5 take(s) ready.",
+        )
+
+    def test_zero_selection_does_not_start_worker(self):
+        session = BatchFakeSession("only", [])
+        batch = self.make_batch(
+            CaptionBatchItem(
+                session,
+                item_id="only",
+                included_for_generation=False,
+            )
+        )
+        operations = TuiOperations()
+
+        self.assertEqual(
+            operations.start_batch_generation(
+                batch, navigation_revision=0
+            ),
+            (
+                UpdateStatusEffect(
+                    "Select at least one Caption before generating."
+                ),
+            ),
+        )
+        self.assertFalse(operations.busy)
+        self.assertIsNone(operations.worker)
+        self.assertEqual(session.generate_take_counts, [])
+
+    def test_cancellation_waits_for_inflight_take_and_retains_completed_candidates(self):
+        log = []
+        blocked = Event()
+        release = Event()
+        session = BatchFakeSession(
+            "only",
+            log,
+            block_take=2,
+            blocked_event=blocked,
+            release_event=release,
+        )
+        batch = self.make_batch(
+            CaptionBatchItem(session, item_id="only"),
+            default_take_count=3,
+        )
+        operations = TuiOperations()
+
+        operations.start_batch_generation(batch, navigation_revision=0)
+        self.assertTrue(blocked.wait(timeout=2))
+        self.assertTrue(operations.can_cancel_batch)
+        effects = operations.request_batch_cancellation()
+        self.assertEqual(effects, (UpdateStatusEffect("Cancelling…"),))
+        self.assertTrue(operations.worker_is_alive())
+
+        release.set()
+        operations.join_worker()
+        consumed = self.consume(operations)
+
+        self.assertEqual(
+            [(item.number, item.owner) for item in session.candidates],
+            [(1, "only"), (2, "only")],
+        )
+        self.assertNotIn(("only", "initial", "start", 3), log)
+        statuses = [
+            effect.status
+            for effect in consumed
+            if isinstance(effect, UpdateStatusEffect)
+        ]
+        self.assertEqual(
+            statuses[-1],
+            "Batch generation cancelled. 2/3 take(s) ready.",
+        )
+        self.assertFalse(operations.busy)
+
+    def test_failure_preserves_item_specific_candidate_ownership_and_stops_later_items(self):
+        log = []
+        first = BatchFakeSession("first", log)
+        failing = BatchFakeSession("failing", log, fail_take=2)
+        later = BatchFakeSession("later", log)
+        batch = self.make_batch(
+            CaptionBatchItem(first, item_id="first"),
+            CaptionBatchItem(failing, item_id="failing"),
+            CaptionBatchItem(later, item_id="later"),
+        )
+        operations = TuiOperations()
+
+        operations.start_batch_generation(batch, navigation_revision=0)
+        operations.join_worker()
+        consumed = self.consume(operations)
+
+        self.assertEqual(
+            [(item.number, item.owner) for item in first.candidates],
+            [(1, "first"), (2, "first")],
+        )
+        self.assertEqual(
+            [(item.number, item.owner) for item in failing.candidates],
+            [(1, "failing")],
+        )
+        self.assertEqual(later.candidates, [])
+        self.assertEqual(later.generate_take_counts, [])
+        statuses = [
+            effect.status
+            for effect in consumed
+            if isinstance(effect, UpdateStatusEffect)
+        ]
+        self.assertEqual(
+            statuses[-1],
+            "Error: Batch generation failed at Caption 2/3, "
+            "Take 2/2: failing failed at take 2",
+        )
+        self.assertEqual(operations.operation_completed, 3)
+        self.assertFalse(operations.busy)
 
 
 if __name__ == "__main__":

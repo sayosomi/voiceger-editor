@@ -329,7 +329,12 @@ class TuiApp:
             elif isinstance(action, tui_batch.AddCaptions):
                 self._open_caption_editor("")
             elif isinstance(action, tui_batch.GenerateSelected):
-                self._status = "Batch generation is not available in this build."
+                self._dispatch_operation_effects(
+                    self._operations.start_batch_generation(
+                        self._batch.batch,
+                        navigation_revision=self._navigation.revision,
+                    )
+                )
             elif isinstance(action, tui_batch.AdjustBatchTakeCount):
                 count = self._batch.batch.default_take_count
                 updated = min(100, max(1, count + action.direction))

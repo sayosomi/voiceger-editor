@@ -14,6 +14,7 @@ import tempfile
 from threading import Event, Thread
 from typing import Any, Callable, Iterable, Union
 
+from .caption_batch import CaptionBatch
 from .session import UtteranceSession
 from .voicevox_api_models import AudioQuery
 
@@ -60,6 +61,38 @@ class PreviewFailedEvent:
     error: BaseException
 
 
+@dataclass(frozen=True)
+class BatchGenerationProgressEvent:
+    item_id: str
+    caption_number: int
+    caption_total: int
+    take_number: int
+    take_total: int
+    overall_completed: int
+    overall_total: int
+
+
+@dataclass(frozen=True)
+class BatchCandidateReadyEvent:
+    item_id: str
+    caption_number: int
+    caption_total: int
+    take_number: int
+    take_total: int
+    overall_completed: int
+    overall_total: int
+
+
+@dataclass(frozen=True)
+class BatchGenerationFailedEvent:
+    item_id: str
+    caption_number: int
+    caption_total: int
+    take_number: int
+    take_total: int
+    error: BaseException
+
+
 OperationEffect = Union[
     UpdateStatusEffect,
     FocusEffect,
@@ -101,6 +134,160 @@ class TuiOperations:
         self._preview_temporary_directory: (
             tempfile.TemporaryDirectory[str] | None
         ) = None
+
+    def start_batch_generation(
+        self,
+        batch: CaptionBatch,
+        *,
+        navigation_revision: int,
+    ) -> tuple[OperationEffect, ...]:
+        """Generate selected Caption items sequentially on one worker."""
+
+        if self.busy:
+            return (
+                UpdateStatusEffect("A sequential take operation is already running."),
+            )
+
+        selected = batch.included_items
+        if not selected:
+            return (
+                UpdateStatusEffect(
+                    "Select at least one Caption before generating."
+                ),
+            )
+
+        plan = tuple(
+            (item, batch.effective_take_count(item))
+            for item in selected
+        )
+        overall_total = sum(take_total for _item, take_total in plan)
+        first_take_total = plan[0][1]
+
+        self.stop_playback()
+        self.current_take = None
+        self.busy = True
+        self.worker_operation = "batch_generate"
+        self.worker_target = None
+        self.worker_error = None
+        self.operation_focus_revision = navigation_revision
+        self.operation_completed = 0
+        self.operation_total = overall_total
+        cancellation_event = Event()
+        self._cancellation_event = cancellation_event
+        self.cancellation_requested = False
+
+        def work() -> None:
+            overall_completed = 0
+            try:
+                with open(os.devnull, "w", encoding="utf-8") as sink:
+                    with redirect_stdout(sink), redirect_stderr(sink):
+                        for caption_number, (item, take_total) in enumerate(
+                            plan, start=1
+                        ):
+                            if cancellation_event.is_set():
+                                break
+                            iterator = None
+                            try:
+                                try:
+                                    if item.session.has_active_batch:
+                                        values = item.session.regenerate_all_takes(
+                                            take_count=take_total
+                                        )
+                                    else:
+                                        values = item.session.generate_takes(
+                                            take_count=take_total
+                                        )
+                                    iterator = iter(values)
+                                except BaseException as exc:
+                                    self.events.put(
+                                        BatchGenerationFailedEvent(
+                                            item_id=item.item_id,
+                                            caption_number=caption_number,
+                                            caption_total=len(plan),
+                                            take_number=1,
+                                            take_total=take_total,
+                                            error=exc,
+                                        )
+                                    )
+                                    return
+
+                                for take_number in range(1, take_total + 1):
+                                    if cancellation_event.is_set():
+                                        return
+                                    self.events.put(
+                                        BatchGenerationProgressEvent(
+                                            item_id=item.item_id,
+                                            caption_number=caption_number,
+                                            caption_total=len(plan),
+                                            take_number=take_number,
+                                            take_total=take_total,
+                                            overall_completed=overall_completed,
+                                            overall_total=overall_total,
+                                        )
+                                    )
+                                    try:
+                                        next(iterator)
+                                    except StopIteration:
+                                        self.events.put(
+                                            BatchGenerationFailedEvent(
+                                                item_id=item.item_id,
+                                                caption_number=caption_number,
+                                                caption_total=len(plan),
+                                                take_number=take_number,
+                                                take_total=take_total,
+                                                error=RuntimeError(
+                                                    "take generation ended before the requested count"
+                                                ),
+                                            )
+                                        )
+                                        return
+                                    except BaseException as exc:
+                                        self.events.put(
+                                            BatchGenerationFailedEvent(
+                                                item_id=item.item_id,
+                                                caption_number=caption_number,
+                                                caption_total=len(plan),
+                                                take_number=take_number,
+                                                take_total=take_total,
+                                                error=exc,
+                                            )
+                                        )
+                                        return
+
+                                    overall_completed += 1
+                                    self.events.put(
+                                        BatchCandidateReadyEvent(
+                                            item_id=item.item_id,
+                                            caption_number=caption_number,
+                                            caption_total=len(plan),
+                                            take_number=take_number,
+                                            take_total=take_total,
+                                            overall_completed=overall_completed,
+                                            overall_total=overall_total,
+                                        )
+                                    )
+                            finally:
+                                if iterator is not None:
+                                    close = getattr(iterator, "close", None)
+                                    if callable(close):
+                                        close()
+            finally:
+                self.events.put(("done", None))
+
+        self.worker = Thread(
+            target=work,
+            name="voiceger-tui-batch-synthesis",
+            daemon=True,
+        )
+        self.worker.start()
+        return (
+            UpdateStatusEffect(
+                f"Generating {len(plan)} selected Caption(s), "
+                f"{overall_total} take(s) total · "
+                f"Caption 1/{len(plan)} · Take 1/{first_take_total} · "
+                f"Overall 0/{overall_total}"
+            ),
+        )
 
     def start_generation(
         self,
@@ -281,7 +468,11 @@ class TuiOperations:
     def can_cancel_batch(self) -> bool:
         """Whether the active worker is an initial or all-takes operation."""
 
-        return self.busy and self.worker_operation in {"initial", "regenerate_all"}
+        return self.busy and self.worker_operation in {
+            "initial",
+            "regenerate_all",
+            "batch_generate",
+        }
 
     def request_batch_cancellation(self) -> tuple[OperationEffect, ...]:
         """Request cancellation at the next take boundary."""
@@ -327,6 +518,35 @@ class TuiOperations:
                 self.worker_error = event.error
                 effects.append(
                     UpdateStatusEffect(f"Error: Preview failed: {event.error}")
+                )
+                continue
+            if isinstance(event, BatchGenerationProgressEvent):
+                effects.append(
+                    UpdateStatusEffect(
+                        f"Caption {event.caption_number}/{event.caption_total} · "
+                        f"Take {event.take_number}/{event.take_total} · "
+                        f"Overall {event.overall_completed}/{event.overall_total}"
+                    )
+                )
+                continue
+            if isinstance(event, BatchCandidateReadyEvent):
+                self.operation_completed = event.overall_completed
+                effects.append(
+                    UpdateStatusEffect(
+                        f"Caption {event.caption_number}/{event.caption_total} · "
+                        f"Take {event.take_number}/{event.take_total} · "
+                        f"Overall {event.overall_completed}/{event.overall_total}"
+                    )
+                )
+                continue
+            if isinstance(event, BatchGenerationFailedEvent):
+                self.worker_error = event.error
+                effects.append(
+                    UpdateStatusEffect(
+                        "Error: Batch generation failed at "
+                        f"Caption {event.caption_number}/{event.caption_total}, "
+                        f"Take {event.take_number}/{event.take_total}: {event.error}"
+                    )
                 )
                 continue
 
@@ -392,6 +612,21 @@ class TuiOperations:
                 self.busy = False
                 if operation == "preview":
                     status = None
+                elif operation == "batch_generate":
+                    if cancelled:
+                        status = (
+                            "Batch generation cancelled. "
+                            f"{self.operation_completed}/{self.operation_total} "
+                            "take(s) ready."
+                        )
+                    elif self.worker_error is not None:
+                        status = None
+                    else:
+                        status = (
+                            "Batch generation finished. "
+                            f"{self.operation_completed}/{self.operation_total} "
+                            "take(s) ready."
+                        )
                 elif cancelled and operation == "initial":
                     ready = len(session.candidates) if session is not None else 0
                     status = f"Generation cancelled. {ready} take(s) ready."
