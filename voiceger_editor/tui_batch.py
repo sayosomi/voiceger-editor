@@ -8,7 +8,7 @@ from typing import Any, Callable, Optional, Sequence, Union
 
 from .caption_batch import CaptionBatch
 from .tui_navigation import TuiNavigation
-from .tui_operations import FocusEffect, OperationEffect, TuiOperations
+from .tui_operations import OperationEffect, TakeAcceptedEffect, TuiOperations
 from .tui_shortcuts import (
     resolve_batch_list_caption_shortcut,
     resolve_batch_list_shortcut,
@@ -163,7 +163,13 @@ class TuiBatchController:
     def item_title(self) -> str:
         if self.item_index is None:
             raise RuntimeError("No Batch Item is open")
-        return f"BATCH ITEM {self.item_index + 1}/{len(self.batch)}"
+        return "BATCH ITEM"
+
+    @property
+    def item_position(self) -> tuple[int, int]:
+        if self.item_index is None:
+            raise RuntimeError("No Batch Item is open")
+        return self.item_index + 1, len(self.batch)
 
     def add_captions(self, text: str, *, session_factory: SessionFactory) -> None:
         self.batch.add_captions_from_text(text, session_factory=session_factory)
@@ -198,14 +204,7 @@ class TuiBatchController:
             self.batch.clear_acceptance(item_id)
 
     def complete_acceptance(self, item_id: str, take_number: int) -> None:
-        item = self.batch.mark_accepted(item_id, take_number)
-        current_index = self.batch.items.index(item)
-        self._open_item_id = None
-        next_index = self._next_unaccepted_generated_index(current_index)
-        self.focus_key = (
-            "caption",
-            current_index if next_index is None else next_index,
-        )
+        self.batch.mark_accepted(item_id, take_number)
 
     def accept_open_item(
         self,
@@ -227,12 +226,40 @@ class TuiBatchController:
             pronunciation_index=pronunciation_index,
         )
         bindings.dispatch_operation_effects(effects)
-        saved = any(isinstance(effect, FocusEffect) for effect in effects)
+        saved = any(isinstance(effect, TakeAcceptedEffect) for effect in effects)
         if not had_active_batch or not saved:
             return
         self.complete_acceptance(item_id, number)
+
+    def move_open_item(
+        self,
+        direction: int,
+        *,
+        bindings: BatchActionBindings,
+    ) -> None:
+        index = self.item_index
+        if index is None or direction == 0:
+            return
+        if bindings.operations.busy:
+            bindings.set_status(
+                "Wait for the current synthesis operation to finish."
+            )
+            return
+        target = index + (-1 if direction < 0 else 1)
+        if target < 0:
+            bindings.set_status("First Caption.")
+            return
+        if target >= len(self.batch):
+            bindings.set_status("Last Caption.")
+            return
+
+        bindings.operations.stop_playback()
+        bindings.operations.clear_current_take()
         bindings.editor_controller.clear_groupings()
-        bindings.set_session(None)
+        bindings.set_session(self.open_item(target))
+        bindings.navigation.focus_key = ("batch_item", None)
+        bindings.navigation.reset_pronunciation_index()
+        bindings.set_status("")
 
     def close_sessions(self) -> None:
         for session in self.sessions:
@@ -251,7 +278,7 @@ class TuiBatchController:
                 bindings.operations.clear_current_take()
                 bindings.editor_controller.clear_groupings()
                 bindings.set_session(self.open_item(action.index))
-                bindings.navigation.focus_key = ("caption", None)
+                bindings.navigation.focus_key = ("batch_item", None)
                 bindings.navigation.reset_pronunciation_index()
                 bindings.set_status("")
             elif isinstance(action, AddCaptions):
