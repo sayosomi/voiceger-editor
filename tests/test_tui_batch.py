@@ -1,9 +1,12 @@
 import curses
+from types import SimpleNamespace
 import unittest
+from unittest.mock import Mock
 
 from voiceger_editor.tui_batch import (
     AddCaptions,
     AdjustBatchTakeCount,
+    BatchActionBindings,
     GenerateSelected,
     OpenBatchDictionary,
     OpenBatchHelp,
@@ -31,6 +34,30 @@ class TuiBatchControllerTests(unittest.TestCase):
         if text:
             controller.add_captions(text, session_factory=FakeSession)
         return controller
+
+    def make_bindings(self):
+        operations = Mock()
+        operations.start_batch_generation.return_value = ()
+        navigation = SimpleNamespace(
+            focus_key=("takes", None),
+            revision=7,
+            reset_pronunciation_index=Mock(),
+        )
+        return BatchActionBindings(
+            operations=operations,
+            navigation=navigation,
+            editor_controller=SimpleNamespace(clear_groupings=Mock()),
+            dictionary_controller=SimpleNamespace(open_menu=Mock(return_value=())),
+            set_session=Mock(),
+            set_status=Mock(),
+            open_caption_editor=Mock(),
+            change_settings=Mock(),
+            open_settings_editor=Mock(),
+            dispatch_editor_intents=Mock(),
+            dispatch_operation_effects=Mock(),
+            open_help=Mock(),
+            activate_quit=Mock(),
+        )
 
     def test_batch_list_items_keep_takes_captions_and_actions_in_vertical_order(self):
         controller = self.make_controller("first\nsecond")
@@ -229,6 +256,49 @@ class TuiBatchControllerTests(unittest.TestCase):
         for key, action in expected.items():
             with self.subTest(key=key):
                 self.assertEqual(controller.handle_key(key), (action,))
+
+    def test_dispatch_open_item_owns_batch_item_transition_policy(self):
+        controller = self.make_controller("first\nsecond")
+        bindings = self.make_bindings()
+
+        controller.dispatch_actions((OpenBatchItem(1),), bindings)
+
+        bindings.operations.stop_playback.assert_called_once_with()
+        bindings.operations.clear_current_take.assert_called_once_with()
+        bindings.editor_controller.clear_groupings.assert_called_once_with()
+        bindings.set_session.assert_called_once_with(
+            controller.batch.items[1].session
+        )
+        self.assertEqual(bindings.navigation.focus_key, ("caption", None))
+        bindings.navigation.reset_pronunciation_index.assert_called_once_with()
+        bindings.set_status.assert_called_once_with("")
+        self.assertEqual(controller.item_title, "BATCH ITEM 2/2")
+
+    def test_dispatch_generate_selected_uses_owned_batch_and_navigation_revision(self):
+        controller = self.make_controller("first\nsecond")
+        bindings = self.make_bindings()
+        effects = (SimpleNamespace(kind="effect"),)
+        bindings.operations.start_batch_generation.return_value = effects
+
+        controller.dispatch_actions((GenerateSelected(),), bindings)
+
+        bindings.operations.start_batch_generation.assert_called_once_with(
+            controller.batch,
+            navigation_revision=7,
+        )
+        bindings.dispatch_operation_effects.assert_called_once_with(effects)
+
+    def test_dispatch_take_adjustment_keeps_batch_default_as_source_of_truth(self):
+        controller = self.make_controller("first")
+        bindings = self.make_bindings()
+
+        controller.dispatch_actions((AdjustBatchTakeCount(1),), bindings)
+
+        bindings.change_settings.assert_called_once_with(
+            take_count=5,
+            report_success=False,
+        )
+        self.assertEqual(controller.batch.default_take_count, 4)
 
     def test_add_captions_uses_frontend_neutral_multiline_model(self):
         controller = self.make_controller()

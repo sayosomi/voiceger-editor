@@ -84,6 +84,21 @@ class TuiApp:
         )
         self._pressed_adjustment: tuple[str, str, int] | None = None
         self._renderer = TuiRenderer()
+        self._batch_action_bindings = tui_batch.BatchActionBindings(
+            operations=self._operations,
+            navigation=self._navigation,
+            editor_controller=self._editor_controller,
+            dictionary_controller=self._dictionary_controller,
+            set_session=lambda session: setattr(self, "session", session),
+            set_status=lambda status: setattr(self, "_status", status),
+            open_caption_editor=self._open_caption_editor,
+            change_settings=self._change_settings,
+            open_settings_editor=self._open_settings_editor,
+            dispatch_editor_intents=self._dispatch_editor_intents,
+            dispatch_operation_effects=self._dispatch_operation_effects,
+            open_help=self._open_help,
+            activate_quit=self._activate_quit,
+        )
 
     def run(self, screen: Any) -> None:
         self._screen = screen
@@ -225,7 +240,10 @@ class TuiApp:
             return
 
         if self._batch.delete_confirmation_active or not self._batch.in_item:
-            self._dispatch_batch_actions(self._batch.handle_key(key))
+            self._batch.dispatch_actions(
+                self._batch.handle_key(key),
+                self._batch_action_bindings,
+            )
             self.session = self.session if self._batch.in_item else None
             return
         if key == _ESCAPE:
@@ -313,38 +331,6 @@ class TuiApp:
             self._dispatch_navigation_actions(
                 self._navigation.activate_focused_item(self._navigation_context())
             )
-
-    def _dispatch_batch_actions(self, actions: Sequence[tui_batch.BatchAction]) -> None:
-        for action in actions:
-            if isinstance(action, tui_batch.OpenBatchItem):
-                self._operations.stop_playback()
-                self._operations.clear_current_take()
-                self._editor_controller.clear_groupings()
-                self.session = self._batch.open_item(action.index)
-                self._navigation.focus_key = ("caption", None)
-                self._navigation.reset_pronunciation_index()
-                self._status = ""
-            elif isinstance(action, tui_batch.AddCaptions):
-                self._open_caption_editor("")
-            elif isinstance(action, tui_batch.GenerateSelected):
-                effects = self._operations.start_batch_generation(
-                    self._batch.batch, navigation_revision=self._navigation.revision)
-                self._dispatch_operation_effects(effects)
-            elif isinstance(action, tui_batch.AdjustBatchTakeCount):
-                count = self._batch.batch.default_take_count
-                updated = min(100, max(1, count + action.direction))
-                if updated != count:
-                    self._change_settings(
-                        take_count=updated, report_success=False
-                    )
-            elif isinstance(action, tui_batch.OpenBatchSettings):
-                self._open_settings_editor("style_id")
-            elif isinstance(action, tui_batch.OpenBatchDictionary):
-                self._dispatch_editor_intents(self._dictionary_controller.open_menu())
-            elif isinstance(action, tui_batch.OpenBatchHelp):
-                self._open_help()
-            elif isinstance(action, tui_batch.QuitBatch):
-                self._activate_quit()
 
     def _navigation_context(self) -> NavigationContext:
         session = self.session

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import curses
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Sequence, Union
 
 from .caption_batch import CaptionBatch
+from .tui_navigation import TuiNavigation
+from .tui_operations import OperationEffect, TuiOperations
 from .tui_shortcuts import (
     resolve_batch_list_caption_shortcut,
     resolve_batch_list_shortcut,
@@ -71,6 +73,25 @@ BatchAction = Union[
     OpenBatchHelp,
     QuitBatch,
 ]
+
+
+@dataclass(frozen=True)
+class BatchActionBindings:
+    """Composition-root hooks needed to execute Batch List actions."""
+
+    operations: TuiOperations
+    navigation: TuiNavigation
+    editor_controller: Any
+    dictionary_controller: Any
+    set_session: Callable[[Any | None], None]
+    set_status: Callable[[str], None]
+    open_caption_editor: Callable[[str | None], None]
+    change_settings: Callable[..., None]
+    open_settings_editor: Callable[[str | None], None]
+    dispatch_editor_intents: Callable[[Sequence[Any]], None]
+    dispatch_operation_effects: Callable[[Sequence[OperationEffect]], None]
+    open_help: Callable[[], None]
+    activate_quit: Callable[[], None]
 
 
 class TuiBatchController:
@@ -147,6 +168,49 @@ class TuiBatchController:
     def close_sessions(self) -> None:
         for session in self.sessions:
             session.close()
+
+    def dispatch_actions(
+        self,
+        actions: Sequence[BatchAction],
+        bindings: BatchActionBindings,
+    ) -> None:
+        """Execute Batch List actions through explicit composition-root hooks."""
+
+        for action in actions:
+            if isinstance(action, OpenBatchItem):
+                bindings.operations.stop_playback()
+                bindings.operations.clear_current_take()
+                bindings.editor_controller.clear_groupings()
+                bindings.set_session(self.open_item(action.index))
+                bindings.navigation.focus_key = ("caption", None)
+                bindings.navigation.reset_pronunciation_index()
+                bindings.set_status("")
+            elif isinstance(action, AddCaptions):
+                bindings.open_caption_editor("")
+            elif isinstance(action, GenerateSelected):
+                effects = bindings.operations.start_batch_generation(
+                    self.batch,
+                    navigation_revision=bindings.navigation.revision,
+                )
+                bindings.dispatch_operation_effects(effects)
+            elif isinstance(action, AdjustBatchTakeCount):
+                count = self.batch.default_take_count
+                updated = min(100, max(1, count + action.direction))
+                if updated != count:
+                    bindings.change_settings(
+                        take_count=updated,
+                        report_success=False,
+                    )
+            elif isinstance(action, OpenBatchSettings):
+                bindings.open_settings_editor("style_id")
+            elif isinstance(action, OpenBatchDictionary):
+                bindings.dispatch_editor_intents(
+                    bindings.dictionary_controller.open_menu()
+                )
+            elif isinstance(action, OpenBatchHelp):
+                bindings.open_help()
+            elif isinstance(action, QuitBatch):
+                bindings.activate_quit()
 
     def navigation_items(self) -> tuple[BatchFocusKey, ...]:
         return (
