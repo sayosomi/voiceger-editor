@@ -19,6 +19,9 @@ Choose:
 
 ## Japanese dictionary
 
+Selecting Add opens a new entry with Surface already in text-editing mode, so
+you can start typing immediately without pressing Enter again.
+
 A Japanese entry contains:
 
 - Surface;
@@ -99,6 +102,8 @@ Select Save to write the entry.
 If the same Surface already has matching entries, Voiceger Editor lets you choose which existing entry to update when needed.
 
 ## English dictionary
+
+Selecting Add also opens Surface directly in text-editing mode.
 
 An English entry contains:
 

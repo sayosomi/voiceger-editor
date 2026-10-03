@@ -810,7 +810,7 @@ class TuiDictionaryController:
             if selected == "add":
                 self._stack.append(deepcopy(editor))
                 self.editor = self._japanese_entry_state(word_uuid=None, word=None)
-                return ()
+                return self._begin_field("surface", "")
             if selected == "delete":
                 return self._open_delete_confirmation()
             if selected == "back":
@@ -831,7 +831,7 @@ class TuiDictionaryController:
             if selected == "add":
                 self._stack.append(deepcopy(editor))
                 self.editor = self._english_entry_state()
-                return ()
+                return self._begin_field("surface", "")
             if selected == "delete":
                 return self._open_delete_confirmation()
             if selected == "back":

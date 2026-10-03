@@ -203,6 +203,9 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.key("a")
         self.assertEqual(self.controller.editor.kind, "dictionary_japanese_entry")
         self.assertEqual(self.controller.editor.title, "ADD JAPANESE DICTIONARY WORD")
+        self.assertEqual(self.controller.editor.selection, "surface")
+        self.assertEqual(self.controller.editor.active_field, "surface")
+        self.assertEqual(self.controller.editor.input_value, "")
 
     def test_direct_japanese_add_generates_from_surface_without_overwriting_manual_reading(self):
         generated = [
@@ -223,7 +226,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         controller.open_menu()
         controller.handle_key("j")
         controller.handle_key("a")
-        controller.handle_key("\n")
+        self.assertEqual(controller.editor.active_field, "surface")
         controller.handle_key("ずんだもん")
         intents = controller.handle_key("\n")
 
@@ -269,7 +272,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         controller.open_menu()
         controller.handle_key("e")
         controller.handle_key("a")
-        controller.handle_key("\n")
+        self.assertEqual(controller.editor.active_field, "surface")
         controller.handle_key("Voiceger")
         controller.handle_key("\n")
 
@@ -299,6 +302,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
 
         editor = self.controller.editor
         self.assertEqual(editor.kind, "dictionary_japanese_entry")
+        self.assertIsNone(editor.active_field)
         self.assertEqual(editor.payload["word_uuid"], "existing")
         self.assertEqual(editor.payload["pronunciation"], "ズンダモン")
         self.assertEqual(editor.payload["accent"], 2)
@@ -465,6 +469,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.key("\n")
         self.key("a")
         editor = self.controller.editor
+        editor.active_field = None
         editor.payload.update(
             surface="雨",
             pronunciation="アメ",
@@ -491,6 +496,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.key("\n")
         self.key("a")
         editor = self.controller.editor
+        editor.active_field = None
         editor.payload["surface"] = "hello"
         editor.payload["phonemes"] = ("HH", "AH0", "L", "OW1")
         self.key("s")
@@ -510,6 +516,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.key("\n")
         self.key("\n")
         self.assertEqual(self.controller.editor.kind, "dictionary_japanese_entry")
+        self.assertIsNone(self.controller.editor.active_field)
 
         self.key("\n")
         self.controller.editor.input_value = "飴"
@@ -525,6 +532,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.key("\n")
         self.key("\n")
         self.assertEqual(self.controller.editor.kind, "dictionary_english_entry")
+        self.assertIsNone(self.controller.editor.active_field)
 
         self.key("\n")
         self.controller.editor.input_value = "hello2"
