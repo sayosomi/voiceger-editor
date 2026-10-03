@@ -400,7 +400,15 @@ class TuiRenderer:
             key = ("caption", index)
             marker = "▶ " if key == focus_key else "  "
             selected = "x" if item.included_for_generation else " "
-            prefix = f"{marker}[{selected}] {index + 1}  "
+            candidate_count = len(item.session.candidates)
+            if item.is_accepted:
+                review_state = "[ACCEPTED] "
+            elif candidate_count:
+                take_label = "TAKE" if candidate_count == 1 else "TAKES"
+                review_state = f"[{candidate_count} {take_label}] "
+            else:
+                review_state = ""
+            prefix = f"{marker}[{selected}] {index + 1}  {review_state}"
             available = max(1, width - 1 - _display_width(prefix))
             pieces = _wrap_text(item.caption, available) or [""]
             lines.append(NavigationLine(prefix + pieces[0], key, key))
@@ -449,13 +457,14 @@ class TuiRenderer:
 
         safe_add = self._safe_add
         selected_count = len(batch.included_items)
+        accepted_count = len(batch.accepted_items)
         requested = sum(
             batch.effective_take_count(item) for item in batch.included_items
         )
         take_label = "take" if requested == 1 else "takes"
         header = (
             f"BATCH LIST · {selected_count}/{len(batch)} selected · "
-            f"{requested} {take_label}"
+            f"{requested} {take_label} · Accepted {accepted_count}/{len(batch)}"
         )
         safe_add(
             screen,
