@@ -50,6 +50,11 @@ class CandidateReplacedEffect:
 
 
 @dataclass(frozen=True)
+class TakeAcceptedEffect:
+    number: int
+
+
+@dataclass(frozen=True)
 class PlayPreviewEffect:
     audio: Any
     sampling_rate: int
@@ -106,6 +111,7 @@ OperationEffect = Union[
     StopPlaybackEffect,
     DiscardInitialBatchEffect,
     CandidateReplacedEffect,
+    TakeAcceptedEffect,
 ]
 
 
@@ -831,7 +837,7 @@ class TuiOperations:
         if lab_warning:
             status = f"Warning: {status} {lab_warning}"
         return (
-            FocusEffect(("pronunciation", pronunciation_index)),
+            TakeAcceptedEffect(number),
             UpdateStatusEffect(status),
         )
 
