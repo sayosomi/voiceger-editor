@@ -449,7 +449,7 @@ class TakeBatchTests(unittest.TestCase):
             self.assertTrue(all(not candidate.wav_path.exists() for candidate in old))
             batch.close()
 
-    def test_accept_delegates_exact_options_and_cleans_all_candidates(self):
+    def test_accept_delegates_exact_options_and_keeps_candidates_until_close(self):
         audio_values = [object(), object(), object()]
         calls = []
 
@@ -488,6 +488,11 @@ class TakeBatchTests(unittest.TestCase):
                 output_dir=Path(directory),
                 save_text=True,
             )
+            self.assertTrue(all(path.exists() for path in temporary_paths))
+            self.assertTrue(temporary_directory.exists())
+            self.assertEqual(batch.candidates, tuple(candidates))
+
+            batch.close()
             self.assertTrue(all(not path.exists() for path in temporary_paths))
             self.assertFalse(temporary_directory.exists())
             self.assertEqual(batch.candidates, ())
