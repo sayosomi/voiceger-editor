@@ -393,14 +393,17 @@ class TuiApp:
                     )
                 )
             elif isinstance(action, StartGeneration):
-                self._batch.clear_open_item_acceptance()
-                self._dispatch_operation_effects(
-                    self._operations.start_generation(
-                        self.session,
-                        take_count=self.settings.take_count,
-                        navigation_revision=self._navigation.revision,
-                    )
+                effects = self._operations.start_generation(
+                    self.session,
+                    take_count=self.settings.take_count,
+                    navigation_revision=self._navigation.revision,
                 )
+                if (
+                    self._operations.busy
+                    and self._operations.worker_operation == "initial"
+                ):
+                    self._batch.clear_open_item_acceptance()
+                self._dispatch_operation_effects(effects)
             elif isinstance(action, RegenerateAll):
                 self._dispatch_operation_effects(
                     self._operations.start_regenerate_all(
