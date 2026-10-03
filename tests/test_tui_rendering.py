@@ -155,6 +155,7 @@ def render_state(
     operation_total=0,
     pressed_adjustment=None,
     editor=None,
+    accepted_take_number=None,
 ):
     return TuiRenderState(
         voiceger_root=Path("/nonexistent/voiceger"),
@@ -174,6 +175,7 @@ def render_state(
         operation_total=operation_total,
         pressed_adjustment=pressed_adjustment,
         editor=editor,
+        accepted_take_number=accepted_take_number,
     )
 
 
@@ -1458,6 +1460,7 @@ class TuiRenderingTests(unittest.TestCase):
             settings=Settings(take_count=6),
             focus_key=("generate", None),
             pressed_adjustment=("navigation", "generate", -1),
+            accepted_take_number=2,
         )
         lines = self.renderer.navigation_document(state, 100)
         labels = {line.key: line.text for line in lines if line.key is not None}
@@ -1465,7 +1468,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(labels[("add_section", None)], "  [A] Add section")
         self.assertEqual(labels[("generate", None)], "▶ [G] Regenerate all <<6 > takes")
         self.assertEqual(labels[("candidate", 1)], "  [1] Take 1  0.01s")
-        self.assertEqual(labels[("candidate", 2)], "  [2] Take 2  0.01s")
+        self.assertEqual(labels[("candidate", 2)], "  [2] ✓ Take 2  0.01s")
         self.assertEqual(labels[("clear_candidates", None)], "  [C] Clear candidates")
         self.assertEqual(labels[("delete_caption", None)], "  [X] Delete caption")
         keyed = [line.key for line in lines if line.key is not None]
