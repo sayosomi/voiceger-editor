@@ -25,7 +25,7 @@ from .tui_editors import (
     UpdateStatusIntent,
 )
 from .tui_operations import (
-    DiscardInitialBatchEffect, FocusEffect, OperationEffect, PlayPreviewEffect,
+    CandidateReplacedEffect, DiscardInitialBatchEffect, FocusEffect, OperationEffect, PlayPreviewEffect,
     PlayTakeEffect, StopPlaybackEffect, TuiOperations, UpdateStatusEffect,
 )
 from .tui_shortcuts import resolve_main_shortcut, resolve_shortcut
@@ -642,6 +642,7 @@ class TuiApp:
                     self._operations.stop_playback()
                     if self.session is not None:
                         self.session.discard_takes()
+                    self._batch.clear_open_item_acceptance()
                     self._operations.clear_current_take()
             elif isinstance(intent, CloseEditorIntent):
                 self._pressed_adjustment = None
@@ -799,6 +800,10 @@ class TuiApp:
             elif isinstance(effect, DiscardInitialBatchEffect):
                 if self.session is not None:
                     self.session.discard_takes()
+                self._batch.clear_open_item_acceptance()
+            elif isinstance(effect, CandidateReplacedEffect):
+                if self._batch.open_item_accepted_take_number == effect.number:
+                    self._batch.clear_open_item_acceptance()
 
     def _render_state(
         self,
