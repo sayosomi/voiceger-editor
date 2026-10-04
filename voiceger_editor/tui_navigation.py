@@ -56,8 +56,12 @@ class ClearAdjustmentFeedback:
 class UpdateNavigationStatus:
     status: Status
 
-    def __init__(self, message: str) -> None:
-        object.__setattr__(self, "status", info_status(message))
+    def __init__(self, status: Status | str) -> None:
+        object.__setattr__(
+            self,
+            "status",
+            status if isinstance(status, Status) else info_status(status),
+        )
 
 
 @dataclass(frozen=True)
