@@ -14,8 +14,16 @@ from voiceger_editor.tui_operations import UpdateStatusEffect
 
 
 class FakeSession:
-    def __init__(self, caption, *, candidates=(), active=True):
+    def __init__(
+        self,
+        caption,
+        *,
+        candidates=(),
+        active=True,
+        prepared=True,
+    ):
         self.caption = caption
+        self.is_prepared = prepared
         self.candidates = list(candidates)
         self.has_active_batch = active
         self.query = SimpleNamespace(voicegerSegments=None)
@@ -35,6 +43,7 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         operations.busy = False
         operations.worker_operation = None
         operations.current_take = None
+        operations.start_session_preparation.return_value = ()
         editor = SimpleNamespace(
             clear_groupings=Mock(),
             grouping_error="",
@@ -164,6 +173,61 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         self.assertTrue(batch.in_item)
         self.assertIs(state["session"], batch.batch.items[0].session)
         bindings.actions.set_status.assert_not_called()
+
+    def test_escape_keeps_batch_item_open_while_pronunciation_is_preparing(self):
+        subject, batch, bindings, state = self.make_subject()
+        bindings.actions.operations.busy = True
+        bindings.actions.operations.worker_operation = "prepare"
+
+        subject.handle_key("\x1b", bindings)
+
+        self.assertTrue(batch.in_item)
+        self.assertIs(state["session"], batch.batch.items[0].session)
+        bindings.actions.set_status.assert_not_called()
+
+    def test_explicit_build_pronunciation_uses_deferred_preparation_operation(self):
+        subject, _batch, bindings, state = self.make_subject()
+        effects = (UpdateStatusEffect("Rebuilding pronunciation…"),)
+        bindings.actions.operations.start_session_preparation.return_value = effects
+
+        subject.request_build_pronunciation(bindings)
+
+        bindings.actions.operations.start_session_preparation.assert_called_once_with(
+            state["session"],
+            rebuild=True,
+        )
+        bindings.actions.dispatch_operation_effects.assert_called_once_with(effects)
+
+    def test_unprepared_item_hides_query_dependent_pronunciation_rows(self):
+        subject, _batch, bindings, state = self.make_subject()
+        state["session"].is_prepared = False
+
+        self.assertEqual(subject.pronunciation_rows(bindings), ())
+        bindings.actions.editor_controller.pronunciation_rows.assert_not_called()
+
+    def test_preparation_failure_is_visible_and_explicit_build_can_retry(self):
+        subject, _batch, bindings, state = self.make_subject()
+        state["session"].is_prepared = False
+
+        subject.complete_preparation(
+            state["session"],
+            rebuild=False,
+            error=RuntimeError("g2p failed"),
+            bindings=bindings,
+        )
+
+        self.assertEqual(
+            state["status"],
+            error_status("Pronunciation was not prepared: g2p failed"),
+        )
+
+        effects = (UpdateStatusEffect("Rebuilding pronunciation…"),)
+        bindings.actions.operations.start_session_preparation.return_value = effects
+        subject.request_build_pronunciation(bindings)
+        bindings.actions.operations.start_session_preparation.assert_called_once_with(
+            state["session"],
+            rebuild=True,
+        )
 
     def test_generate_take_count_adjustment_uses_existing_settings_owner(self):
         subject, _batch, bindings, _state = self.make_subject()
