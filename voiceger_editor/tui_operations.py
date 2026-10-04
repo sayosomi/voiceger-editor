@@ -45,6 +45,12 @@ class DiscardInitialBatchEffect:
 
 
 @dataclass(frozen=True)
+class BatchCandidateReplacedEffect:
+    item_id: str
+    number: int
+
+
+@dataclass(frozen=True)
 class CandidateReplacedEffect:
     number: int
 
@@ -91,6 +97,7 @@ class BatchCandidateReadyEvent:
     take_total: int
     overall_completed: int
     overall_total: int
+    replacing_existing: bool
 
 
 @dataclass(frozen=True)
@@ -110,6 +117,7 @@ OperationEffect = Union[
     PlayPreviewEffect,
     StopPlaybackEffect,
     DiscardInitialBatchEffect,
+    BatchCandidateReplacedEffect,
     CandidateReplacedEffect,
     TakeAcceptedEffect,
 ]
@@ -201,7 +209,8 @@ class TuiOperations:
                             iterator = None
                             try:
                                 try:
-                                    if item.session.has_active_batch:
+                                    replacing_existing = item.session.has_active_batch
+                                    if replacing_existing:
                                         values = item.session.regenerate_all_takes(
                                             take_count=take_total
                                         )
@@ -276,6 +285,7 @@ class TuiOperations:
                                             take_total=take_total,
                                             overall_completed=overall_completed,
                                             overall_total=overall_total,
+                                            replacing_existing=replacing_existing,
                                         )
                                     )
                             finally:
@@ -550,6 +560,13 @@ class TuiOperations:
                         f"Overall {event.overall_completed}/{event.overall_total}"
                     )
                 )
+                if event.replacing_existing:
+                    effects.append(
+                        BatchCandidateReplacedEffect(
+                            item_id=event.item_id,
+                            number=event.take_number,
+                        )
+                    )
                 continue
             if isinstance(event, BatchGenerationFailedEvent):
                 self.worker_error = event.error

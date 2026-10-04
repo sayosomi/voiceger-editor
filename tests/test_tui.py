@@ -18,7 +18,11 @@ from voiceger_editor.terms_acceptance import (
     VoicegerTermsAcceptanceError,
 )
 from voiceger_editor.tui_editors import PreviewIntent, ReplaceQueryIntent
-from voiceger_editor.tui_operations import CandidateReplacedEffect, PlayPreviewEffect
+from voiceger_editor.tui_operations import (
+    BatchCandidateReplacedEffect,
+    CandidateReplacedEffect,
+    PlayPreviewEffect,
+)
 from voiceger_editor.tui import (
     TuiApp,
     build_argument_parser,
@@ -1236,6 +1240,39 @@ class TuiTests(unittest.TestCase):
 
         self.assertFalse(item.is_accepted)
         self.assertIsNone(item.accepted_take_number)
+
+    def test_batch_candidate_replacement_clears_acceptance_by_stable_item_id(self):
+        app = self.make_app(
+            query=mixed_query(),
+            candidates=(candidate(1), candidate(2)),
+        )
+        first = app._batch.batch.items[0]
+        second_session = FakeSession(
+            query=mixed_query(),
+            candidates=(candidate(1), candidate(2)),
+        )
+        second_session.caption = "second"
+        second = CaptionBatchItem(second_session)
+        app._batch.batch.add_item(second)
+        app._batch.batch.mark_accepted(first.item_id, 2)
+        app._batch.batch.mark_accepted(second.item_id, 1)
+        app._batch.open_item(1)
+        app.session = second_session
+
+        app._dispatch_operation_effects(
+            (BatchCandidateReplacedEffect(first.item_id, 1),)
+        )
+
+        self.assertTrue(first.is_accepted)
+        self.assertTrue(second.is_accepted)
+
+        app._dispatch_operation_effects(
+            (BatchCandidateReplacedEffect(first.item_id, 2),)
+        )
+
+        self.assertFalse(first.is_accepted)
+        self.assertTrue(second.is_accepted)
+        self.assertIs(app.session, second_session)
 
     def test_failed_generation_start_preserves_existing_acceptance(self):
         app = self.make_app(query=mixed_query(), candidates=())

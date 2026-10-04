@@ -203,6 +203,18 @@ class TuiBatchController:
         if item_id is not None:
             self.batch.clear_acceptance(item_id)
 
+    def invalidate_acceptance_for_replacement(
+        self,
+        item_id: str,
+        take_number: int,
+    ) -> None:
+        try:
+            item = self.batch.get_item(item_id)
+        except KeyError:
+            return
+        if item.accepted_take_number == take_number:
+            self.batch.clear_acceptance(item_id)
+
     def complete_acceptance(self, item_id: str, take_number: int) -> None:
         self.batch.mark_accepted(item_id, take_number)
 
@@ -315,19 +327,10 @@ class TuiBatchController:
             elif isinstance(action, AddCaptions):
                 bindings.open_caption_editor("")
             elif isinstance(action, GenerateSelected):
-                selected_ids = tuple(
-                    item.item_id for item in self.batch.included_items
-                )
                 effects = bindings.operations.start_batch_generation(
                     self.batch,
                     navigation_revision=bindings.navigation.revision,
                 )
-                if (
-                    bindings.operations.busy
-                    and bindings.operations.worker_operation == "batch_generate"
-                ):
-                    for item_id in selected_ids:
-                        self.batch.clear_acceptance(item_id)
                 bindings.dispatch_operation_effects(effects)
             elif isinstance(action, AdjustBatchTakeCount):
                 count = self.batch.default_take_count

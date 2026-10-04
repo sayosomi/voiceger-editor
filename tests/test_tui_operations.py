@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 
 from voiceger_editor.caption_batch import CaptionBatch, CaptionBatchItem
 from voiceger_editor.tui_operations import (
+    BatchCandidateReplacedEffect,
     CandidateReplacedEffect,
     DiscardInitialBatchEffect,
     FocusEffect,
@@ -1128,6 +1129,42 @@ class TuiBatchGenerationTests(unittest.TestCase):
         self.assertEqual(
             statuses[-1],
             "Batch generation finished. 5/5 take(s) ready.",
+        )
+        replacements = [
+            effect
+            for effect in consumed
+            if isinstance(effect, BatchCandidateReplacedEffect)
+        ]
+        self.assertEqual(
+            replacements,
+            [
+                BatchCandidateReplacedEffect("second", 1),
+                BatchCandidateReplacedEffect("second", 2),
+                BatchCandidateReplacedEffect("second", 3),
+            ],
+        )
+
+    def test_failed_replacement_reports_only_completed_candidate_replacements(self):
+        log = []
+        session = BatchFakeSession("only", log, existing=True, fail_take=2)
+        batch = self.make_batch(
+            CaptionBatchItem(session, item_id="only"),
+            default_take_count=3,
+        )
+        operations = TuiOperations()
+
+        operations.start_batch_generation(batch, navigation_revision=0)
+        operations.join_worker()
+        consumed = self.consume(operations)
+
+        replacements = [
+            effect
+            for effect in consumed
+            if isinstance(effect, BatchCandidateReplacedEffect)
+        ]
+        self.assertEqual(
+            replacements,
+            [BatchCandidateReplacedEffect("only", 1)],
         )
 
     def test_zero_selection_does_not_start_worker(self):

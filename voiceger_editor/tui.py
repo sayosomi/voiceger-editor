@@ -25,6 +25,7 @@ from .tui_editors import (
     UpdateStatusIntent,
 )
 from .tui_operations import (
+    BatchCandidateReplacedEffect,
     CandidateReplacedEffect,
     DiscardInitialBatchEffect,
     FocusEffect,
@@ -798,6 +799,11 @@ class TuiApp:
                 if self.session is not None:
                     self.session.discard_takes()
                 self._batch.clear_open_item_acceptance()
+            elif isinstance(effect, BatchCandidateReplacedEffect):
+                self._batch.invalidate_acceptance_for_replacement(
+                    effect.item_id,
+                    effect.number,
+                )
             elif isinstance(effect, CandidateReplacedEffect):
                 if self._batch.open_item_accepted_take_number == effect.number:
                     self._batch.clear_open_item_acceptance()

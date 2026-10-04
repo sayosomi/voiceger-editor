@@ -359,7 +359,7 @@ class TuiBatchControllerTests(unittest.TestCase):
         )
         bindings.dispatch_operation_effects.assert_called_once_with(effects)
 
-    def test_dispatch_generation_clears_only_selected_acceptance_after_start(self):
+    def test_dispatch_generation_preserves_acceptance_until_replacement_ready(self):
         controller = self.make_controller("first\nsecond")
         first, second = controller.batch.items
         controller.batch.mark_accepted(first.item_id, 1)
@@ -374,6 +374,22 @@ class TuiBatchControllerTests(unittest.TestCase):
 
         bindings.operations.start_batch_generation.side_effect = start_batch_generation
         controller.dispatch_actions((GenerateSelected(),), bindings)
+
+        self.assertTrue(first.is_accepted)
+        self.assertTrue(second.is_accepted)
+
+    def test_replacement_invalidates_only_matching_item_acceptance(self):
+        controller = self.make_controller("first\nsecond")
+        first, second = controller.batch.items
+        controller.batch.mark_accepted(first.item_id, 2)
+        controller.batch.mark_accepted(second.item_id, 1)
+
+        controller.invalidate_acceptance_for_replacement(first.item_id, 1)
+
+        self.assertTrue(first.is_accepted)
+        self.assertTrue(second.is_accepted)
+
+        controller.invalidate_acceptance_for_replacement(first.item_id, 2)
 
         self.assertFalse(first.is_accepted)
         self.assertTrue(second.is_accepted)
