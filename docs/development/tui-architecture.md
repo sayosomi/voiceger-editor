@@ -27,4 +27,6 @@ Frontend-only interaction belongs in TUI modules. Examples include key interpret
 
 Reusable application or core behavior belongs outside TUI modules. Examples include pronunciation or query transformation used by other frontends, synthesis and session behavior, settings models and persistence primitives, output naming and saving, API-compatible models, and reusable business rules.
 
-When a substantial new responsibility has no appropriate existing owner, give it a focused module instead of adding that state or policy to `TuiApp`.
+When new TUI state, policy, interaction behavior, rendering behavior, operation behavior, or another responsibility has no appropriate existing owner, give it a focused module instead of adding it to `TuiApp`.
+
+File length is not an architecture gate. `tui.py` may grow or shrink as composition wiring changes, but it must not become the owner of new feature behavior. Formatting compression or line-count tricks do not satisfy this boundary; responsibility must remain with the appropriate focused owner.
