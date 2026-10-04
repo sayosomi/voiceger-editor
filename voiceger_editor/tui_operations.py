@@ -65,7 +65,16 @@ class CandidateReplacedEffect:
 
 @dataclass(frozen=True)
 class TakeAcceptedEffect:
+    item_id: str
     number: int
+
+
+@dataclass(frozen=True)
+class TakeAcceptanceCompletedEvent:
+    item_id: str
+    number: int
+    saved: Any | None = None
+    error: BaseException | None = None
 
 
 @dataclass(frozen=True)
@@ -162,6 +171,7 @@ class TuiOperations:
         self._preview_temporary_directory: (
             tempfile.TemporaryDirectory[str] | None
         ) = None
+        self._pending_worker: tuple[Callable[[], None], str] | None = None
 
     def start_batch_generation(
         self,
@@ -449,6 +459,17 @@ class TuiOperations:
         self.worker.start()
         return (UpdateStatusEffect("Synthesizing pronunciation Preview…"),)
 
+    def start_pending_worker(self) -> None:
+        """Start work deferred until its in-progress Status has been rendered."""
+
+        pending = self._pending_worker
+        if pending is None:
+            return
+        work, name = pending
+        self._pending_worker = None
+        self.worker = Thread(target=work, name=name, daemon=True)
+        self.worker.start()
+
     def run_worker(
         self,
         make_values: Callable[[], Iterable[Any]],
@@ -522,6 +543,10 @@ class TuiOperations:
             self.request_batch_cancellation()
             return (UpdateStatusEffect("Cancelling current batch before cleanup…"),)
         if self.busy:
+            if self.worker_operation == "accept":
+                return (
+                    UpdateStatusEffect("Finishing the current Take save before cleanup…"),
+                )
             return (UpdateStatusEffect("Finishing the current synthesis before cleanup…"),)
         return ()
 
@@ -549,6 +574,29 @@ class TuiOperations:
                 effects.append(
                     UpdateStatusEffect(error_status(f"Preview failed: {event.error}"))
                 )
+                continue
+            if isinstance(event, TakeAcceptanceCompletedEvent):
+                self.busy = False
+                self.operation_completed = 1
+                self.worker_error = event.error
+                self.worker_operation = None
+                self.worker_target = None
+                self._cancellation_event = None
+                self.cancellation_requested = False
+                if event.error is not None:
+                    effects.append(
+                        UpdateStatusEffect(
+                            error_status(
+                                f"Take {event.number} was not saved: {event.error}"
+                            )
+                        )
+                    )
+                else:
+                    self.current_take = None
+                    effects.append(TakeAcceptedEffect(event.item_id, event.number))
+                    effects.append(
+                        UpdateStatusEffect(self._saved_output_status(event.saved))
+                    )
                 continue
             if isinstance(event, BatchGenerationProgressEvent):
                 effects.append(
@@ -836,24 +884,8 @@ class TuiOperations:
     def clear_current_take(self) -> None:
         self.current_take = None
 
-    def accept_take(
-        self,
-        session: UtteranceSession | None,
-        number: int,
-        *,
-        busy: bool,
-        pronunciation_index: int,
-    ) -> tuple[OperationEffect, ...]:
-        if session is None or busy:
-            return ()
-        self.stop_playback()
-        try:
-            saved = session.accept_take(number)
-        except Exception as exc:
-            return (
-                UpdateStatusEffect(error_status(f"Could not save take {number}: {exc}")),
-            )
-        self.current_take = None
+    @staticmethod
+    def _saved_output_status(saved: Any) -> Status:
         sidecars = []
         if saved.text_path is not None:
             sidecars.append(saved.text_path.name)
@@ -865,12 +897,57 @@ class TuiOperations:
         lab_warning = getattr(saved, "lab_warning", None)
         if lab_warning:
             status = warning_status(f"{status} {lab_warning}")
-        return (
-            TakeAcceptedEffect(number),
-            UpdateStatusEffect(status),
-        )
+        return status
+
+    def accept_take(
+        self,
+        session: UtteranceSession | None,
+        number: int,
+        *,
+        item_id: str,
+        busy: bool,
+        pronunciation_index: int,
+    ) -> tuple[OperationEffect, ...]:
+        if session is None or busy or self.busy:
+            return ()
+
+        self.stop_playback()
+        self.busy = True
+        self.worker_operation = "accept"
+        self.worker_target = number
+        self.worker_error = None
+        self.operation_completed = 0
+        self.operation_total = 1
+        self._cancellation_event = None
+        self.cancellation_requested = False
+
+        def work() -> None:
+            try:
+                with open(os.devnull, "w", encoding="utf-8") as sink:
+                    with redirect_stdout(sink), redirect_stderr(sink):
+                        saved = session.accept_take(number)
+            except BaseException as exc:
+                self.events.put(
+                    TakeAcceptanceCompletedEvent(
+                        item_id=item_id,
+                        number=number,
+                        error=exc,
+                    )
+                )
+            else:
+                self.events.put(
+                    TakeAcceptanceCompletedEvent(
+                        item_id=item_id,
+                        number=number,
+                        saved=saved,
+                    )
+                )
+
+        self._pending_worker = (work, "voiceger-tui-acceptance")
+        return (UpdateStatusEffect(f"Saving Take {number}…"),)
 
     def join_worker(self) -> None:
+        self.start_pending_worker()
         worker = self.worker
         if worker is None or worker.ident is None:
             return
@@ -881,4 +958,6 @@ class TuiOperations:
                 self.request_batch_cancellation()
 
     def worker_is_alive(self) -> bool:
-        return self.worker is not None and self.worker.is_alive()
+        return self._pending_worker is not None or (
+            self.worker is not None and self.worker.is_alive()
+        )
