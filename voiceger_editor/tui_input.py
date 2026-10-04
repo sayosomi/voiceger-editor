@@ -32,7 +32,14 @@ class TuiInputReader:
         self._pending: Deque[Any] = deque()
         self._paste_burst_active = False
 
-    def read(self, screen: Any) -> Any:
+    def read(
+        self,
+        screen: Any,
+        *,
+        infer_paste_newlines: bool = False,
+    ) -> Any:
+        if not infer_paste_newlines:
+            self._paste_burst_active = False
         try:
             key = (
                 self._pending.popleft()
@@ -43,7 +50,7 @@ class TuiInputReader:
             self._paste_burst_active = False
             return None
 
-        if key not in _ENTER_KEYS:
+        if not infer_paste_newlines or key not in _ENTER_KEYS:
             return key
 
         if self._paste_burst_active:
