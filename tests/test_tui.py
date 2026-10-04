@@ -1991,7 +1991,12 @@ class TuiTests(unittest.TestCase):
 
         app._dispatch_editor_intents((PreviewIntent(transient),))
 
-        app._operations.start_preview.assert_called_once_with(session, transient)
+        app._operations.start_preview.assert_called_once_with(
+            session,
+            transient,
+            adapter=app.adapter,
+            settings=app.settings,
+        )
         self.assertEqual(session.replace_query_calls, [])
         self.assertEqual(session.query.model_dump(), canonical)
         self.assertEqual(session.candidates, candidates)
@@ -2000,6 +2005,21 @@ class TuiTests(unittest.TestCase):
         app._operations.play_preview = Mock(return_value=())
         app._dispatch_operation_effects((PlayPreviewEffect("audio", 22050),))
         app._operations.play_preview.assert_called_once_with("audio", 22050)
+
+    def test_preview_intent_from_batch_list_passes_standalone_synthesis_context(self):
+        app = self.make_app(query=mixed_query(), batch_item=False)
+        app.session = None
+        transient = AudioQuery(accent_phrases=[])
+        app._operations.start_preview = Mock(return_value=())
+
+        app._dispatch_editor_intents((PreviewIntent(transient),))
+
+        app._operations.start_preview.assert_called_once_with(
+            None,
+            transient,
+            adapter=app.adapter,
+            settings=app.settings,
+        )
 
     def test_committed_utterance_text_intent_preserves_caption_and_clears_takes(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(3),))
