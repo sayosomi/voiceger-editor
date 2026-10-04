@@ -770,11 +770,11 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.assertEqual(editor.payload["accent"], 2)
 
         self.controller.open_menu()
-        self.core.english["first"] = en_word(
-            "first", ["F", "ER1", "S", "T"]
+        self.core.english["record"] = en_word(
+            "record", ["R", "EH1", "K", "ER0", "D"]
         )
-        self.core.english["second"] = en_word(
-            "second", ["S", "EH1", "K", "AH0", "N", "D"]
+        self.core.english["zebra"] = en_word(
+            "zebra", ["Z", "IY1", "B", "R", "AH0"]
         )
         self.key("e")
         self.key("\n")
@@ -785,7 +785,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.assertEqual(editor.payload["entry_index"], 0)
         self.assertEqual(
             editor.payload["phonemes"],
-            ("F", "ER1", "S", "T"),
+            ("R", "EH0", "K", "ER1", "D"),
         )
 
     def test_dirty_back_and_escape_require_discard_confirmation(self):
