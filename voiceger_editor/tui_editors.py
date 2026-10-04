@@ -306,16 +306,21 @@ class TuiEditorController:
         current_caption: str | None,
         origin: tuple[str, int | None],
         busy: bool,
+        multiline: bool = False,
     ) -> tuple[EditorIntent, ...]:
         if busy:
             return (UpdateStatusIntent("Wait for synthesis to finish before editing Caption."),)
         current = initial if initial is not None else current_caption or ""
         self.editor = EditorState(
             kind="caption",
-            title="EDIT CAPTION TEXT",
+            title="ADD CAPTIONS" if multiline else "EDIT CAPTION TEXT",
             origin=origin,
             selection="draft",
-            payload={"draft": current, "opening_caption": current},
+            payload={
+                "draft": current,
+                "opening_caption": current,
+                "multiline": multiline,
+            },
         )
         return (
             UpdateStatusIntent(""),
@@ -937,6 +942,28 @@ class TuiEditorController:
                 ),
             )
         if editor.active_field is not None:
+            if (
+                editor.kind == "caption"
+                and editor.payload.get("multiline", False)
+                and key in _ENTER_KEYS
+            ):
+                editor.input_value = (
+                    editor.input_value[: editor.input_cursor]
+                    + "\n"
+                    + editor.input_value[editor.input_cursor :]
+                )
+                editor.input_cursor += 1
+                editor.error = EMPTY_STATUS
+                return ()
+            if (
+                editor.kind == "caption"
+                and editor.payload.get("multiline", False)
+                and key == "\x04"
+            ):
+                intents = self._finish_field()
+                if editor.active_field is None:
+                    editor.selection = "apply"
+                return intents
             if key in _ENTER_KEYS:
                 return self._finish_field()
             if key == _ESCAPE:
