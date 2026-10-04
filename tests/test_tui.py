@@ -24,6 +24,7 @@ from voiceger_editor.tui_editors import (
     PreviewIntent,
     ReplaceQueryIntent,
 )
+from voiceger_editor.tui_input import PasteText
 from voiceger_editor.tui_operations import (
     BatchCandidateReplacedEffect,
     CandidateReplacedEffect,
@@ -1796,7 +1797,8 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(editor.active_field, "draft")
         editor.input_value = "new caption"
         editor.input_cursor = len(editor.input_value)
-        app._handle_key("\x04")
+        app._handle_key("\n")
+        app._handle_key(curses.KEY_DOWN)
         app._handle_key("\n")
 
         self.assertIsNone(app._editor_controller.editor)
@@ -2041,7 +2043,8 @@ class TuiTests(unittest.TestCase):
             "voiceger_editor.tui.UtteranceSession.from_caption",
             return_value=seeded_session,
         ) as from_caption:
-            app._handle_key("\x04")
+            app._handle_key("\n")
+            app._handle_key(curses.KEY_DOWN)
             app._handle_key("\n")
 
         from_caption.assert_called_once_with(
@@ -2071,15 +2074,11 @@ class TuiTests(unittest.TestCase):
         app = TuiApp(adapter=adapter, settings=Settings())
 
         app._handle_key("a")
-        for key in (
-            captions[0],
-            "\n",
-            "\n",
-            captions[1],
-            "\n",
-            captions[2],
-        ):
-            app._handle_key(key)
+        app._handle_key(
+            PasteText(
+                f"{captions[0]}\n\n{captions[1]}\n{captions[2]}"
+            )
+        )
 
         editor = app._editor_controller.editor
         self.assertEqual(
@@ -2092,7 +2091,9 @@ class TuiTests(unittest.TestCase):
             "voiceger_editor.tui.UtteranceSession.from_caption",
             side_effect=sessions,
         ) as from_caption:
-            app._handle_key("\x04")
+            app._handle_key("\n")
+            self.assertIsNone(editor.active_field)
+            app._handle_key(curses.KEY_DOWN)
             self.assertEqual(editor.selection, "apply")
             app._handle_key("\n")
 
