@@ -246,7 +246,11 @@ class TuiApp:
             outcome = self._help_controller.handle_key(
                 key,
                 height=height,
-                max_scroll=self._renderer.help_max_scroll(height, width),
+                max_scroll=self._renderer.help_max_scroll(
+                    height,
+                    width,
+                    self._status,
+                ),
             )
             if outcome is HelpOutcome.QUIT:
                 self._activate_quit()
