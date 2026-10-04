@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 
 FocusKey = Tuple[str, Optional[int]]
@@ -19,6 +19,30 @@ class NavigationContext:
     busy: bool
     has_active_batch: bool
     has_item_navigator: bool = False
+
+    @classmethod
+    def from_session(
+        cls,
+        session: Any | None,
+        *,
+        pronunciation_count: int,
+        busy: bool,
+        has_item_navigator: bool,
+    ) -> "NavigationContext":
+        return cls(
+            has_session=session is not None,
+            pronunciation_count=pronunciation_count,
+            candidate_numbers=(
+                tuple(candidate.number for candidate in session.candidates)
+                if session is not None
+                else ()
+            ),
+            busy=busy,
+            has_active_batch=(
+                session.has_active_batch if session is not None else False
+            ),
+            has_item_navigator=has_item_navigator,
+        )
 
 
 @dataclass(frozen=True)
