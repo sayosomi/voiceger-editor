@@ -2028,15 +2028,19 @@ class TuiTests(unittest.TestCase):
         adapter = Mock()
         adapter.voiceger_root = Path("/nonexistent/voiceger")
         seeded_session = FakeSession(query=mixed_query())
+        seeded_session.caption = "initial caption"
         app = TuiApp(adapter=adapter, settings=Settings())
-        app._open_caption_editor("")
-        app._editor_controller.editor.input_value = "initial caption"
+        app._handle_key("a")
+        editor = app._editor_controller.editor
+        self.assertEqual(editor.title, "ADD CAPTIONS")
+        self.assertTrue(editor.payload["multiline"])
+        editor.input_value = "initial caption"
+        editor.input_cursor = len(editor.input_value)
         with patch(
             "voiceger_editor.tui.UtteranceSession.from_caption",
             return_value=seeded_session,
         ) as from_caption:
-            app._handle_key("\n")
-            app._handle_key(curses.KEY_DOWN)
+            app._handle_key("\x04")
             app._handle_key("\n")
 
         from_caption.assert_called_once_with(
@@ -2049,6 +2053,62 @@ class TuiTests(unittest.TestCase):
         self.assertIs(app._batch.batch.items[0].session, seeded_session)
         self.assertFalse(app._batch.in_item)
         self.assertEqual(app._status, "Caption added.")
+
+    def test_add_captions_multiline_editor_creates_one_selected_item_per_non_empty_line(self):
+        adapter = Mock()
+        adapter.voiceger_root = Path("/nonexistent/voiceger")
+        captions = (
+            "今日は雨なのだ。",
+            "このずんだ餅はvery sweetなのだ。",
+            "明日も元気なのだ。",
+        )
+        sessions = []
+        for caption in captions:
+            session = FakeSession(query=mixed_query())
+            session.caption = caption
+            sessions.append(session)
+        app = TuiApp(adapter=adapter, settings=Settings())
+
+        app._handle_key("a")
+        for key in (
+            captions[0],
+            "\n",
+            "\n",
+            captions[1],
+            "\n",
+            captions[2],
+        ):
+            app._handle_key(key)
+
+        editor = app._editor_controller.editor
+        self.assertEqual(
+            editor.input_value,
+            f"{captions[0]}\n\n{captions[1]}\n{captions[2]}",
+        )
+        self.assertEqual(editor.active_field, "draft")
+
+        with patch(
+            "voiceger_editor.tui.UtteranceSession.from_caption",
+            side_effect=sessions,
+        ) as from_caption:
+            app._handle_key("\x04")
+            self.assertEqual(editor.selection, "apply")
+            app._handle_key("\n")
+
+        items = app._batch.batch.items
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual([item.caption for item in items], list(captions))
+        self.assertEqual(
+            [item.included_for_generation for item in items],
+            [True, True, True],
+        )
+        self.assertEqual(len({item.item_id for item in items}), 3)
+        self.assertEqual([item.session for item in items], sessions)
+        self.assertEqual(
+            [call.kwargs["caption"] for call in from_caption.call_args_list],
+            list(captions),
+        )
+        self.assertEqual(app._status, "3 Captions added.")
 
     def test_batch_list_apply_adds_multiple_lightweight_caption_sessions(self):
         adapter = Mock()
