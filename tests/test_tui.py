@@ -1790,12 +1790,13 @@ class TuiTests(unittest.TestCase):
 
         editor = app._editor_controller.editor
         self.assertEqual(editor.kind, "caption")
+        self.assertEqual(editor.title, "ADD CAPTIONS")
         self.assertEqual(editor.origin, ("takes", None))
+        self.assertTrue(editor.payload["multiline"])
         self.assertEqual(editor.active_field, "draft")
         editor.input_value = "new caption"
         editor.input_cursor = len(editor.input_value)
-        app._handle_key("\n")
-        app._handle_key(curses.KEY_DOWN)
+        app._handle_key("\x04")
         app._handle_key("\n")
 
         self.assertIsNone(app._editor_controller.editor)
