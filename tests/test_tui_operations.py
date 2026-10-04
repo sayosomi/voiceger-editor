@@ -900,31 +900,86 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(process.wait.call_args_list[0].kwargs, {"timeout": 0.25})
         self.assertEqual(process.wait.call_args_list[1].args, ())
 
-    def test_candidate_acceptance_stops_playback_and_keeps_navigation_focus(self):
+    def test_candidate_acceptance_waits_for_status_render_then_completes(self):
         session = FakeSession((candidate(3),))
         process = Mock()
         process.poll.return_value = None
         self.operations.playback_process = process
         self.operations.current_take = 3
+        started = Event()
+        release = Event()
+        original_accept = session.accept_take
+
+        def blocking_accept(number):
+            started.set()
+            if not release.wait(timeout=1):
+                raise RuntimeError("test release timeout")
+            return original_accept(number)
+
+        session.accept_take = blocking_accept
+
         effects = self.operations.accept_take(
             session,
             3,
+            item_id="item-1",
             busy=False,
             pronunciation_index=2,
         )
-        self.assertEqual(session.accept_calls, [3])
-        self.assertEqual(self.operations.current_take, None)
+
+        self.assertEqual(effects, (UpdateStatusEffect("Saving Take 3…"),))
+        self.assertEqual(session.accept_calls, [])
+        self.assertTrue(self.operations.busy)
+        self.assertEqual(self.operations.worker_operation, "accept")
+        self.assertEqual(self.operations.current_take, 3)
         self.assertIsNone(self.operations.playback_process)
+        self.assertFalse(started.is_set())
+        process.terminate.assert_called_once_with()
+
+        self.operations.start_pending_worker()
+        self.assertTrue(started.wait(timeout=1))
+        self.assertEqual(self.consume(session), ())
+        self.assertTrue(self.operations.busy)
+
+        release.set()
+        self.operations.join_worker()
+        completion = self.consume(session)
+
+        self.assertEqual(session.accept_calls, [3])
+        self.assertFalse(self.operations.busy)
+        self.assertEqual(self.operations.current_take, None)
         self.assertEqual(
-            effects,
+            completion,
             (
-                TakeAcceptedEffect(3),
+                TakeAcceptedEffect("item-1", 3),
                 UpdateStatusEffect("Saved saved.wav and saved.txt."),
             ),
         )
-        process.terminate.assert_called_once_with()
 
-    def test_candidate_acceptance_reports_lab_success_and_nonfatal_warning(self):
+    def test_candidate_acceptance_reports_wav_lab_and_nonfatal_warning(self):
+        session = FakeSession((candidate(3),))
+        session.accepted = SimpleNamespace(
+            wav_path=Path("/tmp/saved.wav"),
+            text_path=None,
+        )
+        start = self.operations.accept_take(
+            session,
+            3,
+            item_id="wav-item",
+            busy=False,
+            pronunciation_index=0,
+        )
+        self.assertEqual(start, (UpdateStatusEffect("Saving Take 3…"),))
+        self.operations.start_pending_worker()
+        self.operations.join_worker()
+        effects = self.consume(session)
+        self.assertEqual(
+            effects,
+            (
+                TakeAcceptedEffect("wav-item", 3),
+                UpdateStatusEffect("Saved saved.wav."),
+            ),
+        )
+
         session = FakeSession((candidate(3),))
         session.accepted = SimpleNamespace(
             wav_path=Path("/tmp/saved.wav"),
@@ -932,12 +987,16 @@ class TuiOperationsTests(unittest.TestCase):
             lab_path=Path("/tmp/saved.lab"),
             lab_warning=None,
         )
-        effects = self.operations.accept_take(
+        self.operations.accept_take(
             session,
             3,
+            item_id="lab-item",
             busy=False,
             pronunciation_index=0,
         )
+        self.operations.start_pending_worker()
+        self.operations.join_worker()
+        effects = self.consume(session)
         self.assertEqual(
             effects[-1],
             UpdateStatusEffect("Saved saved.wav and saved.lab."),
@@ -950,12 +1009,16 @@ class TuiOperationsTests(unittest.TestCase):
             lab_path=None,
             lab_warning="LAB generation failed: Julius executable not found",
         )
-        effects = self.operations.accept_take(
+        self.operations.accept_take(
             session,
             3,
+            item_id="warning-item",
             busy=False,
             pronunciation_index=0,
         )
+        self.operations.start_pending_worker()
+        self.operations.join_worker()
+        effects = self.consume(session)
         self.assertEqual(
             effects[-1],
             UpdateStatusEffect(
@@ -965,39 +1028,54 @@ class TuiOperationsTests(unittest.TestCase):
                 )
             ),
         )
+        self.assertIs(effects[-1].status.kind, StatusKind.WARNING)
 
-    def test_candidate_acceptance_failure_and_busy_guard(self):
+    def test_candidate_acceptance_failure_preserves_candidate_and_state(self):
         original = candidate(3)
         session = FakeSession((original,))
         session.accept_error = RuntimeError("save failed")
         self.operations.current_take = 3
+
+        start = self.operations.accept_take(
+            session,
+            3,
+            item_id="item-1",
+            busy=False,
+            pronunciation_index=0,
+        )
+        self.assertEqual(start, (UpdateStatusEffect("Saving Take 3…"),))
+        self.assertEqual(session.accept_calls, [])
+
+        self.operations.start_pending_worker()
+        self.operations.join_worker()
+        effects = self.consume(session)
+
         self.assertEqual(
-            self.operations.accept_take(
-                session,
-                3,
-                busy=False,
-                pronunciation_index=0,
-            ),
+            effects,
             (
                 UpdateStatusEffect(
-                    error_status("Could not save take 3: save failed")
+                    error_status("Take 3 was not saved: save failed")
                 ),
             ),
         )
+        self.assertFalse(self.operations.busy)
         self.assertEqual(self.operations.current_take, 3)
         self.assertEqual(session.candidates, [original])
+
         session.accept_calls.clear()
+        self.operations.busy = True
         self.assertEqual(
             self.operations.accept_take(
                 session,
                 3,
+                item_id="item-1",
                 busy=True,
                 pronunciation_index=0,
             ),
             (),
         )
         self.assertEqual(session.accept_calls, [])
-
+        self.operations.busy = False
 
 class BatchFakeSession:
     def __init__(
