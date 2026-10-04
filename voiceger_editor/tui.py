@@ -36,6 +36,7 @@ from .tui_operations import (
     CandidateReplacedEffect,
     DictionaryOperationCompletedEffect,
     DiscardInitialBatchEffect,
+    SessionPreparationCompletedEffect,
     FocusEffect,
     OperationEffect,
     PlayPreviewEffect,
@@ -286,7 +287,11 @@ class TuiApp:
             intents = self._editor_controller.handle_key(
                 key,
                 settings=self.settings,
-                query=self.session.query if self.session is not None else None,
+                query=(
+                    self.session.query
+                    if self.session is not None and self.session.is_prepared
+                    else None
+                ),
                 current_caption=(
                     self.session.caption if self.session is not None else None
                 ),
@@ -337,7 +342,7 @@ class TuiApp:
         self._dispatch_operation_effects(self._operations.request_shutdown())
 
     def _new_session(self, caption: str) -> UtteranceSession:
-        return UtteranceSession.from_text(
+        return UtteranceSession.from_caption(
             adapter=self.adapter, caption=caption, settings=self.settings
         )
 
@@ -572,6 +577,13 @@ class TuiApp:
                         effect.value,
                         effect.error,
                     )
+                )
+            elif isinstance(effect, SessionPreparationCompletedEffect):
+                self._batch_item_controller.complete_preparation(
+                    effect.session,
+                    rebuild=effect.rebuild,
+                    error=effect.error,
+                    bindings=self._batch_item_bindings,
                 )
             elif isinstance(effect, BatchCandidateReplacedEffect):
                 self._batch.invalidate_acceptance_for_replacement(
