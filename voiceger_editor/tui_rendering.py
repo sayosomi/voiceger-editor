@@ -66,7 +66,7 @@ _HELP_ITEMS = (
         ": Caption / Build pronunciation / Add section / Generate or regenerate all",
     ),
     ("1-9", ": focus and play an available Take"),
-    ("[ / ]", ": previous / next Batch Item Caption"),
+    ("[ / ]", ": previous / next Batch Item Caption or Dictionary word"),
     (main_shortcut("clear_candidates").shortcut.upper(), ": clear candidates through confirmation"),
     ("R", ": regenerate the focused Take"),
     (main_shortcut("settings").shortcut.upper(), ": open Settings"),
@@ -164,6 +164,25 @@ def _duration_seconds(frame_count: int, sampling_rate: int) -> float:
         return frame_count / float(sampling_rate)
     except (TypeError, ValueError, ZeroDivisionError):
         return 0.0
+
+
+def _positioned_title(
+    title: str,
+    position: tuple[int, int] | None,
+    width: int,
+) -> str:
+    if position is None:
+        return title
+    current, total = position
+    indicator = f"< {current} / {total} >"
+    available = max(1, width - 1)
+    title_width = max(0, available - _display_width(indicator) - 1)
+    title_part = _truncate_display(title, title_width)
+    gap = max(
+        1,
+        available - _display_width(title_part) - _display_width(indicator),
+    )
+    return title_part + (" " * gap) + indicator
 
 
 class TuiRenderer:
@@ -595,23 +614,7 @@ class TuiRenderer:
         title: str = "Voiceger Editor",
     ) -> None:
         safe_add = self._safe_add
-        header = title
-        if state.batch_item_position is not None:
-            current, total = state.batch_item_position
-            position = f"< {current} / {total} >"
-            available = max(1, width - 1)
-            title_width = max(
-                0,
-                available - _display_width(position) - 1,
-            )
-            title_part = _truncate_display(title, title_width)
-            gap = max(
-                1,
-                available
-                - _display_width(title_part)
-                - _display_width(position),
-            )
-            header = title_part + (" " * gap) + position
+        header = _positioned_title(title, state.batch_item_position, width)
         header_attr = self._attribute("A_BOLD")
         if state.focus_key == ("batch_item", None):
             header_attr |= self._focus_attribute()
@@ -960,7 +963,27 @@ class TuiRenderer:
                 cursor_line = first_line + cursor_row
                 cursor_column = prefix_width + cursor_cells
 
-        plain(editor.title)
+        entry_position: tuple[int, int] | None = None
+        if editor.kind in {
+            "dictionary_japanese_entry",
+            "dictionary_english_entry",
+        }:
+            entry_index = editor.payload.get("entry_index")
+            entry_total = editor.payload.get("entry_total")
+            if (
+                isinstance(entry_index, int)
+                and isinstance(entry_total, int)
+                and entry_total > 0
+                and 0 <= entry_index < entry_total
+            ):
+                entry_position = (entry_index + 1, entry_total)
+        title_key = "entry_navigator" if entry_position is not None else None
+        lines.append(
+            (
+                _positioned_title(editor.title, entry_position, width),
+                title_key,
+            )
+        )
         if editor.kind == "caption":
             plain()
             if editor.active_field == "draft":
@@ -1320,13 +1343,17 @@ class TuiRenderer:
         assert editor is not None
         safe_add = self._safe_add
         document, cursor_line, cursor_column = self.editor_document(state, width)
+        header, header_key = document[0]
+        header_attr = self._attribute("A_REVERSE") | self._attribute("A_BOLD")
+        if header_key is not None and header_key == editor.selection:
+            header_attr |= self._focus_attribute()
         safe_add(
             screen,
             0,
             0,
-            editor.title,
+            header,
             width,
-            self._attribute("A_REVERSE") | self._attribute("A_BOLD"),
+            header_attr,
         )
         document = document[1:]
         if cursor_line is not None:

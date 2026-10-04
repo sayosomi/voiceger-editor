@@ -309,6 +309,8 @@ class TuiDictionaryController:
         moras: Sequence[str] | None = None,
         accent: int | None = None,
         quick_save: bool = False,
+        entry_index: int | None = None,
+        entry_total: int | None = None,
     ) -> EditorState:
         if word is None:
             selected_surface = surface or ""
@@ -357,6 +359,8 @@ class TuiDictionaryController:
                 "priority": priority,
                 "opening": opening,
                 "quick_save": quick_save,
+                "entry_index": entry_index,
+                "entry_total": entry_total,
             },
         )
 
@@ -367,6 +371,8 @@ class TuiDictionaryController:
         phonemes: Sequence[str] = (),
         original_surface: str | None = None,
         quick_save: bool = False,
+        entry_index: int | None = None,
+        entry_total: int | None = None,
     ) -> EditorState:
         normalized = tuple(phonemes)
         opening = (surface, normalized)
@@ -385,6 +391,8 @@ class TuiDictionaryController:
                 "original_surface": original_surface,
                 "opening": opening,
                 "quick_save": quick_save,
+                "entry_index": entry_index,
+                "entry_total": entry_total,
             },
         )
 
@@ -526,6 +534,11 @@ class TuiDictionaryController:
             ]
         else:
             return ()
+        if (
+            editor.payload.get("entry_index") is not None
+            and editor.payload.get("entry_total") is not None
+        ):
+            keys.insert(0, "entry_navigator")
         try:
             index = keys.index(editor.selection)
         except ValueError:
@@ -783,15 +796,84 @@ class TuiDictionaryController:
         )
         return (DictionaryOperationIntent(request, info_status(status), work),)
 
-    def _open_discard_confirmation(self, editor: EditorState) -> tuple[EditorIntent, ...]:
+    def _open_discard_confirmation(
+        self,
+        editor: EditorState,
+        *,
+        entry_navigation_target: int | None = None,
+    ) -> tuple[EditorIntent, ...]:
+        payload: dict[str, Any] = {"parent_editor": deepcopy(editor)}
+        if entry_navigation_target is not None:
+            payload["entry_navigation_target"] = entry_navigation_target
         self.editor = EditorState(
             kind="dictionary_discard_confirmation",
             title="DISCARD DICTIONARY CHANGES?",
             origin=("dictionary", None),
             selection="discard",
-            payload={"parent_editor": deepcopy(editor)},
+            payload=payload,
         )
         return (UpdateStatusIntent(""),)
+
+    def _open_entry_at_index(
+        self,
+        source_editor: EditorState,
+        target_index: int,
+    ) -> tuple[EditorIntent, ...]:
+        if not self._stack:
+            return ()
+        parent = self._stack[-1]
+        if source_editor.kind == "dictionary_japanese_entry":
+            if parent.kind != "dictionary_japanese_list":
+                return ()
+            entries = parent.payload["entries"]
+            if not 0 <= target_index < len(entries):
+                return ()
+            word_uuid, word = entries[target_index]
+            self.editor = self._japanese_entry_state(
+                word_uuid=word_uuid,
+                word=word,
+                entry_index=target_index,
+                entry_total=len(entries),
+            )
+        elif source_editor.kind == "dictionary_english_entry":
+            if parent.kind != "dictionary_english_list":
+                return ()
+            entries = parent.payload["entries"]
+            if not 0 <= target_index < len(entries):
+                return ()
+            entry = entries[target_index]
+            self.editor = self._english_entry_state(
+                surface=entry.surface,
+                phonemes=entry.phonemes,
+                original_surface=entry.surface,
+                entry_index=target_index,
+                entry_total=len(entries),
+            )
+        else:
+            return ()
+        parent.selection = ("entry", target_index)
+        parent.payload["entry_index"] = target_index
+        self.editor.selection = "entry_navigator"
+        return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+
+    def _move_open_entry(self, direction: int) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        assert editor is not None
+        index = editor.payload.get("entry_index")
+        total = editor.payload.get("entry_total")
+        if not isinstance(index, int) or not isinstance(total, int) or total <= 0:
+            return ()
+        target = index + (-1 if direction < 0 else 1)
+        if target < 0:
+            return (UpdateStatusIntent(info_status("First dictionary word.")),)
+        if target >= total:
+            return (UpdateStatusIntent(info_status("Last dictionary word.")),)
+        if self._is_dirty(editor):
+            return self._open_discard_confirmation(
+                editor,
+                entry_navigation_target=target,
+            )
+        return self._open_entry_at_index(editor, target)
 
     def _back_from_entry(self) -> tuple[EditorIntent, ...]:
         editor = self.editor
@@ -996,6 +1078,8 @@ class TuiDictionaryController:
                     self.editor = self._japanese_entry_state(
                         word_uuid=word_uuid,
                         word=word,
+                        entry_index=index,
+                        entry_total=len(entries),
                     )
                 return ()
         if editor.kind == "dictionary_english_list":
@@ -1018,6 +1102,8 @@ class TuiDictionaryController:
                         surface=entry.surface,
                         phonemes=entry.phonemes,
                         original_surface=entry.surface,
+                        entry_index=index,
+                        entry_total=len(entries),
                     )
                 return ()
         if editor.kind == "dictionary_japanese_duplicates":
@@ -1078,7 +1164,11 @@ class TuiDictionaryController:
                 return (UpdateStatusIntent(""),)
         if editor.kind == "dictionary_discard_confirmation":
             if selected == "discard":
-                return self._discard_entry(editor.payload["parent_editor"])
+                parent_editor = editor.payload["parent_editor"]
+                target = editor.payload.get("entry_navigation_target")
+                if target is not None:
+                    return self._open_entry_at_index(parent_editor, target)
+                return self._discard_entry(parent_editor)
             if selected == "cancel":
                 self.editor = editor.payload["parent_editor"]
                 return (UpdateStatusIntent(""),)
@@ -1167,6 +1257,23 @@ class TuiDictionaryController:
             return (QuitIntent(),)
         if key == "?":
             return (OpenHelpIntent(),)
+
+        if editor.kind in {
+            "dictionary_japanese_entry",
+            "dictionary_english_entry",
+        }:
+            direction: int | None = None
+            if key == "[":
+                direction = -1
+            elif key == "]":
+                direction = 1
+            elif editor.selection == "entry_navigator":
+                if key == curses.KEY_LEFT:
+                    direction = -1
+                elif key == curses.KEY_RIGHT:
+                    direction = 1
+            if direction is not None:
+                return self._move_open_entry(direction)
 
         if editor.kind in {
             "dictionary_japanese_entry",
