@@ -826,7 +826,10 @@ class TuiRenderer:
                 main_shortcut("add_section").display_label,
             )
             has_batch = session.has_active_batch
-            if state.busy and state.worker_operation != "accept":
+            if (
+                state.busy
+                and state.worker_operation not in {"accept", "prepare"}
+            ):
                 if state.worker_operation == "regenerate_one":
                     generate_label = f"Regenerating take {state.worker_target}"
                 else:
