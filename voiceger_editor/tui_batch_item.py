@@ -453,16 +453,17 @@ class TuiBatchItemController:
     ) -> bool:
         actions = bindings.actions
         if key == _ESCAPE:
+            if (
+                actions.operations.busy
+                and actions.operations.worker_operation == "accept"
+            ):
+                return True
             actions.operations.stop_playback()
             actions.operations.clear_current_take()
             actions.editor_controller.clear_groupings()
             self.batch.close_item()
             actions.set_session(None)
-            if not (
-                actions.operations.busy
-                and actions.operations.worker_operation == "accept"
-            ):
-                actions.set_status(EMPTY_STATUS)
+            actions.set_status(EMPTY_STATUS)
             return True
 
         direction: int | None = None
