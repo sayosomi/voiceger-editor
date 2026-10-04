@@ -8,7 +8,7 @@ from typing import Any, Callable, Optional, Sequence, Union
 
 from .caption_batch import CaptionBatch
 from .tui_navigation import TuiNavigation
-from .tui_operations import OperationEffect, TuiOperations
+from .tui_operations import OperationEffect, TakeAcceptedEffect, TuiOperations
 from .tui_shortcuts import (
     resolve_batch_list_caption_shortcut,
     resolve_batch_list_shortcut,
@@ -100,14 +100,39 @@ class TuiBatchController:
     def __init__(self, *, default_take_count: int) -> None:
         self.batch = CaptionBatch(default_take_count=default_take_count)
         self.focus_key: BatchFocusKey = ("takes", None)
-        self.item_index: int | None = None
+        self._open_item_id: str | None = None
         self._pending_delete_item_id: str | None = None
         self._pending_delete_from_item = False
         self._delete_confirmation_selection = "delete"
 
     @property
+    def item_index(self) -> int | None:
+        if self._open_item_id is None:
+            return None
+        try:
+            item = self.batch.get_item(self._open_item_id)
+        except KeyError:
+            self._open_item_id = None
+            return None
+        return self.batch.items.index(item)
+
+    @property
+    def open_item_id(self) -> str | None:
+        return self._open_item_id
+
+    @property
     def in_item(self) -> bool:
         return self.item_index is not None
+
+    @property
+    def open_item_accepted_take_number(self) -> int | None:
+        item_id = self.open_item_id
+        if item_id is None:
+            return None
+        try:
+            return self.batch.get_item(item_id).accepted_take_number
+        except KeyError:
+            return None
 
     @property
     def sessions(self) -> tuple[Any, ...]:
@@ -138,7 +163,13 @@ class TuiBatchController:
     def item_title(self) -> str:
         if self.item_index is None:
             raise RuntimeError("No Batch Item is open")
-        return f"BATCH ITEM {self.item_index + 1}/{len(self.batch)}"
+        return "BATCH ITEM"
+
+    @property
+    def item_position(self) -> tuple[int, int]:
+        if self.item_index is None:
+            raise RuntimeError("No Batch Item is open")
+        return self.item_index + 1, len(self.batch)
 
     def add_captions(self, text: str, *, session_factory: SessionFactory) -> None:
         self.batch.add_captions_from_text(text, session_factory=session_factory)
@@ -149,21 +180,129 @@ class TuiBatchController:
         self.focus_key = ("caption", len(self.batch) - 1)
 
     def request_delete_open_item(self) -> None:
-        if self.item_index is None or not 0 <= self.item_index < len(self.batch):
+        item_id = self.open_item_id
+        if item_id is None:
             return
-        self._pending_delete_item_id = self.batch.items[self.item_index].item_id
+        self._pending_delete_item_id = item_id
         self._pending_delete_from_item = True
         self._delete_confirmation_selection = "delete"
 
     def open_item(self, index: int) -> Any:
         if not 0 <= index < len(self.batch):
             raise IndexError(index)
-        self.item_index = index
-        return self.batch.items[index].session
+        item = self.batch.items[index]
+        self._open_item_id = item.item_id
+        return item.session
 
     def close_item(self) -> None:
-        self.item_index = None
+        self._open_item_id = None
         self._repair_focus()
+
+    def clear_open_item_acceptance(self) -> None:
+        item_id = self.open_item_id
+        if item_id is not None:
+            self.batch.clear_acceptance(item_id)
+
+    def invalidate_acceptance_for_replacement(
+        self,
+        item_id: str,
+        take_number: int,
+    ) -> None:
+        try:
+            item = self.batch.get_item(item_id)
+        except KeyError:
+            return
+        if item.accepted_take_number == take_number:
+            self.batch.clear_acceptance(item_id)
+
+    def complete_acceptance(self, item_id: str, take_number: int) -> None:
+        self.batch.mark_accepted(item_id, take_number)
+
+    def accept_open_item(
+        self,
+        number: int,
+        *,
+        pronunciation_index: int,
+        bindings: BatchActionBindings,
+    ) -> None:
+        item_id = self.open_item_id
+        if item_id is None:
+            return
+        item = self.batch.get_item(item_id)
+        session = item.session
+        had_active_batch = session.has_active_batch
+        effects = bindings.operations.accept_take(
+            session,
+            number,
+            busy=bindings.operations.busy,
+            pronunciation_index=pronunciation_index,
+        )
+        bindings.dispatch_operation_effects(effects)
+        saved = any(isinstance(effect, TakeAcceptedEffect) for effect in effects)
+        if not had_active_batch or not saved:
+            return
+        self.complete_acceptance(item_id, number)
+
+    def handle_open_item_key(
+        self,
+        key: Any,
+        *,
+        focus_key: tuple[str, int | None],
+        bindings: BatchActionBindings,
+    ) -> bool:
+        if key == _ESCAPE:
+            bindings.operations.stop_playback()
+            bindings.operations.clear_current_take()
+            bindings.editor_controller.clear_groupings()
+            self.close_item()
+            bindings.set_session(None)
+            bindings.set_status("")
+            return True
+
+        direction: int | None = None
+        if key == "[":
+            direction = -1
+        elif key == "]":
+            direction = 1
+        elif focus_key == ("batch_item", None):
+            if key == curses.KEY_LEFT:
+                direction = -1
+            elif key == curses.KEY_RIGHT:
+                direction = 1
+        if direction is None:
+            return False
+        self.move_open_item(direction, bindings=bindings)
+        return True
+
+    def move_open_item(
+        self,
+        direction: int,
+        *,
+        bindings: BatchActionBindings,
+    ) -> None:
+        index = self.item_index
+        if index is None or direction == 0:
+            return
+        if bindings.operations.busy:
+            bindings.set_status(
+                "Wait for the current synthesis operation to finish."
+            )
+            return
+        target = index + (-1 if direction < 0 else 1)
+        if target < 0:
+            bindings.set_status("First Caption.")
+            return
+        if target >= len(self.batch):
+            bindings.set_status("Last Caption.")
+            return
+
+        bindings.operations.stop_playback()
+        bindings.operations.clear_current_take()
+        bindings.editor_controller.clear_groupings()
+        bindings.set_session(self.open_item(target))
+        bindings.navigation.focus_key = ("batch_item", None)
+        bindings.navigation.reset_pronunciation_index()
+        bindings.set_status("")
 
     def close_sessions(self) -> None:
         for session in self.sessions:
@@ -182,7 +321,7 @@ class TuiBatchController:
                 bindings.operations.clear_current_take()
                 bindings.editor_controller.clear_groupings()
                 bindings.set_session(self.open_item(action.index))
-                bindings.navigation.focus_key = ("caption", None)
+                bindings.navigation.focus_key = ("batch_item", None)
                 bindings.navigation.reset_pronunciation_index()
                 bindings.set_status("")
             elif isinstance(action, AddCaptions):
@@ -348,11 +487,21 @@ class TuiBatchController:
         self._delete_confirmation_selection = "delete"
         removed.session.close()
         if from_item:
-            self.item_index = None
+            self._open_item_id = None
         if len(self.batch):
             self.focus_key = ("caption", min(index, len(self.batch) - 1))
         else:
             self.focus_key = ("takes", None)
+
+    def _next_unaccepted_generated_index(self, current_index: int) -> int | None:
+        if len(self.batch) < 2:
+            return None
+        for offset in range(1, len(self.batch)):
+            index = (current_index + offset) % len(self.batch)
+            item = self.batch.items[index]
+            if not item.is_accepted and item.session.candidates:
+                return index
+        return None
 
     def _repair_focus(self) -> None:
         items = self.navigation_items()

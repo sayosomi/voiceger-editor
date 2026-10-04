@@ -155,6 +155,8 @@ def render_state(
     operation_total=0,
     pressed_adjustment=None,
     editor=None,
+    accepted_take_number=None,
+    batch_item_position=None,
 ):
     return TuiRenderState(
         voiceger_root=Path("/nonexistent/voiceger"),
@@ -174,6 +176,8 @@ def render_state(
         operation_total=operation_total,
         pressed_adjustment=pressed_adjustment,
         editor=editor,
+        accepted_take_number=accepted_take_number,
+        batch_item_position=batch_item_position,
     )
 
 
@@ -283,27 +287,48 @@ class TuiRenderingTests(unittest.TestCase):
         with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
             self.renderer.render_navigation(
                 screen,
-                render_state(),
+                render_state(
+                    focus_key=("batch_item", None),
+                    batch_item_position=(2, 4),
+                ),
                 screen.rows,
                 screen.columns,
-                title="BATCH ITEM 2/4",
+                title="BATCH ITEM",
             )
-        header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
-        self.assertEqual(header, "BATCH ITEM 2/4")
+        header_row = next(item for item in screen.drawn if item[0] == 0)
+        header = header_row[2]
+        self.assertTrue(header.startswith("BATCH ITEM"))
+        self.assertTrue(header.endswith("< 2 / 4 >"))
+        self.assertTrue(header_row[3] & curses.A_REVERSE)
 
     def test_batch_list_header_summarizes_selection_requested_takes_and_actions(self):
         batch = CaptionBatch(default_take_count=4)
         batch.add_captions_from_text(
             "first caption\nsecond caption",
-            session_factory=lambda caption: SimpleNamespace(caption=caption),
+            session_factory=lambda caption: SimpleNamespace(
+                caption=caption, candidates=()
+            ),
         )
         batch.toggle_included(batch.items[1].item_id)
+        batch.items[0].session.candidates = (SimpleNamespace(number=1),)
+        batch.mark_accepted(batch.items[1].item_id, 2)
 
         lines = self.renderer.batch_list_document(batch, ("caption", 0), 80)
         labels = [line.text for line in lines]
         self.assertIn("  Takes < 4 >", labels)
-        self.assertIn("▶ [x] 1  first caption", labels)
-        self.assertIn("  [ ] 2  second caption", labels)
+        self.assertIn("▶ [x] 1  [25%] first caption", labels)
+        self.assertIn("  [ ] 2  [✓] second caption", labels)
+
+        batch.items[0].session.candidates = tuple(
+            SimpleNamespace(number=number) for number in range(1, 5)
+        )
+        labels = [
+            line.text
+            for line in self.renderer.batch_list_document(
+                batch, ("caption", 0), 80
+            )
+        ]
+        self.assertIn("▶ [x] 1  [!] first caption", labels)
         self.assertFalse(any(label.startswith("Selected:") for label in labels))
         self.assertFalse(any(label.startswith("Requested:") for label in labels))
         for action in (
@@ -321,25 +346,35 @@ class TuiRenderingTests(unittest.TestCase):
             screen, batch, ("caption", 0), "", screen.rows, screen.columns
         )
         header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
-        self.assertEqual(header, "BATCH LIST · 1/2 selected · 4 takes")
+        self.assertEqual(
+            header,
+            "BATCH LIST · 1/2 selected · 4 takes · Accepted 1/2",
+        )
 
         single = CaptionBatch(default_take_count=1)
         single.add_caption(
             "only caption",
-            session_factory=lambda caption: SimpleNamespace(caption=caption),
+            session_factory=lambda caption: SimpleNamespace(
+                caption=caption, candidates=()
+            ),
         )
         screen.drawn.clear()
         self.renderer.render_batch_list(
             screen, single, ("caption", 0), "", screen.rows, screen.columns
         )
         header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
-        self.assertEqual(header, "BATCH LIST · 1/1 selected · 1 take")
+        self.assertEqual(
+            header,
+            "BATCH LIST · 1/1 selected · 1 take · Accepted 0/1",
+        )
 
     def test_batch_delete_confirmation_shows_target_and_explicit_actions(self):
         batch = CaptionBatch(default_take_count=4)
         batch.add_captions_from_text(
             "first caption\nsecond caption",
-            session_factory=lambda caption: SimpleNamespace(caption=caption),
+            session_factory=lambda caption: SimpleNamespace(
+                caption=caption, candidates=()
+            ),
         )
         screen = FakeScreen()
 
@@ -1433,6 +1468,7 @@ class TuiRenderingTests(unittest.TestCase):
             settings=Settings(take_count=6),
             focus_key=("generate", None),
             pressed_adjustment=("navigation", "generate", -1),
+            accepted_take_number=2,
         )
         lines = self.renderer.navigation_document(state, 100)
         labels = {line.key: line.text for line in lines if line.key is not None}
@@ -1440,7 +1476,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(labels[("add_section", None)], "  [A] Add section")
         self.assertEqual(labels[("generate", None)], "▶ [G] Regenerate all <<6 > takes")
         self.assertEqual(labels[("candidate", 1)], "  [1] Take 1  0.01s")
-        self.assertEqual(labels[("candidate", 2)], "  [2] Take 2  0.01s")
+        self.assertEqual(labels[("candidate", 2)], "  [2] ✓ Take 2  0.01s")
         self.assertEqual(labels[("clear_candidates", None)], "  [C] Clear candidates")
         self.assertEqual(labels[("delete_caption", None)], "  [X] Delete caption")
         keyed = [line.key for line in lines if line.key is not None]

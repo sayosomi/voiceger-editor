@@ -25,8 +25,16 @@ from .tui_editors import (
     UpdateStatusIntent,
 )
 from .tui_operations import (
-    DiscardInitialBatchEffect, FocusEffect, OperationEffect, PlayPreviewEffect,
-    PlayTakeEffect, StopPlaybackEffect, TuiOperations, UpdateStatusEffect,
+    BatchCandidateReplacedEffect,
+    CandidateReplacedEffect,
+    DiscardInitialBatchEffect,
+    FocusEffect,
+    OperationEffect,
+    PlayPreviewEffect,
+    PlayTakeEffect,
+    StopPlaybackEffect,
+    TuiOperations,
+    UpdateStatusEffect,
 )
 from .tui_shortcuts import resolve_main_shortcut, resolve_shortcut
 from .tui_navigation import (
@@ -246,13 +254,11 @@ class TuiApp:
             )
             self.session = self.session if self._batch.in_item else None
             return
-        if key == _ESCAPE:
-            self._operations.stop_playback()
-            self._operations.clear_current_take()
-            self._editor_controller.clear_groupings()
-            self._batch.close_item()
-            self.session = None
-            self._status = ""
+        if self._batch.handle_open_item_key(
+            key,
+            focus_key=self._navigation.focus_key,
+            bindings=self._batch_action_bindings,
+        ):
             return
         if key in ("Q", "\x03"):
             self._activate_quit()
@@ -333,23 +339,15 @@ class TuiApp:
             )
 
     def _navigation_context(self) -> NavigationContext:
-        session = self.session
-        return NavigationContext(
-            has_session=session is not None,
+        return NavigationContext.from_session(
+            self.session,
             pronunciation_count=(
                 len(self._pronunciation_rows())
-                if session is not None
+                if self.session is not None
                 else 0
             ),
-            candidate_numbers=(
-                tuple(candidate.number for candidate in session.candidates)
-                if session is not None
-                else ()
-            ),
             busy=self._operations.busy,
-            has_active_batch=(
-                session.has_active_batch if session is not None else False
-            ),
+            has_item_navigator=self._batch.in_item,
         )
 
     def _dispatch_navigation_actions(
@@ -393,13 +391,17 @@ class TuiApp:
                     )
                 )
             elif isinstance(action, StartGeneration):
-                self._dispatch_operation_effects(
-                    self._operations.start_generation(
-                        self.session,
-                        take_count=self.settings.take_count,
-                        navigation_revision=self._navigation.revision,
-                    )
+                effects = self._operations.start_generation(
+                    self.session,
+                    take_count=self.settings.take_count,
+                    navigation_revision=self._navigation.revision,
                 )
+                if (
+                    self._operations.busy
+                    and self._operations.worker_operation == "initial"
+                ):
+                    self._batch.clear_open_item_acceptance()
+                self._dispatch_operation_effects(effects)
             elif isinstance(action, RegenerateAll):
                 self._dispatch_operation_effects(
                     self._operations.start_regenerate_all(
@@ -411,13 +413,10 @@ class TuiApp:
             elif isinstance(action, BuildPronunciation):
                 self._request_build_pronunciation()
             elif isinstance(action, AcceptCandidate):
-                self._dispatch_operation_effects(
-                    self._operations.accept_take(
-                        self.session,
-                        action.number,
-                        busy=self._operations.busy,
-                        pronunciation_index=self._navigation.pronunciation_index,
-                    )
+                self._batch.accept_open_item(
+                    action.number,
+                    pronunciation_index=self._navigation.pronunciation_index,
+                    bindings=self._batch_action_bindings,
                 )
             elif isinstance(action, RegenerateCandidate):
                 self._dispatch_operation_effects(
@@ -641,6 +640,7 @@ class TuiApp:
                     self._operations.stop_playback()
                     if self.session is not None:
                         self.session.discard_takes()
+                    self._batch.clear_open_item_acceptance()
                     self._operations.clear_current_take()
             elif isinstance(intent, CloseEditorIntent):
                 self._pressed_adjustment = None
@@ -798,6 +798,15 @@ class TuiApp:
             elif isinstance(effect, DiscardInitialBatchEffect):
                 if self.session is not None:
                     self.session.discard_takes()
+                self._batch.clear_open_item_acceptance()
+            elif isinstance(effect, BatchCandidateReplacedEffect):
+                self._batch.invalidate_acceptance_for_replacement(
+                    effect.item_id,
+                    effect.number,
+                )
+            elif isinstance(effect, CandidateReplacedEffect):
+                if self._batch.open_item_accepted_take_number == effect.number:
+                    self._batch.clear_open_item_acceptance()
 
     def _render_state(
         self,
@@ -825,6 +834,10 @@ class TuiApp:
                 self._dictionary_controller.editor
                 if self._dictionary_controller.active
                 else self._editor_controller.editor
+            ),
+            accepted_take_number=self._batch.open_item_accepted_take_number,
+            batch_item_position=(
+                self._batch.item_position if self._batch.in_item else None
             ),
         )
 

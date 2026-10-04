@@ -18,7 +18,11 @@ from voiceger_editor.terms_acceptance import (
     VoicegerTermsAcceptanceError,
 )
 from voiceger_editor.tui_editors import PreviewIntent, ReplaceQueryIntent
-from voiceger_editor.tui_operations import PlayPreviewEffect
+from voiceger_editor.tui_operations import (
+    BatchCandidateReplacedEffect,
+    CandidateReplacedEffect,
+    PlayPreviewEffect,
+)
 from voiceger_editor.tui import (
     TuiApp,
     build_argument_parser,
@@ -137,6 +141,8 @@ class FakeSession:
         self.discard_calls = 0
         self.close_calls = 0
         self.accept_calls = []
+        self.accept_error = None
+        self.generate_error = None
 
     @property
     def has_active_batch(self):
@@ -174,6 +180,8 @@ class FakeSession:
         self.candidates = ()
 
     def generate_takes(self):
+        if self.generate_error is not None:
+            raise self.generate_error
         return iter(())
 
     def replace_settings(self, settings):
@@ -191,7 +199,12 @@ class FakeSession:
 
     def accept_take(self, number):
         self.accept_calls.append(number)
-        return SimpleNamespace(wav_path=Path(f"/tmp/accepted-{number}.wav"), text_path=None)
+        if self.accept_error is not None:
+            raise self.accept_error
+        return SimpleNamespace(
+            wav_path=Path(f"/tmp/accepted-{number}.wav"),
+            text_path=None,
+        )
 
     def close(self):
         self.close_calls += 1
@@ -503,7 +516,9 @@ class TuiTests(unittest.TestCase):
         app = self.make_app(query=mixed_query())
         set_navigation_focus(app, ("settings_summary", None))
         app._handle_key(curses.KEY_UP)
-        self.assertEqual(app._navigation.focus_key, ("settings_summary", None))
+        self.assertEqual(app._navigation.focus_key, ("batch_item", None))
+        app._handle_key(curses.KEY_UP)
+        self.assertEqual(app._navigation.focus_key, ("batch_item", None))
         while app._navigation.focus_key != ("generate", None):
             app._handle_key(curses.KEY_DOWN)
         navigation_revision = app._navigation.revision
@@ -625,6 +640,8 @@ class TuiTests(unittest.TestCase):
     def test_clear_candidates_confirmation_cancel_and_confirmed_clear(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
         app._operations.current_take = 2
+        item = app._batch.batch.items[0]
+        app._batch.batch.mark_accepted(item.item_id, 2)
         query_before = app.session.query.model_dump()
         settings_before = app.settings
         caption_before = app.session.caption
@@ -642,6 +659,7 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app.session.candidates, candidates_before)
         self.assertEqual(app.session.discard_calls, 0)
         self.assertEqual(app._operations.current_take, 2)
+        self.assertTrue(item.is_accepted)
 
         app._handle_key("c")
         app._handle_key("c")
@@ -650,6 +668,7 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app.session.discard_calls, 1)
         self.assertEqual(app.session.candidates, ())
         self.assertIsNone(app._operations.current_take)
+        self.assertFalse(item.is_accepted)
         self.assertEqual(app.session.caption, caption_before)
         self.assertEqual(app.session.query.model_dump(), query_before)
         self.assertEqual(app.settings, settings_before)
@@ -1048,19 +1067,54 @@ class TuiTests(unittest.TestCase):
         app._handle_key("\n")
         self.assertTrue(app._batch.in_item)
         self.assertIs(app.session, session)
-        self.assertEqual(app._batch.item_title, "BATCH ITEM 1/1")
+        self.assertEqual(app._batch.item_title, "BATCH ITEM")
+        self.assertEqual(app._batch.item_position, (1, 1))
+        self.assertEqual(app._navigation.focus_key, ("batch_item", None))
 
         screen = FakeScreen()
         app._screen = screen
         with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
             app._render()
-        self.assertIn("BATCH ITEM 1/1", self.rendered(screen))
+        rendered = self.rendered(screen)
+        self.assertIn("BATCH ITEM", rendered)
+        self.assertIn("< 1 / 1 >", rendered)
 
         app._handle_key("\x1b")
         self.assertFalse(app._batch.in_item)
         self.assertIsNone(app.session)
         self.assertEqual(app._batch.focus_key, ("caption", 0))
         self.assertEqual(session.candidates, (candidate(1),))
+
+    def test_batch_item_title_and_shortcuts_move_between_captions(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        first = app.session
+        second = FakeSession(query=mixed_query(), candidates=(candidate(1),))
+        second.caption = "second"
+        app._batch.batch.add_item(CaptionBatchItem(second))
+        app._navigation.focus_key = ("batch_item", None)
+
+        app._handle_key(curses.KEY_RIGHT)
+
+        self.assertIs(app.session, second)
+        self.assertEqual(app._batch.item_position, (2, 2))
+        self.assertEqual(app._navigation.focus_key, ("batch_item", None))
+
+        app._navigation.focus_key = ("caption", None)
+        app._handle_key("[")
+
+        self.assertIs(app.session, first)
+        self.assertEqual(app._batch.item_position, (1, 2))
+        self.assertEqual(app._navigation.focus_key, ("batch_item", None))
+
+        app._handle_key("[")
+        self.assertIs(app.session, first)
+        self.assertEqual(app._status, "First Caption.")
+
+        app._handle_key("]")
+        self.assertIs(app.session, second)
+        app._handle_key("]")
+        self.assertIs(app.session, second)
+        self.assertEqual(app._status, "Last Caption.")
 
     def test_batch_list_delete_confirmation_uses_batch_owner_and_cleans_removed_session(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
@@ -1141,6 +1195,120 @@ class TuiTests(unittest.TestCase):
         self.assertFalse(app._batch.delete_confirmation_active)
         self.assertTrue(app._batch.in_item)
         self.assertIn("Finish or cancel synthesis before deleting Caption.", app._status)
+
+    def test_accepting_batch_item_stays_on_same_item_until_explicit_navigation(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        accepted_session = app.session
+        accepted_item = app._batch.batch.items[0]
+        next_session = FakeSession(
+            query=mixed_query(),
+            candidates=(candidate(1), candidate(2)),
+        )
+        next_session.caption = "next caption"
+        app._batch.batch.add_item(CaptionBatchItem(next_session))
+        focus_candidate(app, 1)
+
+        app._handle_key("\n")
+
+        self.assertEqual(accepted_session.accept_calls, [1])
+        self.assertTrue(accepted_item.is_accepted)
+        self.assertEqual(accepted_item.accepted_take_number, 1)
+        self.assertTrue(app._batch.in_item)
+        self.assertIs(app.session, accepted_session)
+        self.assertEqual(app._batch.item_position, (1, 2))
+        self.assertEqual(app._navigation.focus_key, ("candidate", 1))
+        self.assertEqual(
+            [item.number for item in next_session.candidates],
+            [1, 2],
+        )
+        self.assertIn("Saved accepted-1.wav.", app._status)
+
+    def test_candidate_replacement_clears_only_matching_acceptance(self):
+        app = self.make_app(
+            query=mixed_query(),
+            candidates=(candidate(1), candidate(2)),
+        )
+        item = app._batch.batch.items[0]
+        app._batch.batch.mark_accepted(item.item_id, 1)
+
+        app._dispatch_operation_effects((CandidateReplacedEffect(2),))
+
+        self.assertTrue(item.is_accepted)
+        self.assertEqual(item.accepted_take_number, 1)
+
+        app._dispatch_operation_effects((CandidateReplacedEffect(1),))
+
+        self.assertFalse(item.is_accepted)
+        self.assertIsNone(item.accepted_take_number)
+
+    def test_batch_candidate_replacement_clears_acceptance_by_stable_item_id(self):
+        app = self.make_app(
+            query=mixed_query(),
+            candidates=(candidate(1), candidate(2)),
+        )
+        first = app._batch.batch.items[0]
+        second_session = FakeSession(
+            query=mixed_query(),
+            candidates=(candidate(1), candidate(2)),
+        )
+        second_session.caption = "second"
+        second = CaptionBatchItem(second_session)
+        app._batch.batch.add_item(second)
+        app._batch.batch.mark_accepted(first.item_id, 2)
+        app._batch.batch.mark_accepted(second.item_id, 1)
+        app._batch.open_item(1)
+        app.session = second_session
+
+        app._dispatch_operation_effects(
+            (BatchCandidateReplacedEffect(first.item_id, 1),)
+        )
+
+        self.assertTrue(first.is_accepted)
+        self.assertTrue(second.is_accepted)
+
+        app._dispatch_operation_effects(
+            (BatchCandidateReplacedEffect(first.item_id, 2),)
+        )
+
+        self.assertFalse(first.is_accepted)
+        self.assertTrue(second.is_accepted)
+        self.assertIs(app.session, second_session)
+
+    def test_failed_generation_start_preserves_existing_acceptance(self):
+        app = self.make_app(query=mixed_query(), candidates=())
+        item = app._batch.batch.items[0]
+        app._batch.batch.mark_accepted(item.item_id, 1)
+        app.session.generate_error = RuntimeError("cannot start")
+
+        app._handle_key("g")
+
+        self.assertTrue(item.is_accepted)
+        self.assertEqual(item.accepted_take_number, 1)
+        self.assertIn(
+            "Error: Could not start take generation: cannot start",
+            app._status,
+        )
+
+    def test_failed_batch_item_acceptance_stays_on_same_item(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        session = app.session
+        item = app._batch.batch.items[0]
+        session.accept_error = RuntimeError("disk full")
+        focus_candidate(app, 1)
+
+        app._handle_key("\n")
+
+        self.assertTrue(app._batch.in_item)
+        self.assertIs(app.session, session)
+        self.assertFalse(item.is_accepted)
+        self.assertEqual(
+            [candidate.number for candidate in session.candidates],
+            [1],
+        )
+        self.assertIn(
+            "Error: Could not save take 1: disk full",
+            app._status,
+        )
 
     def test_batch_list_take_count_updates_default_and_existing_item_session(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -2453,11 +2621,20 @@ class TuiTests(unittest.TestCase):
 
     def test_enter_on_candidate_accepts_and_saves_when_not_busy(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        session = app.session
+        item = app._batch.batch.items[0]
         app._operations.play_take = Mock(return_value=())
         focus_candidate(app, 1)
+
         app._handle_key("\n")
-        self.assertEqual(app.session.accept_calls, [1])
-        self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
+
+        self.assertEqual(session.accept_calls, [1])
+        self.assertTrue(item.is_accepted)
+        self.assertEqual(item.accepted_take_number, 1)
+        self.assertEqual([item.number for item in session.candidates], [1])
+        self.assertTrue(app._batch.in_item)
+        self.assertIs(app.session, session)
+        self.assertEqual(app._navigation.focus_key, ("candidate", 1))
 
     def test_english_word_phoneme_edit_commits_directly_to_flat_query(self):
         phones = ["HH", "AY1", "!", "DH", "EH1", "R"]

@@ -30,6 +30,7 @@ def context(
     candidate_numbers=(),
     busy=False,
     has_active_batch=False,
+    has_item_navigator=False,
 ):
     return NavigationContext(
         has_session=has_session,
@@ -37,6 +38,7 @@ def context(
         candidate_numbers=tuple(candidate_numbers),
         busy=busy,
         has_active_batch=has_active_batch,
+        has_item_navigator=has_item_navigator,
     )
 
 
@@ -69,6 +71,18 @@ class TuiNavigationTests(unittest.TestCase):
                 ("help", None),
                 ("quit", None),
             ),
+        )
+
+    def test_batch_item_navigator_is_first_navigation_stop_when_enabled(self):
+        state = context(has_item_navigator=True)
+
+        self.assertEqual(
+            self.navigation.navigation_items(state)[0],
+            ("batch_item", None),
+        )
+        self.assertEqual(
+            self.navigation.major_navigation_stops(state)[0],
+            ("batch_item", None),
         )
 
     def test_no_session_omits_session_actions_and_rows(self):

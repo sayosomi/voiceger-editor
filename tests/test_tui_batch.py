@@ -20,6 +20,7 @@ from voiceger_editor.tui_batch import (
 class FakeSession:
     def __init__(self, caption):
         self.caption = caption
+        self.candidates = []
         self.closed = False
         self.close_calls = 0
 
@@ -37,6 +38,8 @@ class TuiBatchControllerTests(unittest.TestCase):
 
     def make_bindings(self):
         operations = Mock()
+        operations.busy = False
+        operations.worker_operation = None
         operations.start_batch_generation.return_value = ()
         navigation = SimpleNamespace(
             focus_key=("takes", None),
@@ -125,7 +128,8 @@ class TuiBatchControllerTests(unittest.TestCase):
         controller.handle_key("\x1b")
 
         self.assertTrue(controller.in_item)
-        self.assertEqual(controller.item_title, "BATCH ITEM 2/2")
+        self.assertEqual(controller.item_title, "BATCH ITEM")
+        self.assertEqual(controller.item_position, (2, 2))
         self.assertEqual(target.session.close_calls, 0)
 
         controller.request_delete_open_item()
@@ -218,6 +222,32 @@ class TuiBatchControllerTests(unittest.TestCase):
         self.assertEqual(final.focus_key, ("takes", None))
         self.assertEqual(only_session.close_calls, 1)
 
+    def test_open_item_identity_survives_reordering(self):
+        controller = self.make_controller("first\nsecond")
+        target = controller.batch.items[1]
+        controller.open_item(1)
+
+        controller.batch.move_item(target.item_id, 0)
+
+        self.assertEqual(controller.open_item_id, target.item_id)
+        self.assertEqual(controller.item_index, 0)
+        self.assertEqual(controller.item_title, "BATCH ITEM")
+        self.assertEqual(controller.item_position, (1, 2))
+
+    def test_complete_acceptance_marks_stable_item_and_stays_open(self):
+        controller = self.make_controller("first\nsecond\nthird")
+        target = controller.batch.items[1]
+        controller.open_item(1)
+
+        controller.batch.move_item(target.item_id, 0)
+        controller.complete_acceptance(target.item_id, 2)
+
+        self.assertTrue(target.is_accepted)
+        self.assertEqual(target.accepted_take_number, 2)
+        self.assertTrue(controller.in_item)
+        self.assertEqual(controller.open_item_id, target.item_id)
+        self.assertEqual(controller.item_position, (1, 3))
+
     def test_enter_opens_focused_caption_by_list_position(self):
         controller = self.make_controller("first\nsecond")
         controller.focus_key = ("caption", 1)
@@ -226,7 +256,8 @@ class TuiBatchControllerTests(unittest.TestCase):
         session = controller.open_item(1)
         self.assertIs(session, controller.batch.items[1].session)
         self.assertTrue(controller.in_item)
-        self.assertEqual(controller.item_title, "BATCH ITEM 2/2")
+        self.assertEqual(controller.item_title, "BATCH ITEM")
+        self.assertEqual(controller.item_position, (2, 2))
 
         controller.close_item()
         self.assertFalse(controller.in_item)
@@ -269,10 +300,50 @@ class TuiBatchControllerTests(unittest.TestCase):
         bindings.set_session.assert_called_once_with(
             controller.batch.items[1].session
         )
-        self.assertEqual(bindings.navigation.focus_key, ("caption", None))
+        self.assertEqual(bindings.navigation.focus_key, ("batch_item", None))
         bindings.navigation.reset_pronunciation_index.assert_called_once_with()
         bindings.set_status.assert_called_once_with("")
-        self.assertEqual(controller.item_title, "BATCH ITEM 2/2")
+        self.assertEqual(controller.item_title, "BATCH ITEM")
+        self.assertEqual(controller.item_position, (2, 2))
+
+    def test_move_open_item_switches_sessions_without_wrapping(self):
+        controller = self.make_controller("first\nsecond")
+        bindings = self.make_bindings()
+        controller.open_item(0)
+
+        controller.move_open_item(1, bindings=bindings)
+
+        self.assertEqual(controller.item_position, (2, 2))
+        bindings.operations.stop_playback.assert_called_once_with()
+        bindings.operations.clear_current_take.assert_called_once_with()
+        bindings.editor_controller.clear_groupings.assert_called_once_with()
+        bindings.set_session.assert_called_once_with(
+            controller.batch.items[1].session
+        )
+        self.assertEqual(bindings.navigation.focus_key, ("batch_item", None))
+        bindings.set_status.assert_called_with("")
+
+        bindings.set_status.reset_mock()
+        controller.move_open_item(1, bindings=bindings)
+        self.assertEqual(controller.item_position, (2, 2))
+        bindings.set_status.assert_called_once_with("Last Caption.")
+
+        controller.move_open_item(-1, bindings=bindings)
+        self.assertEqual(controller.item_position, (1, 2))
+
+    def test_move_open_item_is_blocked_while_synthesis_is_busy(self):
+        controller = self.make_controller("first\nsecond")
+        bindings = self.make_bindings()
+        controller.open_item(0)
+        bindings.operations.busy = True
+
+        controller.move_open_item(1, bindings=bindings)
+
+        self.assertEqual(controller.item_position, (1, 2))
+        bindings.set_session.assert_not_called()
+        bindings.set_status.assert_called_once_with(
+            "Wait for the current synthesis operation to finish."
+        )
 
     def test_dispatch_generate_selected_uses_owned_batch_and_navigation_revision(self):
         controller = self.make_controller("first\nsecond")
@@ -287,6 +358,41 @@ class TuiBatchControllerTests(unittest.TestCase):
             navigation_revision=7,
         )
         bindings.dispatch_operation_effects.assert_called_once_with(effects)
+
+    def test_dispatch_generation_preserves_acceptance_until_replacement_ready(self):
+        controller = self.make_controller("first\nsecond")
+        first, second = controller.batch.items
+        controller.batch.mark_accepted(first.item_id, 1)
+        controller.batch.mark_accepted(second.item_id, 1)
+        second.included_for_generation = False
+        bindings = self.make_bindings()
+
+        def start_batch_generation(_batch, *, navigation_revision):
+            bindings.operations.busy = True
+            bindings.operations.worker_operation = "batch_generate"
+            return ()
+
+        bindings.operations.start_batch_generation.side_effect = start_batch_generation
+        controller.dispatch_actions((GenerateSelected(),), bindings)
+
+        self.assertTrue(first.is_accepted)
+        self.assertTrue(second.is_accepted)
+
+    def test_replacement_invalidates_only_matching_item_acceptance(self):
+        controller = self.make_controller("first\nsecond")
+        first, second = controller.batch.items
+        controller.batch.mark_accepted(first.item_id, 2)
+        controller.batch.mark_accepted(second.item_id, 1)
+
+        controller.invalidate_acceptance_for_replacement(first.item_id, 1)
+
+        self.assertTrue(first.is_accepted)
+        self.assertTrue(second.is_accepted)
+
+        controller.invalidate_acceptance_for_replacement(first.item_id, 2)
+
+        self.assertFalse(first.is_accepted)
+        self.assertTrue(second.is_accepted)
 
     def test_dispatch_take_adjustment_keeps_batch_default_as_source_of_truth(self):
         controller = self.make_controller("first")

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 
 FocusKey = Tuple[str, Optional[int]]
@@ -18,6 +18,31 @@ class NavigationContext:
     candidate_numbers: tuple[int, ...]
     busy: bool
     has_active_batch: bool
+    has_item_navigator: bool = False
+
+    @classmethod
+    def from_session(
+        cls,
+        session: Any | None,
+        *,
+        pronunciation_count: int,
+        busy: bool,
+        has_item_navigator: bool,
+    ) -> "NavigationContext":
+        return cls(
+            has_session=session is not None,
+            pronunciation_count=pronunciation_count,
+            candidate_numbers=(
+                tuple(candidate.number for candidate in session.candidates)
+                if session is not None
+                else ()
+            ),
+            busy=busy,
+            has_active_batch=(
+                session.has_active_batch if session is not None else False
+            ),
+            has_item_navigator=has_item_navigator,
+        )
 
 
 @dataclass(frozen=True)
@@ -136,11 +161,14 @@ class TuiNavigation:
         self.revision = 0
 
     def navigation_items(self, context: NavigationContext) -> tuple[FocusKey, ...]:
-        items: list[FocusKey] = [
+        items: list[FocusKey] = []
+        if context.has_item_navigator:
+            items.append(("batch_item", None))
+        items.extend([
             ("settings_summary", None),
             ("output", None),
             ("caption", None),
-        ]
+        ])
         if context.has_session:
             items.append(("build_pronunciation", None))
             items.extend(

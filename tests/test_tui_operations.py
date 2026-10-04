@@ -9,6 +9,8 @@ from unittest.mock import Mock, patch
 
 from voiceger_editor.caption_batch import CaptionBatch, CaptionBatchItem
 from voiceger_editor.tui_operations import (
+    BatchCandidateReplacedEffect,
+    CandidateReplacedEffect,
     DiscardInitialBatchEffect,
     FocusEffect,
     PlayPreviewEffect,
@@ -16,6 +18,7 @@ from voiceger_editor.tui_operations import (
     PreviewFailedEvent,
     PreviewReadyEvent,
     StopPlaybackEffect,
+    TakeAcceptedEffect,
     TuiOperations,
     UpdateStatusEffect,
 )
@@ -515,6 +518,7 @@ class TuiOperationsTests(unittest.TestCase):
             self.consume(FakeSession((candidate(1), replacement))),
             (
                 UpdateStatusEffect("Take 2 replacement ready."),
+                CandidateReplacedEffect(2),
                 PlayTakeEffect(2),
             ),
         )
@@ -528,7 +532,13 @@ class TuiOperationsTests(unittest.TestCase):
         self.operations.busy = True
         self.operations.events.put(("candidate", replacement))
         effects = self.consume(FakeSession((candidate(1), replacement)))
-        self.assertEqual(effects, (UpdateStatusEffect("Take 2 replacement ready."),))
+        self.assertEqual(
+            effects,
+            (
+                UpdateStatusEffect("Take 2 replacement ready."),
+                CandidateReplacedEffect(2),
+            ),
+        )
         self.assertEqual(self.operations.current_take, 1)
 
     def test_regenerate_all_preserves_selection_and_plays_only_its_replacement(self):
@@ -543,7 +553,9 @@ class TuiOperationsTests(unittest.TestCase):
             self.consume(FakeSession((one, two, three))),
             (
                 UpdateStatusEffect("Regenerating 2/3 · 1 ready"),
+                CandidateReplacedEffect(1),
                 UpdateStatusEffect("Regenerating 3/3 · 2 ready"),
+                CandidateReplacedEffect(3),
             ),
         )
         self.assertEqual(self.operations.current_take, 2)
@@ -552,6 +564,7 @@ class TuiOperationsTests(unittest.TestCase):
             self.consume(FakeSession((one, two, three))),
             (
                 UpdateStatusEffect("Regenerating 3/3 · 3 ready"),
+                CandidateReplacedEffect(2),
                 PlayTakeEffect(2),
             ),
         )
@@ -874,7 +887,7 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(process.wait.call_args_list[0].kwargs, {"timeout": 0.25})
         self.assertEqual(process.wait.call_args_list[1].args, ())
 
-    def test_candidate_acceptance_stops_playback_clears_current_and_requests_focus(self):
+    def test_candidate_acceptance_stops_playback_and_keeps_navigation_focus(self):
         session = FakeSession((candidate(3),))
         process = Mock()
         process.poll.return_value = None
@@ -892,7 +905,7 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(
             effects,
             (
-                FocusEffect(("pronunciation", 2)),
+                TakeAcceptedEffect(3),
                 UpdateStatusEffect("Saved saved.wav and saved.txt."),
             ),
         )
@@ -1116,6 +1129,42 @@ class TuiBatchGenerationTests(unittest.TestCase):
         self.assertEqual(
             statuses[-1],
             "Batch generation finished. 5/5 take(s) ready.",
+        )
+        replacements = [
+            effect
+            for effect in consumed
+            if isinstance(effect, BatchCandidateReplacedEffect)
+        ]
+        self.assertEqual(
+            replacements,
+            [
+                BatchCandidateReplacedEffect("second", 1),
+                BatchCandidateReplacedEffect("second", 2),
+                BatchCandidateReplacedEffect("second", 3),
+            ],
+        )
+
+    def test_failed_replacement_reports_only_completed_candidate_replacements(self):
+        log = []
+        session = BatchFakeSession("only", log, existing=True, fail_take=2)
+        batch = self.make_batch(
+            CaptionBatchItem(session, item_id="only"),
+            default_take_count=3,
+        )
+        operations = TuiOperations()
+
+        operations.start_batch_generation(batch, navigation_revision=0)
+        operations.join_worker()
+        consumed = self.consume(operations)
+
+        replacements = [
+            effect
+            for effect in consumed
+            if isinstance(effect, BatchCandidateReplacedEffect)
+        ]
+        self.assertEqual(
+            replacements,
+            [BatchCandidateReplacedEffect("only", 1)],
         )
 
     def test_zero_selection_does_not_start_worker(self):

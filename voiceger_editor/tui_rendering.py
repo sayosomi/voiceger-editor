@@ -65,6 +65,7 @@ _HELP_ITEMS = (
         ": Caption / Build pronunciation / Add section / Generate or regenerate all",
     ),
     ("1-9", ": focus and play an available Take"),
+    ("[ / ]", ": previous / next Batch Item Caption"),
     (main_shortcut("clear_candidates").shortcut.upper(), ": clear candidates through confirmation"),
     ("R", ": regenerate the focused Take"),
     (main_shortcut("settings").shortcut.upper(), ": open Settings"),
@@ -106,6 +107,8 @@ class TuiRenderState:
     operation_total: int
     pressed_adjustment: tuple[str, str, int] | None
     editor: EditorRenderState | None
+    accepted_take_number: int | None = None
+    batch_item_position: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -400,7 +403,19 @@ class TuiRenderer:
             key = ("caption", index)
             marker = "▶ " if key == focus_key else "  "
             selected = "x" if item.included_for_generation else " "
-            prefix = f"{marker}[{selected}] {index + 1}  "
+            candidate_count = len(item.session.candidates)
+            if item.is_accepted:
+                review_state = "[✓] "
+            elif candidate_count:
+                target_count = batch.effective_take_count(item)
+                if candidate_count >= target_count:
+                    review_state = "[!] "
+                else:
+                    percent = round(candidate_count * 100 / target_count)
+                    review_state = f"[{percent}%] "
+            else:
+                review_state = ""
+            prefix = f"{marker}[{selected}] {index + 1}  {review_state}"
             available = max(1, width - 1 - _display_width(prefix))
             pieces = _wrap_text(item.caption, available) or [""]
             lines.append(NavigationLine(prefix + pieces[0], key, key))
@@ -449,13 +464,14 @@ class TuiRenderer:
 
         safe_add = self._safe_add
         selected_count = len(batch.included_items)
+        accepted_count = len(batch.accepted_items)
         requested = sum(
             batch.effective_take_count(item) for item in batch.included_items
         )
         take_label = "take" if requested == 1 else "takes"
         header = (
             f"BATCH LIST · {selected_count}/{len(batch)} selected · "
-            f"{requested} {take_label}"
+            f"{requested} {take_label} · Accepted {accepted_count}/{len(batch)}"
         )
         safe_add(
             screen,
@@ -521,13 +537,33 @@ class TuiRenderer:
         title: str = "Voiceger Editor",
     ) -> None:
         safe_add = self._safe_add
+        header = title
+        if state.batch_item_position is not None:
+            current, total = state.batch_item_position
+            position = f"< {current} / {total} >"
+            available = max(1, width - 1)
+            title_width = max(
+                0,
+                available - _display_width(position) - 1,
+            )
+            title_part = _truncate_display(title, title_width)
+            gap = max(
+                1,
+                available
+                - _display_width(title_part)
+                - _display_width(position),
+            )
+            header = title_part + (" " * gap) + position
+        header_attr = self._attribute("A_BOLD")
+        if state.focus_key == ("batch_item", None):
+            header_attr |= self._focus_attribute()
         safe_add(
             screen,
             0,
             0,
-            title,
+            header,
             width,
-            self._attribute("A_BOLD"),
+            header_attr,
         )
         settings = state.settings
         style_name = next(
@@ -786,10 +822,13 @@ class TuiRenderer:
                     candidate.frame_count,
                     candidate.sampling_rate,
                 )
+                accepted_marker = (
+                    "✓ " if candidate.number == state.accepted_take_number else ""
+                )
                 label = (
-                    f"[{candidate.number}] Take {candidate.number}  {duration:.2f}s"
+                    f"[{candidate.number}] {accepted_marker}Take {candidate.number}  {duration:.2f}s"
                     if candidate.number <= 9
-                    else f"Take {candidate.number}  {duration:.2f}s"
+                    else f"{accepted_marker}Take {candidate.number}  {duration:.2f}s"
                 )
                 action(
                     ("candidate", candidate.number),
