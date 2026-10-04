@@ -704,6 +704,7 @@ class TuiRenderingTests(unittest.TestCase):
             "Batch List Add captions / Generate selected",
             "Menu mode: editor/modal action letters are active.",
             "Editing: Enter finishes; printable shortcut letters insert text.",
+            "Add captions: Enter inserts a new line; Ctrl+D finishes editing.",
         ):
             self.assertIn(text, visible)
         for removed in (
@@ -953,6 +954,29 @@ class TuiRenderingTests(unittest.TestCase):
                     if row == screen.rows - 1
                 ]
                 self.assertEqual(status, ["Enter: Finish editing   Esc: Back"])
+
+    def test_add_captions_editor_status_hint_explains_multiline_controls(self):
+        editor = SimpleNamespace(
+            kind="caption", title="ADD CAPTIONS", selection="draft",
+            payload={"draft": "first\nsecond", "multiline": True},
+            active_field="draft", input_value="first\nsecond", input_cursor=12,
+            error="", scroll=0,
+        )
+        screen = FakeScreen(rows=10, columns=80)
+
+        self.renderer.render_editor(
+            screen, render_state(editor=editor), screen.rows, screen.columns
+        )
+
+        status = [
+            text
+            for row, _column, text, _attr in screen.drawn
+            if row == screen.rows - 1
+        ]
+        self.assertEqual(
+            status,
+            ["Enter: New line   Ctrl+D: Finish editing   Esc: Back"],
+        )
 
     def test_editor_status_hint_disappears_after_editing_finishes(self):
         editor = SimpleNamespace(
