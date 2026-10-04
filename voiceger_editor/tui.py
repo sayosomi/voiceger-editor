@@ -247,6 +247,8 @@ class TuiApp:
             )
             if outcome is HelpOutcome.QUIT:
                 self._activate_quit()
+            elif outcome is HelpOutcome.CLOSED:
+                pass
             return
         if self._dictionary_controller.active:
             intents = self._dictionary_controller.handle_key(
