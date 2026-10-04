@@ -154,6 +154,17 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         self.assertFalse(target.is_accepted)
         self.assertIsNone(target.accepted_take_number)
 
+    def test_escape_keeps_batch_item_open_while_take_is_saving(self):
+        subject, batch, bindings, state = self.make_subject()
+        bindings.actions.operations.busy = True
+        bindings.actions.operations.worker_operation = "accept"
+
+        subject.handle_key("\x1b", bindings)
+
+        self.assertTrue(batch.in_item)
+        self.assertIs(state["session"], batch.batch.items[0].session)
+        bindings.actions.set_status.assert_not_called()
+
     def test_generate_take_count_adjustment_uses_existing_settings_owner(self):
         subject, _batch, bindings, _state = self.make_subject()
         bindings.actions.navigation.focus_key = ("generate", None)
