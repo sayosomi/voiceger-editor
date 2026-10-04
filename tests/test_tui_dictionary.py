@@ -626,6 +626,168 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.assertIsInstance(intents[0], PreviewIntent)
         self.assertEqual(self.core.japanese, before)
 
+    def test_existing_entry_navigator_moves_without_wrapping_for_both_languages(self):
+        cases = (
+            (
+                "ja",
+                {
+                    "first-ja": ja_word("あめ", "アメ", 1),
+                    "second-ja": ja_word("ぶどう", "ブドウ", 2),
+                },
+                ("あめ", "ぶどう"),
+            ),
+            (
+                "en",
+                {
+                    "Apple": en_word("Apple", ["AE1", "P", "AH0", "L"]),
+                    "zebra": en_word("zebra", ["Z", "IY1", "B", "R", "AH0"]),
+                },
+                ("Apple", "zebra"),
+            ),
+        )
+        for language, entries, surfaces in cases:
+            with self.subTest(language=language):
+                core = FakeDictionaryCore()
+                if language == "ja":
+                    core.japanese.update(entries)
+                else:
+                    core.english.update(entries)
+                controller = TuiDictionaryController(
+                    core,
+                    input_prefix=lambda _editor: "▶ ",
+                )
+                controller.open_menu()
+                controller.handle_key("j" if language == "ja" else "e")
+                controller.handle_key("\n")
+
+                editor = controller.editor
+                self.assertEqual(editor.payload["entry_index"], 0)
+                self.assertEqual(editor.payload["entry_total"], 2)
+                self.assertEqual(
+                    editor.payload["surface"],
+                    normalize_surface(surfaces[0]) if language == "ja" else surfaces[0],
+                )
+
+                controller.handle_key("]")
+                editor = controller.editor
+                self.assertEqual(editor.payload["entry_index"], 1)
+                self.assertEqual(editor.payload["entry_total"], 2)
+                self.assertEqual(editor.selection, "entry_navigator")
+                self.assertEqual(
+                    editor.payload["surface"],
+                    normalize_surface(surfaces[1]) if language == "ja" else surfaces[1],
+                )
+
+                boundary = controller.handle_key("]")
+                self.assertEqual(boundary[0].status, "Last dictionary word.")
+                self.assertEqual(controller.editor.payload["entry_index"], 1)
+
+                controller.handle_key(curses.KEY_LEFT)
+                self.assertEqual(controller.editor.payload["entry_index"], 0)
+                self.assertEqual(controller.editor.selection, "entry_navigator")
+
+                boundary = controller.handle_key(curses.KEY_LEFT)
+                self.assertEqual(boundary[0].status, "First dictionary word.")
+                self.assertEqual(controller.editor.payload["entry_index"], 0)
+
+                controller.handle_key(curses.KEY_RIGHT)
+                self.assertEqual(controller.editor.payload["entry_index"], 1)
+
+                controller.handle_key("\x1b")
+                self.assertIn(
+                    controller.editor.kind,
+                    {"dictionary_japanese_list", "dictionary_english_list"},
+                )
+                self.assertEqual(controller.editor.selection, ("entry", 1))
+
+    def test_dirty_entry_navigation_uses_existing_discard_confirmation(self):
+        self.core.english["Apple"] = en_word(
+            "Apple", ["AE1", "P", "AH0", "L"]
+        )
+        self.core.english["zebra"] = en_word(
+            "zebra", ["Z", "IY1", "B", "R", "AH0"]
+        )
+        self.controller.open_menu()
+        self.key("e")
+        self.key("\n")
+        editor = self.controller.editor
+        editor.payload["surface"] = "draft"
+
+        self.key("]")
+        self.assertEqual(
+            self.controller.editor.kind,
+            "dictionary_discard_confirmation",
+        )
+
+        self.key("\x1b")
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_entry")
+        self.assertEqual(self.controller.editor.payload["surface"], "draft")
+        self.assertEqual(self.controller.editor.payload["entry_index"], 0)
+
+        self.key("]")
+        self.key("d")
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_entry")
+        self.assertEqual(self.controller.editor.payload["surface"], "zebra")
+        self.assertEqual(self.controller.editor.payload["entry_index"], 1)
+        self.assertEqual(self.controller.editor.selection, "entry_navigator")
+        self.assertIn("Apple", self.core.english)
+        self.assertNotIn("draft", self.core.english)
+
+    def test_add_and_quick_save_entry_screens_do_not_have_navigator(self):
+        for language in ("ja", "en"):
+            with self.subTest(language=language):
+                controller = TuiDictionaryController(
+                    FakeDictionaryCore(),
+                    input_prefix=lambda _editor: "▶ ",
+                )
+                controller.open_menu()
+                controller.handle_key("j" if language == "ja" else "e")
+                controller.handle_key("a")
+                editor = controller.editor
+                self.assertIsNone(editor.payload["entry_index"])
+                self.assertIsNone(editor.payload["entry_total"])
+
+        self.controller.open_quick_save_english(
+            surface="record",
+            phonemes="R EH1 K ER0 D",
+        )
+        editor = self.controller.editor
+        self.assertIsNone(editor.payload["entry_index"])
+        self.assertIsNone(editor.payload["entry_total"])
+
+    def test_existing_entry_navigator_does_not_override_field_left_right(self):
+        self.core.japanese["first"] = ja_word("あめ", "アメ", 1)
+        self.core.japanese["second"] = ja_word("ぶどう", "ブドウ", 2)
+        self.controller.open_menu()
+        self.key("j")
+        self.key("\n")
+        editor = self.controller.editor
+
+        editor.selection = "pronunciation"
+        self.key(curses.KEY_RIGHT)
+
+        self.assertEqual(editor.payload["entry_index"], 0)
+        self.assertEqual(editor.payload["accent"], 2)
+
+        self.controller.open_menu()
+        self.core.english["record"] = en_word(
+            "record", ["R", "EH1", "K", "ER0", "D"]
+        )
+        self.core.english["zebra"] = en_word(
+            "zebra", ["Z", "IY1", "B", "R", "AH0"]
+        )
+        self.key("e")
+        self.key("\n")
+        editor = self.controller.editor
+        editor.selection = "phonemes"
+        self.key(curses.KEY_RIGHT)
+
+        self.assertEqual(editor.payload["entry_index"], 0)
+        self.assertEqual(
+            editor.payload["phonemes"],
+            ("R", "EH0", "K", "ER1", "D"),
+        )
+
     def test_dirty_back_and_escape_require_discard_confirmation(self):
         self.controller.open_quick_save_english(
             surface="Voiceger",

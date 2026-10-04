@@ -1118,6 +1118,102 @@ class TuiRenderingTests(unittest.TestCase):
             ],
         )
 
+    def test_dictionary_existing_entry_titles_have_right_aligned_navigator(self):
+        cases = (
+            SimpleNamespace(
+                kind="dictionary_japanese_entry",
+                title="EDIT JAPANESE DICTIONARY WORD",
+                selection="entry_navigator",
+                payload={
+                    "surface": "あめ",
+                    "moras": ("ア", "メ"),
+                    "accent": 1,
+                    "word_type": SimpleNamespace(value="PROPER_NOUN"),
+                    "priority": 5,
+                    "entry_index": 1,
+                    "entry_total": 4,
+                },
+                active_field=None,
+                input_value="",
+                input_cursor=0,
+                error="",
+                scroll=0,
+            ),
+            SimpleNamespace(
+                kind="dictionary_english_entry",
+                title="EDIT ENGLISH DICTIONARY WORD",
+                selection="entry_navigator",
+                payload={
+                    "surface": "hello",
+                    "phonemes": ("HH", "AH0", "L", "OW1"),
+                    "entry_index": 1,
+                    "entry_total": 4,
+                },
+                active_field=None,
+                input_value="",
+                input_cursor=0,
+                error="",
+                scroll=0,
+            ),
+        )
+        for editor in cases:
+            with self.subTest(kind=editor.kind):
+                document, _cursor_line, _cursor_column = self.renderer.editor_document(
+                    render_state(editor=editor), 50
+                )
+
+                self.assertEqual(document[0][1], "entry_navigator")
+                self.assertTrue(document[0][0].startswith(editor.title))
+                self.assertTrue(document[0][0].endswith("< 2 / 4 >"))
+                self.assertLessEqual(_display_width(document[0][0]), 49)
+
+                screen = FakeScreen(rows=24, columns=50)
+                self.renderer.render_editor(
+                    screen,
+                    render_state(editor=editor),
+                    screen.rows,
+                    screen.columns,
+                )
+                header = next(item for item in screen.drawn if item[0] == 0)
+                self.assertTrue(header[2].endswith("< 2 / 4 >"))
+                self.assertTrue(header[3] & curses.A_REVERSE)
+
+                editor.selection = "surface"
+                screen = FakeScreen(rows=24, columns=50)
+                self.renderer.render_editor(
+                    screen,
+                    render_state(editor=editor),
+                    screen.rows,
+                    screen.columns,
+                )
+                header = next(item for item in screen.drawn if item[0] == 0)
+                self.assertFalse(header[3] & curses.A_REVERSE)
+
+    def test_dictionary_add_entry_title_has_no_navigator(self):
+        editor = SimpleNamespace(
+            kind="dictionary_english_entry",
+            title="ADD ENGLISH DICTIONARY WORD",
+            selection="surface",
+            payload={
+                "surface": "",
+                "phonemes": (),
+                "entry_index": None,
+                "entry_total": None,
+            },
+            active_field="surface",
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 50
+        )
+
+        self.assertEqual(document[0], ("ADD ENGLISH DICTIONARY WORD", None))
+        self.assertNotIn("<", document[0][0])
+
     def test_dictionary_menu_renders_language_shortcuts(self):
         editor = SimpleNamespace(
             kind="dictionary_menu",

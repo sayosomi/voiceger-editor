@@ -16,7 +16,9 @@ from typing import TYPE_CHECKING, Any, Callable, Iterable, Union
 
 from .caption_batch import CaptionBatch
 from .session import UtteranceSession
+from .settings import Settings
 from .tui_status import Status, error_status, info_status, warning_status
+from .voiceger_adapter import VoicegerAdapter
 from .voicevox_api_models import AudioQuery
 
 if TYPE_CHECKING:
@@ -446,6 +448,9 @@ class TuiOperations:
         self,
         session: UtteranceSession | None,
         query: AudioQuery,
+        *,
+        adapter: VoicegerAdapter | None = None,
+        settings: Settings | None = None,
     ) -> tuple[OperationEffect, ...]:
         """Synthesize one fixed transient query on the background worker."""
 
@@ -453,10 +458,17 @@ class TuiOperations:
             return (
                 UpdateStatusEffect("Wait for the current operation to finish."),
             )
-        if session is None:
-            return ()
         try:
             query_snapshot = query.model_copy(deep=True)
+            if session is None:
+                if adapter is None or settings is None:
+                    raise RuntimeError("Preview synthesis context is unavailable")
+                session = UtteranceSession(
+                    adapter=adapter,
+                    caption="Dictionary Preview",
+                    query=query_snapshot,
+                    settings=settings,
+                )
         except Exception as exc:
             return (UpdateStatusEffect(error_status(f"Could not start Preview: {exc}")),)
 

@@ -524,7 +524,12 @@ class TuiApp:
                 )
             elif isinstance(intent, PreviewIntent):
                 self._dispatch_operation_effects(
-                    self._operations.start_preview(self.session, intent.query)
+                    self._operations.start_preview(
+                        self.session,
+                        intent.query,
+                        adapter=self.adapter,
+                        settings=self.settings,
+                    )
                 )
             elif isinstance(intent, ApplyCaptionIntent):
                 result = self._apply_caption(intent.caption)
