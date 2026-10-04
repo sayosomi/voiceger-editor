@@ -36,6 +36,7 @@ from .tui_operations import (
     PlayPreviewEffect,
     PlayTakeEffect,
     StopPlaybackEffect,
+    TakeAcceptedEffect,
     TuiOperations,
     UpdateStatusEffect,
 )
@@ -189,6 +190,7 @@ class TuiApp:
             while not self._exit_requested:
                 self._consume_events()
                 self._render()
+                self._operations.start_pending_worker()
                 key = self._read_key()
                 if key is not None:
                     self._handle_key(key)
@@ -198,6 +200,7 @@ class TuiApp:
                 if not self._operations.busy:
                     break
                 self._render()
+                self._operations.start_pending_worker()
                 self._read_key()
         finally:
             try:
@@ -544,6 +547,8 @@ class TuiApp:
                 if self.session is not None:
                     self.session.discard_takes()
                 self._batch.clear_open_item_acceptance()
+            elif isinstance(effect, TakeAcceptedEffect):
+                self._batch.complete_acceptance(effect.item_id, effect.number)
             elif isinstance(effect, BatchCandidateReplacedEffect):
                 self._batch.invalidate_acceptance_for_replacement(
                     effect.item_id,
