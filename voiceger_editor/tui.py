@@ -15,6 +15,7 @@ from .styles import available_styles
 from .tui_cli import build_argument_parser, settings_for_invocation
 from .tui_display import _adjustable_value, format_english_phonemes
 from .tui_dictionary import TuiDictionaryController
+from .tui_help import HelpOutcome, TuiHelpController
 from .tui_rendering import TuiRenderer, TuiRenderState, _HELP_ITEMS, _active_input_prefix
 from .tui_editors import (
     AdjustmentPressedIntent, ApplyCaptionIntent, ApplySettingsIntent,
@@ -37,12 +38,10 @@ from .tui_operations import (
     TuiOperations,
     UpdateStatusEffect,
 )
-from .tui_shortcuts import resolve_shortcut
 from .tui_navigation import NavigationAction, NavigationContext, TuiNavigation
 from .voiceger_adapter import VoicegerAdapter
 
 
-_ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
 _ESCAPE = "\x1b"
 
 
@@ -82,8 +81,7 @@ class TuiApp:
             set_status=lambda status: setattr(self, "_status", status),
             save=lambda value, path: save_settings(value, path),
         )
-        self._help_open = False
-        self._help_scroll = 0
+        self._help_controller = TuiHelpController()
         self._editor_controller = TuiEditorController(
             english_word_groups=self.adapter.english_word_phoneme_groups,
             available_styles=lambda: available_styles(self.adapter.voiceger_root),
@@ -148,6 +146,22 @@ class TuiApp:
     def config_path(self, value: str | os.PathLike[str] | None) -> None:
         self._settings_controller.config_path = value
 
+    @property
+    def _help_open(self) -> bool:
+        return self._help_controller.active
+
+    @_help_open.setter
+    def _help_open(self, value: bool) -> None:
+        self._help_controller.active = value
+
+    @property
+    def _help_scroll(self) -> int:
+        return self._help_controller.scroll
+
+    @_help_scroll.setter
+    def _help_scroll(self, value: int) -> None:
+        self._help_controller.scroll = value
+
     def run(self, screen: Any) -> None:
         self._screen = screen
         self.session = None
@@ -207,8 +221,7 @@ class TuiApp:
         return key
 
     def _open_help(self) -> None:
-        self._help_scroll = 0
-        self._help_open = True
+        self._help_controller.open()
 
     def _mark_adjustment_pressed(self, area: str, control: str, direction: int) -> None:
         self._pressed_adjustment = (
@@ -221,39 +234,21 @@ class TuiApp:
         if key == _ESCAPE and self._operations.can_cancel_batch:
             self._dispatch_operation_effects(self._operations.request_batch_cancellation())
             return
-        if self._help_open:
-            if key in ("q", "Q", "\x03"):
-                self._help_open = False
+        if self._help_controller.active:
+            height, width = (
+                self._screen.getmaxyx()
+                if self._screen is not None
+                else (24, 80)
+            )
+            outcome = self._help_controller.handle_key(
+                key,
+                height=height,
+                max_scroll=self._renderer.help_max_scroll(height, width),
+            )
+            if outcome is HelpOutcome.QUIT:
                 self._activate_quit()
-                return
-            if (
-                key in {_ESCAPE, "?", *_ENTER_KEYS}
-                or resolve_shortcut("help", key) is not None
-            ):
-                self._help_open = False
-                return
-            if key in {
-                curses.KEY_UP,
-                curses.KEY_DOWN,
-                curses.KEY_PPAGE,
-                curses.KEY_NPAGE,
-            }:
-                height, width = (
-                    self._screen.getmaxyx()
-                    if self._screen is not None
-                    else (24, 80)
-                )
-                max_scroll = self._renderer.help_max_scroll(height, width)
-                page_step = max(1, height - 3)
-                delta = {
-                    curses.KEY_UP: -1,
-                    curses.KEY_DOWN: 1,
-                    curses.KEY_PPAGE: -page_step,
-                    curses.KEY_NPAGE: page_step,
-                }[key]
-                self._help_scroll = max(
-                    0, min(max_scroll, self._help_scroll + delta)
-                )
+            elif outcome is HelpOutcome.CLOSED:
+                pass
             return
         if self._dictionary_controller.active:
             intents = self._dictionary_controller.handle_key(
@@ -595,13 +590,22 @@ class TuiApp:
                 else self._editor_controller.editor
             )
             curses.curs_set(
-                0 if self._help_open else 1 if editor and editor.active_field else 0
+                0
+                if self._help_controller.active
+                else 1
+                if editor and editor.active_field
+                else 0
             )
         except curses.error:
             pass
-        if self._help_open:
-            self._help_scroll = self._renderer.render_help(
-                screen, width, self._help_scroll
+        if self._help_controller.active:
+            self._help_controller.clamp_scroll(
+                self._renderer.help_max_scroll(height, width)
+            )
+            self._renderer.render_help(
+                screen,
+                width,
+                self._help_controller.scroll,
             )
         elif self._dictionary_controller.active or self._editor_controller.editor is not None:
             self._renderer.render_editor(
