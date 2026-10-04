@@ -23,6 +23,7 @@ from voiceger_editor.tui_operations import (
     CandidateReplacedEffect,
     PlayPreviewEffect,
 )
+from voiceger_editor.tui_status import EMPTY_STATUS, StatusKind, info_status
 from voiceger_editor.tui import (
     TuiApp,
     build_argument_parser,
@@ -1285,9 +1286,10 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(item.is_accepted)
         self.assertEqual(item.accepted_take_number, 1)
         self.assertIn(
-            "Error: Could not start take generation: cannot start",
+            "Could not start take generation: cannot start",
             app._status,
         )
+        self.assertIs(app._status.kind, StatusKind.ERROR)
 
     def test_failed_batch_item_acceptance_stays_on_same_item(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
@@ -1306,9 +1308,10 @@ class TuiTests(unittest.TestCase):
             [1],
         )
         self.assertIn(
-            "Error: Could not save take 1: disk full",
+            "Could not save take 1: disk full",
             app._status,
         )
+        self.assertIs(app._status.kind, StatusKind.ERROR)
 
     def test_batch_list_take_count_updates_default_and_existing_item_session(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1413,7 +1416,7 @@ class TuiTests(unittest.TestCase):
 
     def test_ordinary_navigation_movement_preserves_existing_status(self):
         app = self.make_app(query=mixed_query())
-        app._status = "Saved output.wav."
+        app._status = info_status("Saved output.wav.")
 
         while app._navigation.focus_key != ("quit", None):
             app._handle_key(curses.KEY_DOWN)
@@ -2480,7 +2483,7 @@ class TuiTests(unittest.TestCase):
             app.config_path = Path(directory) / "settings.json"
             app._operations.current_take = 1
             set_navigation_focus(app, ("generate", None))
-            app._status = ""
+            app._status = EMPTY_STATUS
             app._handle_key(curses.KEY_LEFT)
             self.assertEqual(app.settings.take_count, 3)
             self.assertEqual(app.session.replace_settings_calls[-1].take_count, 3)
