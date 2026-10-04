@@ -25,8 +25,15 @@ from .tui_editors import (
     UpdateStatusIntent,
 )
 from .tui_operations import (
-    CandidateReplacedEffect, DiscardInitialBatchEffect, FocusEffect, OperationEffect, PlayPreviewEffect,
-    PlayTakeEffect, StopPlaybackEffect, TuiOperations, UpdateStatusEffect,
+    CandidateReplacedEffect,
+    DiscardInitialBatchEffect,
+    FocusEffect,
+    OperationEffect,
+    PlayPreviewEffect,
+    PlayTakeEffect,
+    StopPlaybackEffect,
+    TuiOperations,
+    UpdateStatusEffect,
 )
 from .tui_shortcuts import resolve_main_shortcut, resolve_shortcut
 from .tui_navigation import (
@@ -246,20 +253,14 @@ class TuiApp:
             )
             self.session = self.session if self._batch.in_item else None
             return
-        if key == _ESCAPE:
-            self._operations.stop_playback()
-            self._operations.clear_current_take()
-            self._editor_controller.clear_groupings()
-            self._batch.close_item()
-            self.session = None
-            self._status = ""
+        if self._batch.handle_open_item_key(
+            key,
+            focus_key=self._navigation.focus_key,
+            bindings=self._batch_action_bindings,
+        ):
             return
         if key in ("Q", "\x03"):
             self._activate_quit()
-            return
-        if self._batch.handle_item_navigation_key(
-            key, focus_key=self._navigation.focus_key, bindings=self._batch_action_bindings
-        ):
             return
         main_shortcut = resolve_main_shortcut(key)
         if main_shortcut is not None:
@@ -838,7 +839,9 @@ class TuiApp:
                 else self._editor_controller.editor
             ),
             accepted_take_number=self._batch.open_item_accepted_take_number,
-            batch_item_position=self._batch.item_position if self._batch.in_item else None,
+            batch_item_position=(
+                self._batch.item_position if self._batch.in_item else None
+            ),
         )
 
     def _render(self) -> None:
