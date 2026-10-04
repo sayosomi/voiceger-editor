@@ -49,6 +49,7 @@ from .tui_display import _display_width, _move_wrapped_cursor
 from .tui_shortcuts import menu_items, resolve_shortcut
 from .tui_status import EMPTY_STATUS, Status, error_status, info_status
 from .voicevox_api_models import AudioQuery
+from .tui_input import PasteText
 
 
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
@@ -945,7 +946,20 @@ class TuiEditorController:
             if (
                 editor.kind == "caption"
                 and editor.payload.get("multiline", False)
-                and key in _ENTER_KEYS
+                and isinstance(key, PasteText)
+            ):
+                editor.input_value = (
+                    editor.input_value[: editor.input_cursor]
+                    + key.text
+                    + editor.input_value[editor.input_cursor :]
+                )
+                editor.input_cursor += len(key.text)
+                editor.error = EMPTY_STATUS
+                return ()
+            if (
+                editor.kind == "caption"
+                and editor.payload.get("multiline", False)
+                and key == "\x0e"
             ):
                 editor.input_value = (
                     editor.input_value[: editor.input_cursor]
@@ -955,15 +969,6 @@ class TuiEditorController:
                 editor.input_cursor += 1
                 editor.error = EMPTY_STATUS
                 return ()
-            if (
-                editor.kind == "caption"
-                and editor.payload.get("multiline", False)
-                and key == "\x04"
-            ):
-                intents = self._finish_field()
-                if editor.active_field is None:
-                    editor.selection = "apply"
-                return intents
             if key in _ENTER_KEYS:
                 return self._finish_field()
             if key == _ESCAPE:
