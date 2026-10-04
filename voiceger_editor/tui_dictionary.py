@@ -25,6 +25,7 @@ from .tui_editors import (
     UpdateStatusIntent,
 )
 from .tui_shortcuts import menu_items, resolve_shortcut
+from .tui_status import EMPTY_STATUS, error_status
 from .user_dictionary import JapaneseWordType, UserDictionaryCore
 from .voicevox_api_models import AccentPhrase, AudioQuery, Mora, VoicegerSegment
 
@@ -150,7 +151,7 @@ class TuiDictionaryController:
                 if word.surface == normalized_surface
             ]
         except Exception as exc:
-            return (UpdateStatusIntent(f"Error: Dictionary draft could not be opened: {exc}"),)
+            return (UpdateStatusIntent(error_status(f"Dictionary draft could not be opened: {exc}")),)
 
         self._stack.clear()
         if len(matches) > 1:
@@ -200,7 +201,7 @@ class TuiDictionaryController:
                 None,
             )
         except Exception as exc:
-            return (UpdateStatusIntent(f"Error: Dictionary draft could not be opened: {exc}"),)
+            return (UpdateStatusIntent(error_status(f"Dictionary draft could not be opened: {exc}")),)
 
         self._stack.clear()
         self.editor = self._english_entry_state(
@@ -351,7 +352,7 @@ class TuiDictionaryController:
         editor.input_value = value
         editor.input_original = value
         editor.input_cursor = len(value)
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (ClearAdjustmentFeedbackIntent(),)
 
     def _entry_snapshot(self, editor: EditorState) -> tuple[Any, ...]:
@@ -485,7 +486,7 @@ class TuiDictionaryController:
         except ValueError:
             index = 0
         editor.selection = keys[min(max(index + delta, 0), len(keys) - 1)]
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (ClearAdjustmentFeedbackIntent(),)
 
     def _finish_field(self) -> tuple[EditorIntent, ...]:
@@ -524,11 +525,11 @@ class TuiDictionaryController:
                     editor.payload["phonemes"] = tuple(normalized)
                     editor.input_value = " ".join(normalized)
         except Exception as exc:
-            editor.error = f"Error: {exc}"
+            editor.error = error_status(f"{exc}")
             return ()
         editor.active_field = None
         editor.input_original = editor.input_value
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         if auto_generate:
             return self._generate_pronunciation()
         return (UpdateStatusIntent(""),)
@@ -582,7 +583,7 @@ class TuiDictionaryController:
                 editor_state_to_english_phonemes(moved)
             )
         except Exception as exc:
-            editor.error = f"Error: Stress was not changed: {exc}"
+            editor.error = error_status(f"Stress was not changed: {exc}")
         return ()
 
     def _generate_pronunciation(self) -> tuple[EditorIntent, ...]:
@@ -590,7 +591,7 @@ class TuiDictionaryController:
         assert editor is not None
         surface = editor.payload["surface"]
         if not surface.strip():
-            editor.error = "Error: Surface must not be empty."
+            editor.error = error_status("Surface must not be empty.")
             return ()
         try:
             if editor.kind == "dictionary_japanese_entry":
@@ -618,9 +619,9 @@ class TuiDictionaryController:
                     normalize_english_phonemes(phonemes)
                 )
         except Exception as exc:
-            editor.error = f"Error: Pronunciation was not generated: {exc}"
+            editor.error = error_status(f"Pronunciation was not generated: {exc}")
             return ()
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (
             UpdateStatusIntent("Pronunciation generated from Surface."),
             ClearAdjustmentFeedbackIntent(),
@@ -641,9 +642,9 @@ class TuiDictionaryController:
                     editor.payload["phonemes"],
                 )
         except Exception as exc:
-            editor.error = f"Error: Preview failed: {exc}"
+            editor.error = error_status(f"Preview failed: {exc}")
             return ()
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (PreviewIntent(query),)
 
     def _save(self) -> tuple[EditorIntent, ...]:
@@ -678,7 +679,7 @@ class TuiDictionaryController:
                     )
                 message = "English dictionary word saved."
         except Exception as exc:
-            editor.error = f"Error: Dictionary word was not saved: {exc}"
+            editor.error = error_status(f"Dictionary word was not saved: {exc}")
             return ()
 
         quick_save = bool(editor.payload["quick_save"])
@@ -787,7 +788,7 @@ class TuiDictionaryController:
                 self.editor = self._english_list_state()
                 message = "English dictionary word deleted."
         except Exception as exc:
-            editor.error = f"Error: Dictionary word was not deleted: {exc}"
+            editor.error = error_status(f"Dictionary word was not deleted: {exc}")
             return ()
         return (UpdateStatusIntent(message),)
 
@@ -963,7 +964,7 @@ class TuiDictionaryController:
                         + editor.input_value[editor.input_cursor :]
                     )
                     editor.input_cursor -= 1
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return ()
             if key == curses.KEY_DC:
                 if editor.input_cursor < len(editor.input_value):
@@ -971,7 +972,7 @@ class TuiDictionaryController:
                         editor.input_value[: editor.input_cursor]
                         + editor.input_value[editor.input_cursor + 1 :]
                     )
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return ()
             if isinstance(key, str) and key and all(
                 char.isprintable() or char == "　" for char in key
@@ -982,7 +983,7 @@ class TuiDictionaryController:
                     + editor.input_value[editor.input_cursor :]
                 )
                 editor.input_cursor += len(key)
-                editor.error = ""
+                editor.error = EMPTY_STATUS
             return ()
 
         if key in ("q", "Q", "\x03"):
@@ -1000,7 +1001,7 @@ class TuiDictionaryController:
             shortcut = resolve_shortcut(editor.kind, key, editor.payload)
             if shortcut is not None:
                 editor.selection = shortcut.key
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return self._activate()
 
         if editor.kind in {
@@ -1016,7 +1017,7 @@ class TuiDictionaryController:
                 ):
                     editor.payload["entry_index"] = editor.selection[1]
                 editor.selection = shortcut.key
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return self._activate()
         if editor.kind == "dictionary_japanese_duplicates":
             shortcut = resolve_shortcut(editor.kind, key, editor.payload)
