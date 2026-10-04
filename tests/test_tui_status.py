@@ -1,5 +1,6 @@
 """Tests for shared semantic TUI Status values."""
 
+from copy import deepcopy
 import unittest
 
 from voiceger_editor.tui_status import (
@@ -32,6 +33,14 @@ class TuiStatusTests(unittest.TestCase):
             format_status(status),
             "Status: Error: this is message text",
         )
+
+    def test_status_is_deepcopy_safe_for_editor_state_snapshots(self):
+        status = error_status("invalid draft")
+
+        copied = deepcopy(status)
+
+        self.assertIs(copied, status)
+        self.assertIs(copied.kind, StatusKind.ERROR)
 
     def test_empty_status_formats_to_empty_text(self):
         self.assertEqual(format_status(info_status("")), "")
