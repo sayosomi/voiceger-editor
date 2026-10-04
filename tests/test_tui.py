@@ -2850,9 +2850,11 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(caption._editor_controller.editor.kind, "caption")
 
         build = self.make_app(query=mixed_query())
-        build._request_build_pronunciation = Mock()
+        build._batch_item_controller.request_build_pronunciation = Mock()
         build._handle_key("p")
-        build._request_build_pronunciation.assert_called_once_with()
+        build._batch_item_controller.request_build_pronunciation.assert_called_once_with(
+            build._batch_item_bindings
+        )
 
         add = self.make_app(query=mixed_query())
         add._handle_key("a")
