@@ -2146,6 +2146,21 @@ class TuiTests(unittest.TestCase):
             ["first caption", "second caption"],
         )
 
+    def test_existing_caption_multiline_replacement_does_not_split_batch_item(self):
+        app = self.make_app(query=mixed_query(), batch_item=True)
+        session = app.session
+        item = app._batch.batch.items[0]
+        replacement = "first line\nsecond line"
+
+        result = app._apply_caption(replacement)
+
+        self.assertIsNone(result.error)
+        self.assertEqual(result.added_caption_count, 0)
+        self.assertEqual(len(app._batch.batch.items), 1)
+        self.assertIs(app._batch.batch.items[0], item)
+        self.assertIs(app._batch.batch.items[0].session, session)
+        self.assertEqual(session.caption, replacement)
+
     def test_pure_japanese_source_display_uses_utterance_after_caption_changes(self):
         query = japanese_query((("ナ",), 1), (("ノ", "ダ"), 2))
         query.voicegerSegments = None
