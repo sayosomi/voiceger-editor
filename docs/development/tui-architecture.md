@@ -6,7 +6,7 @@ The TUI is split between a composition root and focused owners. The composition 
 
 | Module | Responsibility |
 | --- | --- |
-| `voiceger_editor/tui.py` | TUI composition root; curses run loop and cleanup lifecycle; top-level mode routing; shared session/settings application orchestration; dispatch between focused subsystems; CLI entrypoint. |
+| `voiceger_editor/tui.py` | TUI composition root; curses run loop and cleanup lifecycle; top-level mode routing; shared session ownership and focused-owner wiring; dispatch between focused subsystems; CLI entrypoint. |
 | `voiceger_editor/tui_cli.py` | CLI argument declarations and per-invocation settings overrides, re-exported by the composition root for compatibility. |
 | `voiceger_editor/tui_batch.py` | Top-level Batch List collection ownership, focus/navigation state, inclusion toggling, stable-ID Caption deletion confirmation and removed-session cleanup, Batch Item selection state, and Batch List key interpretation. |
 | `voiceger_editor/tui_batch_item.py` | Batch Item key interpretation and action routing; same-level Caption movement; candidate review/accept/regeneration coordination; Build pronunciation and Take-count interaction policy; Batch Item segment/pronunciation-row derivation. |
