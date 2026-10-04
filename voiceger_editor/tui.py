@@ -221,8 +221,17 @@ class TuiApp:
                         self._batch.close_sessions()
 
     def _read_key(self) -> Any:
+        editor = self._editor_controller.editor
         try:
-            key = self._input.read(self._screen)
+            key = self._input.read(
+                self._screen,
+                infer_paste_newlines=bool(
+                    editor is not None
+                    and editor.kind == "caption"
+                    and editor.active_field is not None
+                    and editor.payload.get("multiline", False)
+                ),
+            )
         except KeyboardInterrupt:
             self._activate_quit()
             return None
