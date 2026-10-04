@@ -24,6 +24,7 @@ from voiceger_editor.tui_operations import (
     PlayTakeEffect,
     PreviewFailedEvent,
     PreviewReadyEvent,
+    SessionPreparationCompletedEffect,
     StopPlaybackEffect,
     TakeAcceptedEffect,
     TuiOperations,
@@ -1037,6 +1038,57 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(process.wait.call_args_list[0].kwargs, {"timeout": 0.25})
         self.assertEqual(process.wait.call_args_list[1].args, ())
 
+    def test_session_preparation_waits_for_status_render_then_completes(self):
+        session = SimpleNamespace(
+            is_prepared=False,
+            prepare_from_caption=Mock(),
+        )
+
+        start = self.operations.start_session_preparation(
+            session,
+            rebuild=False,
+        )
+
+        self.assertEqual(
+            start,
+            (UpdateStatusEffect("Preparing pronunciation…"),),
+        )
+        self.assertTrue(self.operations.busy)
+        self.assertEqual(self.operations.worker_operation, "prepare")
+        session.prepare_from_caption.assert_not_called()
+
+        self.operations.start_pending_worker()
+        self.operations.join_worker()
+        completion = self.consume(session)
+
+        session.prepare_from_caption.assert_called_once_with()
+        self.assertFalse(self.operations.busy)
+        self.assertEqual(
+            completion,
+            (
+                SessionPreparationCompletedEffect(
+                    session=session,
+                    rebuild=False,
+                ),
+            ),
+        )
+
+    def test_already_prepared_auto_preparation_is_a_noop(self):
+        session = SimpleNamespace(
+            is_prepared=True,
+            prepare_from_caption=Mock(),
+        )
+
+        self.assertEqual(
+            self.operations.start_session_preparation(
+                session,
+                rebuild=False,
+            ),
+            (),
+        )
+        self.assertFalse(self.operations.busy)
+        session.prepare_from_caption.assert_not_called()
+
     def test_candidate_acceptance_waits_for_status_render_then_completes(self):
         session = FakeSession((candidate(3),))
         process = Mock()
@@ -1226,9 +1278,14 @@ class BatchFakeSession:
         blocked_event=None,
         release_event=None,
         concurrency=None,
+        prepared=True,
+        prepare_error=None,
     ):
         self.name = name
         self.log = log
+        self.is_prepared = prepared
+        self.prepare_error = prepare_error
+        self.prepare_calls = 0
         self.has_active_batch = existing
         self.fail_take = fail_take
         self.block_take = block_take
@@ -1238,6 +1295,13 @@ class BatchFakeSession:
         self.candidates = []
         self.generate_take_counts = []
         self.regenerate_take_counts = []
+
+    def prepare_from_caption(self):
+        self.prepare_calls += 1
+        self.log.append((self.name, "prepare", "done", 0))
+        if self.prepare_error is not None:
+            raise self.prepare_error
+        self.is_prepared = True
 
     def generate_takes(self, *, take_count=None):
         self.generate_take_counts.append(take_count)
@@ -1291,6 +1355,76 @@ class TuiBatchGenerationTests(unittest.TestCase):
             navigation_revision=0,
             pronunciation_index=0,
             exit_requested=False,
+        )
+
+    def test_batch_generation_prepares_unprepared_item_before_synthesis(self):
+        log = []
+        session = BatchFakeSession(
+            "only",
+            log,
+            prepared=False,
+        )
+        batch = self.make_batch(
+            CaptionBatchItem(session, item_id="only"),
+            default_take_count=1,
+        )
+        operations = TuiOperations()
+
+        operations.start_batch_generation(batch, navigation_revision=0)
+        operations.join_worker()
+        consumed = self.consume(operations)
+
+        self.assertTrue(session.is_prepared)
+        self.assertEqual(session.prepare_calls, 1)
+        self.assertEqual(
+            log[:2],
+            [
+                ("only", "prepare", "done", 0),
+                ("only", "initial", "start", 1),
+            ],
+        )
+        self.assertEqual(session.generate_take_counts, [1])
+        self.assertIsNone(operations.worker_error)
+        self.assertEqual(
+            [
+                effect.status
+                for effect in consumed
+                if isinstance(effect, UpdateStatusEffect)
+            ][-1],
+            "Batch generation finished. 1/1 take(s) ready.",
+        )
+
+    def test_batch_generation_stops_when_item_preparation_fails(self):
+        log = []
+        session = BatchFakeSession(
+            "only",
+            log,
+            prepared=False,
+            prepare_error=RuntimeError("g2p failed"),
+        )
+        batch = self.make_batch(
+            CaptionBatchItem(session, item_id="only"),
+            default_take_count=2,
+        )
+        operations = TuiOperations()
+
+        operations.start_batch_generation(batch, navigation_revision=0)
+        operations.join_worker()
+        consumed = self.consume(operations)
+
+        self.assertFalse(session.is_prepared)
+        self.assertEqual(session.prepare_calls, 1)
+        self.assertEqual(session.generate_take_counts, [])
+        statuses = [
+            effect.status
+            for effect in consumed
+            if isinstance(effect, UpdateStatusEffect)
+        ]
+        self.assertEqual(
+            statuses[-1],
+            error_status(
+                "Batch generation failed at Caption 1/1, Take 1/2: g2p failed"
+            ),
         )
 
     def test_selected_items_generate_caption_major_with_effective_counts(self):
