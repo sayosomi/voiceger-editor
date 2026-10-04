@@ -23,6 +23,15 @@ class Status(str):
         value.kind = kind
         return value
 
+    def __copy__(self) -> "Status":
+        return self
+
+    def __deepcopy__(self, _memo: dict[int, object]) -> "Status":
+        return self
+
+    def __reduce_ex__(self, _protocol: int):
+        return type(self), (self.kind, str(self))
+
 
 def info_status(message: str) -> Status:
     return Status(StatusKind.INFO, message)
