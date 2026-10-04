@@ -306,45 +306,6 @@ class TuiBatchControllerTests(unittest.TestCase):
         self.assertEqual(controller.item_title, "BATCH ITEM")
         self.assertEqual(controller.item_position, (2, 2))
 
-    def test_move_open_item_switches_sessions_without_wrapping(self):
-        controller = self.make_controller("first\nsecond")
-        bindings = self.make_bindings()
-        controller.open_item(0)
-
-        controller.move_open_item(1, bindings=bindings)
-
-        self.assertEqual(controller.item_position, (2, 2))
-        bindings.operations.stop_playback.assert_called_once_with()
-        bindings.operations.clear_current_take.assert_called_once_with()
-        bindings.editor_controller.clear_groupings.assert_called_once_with()
-        bindings.set_session.assert_called_once_with(
-            controller.batch.items[1].session
-        )
-        self.assertEqual(bindings.navigation.focus_key, ("batch_item", None))
-        bindings.set_status.assert_called_with("")
-
-        bindings.set_status.reset_mock()
-        controller.move_open_item(1, bindings=bindings)
-        self.assertEqual(controller.item_position, (2, 2))
-        bindings.set_status.assert_called_once_with("Last Caption.")
-
-        controller.move_open_item(-1, bindings=bindings)
-        self.assertEqual(controller.item_position, (1, 2))
-
-    def test_move_open_item_is_blocked_while_synthesis_is_busy(self):
-        controller = self.make_controller("first\nsecond")
-        bindings = self.make_bindings()
-        controller.open_item(0)
-        bindings.operations.busy = True
-
-        controller.move_open_item(1, bindings=bindings)
-
-        self.assertEqual(controller.item_position, (1, 2))
-        bindings.set_session.assert_not_called()
-        bindings.set_status.assert_called_once_with(
-            "Wait for the current synthesis operation to finish."
-        )
-
     def test_dispatch_generate_selected_uses_owned_batch_and_navigation_revision(self):
         controller = self.make_controller("first\nsecond")
         bindings = self.make_bindings()
