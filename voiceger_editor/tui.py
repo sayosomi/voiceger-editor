@@ -11,6 +11,7 @@ from . import tui_batch
 from .tui_batch_item import BatchItemBindings, TuiBatchItemController
 from .settings import Settings, save_settings
 from .tui_settings import TuiSettingsController
+from .tui_status import EMPTY_STATUS, error_status, info_status
 from .styles import available_styles
 from .tui_cli import build_argument_parser, settings_for_invocation
 from .tui_display import _adjustable_value, format_english_phonemes
@@ -67,7 +68,7 @@ class TuiApp:
         self._operations = TuiOperations()
         self._navigation = TuiNavigation()
         self._exit_requested = False
-        self._status = ""
+        self._status = EMPTY_STATUS
         self._settings_controller = TuiSettingsController(
             settings=settings,
             persisted_settings=persisted_settings,
@@ -181,7 +182,9 @@ class TuiApp:
                 try:
                     self._batch.add_captions(caption, session_factory=self._new_session)
                 except Exception as exc:
-                    self._status = f"Error: Unable to prepare Caption batch: {exc}"
+                    self._status = error_status(
+                        f"Unable to prepare Caption batch: {exc}"
+                    )
 
             while not self._exit_requested:
                 self._consume_events()
@@ -434,7 +437,9 @@ class TuiApp:
                 self._activate_quit()
             elif isinstance(intent, ClearCandidatesIntent):
                 if self._operations.busy:
-                    self._status = "Finish or cancel synthesis before clearing candidates."
+                    self._status = info_status(
+                        "Finish or cancel synthesis before clearing candidates."
+                    )
                 else:
                     self._operations.stop_playback()
                     if self.session is not None:
@@ -600,12 +605,13 @@ class TuiApp:
             pass
         if self._help_controller.active:
             self._help_controller.clamp_scroll(
-                self._renderer.help_max_scroll(height, width)
+                self._renderer.help_max_scroll(height, width, self._status)
             )
             self._renderer.render_help(
                 screen,
                 width,
                 self._help_controller.scroll,
+                status=self._status,
             )
         elif self._dictionary_controller.active or self._editor_controller.editor is not None:
             self._renderer.render_editor(
