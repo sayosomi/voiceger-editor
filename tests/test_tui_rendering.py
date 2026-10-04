@@ -442,7 +442,7 @@ class TuiRenderingTests(unittest.TestCase):
         )
 
         label = next(line.text for line in lines if line.key == ("generate", None))
-        self.assertIn("Generate 4 takes", label)
+        self.assertIn("Generate < 4 > takes", label)
         self.assertNotIn("Generating", label)
 
     def test_main_japanese_phrases_use_fixed_separator_and_compound_mora_tokens(self):
