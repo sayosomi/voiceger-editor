@@ -52,23 +52,26 @@ def _adjustable_value(value: str, direction: int | None = None) -> str:
 
 
 def _wrap_text(value: str, width: int) -> list[str]:
-    """Wrap visible text at character boundaries without changing stored text."""
+    """Wrap visible text while preserving explicit line boundaries."""
 
     if not value:
         return []
     width = max(1, width)
     lines: list[str] = []
-    current: list[str] = []
-    used = 0
-    for character in value:
-        cell_width = _display_width(character)
-        if current and used + cell_width > width:
-            lines.append("".join(current))
-            current = []
-            used = 0
-        current.append(character)
-        used += cell_width
-    if current:
+    for logical_line in value.split("\n"):
+        if not logical_line:
+            lines.append("")
+            continue
+        current: list[str] = []
+        used = 0
+        for character in logical_line:
+            cell_width = _display_width(character)
+            if current and used + cell_width > width:
+                lines.append("".join(current))
+                current = []
+                used = 0
+            current.append(character)
+            used += cell_width
         lines.append("".join(current))
     return lines
 
@@ -232,6 +235,11 @@ def _wrapped_ranges(value: str, width: int) -> list[tuple[int, int]]:
     start = 0
     used = 0
     for index, character in enumerate(value):
+        if character == "\n":
+            rows.append((start, index))
+            start = index + 1
+            used = 0
+            continue
         cell_width = _display_width(character)
         if index > start and used + cell_width > width:
             rows.append((start, index))
@@ -257,6 +265,9 @@ def _wrap_active_input(
             cursor_row = index
             break
         if cursor == start:
+            cursor_row = index
+            break
+        if cursor == end and end < len(value) and value[end] == "\n":
             cursor_row = index
             break
         if cursor == end and index == len(ranges) - 1:
