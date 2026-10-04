@@ -8,6 +8,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from voiceger_editor.caption_batch import CaptionBatch, CaptionBatchItem
+from voiceger_editor.settings import Settings
 from voiceger_editor.tui_dictionary import (
     DictionaryOperationIntent,
     DictionaryOperationRequest,
@@ -198,6 +199,44 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(session.preview_calls[0].model_dump(), query.model_dump())
         self.assertFalse(any(isinstance(item, FocusEffect) for item in effects))
         self.assertFalse(any(isinstance(item, PlayTakeEffect) for item in effects))
+
+    def test_preview_without_active_session_uses_standalone_context(self):
+        query = AudioQuery(accent_phrases=[])
+        adapter = Mock()
+        settings = Settings()
+        preview_session = FakeSession()
+
+        with patch(
+            "voiceger_editor.tui_operations.UtteranceSession",
+            return_value=preview_session,
+        ) as session_factory:
+            effects = self.operations.start_preview(
+                None,
+                query,
+                adapter=adapter,
+                settings=settings,
+            )
+            self.operations.join_worker()
+
+        self.assertEqual(
+            effects,
+            (UpdateStatusEffect("Synthesizing pronunciation Preview…"),),
+        )
+        session_factory.assert_called_once_with(
+            adapter=adapter,
+            caption="Dictionary Preview",
+            query=query,
+            settings=settings,
+        )
+        self.assertEqual(
+            preview_session.preview_calls[0].model_dump(),
+            query.model_dump(),
+        )
+        event = self.operations.events.get_nowait()
+        self.assertIsInstance(event, PreviewReadyEvent)
+        self.assertEqual(event.audio, "preview")
+        self.assertEqual(event.sampling_rate, 22050)
+        self.assertEqual(self.operations.events.get_nowait(), ("done", None))
 
     def test_preview_worker_failure_is_preview_specific_and_keeps_candidates(self):
         session_candidate = candidate(2)
