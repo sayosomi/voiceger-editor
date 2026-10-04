@@ -1,6 +1,5 @@
 import curses
 import unittest
-from unittest.mock import call, patch
 
 from voiceger_editor.tui_input import PasteText, TuiInputReader
 
@@ -20,58 +19,109 @@ class FakeScreen:
 
 
 class TuiInputReaderTests(unittest.TestCase):
-    def test_bracketed_paste_mode_is_enabled_and_disabled_once(self):
-        reader = TuiInputReader()
-        with patch("voiceger_editor.tui_input.curses.putp") as putp:
-            reader.set_bracketed_paste(True)
-            reader.set_bracketed_paste(True)
-            reader.close()
-
-        self.assertEqual(
-            putp.call_args_list,
-            [call(b"\x1b[?2004h"), call(b"\x1b[?2004l")],
-        )
-
-    def test_bracketed_paste_returns_one_multiline_payload(self):
-        reader = TuiInputReader()
-        screen = FakeScreen(
-            list("\x1b[200~first\r\n\nsecond\x1b[201~")
-        )
-        with patch("voiceger_editor.tui_input.curses.putp"):
-            reader.set_bracketed_paste(True)
-            event = reader.read(screen)
-
-        self.assertEqual(event, PasteText("first\n\nsecond"))
-        self.assertEqual(screen.timeouts, [5, 100])
-
-    def test_enter_remains_an_ordinary_enter_while_paste_mode_is_enabled(self):
+    def test_enter_without_queued_input_remains_finish_key(self):
         reader = TuiInputReader()
         screen = FakeScreen(["\n"])
-        with patch("voiceger_editor.tui_input.curses.putp"):
-            reader.set_bracketed_paste(True)
-            self.assertEqual(reader.read(screen), "\n")
 
-    def test_keypad_enter_inside_bracketed_paste_is_preserved_as_newline(self):
-        reader = TuiInputReader()
-        screen = FakeScreen(
-            list("\x1b[200~first")
-            + [curses.KEY_ENTER]
-            + list("second\x1b[201~")
+        self.assertEqual(
+            reader.read(screen, infer_paste_newlines=True),
+            "\n",
         )
-        with patch("voiceger_editor.tui_input.curses.putp"):
-            reader.set_bracketed_paste(True)
-            event = reader.read(screen)
+        self.assertEqual(screen.timeouts, [5, 100])
 
-        self.assertEqual(event, PasteText("first\nsecond"))
-
-    def test_unmatched_escape_sequence_is_not_consumed(self):
+    def test_enter_with_queued_input_is_inferred_as_paste_newline(self):
         reader = TuiInputReader()
-        screen = FakeScreen(["\x1b", "[", "X"])
-        with patch("voiceger_editor.tui_input.curses.putp"):
-            reader.set_bracketed_paste(True)
-            self.assertEqual(reader.read(screen), "\x1b")
-            self.assertEqual(reader.read(screen), "[")
-            self.assertEqual(reader.read(screen), "X")
+        screen = FakeScreen(["\n", "s"])
+
+        self.assertEqual(
+            reader.read(screen, infer_paste_newlines=True),
+            PasteText("\n"),
+        )
+        self.assertEqual(
+            reader.read(screen, infer_paste_newlines=True),
+            "s",
+        )
+        self.assertEqual(screen.timeouts, [5, 100])
+
+    def test_keypad_enter_with_queued_input_is_inferred_as_paste_newline(self):
+        reader = TuiInputReader()
+        screen = FakeScreen([curses.KEY_ENTER, "s"])
+
+        self.assertEqual(
+            reader.read(screen, infer_paste_newlines=True),
+            PasteText("\n"),
+        )
+        self.assertEqual(
+            reader.read(screen, infer_paste_newlines=True),
+            "s",
+        )
+
+    def test_consecutive_paste_newlines_preserve_blank_line(self):
+        reader = TuiInputReader()
+        screen = FakeScreen(["\n", "\n", "x"])
+
+        self.assertEqual(
+            reader.read(screen, infer_paste_newlines=True),
+            PasteText("\n"),
+        )
+        self.assertEqual(
+            reader.read(screen, infer_paste_newlines=True),
+            PasteText("\n"),
+        )
+        self.assertEqual(
+            reader.read(screen, infer_paste_newlines=True),
+            "x",
+        )
+
+    def test_trailing_newline_in_active_paste_burst_is_preserved(self):
+        reader = TuiInputReader()
+        screen = FakeScreen(["\n", "x", "\n"])
+
+        self.assertEqual(
+            reader.read(screen, infer_paste_newlines=True),
+            PasteText("\n"),
+        )
+        self.assertEqual(
+            reader.read(screen, infer_paste_newlines=True),
+            "x",
+        )
+        self.assertEqual(
+            reader.read(screen, infer_paste_newlines=True),
+            PasteText("\n"),
+        )
+
+    def test_idle_timeout_ends_paste_burst_before_manual_enter(self):
+        reader = TuiInputReader()
+        screen = FakeScreen(["\n", "x"])
+
+        self.assertEqual(
+            reader.read(screen, infer_paste_newlines=True),
+            PasteText("\n"),
+        )
+        self.assertEqual(
+            reader.read(screen, infer_paste_newlines=True),
+            "x",
+        )
+        self.assertIsNone(
+            reader.read(screen, infer_paste_newlines=True)
+        )
+
+        screen.keys.append("\n")
+        self.assertEqual(
+            reader.read(screen, infer_paste_newlines=True),
+            "\n",
+        )
+
+    def test_paste_inference_is_disabled_outside_add_captions(self):
+        reader = TuiInputReader()
+        screen = FakeScreen(["\n", "x"])
+
+        self.assertEqual(
+            reader.read(screen, infer_paste_newlines=False),
+            "\n",
+        )
+        self.assertEqual(screen.keys, ["x"])
+        self.assertEqual(screen.timeouts, [])
 
 
 if __name__ == "__main__":
