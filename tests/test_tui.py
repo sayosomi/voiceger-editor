@@ -2670,6 +2670,14 @@ class TuiTests(unittest.TestCase):
 
         app._handle_key("\n")
 
+        self.assertEqual(session.accept_calls, [])
+        self.assertFalse(item.is_accepted)
+        self.assertIn("Saving Take 1…", app._status)
+
+        app._operations.start_pending_worker()
+        app._operations.join_worker()
+        app._consume_events()
+
         self.assertEqual(session.accept_calls, [1])
         self.assertTrue(item.is_accepted)
         self.assertEqual(item.accepted_take_number, 1)
