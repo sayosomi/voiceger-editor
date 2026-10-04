@@ -86,7 +86,7 @@ class BatchActionBindings:
     dictionary_controller: Any
     set_session: Callable[[Any | None], None]
     set_status: Callable[[Status], None]
-    open_caption_editor: Callable[[str | None], None]
+    open_caption_editor: Callable[..., None]
     change_settings: Callable[..., None]
     open_settings_editor: Callable[[str | None], None]
     dispatch_editor_intents: Callable[[Sequence[Any]], None]
@@ -248,7 +248,7 @@ class TuiBatchController:
                         )
                     )
             elif isinstance(action, AddCaptions):
-                bindings.open_caption_editor("")
+                bindings.open_caption_editor("", multiline=True)
             elif isinstance(action, GenerateSelected):
                 effects = bindings.operations.start_batch_generation(
                     self.batch,
