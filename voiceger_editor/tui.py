@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import curses
-from dataclasses import replace
 import os
 from typing import Any, Sequence
 
 from .session import UtteranceSession
 from . import tui_batch
 from .tui_batch_item import BatchItemBindings, TuiBatchItemController
-from .settings import Settings, SettingsError, save_settings
+from .settings import Settings, save_settings
+from .tui_settings import TuiSettingsController
 from .styles import available_styles
 from .tui_cli import build_argument_parser, settings_for_invocation
 from .tui_display import _adjustable_value, format_english_phonemes
@@ -59,9 +59,6 @@ class TuiApp:
         source_text: str | None = None,
     ) -> None:
         self.adapter = adapter
-        self.settings = settings
-        self._persisted_settings = persisted_settings or settings
-        self.config_path = config_path
         self.session: UtteranceSession | None = None
         self._initial_caption = source_text
         self._batch = tui_batch.TuiBatchController(
@@ -72,6 +69,19 @@ class TuiApp:
         self._navigation = TuiNavigation()
         self._exit_requested = False
         self._status = ""
+        self._settings_controller = TuiSettingsController(
+            settings=settings,
+            persisted_settings=persisted_settings,
+            config_path=config_path,
+            operations=self._operations,
+            sessions=lambda: self._batch.sessions,
+            active_session=lambda: self.session,
+            set_batch_take_count=lambda count: setattr(
+                self._batch.batch, "default_take_count", count
+            ),
+            set_status=lambda status: setattr(self, "_status", status),
+            save=lambda value, path: save_settings(value, path),
+        )
         self._help_open = False
         self._help_scroll = 0
         self._editor_controller = TuiEditorController(
@@ -113,6 +123,30 @@ class TuiApp:
             ),
             mark_adjustment_pressed=self._mark_adjustment_pressed,
         )
+
+    @property
+    def settings(self) -> Settings:
+        return self._settings_controller.settings
+
+    @settings.setter
+    def settings(self, value: Settings) -> None:
+        self._settings_controller.settings = value
+
+    @property
+    def _persisted_settings(self) -> Settings:
+        return self._settings_controller.persisted_settings
+
+    @_persisted_settings.setter
+    def _persisted_settings(self, value: Settings) -> None:
+        self._settings_controller.persisted_settings = value
+
+    @property
+    def config_path(self) -> str | os.PathLike[str] | None:
+        return self._settings_controller.config_path
+
+    @config_path.setter
+    def config_path(self, value: str | os.PathLike[str] | None) -> None:
+        self._settings_controller.config_path = value
 
     def run(self, screen: Any) -> None:
         self._screen = screen
@@ -459,76 +493,13 @@ class TuiApp:
                 )
 
     def _change_settings(self, *, report_success: bool = True, **changes: Any) -> None:
-        try:
-            updated = replace(self.settings, **changes)
-            synthesis_changed = any(
-                getattr(updated, name) != getattr(self.settings, name)
-                for name in ("style_id", "speed", "top_k", "top_p", "temperature")
-            )
-            if synthesis_changed:
-                self._operations.stop_playback()
-            for session in self._batch.sessions:
-                session.replace_settings(updated)
-        except (SettingsError, ValueError) as exc:
-            self._status = f"Error: Settings were not changed: {exc}"
-            return
-        self.settings = updated
-        self._batch.batch.default_take_count = updated.take_count
-        try:
-            persisted = replace(self._persisted_settings, **changes)
-        except SettingsError as exc:
-            self._status = f"Error: Settings changed for this run but were not saved: {exc}"
-            return
-        self._persisted_settings = persisted
-        if synthesis_changed:
-            self._operations.clear_current_take()
-        try:
-            save_settings(persisted, self.config_path)
-        except OSError as exc:
-            self._status = f"Error: Settings changed for this run but could not be saved: {exc}"
-        else:
-            if report_success:
-                self._status = (
-                    "Settings saved. Existing temporary takes were cleared."
-                    if synthesis_changed
-                    else "Settings saved. Existing temporary takes were preserved."
-                )
+        self._settings_controller.change(
+            report_success=report_success,
+            **changes,
+        )
 
     def _apply_settings_target(self, target: Settings) -> SettingsApplicationResult:
-        baseline = self.session.settings if self.session is not None else self.settings
-        runtime_changed = target != self.settings or target != baseline
-        synthesis_changed = any(
-            getattr(target, name) != getattr(baseline, name)
-            for name in ("style_id", "speed", "top_k", "top_p", "temperature")
-        )
-        if runtime_changed:
-            try:
-                if synthesis_changed:
-                    self._operations.stop_playback()
-                for session in self._batch.sessions:
-                    session.replace_settings(target)
-            except (SettingsError, ValueError) as exc:
-                self._status = f"Error: Settings were not changed: {exc}"
-                return SettingsApplicationResult(error_status=self._status)
-            self.settings = target
-            self._batch.batch.default_take_count = target.take_count
-            if synthesis_changed:
-                self._operations.clear_current_take()
-
-        try:
-            save_settings(target, self.config_path)
-        except (OSError, SettingsError) as exc:
-            failure = (
-                "Settings changed for this run but could not be saved"
-                if runtime_changed
-                else "Settings could not be saved"
-            )
-            self._status = f"Error: {failure}: {exc}"
-            return SettingsApplicationResult(error_status=self._status)
-
-        self._persisted_settings = target
-        self._status = "Settings saved."
-        return SettingsApplicationResult()
+        return self._settings_controller.apply_target(target)
 
     def _consume_events(self) -> None:
         effects = self._operations.consume_pending_events(
