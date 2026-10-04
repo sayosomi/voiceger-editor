@@ -1,4 +1,4 @@
-"""Regression checks for the TUI's module boundary and composition-root size."""
+"""Regression checks for the TUI's module and dependency boundaries."""
 
 import ast
 from pathlib import Path
@@ -8,7 +8,6 @@ import unittest
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = REPOSITORY_ROOT / "voiceger_editor"
 COMPOSITION_ROOT = PACKAGE_ROOT / "tui.py"
-COMPOSITION_ROOT_LINE_CEILING = 900
 
 
 def _imports_composition_root(node):
@@ -47,17 +46,6 @@ def _imports_tui_app(node):
 
 
 class TuiArchitectureTests(unittest.TestCase):
-    def test_composition_root_stays_within_physical_line_ceiling(self):
-        actual_lines = len(COMPOSITION_ROOT.read_text(encoding="utf-8").splitlines())
-        self.assertLessEqual(
-            actual_lines,
-            COMPOSITION_ROOT_LINE_CEILING,
-            f"voiceger_editor/tui.py has {actual_lines} physical lines; "
-            f"the ceiling is {COMPOSITION_ROOT_LINE_CEILING}. Place new "
-            "responsibility in the owning subsystem rather than expanding "
-            "the composition root.",
-        )
-
     def test_extracted_modules_do_not_import_the_composition_root_or_tui_app(self):
         violations = []
         for path in sorted(PACKAGE_ROOT.glob("tui_*.py")):

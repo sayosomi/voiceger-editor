@@ -45,11 +45,13 @@ VOICEGER_ROOT=~/voiceger_v2 \
 ## TUI architecture
 
 - `voiceger_editor/tui.py` is the TUI composition root, not the default location for new feature logic.
-- Put new TUI behavior in the subsystem that owns the responsibility. Give substantial new TUI state or policy that does not fit an existing subsystem a focused owner rather than enlarging `TuiApp`.
+- Do not add new feature state, interaction policy, key interpretation, rendering logic, or operation logic to `TuiApp`.
+- Existing composition wiring and top-level routing may change when needed, but when a task introduces a new responsibility, place it in the existing focused `tui_*` owner or create a new focused module.
+- Do not use formatting compression, line-count tricks, or unrelated refactoring as a substitute for preserving responsibility boundaries.
 - Extracted `tui_*` modules must not import `tui.py` or `TuiApp`.
 - Logic reusable by the API, Web UI, or other frontends belongs in shared application/core modules, not TUI-specific modules.
 - Normally test subsystem behavior in its corresponding focused test module; use `tests/test_tui.py` for composition and genuinely cross-subsystem behavior.
-- Keep TUI architecture regression tests green, including the 900-line ceiling for `tui.py`.
+- Keep TUI architecture regression tests green.
 - See [`docs/development/tui-architecture.md`](docs/development/tui-architecture.md) for the subsystem ownership map and placement guidance.
 
 ## Manual testing and generated files
