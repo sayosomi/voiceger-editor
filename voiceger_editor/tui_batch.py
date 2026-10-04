@@ -231,13 +231,22 @@ class TuiBatchController:
             return
         self.complete_acceptance(item_id, number)
 
-    def handle_item_navigation_key(
+    def handle_open_item_key(
         self,
         key: Any,
         *,
         focus_key: tuple[str, int | None],
         bindings: BatchActionBindings,
     ) -> bool:
+        if key == _ESCAPE:
+            bindings.operations.stop_playback()
+            bindings.operations.clear_current_take()
+            bindings.editor_controller.clear_groupings()
+            self.close_item()
+            bindings.set_session(None)
+            bindings.set_status("")
+            return True
+
         direction: int | None = None
         if key == "[":
             direction = -1
