@@ -2050,6 +2050,42 @@ class TuiTests(unittest.TestCase):
         self.assertFalse(app._batch.in_item)
         self.assertEqual(app._status, "Caption added.")
 
+    def test_batch_list_apply_adds_multiple_lightweight_caption_sessions(self):
+        adapter = Mock()
+        adapter.voiceger_root = Path("/nonexistent/voiceger")
+        first = FakeSession(query=mixed_query())
+        first.caption = "first caption"
+        second = FakeSession(query=mixed_query())
+        second.caption = "second caption"
+        app = TuiApp(adapter=adapter, settings=Settings())
+
+        with patch(
+            "voiceger_editor.tui.UtteranceSession.from_caption",
+            side_effect=[first, second],
+        ) as from_caption:
+            result = app._apply_caption(
+                "first caption\n\nsecond caption"
+            )
+
+        self.assertIsNone(result.error)
+        self.assertEqual(result.added_caption_count, 2)
+        self.assertEqual(
+            [item.caption for item in app._batch.batch.items],
+            ["first caption", "second caption"],
+        )
+        self.assertEqual(
+            [item.included_for_generation for item in app._batch.batch.items],
+            [True, True],
+        )
+        self.assertNotEqual(
+            app._batch.batch.items[0].item_id,
+            app._batch.batch.items[1].item_id,
+        )
+        self.assertEqual(
+            [call.kwargs["caption"] for call in from_caption.call_args_list],
+            ["first caption", "second caption"],
+        )
+
     def test_pure_japanese_source_display_uses_utterance_after_caption_changes(self):
         query = japanese_query((("ナ",), 1), (("ノ", "ダ"), 2))
         query.voicegerSegments = None
