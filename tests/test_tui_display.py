@@ -89,6 +89,8 @@ class TuiDisplayTests(unittest.TestCase):
     def test_character_wrapping_and_truncation_preserve_whole_characters(self):
         self.assertEqual(_wrap_text("A界BC", 3), ["A界", "BC"])
         self.assertEqual(_wrap_text("界", 1), ["界"])
+        self.assertEqual(_wrap_text("ab\n\n界c", 3), ["ab", "", "界c"])
+        self.assertEqual(_wrap_text("ab\n", 3), ["ab", ""])
         self.assertEqual(_wrap_text("", 5), [])
         self.assertEqual(_truncate_display("A界BC", 3), "A界")
         self.assertEqual(_truncate_display("A界BC", 2), "A")
@@ -118,9 +120,18 @@ class TuiDisplayTests(unittest.TestCase):
     def test_wrapped_input_ranges_and_cursor_location_use_terminal_cells(self):
         self.assertEqual(_wrapped_ranges("ab界cd", 3), [(0, 2), (2, 4), (4, 5)])
         self.assertEqual(_wrapped_ranges("", 3), [(0, 0)])
+        self.assertEqual(_wrapped_ranges("ab\n\n界", 3), [(0, 2), (3, 3), (4, 5)])
         self.assertEqual(
             _wrap_active_input("ab界cd", 3, 3),
             (["ab", "界c", "d"], 1, 2),
+        )
+        self.assertEqual(
+            _wrap_active_input("ab\n界", 2, 3),
+            (["ab", "界"], 0, 2),
+        )
+        self.assertEqual(
+            _wrap_active_input("ab\n界", 3, 3),
+            (["ab", "界"], 1, 0),
         )
         self.assertEqual(_wrap_active_input("", 0, 3), ([""], 0, 0))
 
