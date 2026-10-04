@@ -15,14 +15,18 @@ from .tui_status import EMPTY_STATUS, error_status, info_status
 from .styles import available_styles
 from .tui_cli import build_argument_parser, settings_for_invocation
 from .tui_display import _adjustable_value, format_english_phonemes
-from .tui_dictionary import TuiDictionaryController
+from .tui_dictionary import (
+    DictionaryControllerIntent,
+    DictionaryOperationIntent,
+    TuiDictionaryController,
+)
 from .tui_help import HelpOutcome, TuiHelpController
 from .tui_rendering import TuiRenderer, TuiRenderState, _HELP_ITEMS, _active_input_prefix
 from .tui_editors import (
     AdjustmentPressedIntent, ApplyCaptionIntent, ApplySettingsIntent,
     BuildPronunciationIntent, BuildPronunciationResult, CaptionApplicationResult,
     ClearAdjustmentFeedbackIntent, ClearCandidatesIntent, CloseEditorIntent,
-    EditorIntent, OpenHelpIntent, OpenDictionaryIntent, SaveToDictionaryIntent,
+    OpenHelpIntent, OpenDictionaryIntent, SaveToDictionaryIntent,
     QuitIntent, PreviewIntent, QueryApplicationResult, PronunciationRow,
     ReplaceQueryIntent, SettingsApplicationResult, TuiEditorController,
     UpdateStatusIntent,
@@ -30,6 +34,7 @@ from .tui_editors import (
 from .tui_operations import (
     BatchCandidateReplacedEffect,
     CandidateReplacedEffect,
+    DictionaryOperationCompletedEffect,
     DiscardInitialBatchEffect,
     FocusEffect,
     OperationEffect,
@@ -270,6 +275,10 @@ class TuiApp:
                     self._operations.busy
                     and self._operations.worker_operation == "preview"
                 ),
+                dictionary_operation_busy=(
+                    self._operations.busy
+                    and self._operations.worker_operation == "dictionary"
+                ),
             )
             self._dispatch_editor_intents(intents)
             return
@@ -413,7 +422,10 @@ class TuiApp:
             return CaptionApplicationResult(initial_session_created=True)
         return CaptionApplicationResult()
 
-    def _dispatch_editor_intents(self, intents: Sequence[EditorIntent]) -> None:
+    def _dispatch_editor_intents(
+        self,
+        intents: Sequence[DictionaryControllerIntent],
+    ) -> None:
         pending = list(intents)
         while pending:
             intent = pending.pop(0)
@@ -440,6 +452,10 @@ class TuiApp:
                         surface=intent.surface,
                         phonemes=intent.pronunciation,
                     )
+            elif isinstance(intent, DictionaryOperationIntent):
+                self._dispatch_operation_effects(
+                    self._operations.start_dictionary_operation(intent)
+                )
             elif isinstance(intent, QuitIntent):
                 self._activate_quit()
             elif isinstance(intent, ClearCandidatesIntent):
@@ -549,6 +565,14 @@ class TuiApp:
                 self._batch.clear_open_item_acceptance()
             elif isinstance(effect, TakeAcceptedEffect):
                 self._batch.complete_acceptance(effect.item_id, effect.number)
+            elif isinstance(effect, DictionaryOperationCompletedEffect):
+                self._dispatch_editor_intents(
+                    self._dictionary_controller.complete_operation(
+                        effect.request,
+                        effect.value,
+                        effect.error,
+                    )
+                )
             elif isinstance(effect, BatchCandidateReplacedEffect):
                 self._batch.invalidate_acceptance_for_replacement(
                     effect.item_id,

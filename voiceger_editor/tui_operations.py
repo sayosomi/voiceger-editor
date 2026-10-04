@@ -12,12 +12,15 @@ import subprocess
 import sys
 import tempfile
 from threading import Event, Thread
-from typing import Any, Callable, Iterable, Union
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Union
 
 from .caption_batch import CaptionBatch
 from .session import UtteranceSession
 from .tui_status import Status, error_status, info_status, warning_status
 from .voicevox_api_models import AudioQuery
+
+if TYPE_CHECKING:
+    from .tui_dictionary import DictionaryOperationIntent, DictionaryOperationRequest
 
 
 @dataclass(frozen=True)
@@ -70,10 +73,24 @@ class TakeAcceptedEffect:
 
 
 @dataclass(frozen=True)
+class DictionaryOperationCompletedEffect:
+    request: DictionaryOperationRequest
+    value: Any = None
+    error: BaseException | None = None
+
+
+@dataclass(frozen=True)
 class TakeAcceptanceCompletedEvent:
     item_id: str
     number: int
     saved: Any | None = None
+    error: BaseException | None = None
+
+
+@dataclass(frozen=True)
+class DictionaryOperationCompletedEvent:
+    request: DictionaryOperationRequest
+    value: Any = None
     error: BaseException | None = None
 
 
@@ -137,6 +154,7 @@ OperationEffect = Union[
     BatchCandidateReplacedEffect,
     CandidateReplacedEffect,
     TakeAcceptedEffect,
+    DictionaryOperationCompletedEffect,
 ]
 
 
@@ -459,6 +477,47 @@ class TuiOperations:
         self.worker.start()
         return (UpdateStatusEffect("Synthesizing pronunciation Preview…"),)
 
+    def start_dictionary_operation(
+        self,
+        intent: DictionaryOperationIntent,
+    ) -> tuple[OperationEffect, ...]:
+        """Defer Dictionary analysis or persistence until its Status can render."""
+
+        if self.busy:
+            return (UpdateStatusEffect("Wait for the current operation to finish."),)
+
+        self.busy = True
+        self.worker_operation = "dictionary"
+        self.worker_target = None
+        self.worker_error = None
+        self.operation_completed = 0
+        self.operation_total = 1
+        self._cancellation_event = None
+        self.cancellation_requested = False
+
+        def work() -> None:
+            try:
+                with open(os.devnull, "w", encoding="utf-8") as sink:
+                    with redirect_stdout(sink), redirect_stderr(sink):
+                        value = intent.work()
+            except BaseException as exc:
+                self.events.put(
+                    DictionaryOperationCompletedEvent(
+                        request=intent.request,
+                        error=exc,
+                    )
+                )
+            else:
+                self.events.put(
+                    DictionaryOperationCompletedEvent(
+                        request=intent.request,
+                        value=value,
+                    )
+                )
+
+        self._pending_worker = (work, "voiceger-tui-dictionary")
+        return (UpdateStatusEffect(intent.status),)
+
     def start_pending_worker(self) -> None:
         """Start work deferred until its in-progress Status has been rendered."""
 
@@ -547,6 +606,12 @@ class TuiOperations:
                 return (
                     UpdateStatusEffect("Finishing the current Take save before cleanup…"),
                 )
+            if self.worker_operation == "dictionary":
+                return (
+                    UpdateStatusEffect(
+                        "Finishing the current Dictionary operation before cleanup…"
+                    ),
+                )
             return (UpdateStatusEffect("Finishing the current synthesis before cleanup…"),)
         return ()
 
@@ -573,6 +638,23 @@ class TuiOperations:
                 self.worker_error = event.error
                 effects.append(
                     UpdateStatusEffect(error_status(f"Preview failed: {event.error}"))
+                )
+                continue
+            if isinstance(event, DictionaryOperationCompletedEvent):
+                self.busy = False
+                self.operation_completed = 1
+                self.operation_total = 1
+                self.worker_error = event.error
+                self.worker_operation = None
+                self.worker_target = None
+                self._cancellation_event = None
+                self.cancellation_requested = False
+                effects.append(
+                    DictionaryOperationCompletedEffect(
+                        request=event.request,
+                        value=event.value,
+                        error=event.error,
+                    )
                 )
                 continue
             if isinstance(event, TakeAcceptanceCompletedEvent):

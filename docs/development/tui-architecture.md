@@ -10,13 +10,13 @@ The TUI is split between a composition root and focused owners. The composition 
 | `voiceger_editor/tui_cli.py` | CLI argument declarations and per-invocation settings overrides, re-exported by the composition root for compatibility. |
 | `voiceger_editor/tui_batch.py` | Top-level Batch List collection ownership, focus/navigation state, inclusion toggling, stable-ID Caption deletion confirmation and removed-session cleanup, Batch Item selection state, and Batch List key interpretation. |
 | `voiceger_editor/tui_batch_item.py` | Batch Item key interpretation and action routing; same-level Caption movement; candidate review/accept/regeneration coordination; Build pronunciation and Take-count interaction policy; Batch Item segment/pronunciation-row derivation. |
-| `voiceger_editor/tui_dictionary.py` | User-dictionary modal state, keyboard interaction, quick-save resolution, CRUD drafts, confirmation policy, and dictionary preview intents. |
+| `voiceger_editor/tui_dictionary.py` | User-dictionary modal state, keyboard interaction, quick-save resolution, CRUD drafts, confirmation policy, operation request snapshots, and UI-thread application of Dictionary analysis and persistence results. |
 | `voiceger_editor/tui_help.py` | Help open/closed state, scroll position, close/quit key outcomes, and Help scroll/clamping policy. |
 | `voiceger_editor/tui_navigation.py` | Selectable item ordering; focus state; remembered pronunciation segment; navigation revision; Up/Down and major-section movement; navigation action interpretation. |
 | `voiceger_editor/tui_editors.py` | Editor state and drafts; text, Japanese, English, and settings interaction policy; English grouping cache; editor validation; typed editor intents and results. |
 | `voiceger_editor/tui_shortcuts.py` | Declarative Main primary-action shortcuts plus editor/modal selectable-item metadata; visible shortcut labels and dispatch share the same declarations, while editor/modal declarations also own selection order, shortcut behavior, conditions, and explicit no-shortcut exceptions. |
 | `voiceger_editor/tui_settings.py` | TUI runtime/persisted Settings reconciliation, persistence outcomes, synthesis-setting invalidation policy, and Batch default Take-count synchronization. |
-| `voiceger_editor/tui_operations.py` | Synthesis worker lifecycle and event queue; operation progress; candidate playback and acceptance; typed operation effects. |
+| `voiceger_editor/tui_operations.py` | Shared background worker lifecycle and event queue for synthesis, Take acceptance, and slow Dictionary work; operation progress; candidate playback and acceptance; typed operation effects. |
 | `voiceger_editor/tui_status.py` | Shared semantic TUI Status model, severity constructors, and the single visible prefix formatter. |
 | `voiceger_editor/tui_rendering.py` | Batch List, Batch Item navigation, editor, and help document construction; shared Status footer layout/rendering; render-state presentation; terminal drawing behavior. |
 | `voiceger_editor/tui_display.py` | Pure display-cell width; wrapping and truncation; cursor movement across wrapped input; phoneme and display-formatting helpers. |

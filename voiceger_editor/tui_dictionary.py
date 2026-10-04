@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import curses
 from copy import deepcopy
-from typing import Any, Callable, Sequence
+from dataclasses import dataclass
+from typing import Any, Callable, Literal, Sequence, Union
 
 from .english_stress import (
     editor_state_to_english_phonemes,
@@ -25,7 +26,7 @@ from .tui_editors import (
     UpdateStatusIntent,
 )
 from .tui_shortcuts import menu_items, resolve_shortcut
-from .tui_status import EMPTY_STATUS, error_status
+from .tui_status import EMPTY_STATUS, Status, error_status, info_status
 from .user_dictionary import JapaneseWordType, UserDictionaryCore
 from .voicevox_api_models import AccentPhrase, AudioQuery, Mora, VoicegerSegment
 
@@ -33,6 +34,36 @@ from .voicevox_api_models import AccentPhrase, AudioQuery, Mora, VoicegerSegment
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
 _ESCAPE = "\x1b"
 _WORD_TYPES = tuple(JapaneseWordType)
+
+DictionaryOperationIdentity = Literal[
+    "generate_japanese_pronunciation",
+    "generate_english_pronunciation",
+    "save_japanese",
+    "save_english",
+    "delete_japanese",
+    "delete_english",
+]
+DictionaryLanguage = Literal["ja", "en"]
+
+
+@dataclass(frozen=True)
+class DictionaryOperationRequest:
+    """Snapshot the requested work and retain the originating UI editor identity."""
+
+    operation: DictionaryOperationIdentity
+    language: DictionaryLanguage
+    editor_snapshot: EditorState
+    originating_editor: EditorState
+
+
+@dataclass(frozen=True)
+class DictionaryOperationIntent:
+    request: DictionaryOperationRequest
+    status: Status
+    work: Callable[[], Any]
+
+
+DictionaryControllerIntent = Union[EditorIntent, DictionaryOperationIntent]
 
 
 def _reading_morae(reading: str) -> tuple[str, ...]:
@@ -99,6 +130,20 @@ class TuiDictionaryController:
         self._input_prefix = input_prefix
         self._japanese_pronunciation = japanese_pronunciation
         self._english_word_groups = english_word_groups
+
+    @staticmethod
+    def _operation_request(
+        editor: EditorState,
+        *,
+        operation: DictionaryOperationIdentity,
+        language: DictionaryLanguage,
+    ) -> DictionaryOperationRequest:
+        return DictionaryOperationRequest(
+            operation=operation,
+            language=language,
+            editor_snapshot=deepcopy(editor),
+            originating_editor=editor,
+        )
 
     @property
     def active(self) -> bool:
@@ -489,7 +534,7 @@ class TuiDictionaryController:
         editor.error = EMPTY_STATUS
         return (ClearAdjustmentFeedbackIntent(),)
 
-    def _finish_field(self) -> tuple[EditorIntent, ...]:
+    def _finish_field(self) -> tuple[DictionaryControllerIntent, ...]:
         editor = self.editor
         if editor is None or editor.active_field is None:
             return ()
@@ -586,45 +631,67 @@ class TuiDictionaryController:
             editor.error = error_status(f"Stress was not changed: {exc}")
         return ()
 
-    def _generate_pronunciation(self) -> tuple[EditorIntent, ...]:
+    def _generate_pronunciation(self) -> tuple[DictionaryControllerIntent, ...]:
         editor = self.editor
         assert editor is not None
         surface = editor.payload["surface"]
         if not surface.strip():
             editor.error = error_status("Surface must not be empty.")
             return ()
-        try:
-            if editor.kind == "dictionary_japanese_entry":
-                if self._japanese_pronunciation is None:
+        editor.error = EMPTY_STATUS
+        if editor.kind == "dictionary_japanese_entry":
+            language: DictionaryLanguage = "ja"
+            operation: DictionaryOperationIdentity = "generate_japanese_pronunciation"
+            analyze = self._japanese_pronunciation
+
+            def work(
+                *,
+                surface: str = surface,
+                analyze: Callable[[str], Any] | None = analyze,
+            ) -> tuple[str, tuple[str, ...], int]:
+                if analyze is None:
                     raise RuntimeError("Japanese pronunciation analysis is unavailable")
-                parsed = self._japanese_pronunciation(surface)
+                parsed = analyze(surface)
                 if len(parsed.phrases) != 1:
                     raise ValueError(
                         "Japanese dictionary Surface must resolve to exactly one accent phrase"
                     )
                 phrase = parsed.phrases[0]
-                editor.payload["pronunciation"] = phrase.reading
-                editor.payload["moras"] = tuple(phrase.morae)
-                editor.payload["accent"] = phrase.accent
-            else:
-                if self._english_word_groups is None:
+                return phrase.reading, tuple(phrase.morae), phrase.accent
+
+            status = "Generating Japanese pronunciation…"
+        else:
+            language = "en"
+            operation = "generate_english_pronunciation"
+            analyze_groups = self._english_word_groups
+
+            def work(
+                *,
+                surface: str = surface,
+                analyze_groups: Callable[
+                    [str], Sequence[tuple[str, Sequence[str]]]
+                ] | None = analyze_groups,
+            ) -> tuple[str, ...]:
+                if analyze_groups is None:
                     raise RuntimeError("English pronunciation analysis is unavailable")
-                groups = tuple(self._english_word_groups(surface))
+                groups = tuple(analyze_groups(surface))
                 if len(groups) != 1:
                     raise ValueError(
                         "English dictionary Surface must resolve to exactly one word"
                     )
                 _label, phonemes = groups[0]
-                editor.payload["phonemes"] = tuple(
-                    normalize_english_phonemes(phonemes)
-                )
-        except Exception as exc:
-            editor.error = error_status(f"Pronunciation was not generated: {exc}")
-            return ()
-        editor.error = EMPTY_STATUS
+                return tuple(normalize_english_phonemes(phonemes))
+
+            status = "Generating English pronunciation…"
+
+        request = self._operation_request(
+            editor,
+            operation=operation,
+            language=language,
+        )
         return (
-            UpdateStatusIntent("Pronunciation generated from Surface."),
             ClearAdjustmentFeedbackIntent(),
+            DictionaryOperationIntent(request, info_status(status), work),
         )
 
     def _preview(self) -> tuple[EditorIntent, ...]:
@@ -647,57 +714,74 @@ class TuiDictionaryController:
         editor.error = EMPTY_STATUS
         return (PreviewIntent(query),)
 
-    def _save(self) -> tuple[EditorIntent, ...]:
+    def _save(self) -> tuple[DictionaryControllerIntent, ...]:
         editor = self.editor
         assert editor is not None
-        try:
-            if editor.kind == "dictionary_japanese_entry":
-                values = {
-                    "surface": editor.payload["surface"],
-                    "pronunciation": editor.payload["pronunciation"],
-                    "accent_type": editor.payload["accent"],
-                    "word_type": editor.payload["word_type"],
-                    "priority": editor.payload["priority"],
-                }
-                word_uuid = editor.payload["word_uuid"]
-                if word_uuid is None:
-                    self.core.add_japanese_word(**values)
-                else:
-                    self.core.update_japanese_word(word_uuid, **values)
-                message = "Japanese dictionary word saved."
+        surface = str(editor.payload["surface"])
+        if not surface.strip():
+            editor.error = error_status("Surface must not be empty.")
+            return ()
+
+        editor.error = EMPTY_STATUS
+        if editor.kind == "dictionary_japanese_entry":
+            language: DictionaryLanguage = "ja"
+            operation: DictionaryOperationIdentity = "save_japanese"
+            word_uuid = editor.payload["word_uuid"]
+            pronunciation = str(editor.payload["pronunciation"])
+            accent_type = int(editor.payload["accent"])
+            word_type = editor.payload["word_type"]
+            priority = int(editor.payload["priority"])
+            core = self.core
+            if word_uuid is None:
+                def work() -> Any:
+                    return core.add_japanese_word(
+                        surface=surface,
+                        pronunciation=pronunciation,
+                        accent_type=accent_type,
+                        word_type=word_type,
+                        priority=priority,
+                    )
             else:
-                original_surface = editor.payload["original_surface"]
-                surface = editor.payload["surface"]
-                phonemes = editor.payload["phonemes"]
-                if original_surface is None:
-                    self.core.set_english_entry(surface, phonemes)
-                else:
-                    self.core.update_english_entry(
+                word_uuid = str(word_uuid)
+
+                def work() -> Any:
+                    return core.update_japanese_word(
+                        word_uuid,
+                        surface=surface,
+                        pronunciation=pronunciation,
+                        accent_type=accent_type,
+                        word_type=word_type,
+                        priority=priority,
+                    )
+
+            status = "Saving Japanese dictionary word…"
+        else:
+            language = "en"
+            operation = "save_english"
+            original_surface = editor.payload["original_surface"]
+            if original_surface is not None:
+                original_surface = str(original_surface)
+            phonemes = tuple(editor.payload["phonemes"])
+            core = self.core
+            if original_surface is None:
+                def work() -> Any:
+                    return core.set_english_entry(surface, phonemes)
+            else:
+                def work() -> Any:
+                    return core.update_english_entry(
                         original_surface,
                         surface=surface,
                         phonemes=phonemes,
                     )
-                message = "English dictionary word saved."
-        except Exception as exc:
-            editor.error = error_status(f"Dictionary word was not saved: {exc}")
-            return ()
 
-        quick_save = bool(editor.payload["quick_save"])
-        if quick_save:
-            self.editor = None
-            self._stack.clear()
-        else:
-            parent = self._stack.pop() if self._stack else self._menu_state()
-            if editor.kind == "dictionary_japanese_entry":
-                self.editor = self._japanese_list_state()
-            else:
-                self.editor = self._english_list_state()
-            if parent.kind not in {
-                "dictionary_japanese_list",
-                "dictionary_english_list",
-            }:
-                self._stack.clear()
-        return (UpdateStatusIntent(message), ClearAdjustmentFeedbackIntent())
+            status = "Saving English dictionary word…"
+
+        request = self._operation_request(
+            editor,
+            operation=operation,
+            language=language,
+        )
+        return (DictionaryOperationIntent(request, info_status(status), work),)
 
     def _open_discard_confirmation(self, editor: EditorState) -> tuple[EditorIntent, ...]:
         self.editor = EditorState(
@@ -775,24 +859,110 @@ class TuiDictionaryController:
         )
         return (UpdateStatusIntent(""),)
 
-    def _delete_confirmed(self) -> tuple[EditorIntent, ...]:
+    def _delete_confirmed(self) -> tuple[DictionaryControllerIntent, ...]:
         editor = self.editor
         assert editor is not None
-        try:
-            if editor.payload["language"] == "ja":
-                self.core.delete_japanese_word(editor.payload["identifier"])
-                self.editor = self._japanese_list_state()
-                message = "Japanese dictionary word deleted."
-            else:
-                self.core.delete_english_entry(editor.payload["identifier"])
-                self.editor = self._english_list_state()
-                message = "English dictionary word deleted."
-        except Exception as exc:
-            editor.error = error_status(f"Dictionary word was not deleted: {exc}")
-            return ()
-        return (UpdateStatusIntent(message),)
+        language: DictionaryLanguage = editor.payload["language"]
+        identifier = str(editor.payload["identifier"])
+        editor.error = EMPTY_STATUS
+        core = self.core
+        if language == "ja":
+            operation: DictionaryOperationIdentity = "delete_japanese"
 
-    def _activate(self) -> tuple[EditorIntent, ...]:
+            def work() -> Any:
+                return core.delete_japanese_word(identifier)
+
+            status = "Deleting Japanese dictionary word…"
+        else:
+            operation = "delete_english"
+
+            def work() -> Any:
+                return core.delete_english_entry(identifier)
+
+            status = "Deleting English dictionary word…"
+        request = self._operation_request(
+            editor,
+            operation=operation,
+            language=language,
+        )
+        return (DictionaryOperationIntent(request, info_status(status), work),)
+
+    def complete_operation(
+        self,
+        request: DictionaryOperationRequest,
+        value: Any = None,
+        error: BaseException | None = None,
+    ) -> tuple[EditorIntent, ...]:
+        """Apply a worker result to its originating Dictionary surface on the UI thread."""
+
+        editor = self.editor
+        if editor is not request.originating_editor:
+            # The operation has finished, so clear its footer Status even if
+            # the originating surface was replaced before the event arrived.
+            return (UpdateStatusIntent(""),)
+
+        if error is not None:
+            if request.operation in {
+                "generate_japanese_pronunciation",
+                "generate_english_pronunciation",
+            }:
+                message = f"Pronunciation was not generated: {error}"
+            elif request.operation in {"save_japanese", "save_english"}:
+                message = f"Dictionary word was not saved: {error}"
+            else:
+                message = f"Dictionary word was not deleted: {error}"
+            editor.error = error_status(message)
+            return (UpdateStatusIntent(editor.error),)
+
+        editor.error = EMPTY_STATUS
+        if request.operation == "generate_japanese_pronunciation":
+            reading, moras, accent = value
+            editor.payload["pronunciation"] = reading
+            editor.payload["moras"] = tuple(moras)
+            editor.payload["accent"] = accent
+            message = "Pronunciation generated from Surface."
+        elif request.operation == "generate_english_pronunciation":
+            editor.payload["phonemes"] = tuple(value)
+            message = "Pronunciation generated from Surface."
+        elif request.operation in {"save_japanese", "save_english"}:
+            snapshot = request.editor_snapshot
+            message = (
+                "Japanese dictionary word saved."
+                if request.language == "ja"
+                else "English dictionary word saved."
+            )
+            if bool(snapshot.payload["quick_save"]):
+                self.editor = None
+                self._stack.clear()
+            else:
+                parent = self._stack.pop() if self._stack else self._menu_state()
+                self.editor = (
+                    self._japanese_list_state()
+                    if request.language == "ja"
+                    else self._english_list_state()
+                )
+                if parent.kind not in {
+                    "dictionary_japanese_list",
+                    "dictionary_english_list",
+                }:
+                    self._stack.clear()
+        else:
+            self.editor = (
+                self._japanese_list_state()
+                if request.language == "ja"
+                else self._english_list_state()
+            )
+            message = (
+                "Japanese dictionary word deleted."
+                if request.language == "ja"
+                else "English dictionary word deleted."
+            )
+        return (
+            UpdateStatusIntent(message),
+            ClearAdjustmentFeedbackIntent(),
+        )
+
+    def _activate(self) -> tuple[DictionaryControllerIntent, ...]:
         editor = self.editor
         if editor is None:
             return ()
@@ -920,9 +1090,16 @@ class TuiDictionaryController:
         *,
         screen_width: int = 80,
         preview_busy: bool = False,
-    ) -> tuple[EditorIntent, ...]:
+        dictionary_operation_busy: bool = False,
+    ) -> tuple[DictionaryControllerIntent, ...]:
         editor = self.editor
         if editor is None:
+            return ()
+        if dictionary_operation_busy:
+            if key in ("q", "Q", "\x03"):
+                return (QuitIntent(),)
+            if key == "?":
+                return (OpenHelpIntent(),)
             return ()
         if preview_busy and editor.kind in {
             "dictionary_japanese_entry",
