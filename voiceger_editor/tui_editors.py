@@ -47,6 +47,7 @@ from .settings import (
 )
 from .tui_display import _display_width, _move_wrapped_cursor
 from .tui_shortcuts import menu_items, resolve_shortcut
+from .tui_status import EMPTY_STATUS, Status, error_status, info_status
 from .voicevox_api_models import AudioQuery
 
 
@@ -135,7 +136,7 @@ class EditorState:
     input_value: str = ""
     input_cursor: int = 0
     input_original: str = ""
-    error: str = ""
+    error: Status = EMPTY_STATUS
     scroll: int = 0
 
 
@@ -143,12 +144,20 @@ class EditorState:
 class ReplaceQueryIntent:
     query: AudioQuery
     editor_kind: str
-    success_status: str
+    success_status: Status
     grouping_index: int | None = None
     accepted_grouping: EnglishGroupingCache | None = None
     deleted_segment_index: int | None = None
     pure_japanese_utterance_text: str | None = None
     close_editor: bool = True
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.success_status, Status):
+            object.__setattr__(
+                self,
+                "success_status",
+                info_status(str(self.success_status)),
+            )
 
 
 @dataclass(frozen=True)
@@ -174,12 +183,23 @@ class ApplySettingsIntent:
 @dataclass(frozen=True)
 class CloseEditorIntent:
     origin: tuple[str, int | None]
-    status: str
+    status: Status
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.status, Status):
+            object.__setattr__(self, "status", info_status(str(self.status)))
 
 
 @dataclass(frozen=True)
 class UpdateStatusIntent:
-    status: str
+    status: Status
+
+    def __init__(self, status: Status | str) -> None:
+        object.__setattr__(
+            self,
+            "status",
+            status if isinstance(status, Status) else info_status(status),
+        )
 
 
 @dataclass(frozen=True)
@@ -258,7 +278,7 @@ class BuildPronunciationResult:
 
 @dataclass(frozen=True)
 class SettingsApplicationResult:
-    error_status: str | None = None
+    error_status: Status | None = None
 
 
 class TuiEditorController:
@@ -273,7 +293,7 @@ class TuiEditorController:
     ) -> None:
         self.editor: EditorState | None = None
         self.grouping_cache: dict[int, EnglishGroupingCache] = {}
-        self.grouping_error: str | None = None
+        self.grouping_error: Status | None = None
         self._english_word_groups = english_word_groups
         self._available_styles = available_styles
         self._input_prefix = input_prefix
@@ -843,7 +863,7 @@ class TuiEditorController:
         editor.input_value = value
         editor.input_cursor = len(value)
         editor.input_original = value
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (ClearAdjustmentFeedbackIntent(),)
 
     def selection_keys(self) -> list[str]:
@@ -867,7 +887,7 @@ class TuiEditorController:
         if target == index:
             return ()
         editor.selection = keys[target]
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (ClearAdjustmentFeedbackIntent(),)
 
     def move_settings_section(self, direction: int) -> tuple[EditorIntent, ...]:
@@ -892,7 +912,7 @@ class TuiEditorController:
         )
         target = (current + (1 if direction > 0 else -1)) % len(sections)
         editor.selection = sections[target][0]
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (ClearAdjustmentFeedbackIntent(),)
 
     def handle_key(
@@ -928,7 +948,7 @@ class TuiEditorController:
                 editor.input_value = editor.input_original
                 editor.input_cursor = len(editor.input_original)
                 editor.active_field = None
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent(""),)
             if editor.kind == "japanese" and isinstance(key, str) and "/" in key:
                 editor.error = (
@@ -981,7 +1001,7 @@ class TuiEditorController:
             if input_changed and editor.kind in {
                 "japanese", "english_word", "section_text", "add_section"
             }:
-                editor.error = ""
+                editor.error = EMPTY_STATUS
             return ()
 
         if key in ("q", "Q", "\x03"):
@@ -997,7 +1017,7 @@ class TuiEditorController:
         shortcut = resolve_shortcut(editor.kind, key, editor.payload)
         if shortcut is not None:
             editor.selection = shortcut.key
-            editor.error = ""
+            editor.error = EMPTY_STATUS
             if shortcut.shortcut_mode == "focus":
                 return (ClearAdjustmentFeedbackIntent(),)
             return self._activate_selection(settings, query, current_caption)
@@ -1014,7 +1034,7 @@ class TuiEditorController:
                 key == curses.KEY_LEFT and language == "en"
             ):
                 editor.payload["language"] = "en" if language == "ja" else "ja"
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (ClearAdjustmentFeedbackIntent(), UpdateStatusIntent(""))
             return ()
         if key == _ESCAPE:
@@ -1044,13 +1064,13 @@ class TuiEditorController:
                 return self.apply(settings, query, current_caption)
             if selected == "clear":
                 self._set_caption_draft(editor, "")
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("Caption draft cleared."),)
             if selected == "reset":
                 self._set_caption_draft(
                     editor, editor.payload["opening_caption"]
                 )
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("Caption draft reset."),)
             if selected == "back":
                 return self.cancel()
@@ -1088,13 +1108,13 @@ class TuiEditorController:
                 )
             if selected == "clear":
                 self._set_pronunciation_draft(editor, "")
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("Japanese pronunciation draft cleared."),)
             if selected == "reset":
                 self._set_pronunciation_draft(
                     editor, editor.payload["opening_draft"]
                 )
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("Japanese pronunciation draft reset."),)
             if selected == "back":
                 return self.cancel()
@@ -1111,7 +1131,7 @@ class TuiEditorController:
                 draft["top_k"] = str(VOICEGER_DEFAULT_TOP_K)
                 draft["top_p"] = f"{VOICEGER_DEFAULT_TOP_P:.2f}"
                 draft["temperature"] = f"{VOICEGER_DEFAULT_TEMPERATURE:.2f}"
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (
                     ClearAdjustmentFeedbackIntent(),
                     UpdateStatusIntent("Sampling reset to Voiceger defaults."),
@@ -1120,7 +1140,7 @@ class TuiEditorController:
                 editor.payload["draft_settings"] = self._settings_draft(
                     editor.payload["opening_settings"]
                 )
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (
                     ClearAdjustmentFeedbackIntent(),
                     UpdateStatusIntent("Settings draft reset."),
@@ -1152,13 +1172,13 @@ class TuiEditorController:
                 )
             if selected == "clear":
                 self._set_pronunciation_draft(editor, "")
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("English phoneme draft cleared."),)
             if selected == "reset":
                 self._set_pronunciation_draft(
                     editor, editor.payload["opening_draft"]
                 )
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("English phoneme draft reset."),)
             if selected == "back":
                 return self.cancel()
@@ -1171,7 +1191,7 @@ class TuiEditorController:
                 return self.apply_section_text(query)
             if selected == "reset":
                 self._set_text_draft(editor, editor.payload["opening_text"])
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("Section text draft reset."),)
             if selected == "delete_section":
                 return self.open_delete_confirmation()
@@ -1184,12 +1204,12 @@ class TuiEditorController:
                 return self.add_section(query)
             if selected == "clear":
                 self._set_text_draft(editor, "")
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("New section draft cleared."),)
             if selected == "reset":
                 editor.payload["language"] = editor.payload["opening_language"]
                 self._set_text_draft(editor, editor.payload["opening_draft"])
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("New section draft reset."),)
             if selected == "back":
                 return self.cancel()
@@ -1297,7 +1317,7 @@ class TuiEditorController:
         except Exception as exc:
             editor.error = f"Error: Preview failed: {exc}"
             return ()
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (PreviewIntent(preview_query),)
 
     def apply_section_text(
@@ -1508,7 +1528,7 @@ class TuiEditorController:
         except Exception as exc:
             editor.error = f"Error: Preview failed: {exc}"
             return ()
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (PreviewIntent(preview_query),)
 
     def _finish_field(self) -> tuple[EditorIntent, ...]:
@@ -1572,7 +1592,7 @@ class TuiEditorController:
         editor.active_field = None
         editor.input_original = value
         editor.input_cursor = len(value)
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         if editor.kind == "settings":
             status = ""
         else:
@@ -1856,7 +1876,7 @@ class TuiEditorController:
                 editor.error = "Error: Speed must be a positive finite number."
                 return clear_feedback
             if updated == current:
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return clear_feedback
             draft["speed"] = f"{updated:.2f}"
         elif selected == "take_count":
@@ -1867,7 +1887,7 @@ class TuiEditorController:
                 return clear_feedback
             updated = min(100, max(1, current + direction))
             if updated == current:
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return clear_feedback
             draft["take_count"] = str(updated)
         elif selected == "top_k":
@@ -1881,7 +1901,7 @@ class TuiEditorController:
                 return clear_feedback
             updated = min(100, max(1, current + direction))
             if updated == current:
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return clear_feedback
             draft["top_k"] = str(updated)
         elif selected in {"top_p", "temperature"}:
@@ -1904,10 +1924,10 @@ class TuiEditorController:
             updated = current + Decimal("0.05") * direction
             updated = min(Decimal("1.00"), max(Decimal("0.00"), updated))
             if updated == current:
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return clear_feedback
             draft[selected] = f"{updated:.2f}"
         elif selected in {"save_text", "save_lab"}:
             draft[selected] = not bool(draft[selected])
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (feedback,)
