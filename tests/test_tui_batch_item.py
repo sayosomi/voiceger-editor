@@ -10,7 +10,7 @@ from voiceger_editor.tui_batch_item import (
     TuiBatchItemController,
 )
 from voiceger_editor.tui_navigation import AcceptCandidate, TuiNavigation
-from voiceger_editor.tui_operations import TakeAcceptedEffect, UpdateStatusEffect
+from voiceger_editor.tui_operations import UpdateStatusEffect
 
 
 class FakeSession:
@@ -132,13 +132,11 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             "Wait for the current synthesis operation to finish."
         )
 
-    def test_acceptance_routes_through_operations_and_marks_stable_item(self):
+    def test_acceptance_starts_operation_for_stable_item_without_marking_early(self):
         subject, batch, bindings, _state = self.make_subject()
         target = batch.batch.items[0]
-        bindings.actions.operations.accept_take.return_value = (
-            TakeAcceptedEffect(2),
-            UpdateStatusEffect("saved"),
-        )
+        effects = (UpdateStatusEffect("Saving Take 2…"),)
+        bindings.actions.operations.accept_take.return_value = effects
 
         subject.dispatch_navigation_actions(
             (AcceptCandidate(2),),
@@ -148,11 +146,24 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         bindings.actions.operations.accept_take.assert_called_once_with(
             target.session,
             2,
+            item_id=target.item_id,
             busy=False,
             pronunciation_index=0,
         )
-        self.assertTrue(target.is_accepted)
-        self.assertEqual(target.accepted_take_number, 2)
+        bindings.actions.dispatch_operation_effects.assert_called_once_with(effects)
+        self.assertFalse(target.is_accepted)
+        self.assertIsNone(target.accepted_take_number)
+
+    def test_escape_keeps_batch_item_open_while_take_is_saving(self):
+        subject, batch, bindings, state = self.make_subject()
+        bindings.actions.operations.busy = True
+        bindings.actions.operations.worker_operation = "accept"
+
+        subject.handle_key("\x1b", bindings)
+
+        self.assertTrue(batch.in_item)
+        self.assertIs(state["session"], batch.batch.items[0].session)
+        bindings.actions.set_status.assert_not_called()
 
     def test_generate_take_count_adjustment_uses_existing_settings_owner(self):
         subject, _batch, bindings, _state = self.make_subject()

@@ -428,6 +428,23 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertTrue(cancel[2].startswith("▶ "))
         self.assertTrue(cancel[3] & curses.A_REVERSE)
 
+    def test_acceptance_busy_state_keeps_generate_label_as_generate_action(self):
+        lines = self.renderer.navigation_document(
+            render_state(
+                session=FakeSession(),
+                focus_key=("generate", None),
+                busy=True,
+                worker_operation="accept",
+                worker_target=2,
+                operation_total=1,
+            ),
+            80,
+        )
+
+        label = next(line.text for line in lines if line.key == ("generate", None))
+        self.assertIn("Generate < 4 > takes", label)
+        self.assertNotIn("Generating", label)
+
     def test_main_japanese_phrases_use_fixed_separator_and_compound_mora_tokens(self):
         state = render_state(session=FakeSession(), focus_key=("pronunciation", 0))
         lines = self.renderer.navigation_document(state, 80)
