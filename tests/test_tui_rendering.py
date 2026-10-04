@@ -704,7 +704,7 @@ class TuiRenderingTests(unittest.TestCase):
             "Batch List Add captions / Generate selected",
             "Menu mode: editor/modal action letters are active.",
             "Editing: Enter finishes; printable shortcut letters insert text.",
-            "Add captions: Enter inserts a new line; Ctrl+D finishes editing.",
+            "Add captions: Ctrl+N inserts a new line; Enter finishes editing.",
         ):
             self.assertIn(text, visible)
         for removed in (
@@ -975,7 +975,7 @@ class TuiRenderingTests(unittest.TestCase):
         ]
         self.assertEqual(
             status,
-            ["Enter: New line   Ctrl+D: Finish editing   Esc: Back"],
+            ["Ctrl+N: New line   Enter: Finish editing   Esc: Back"],
         )
 
     def test_editor_status_hint_disappears_after_editing_finishes(self):
