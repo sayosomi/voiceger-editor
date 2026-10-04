@@ -11,6 +11,7 @@ from voiceger_editor.tui_batch_item import (
 )
 from voiceger_editor.tui_navigation import AcceptCandidate, TuiNavigation
 from voiceger_editor.tui_operations import UpdateStatusEffect
+from voiceger_editor.tui_status import error_status
 
 
 class FakeSession:
