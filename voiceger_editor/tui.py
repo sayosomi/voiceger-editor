@@ -9,6 +9,7 @@ from typing import Any, Sequence
 
 from .session import UtteranceSession
 from . import tui_batch
+from .tui_batch_item import BatchItemBindings, TuiBatchItemController
 from .settings import Settings, SettingsError, save_settings
 from .styles import available_styles
 from .tui_cli import build_argument_parser, settings_for_invocation
@@ -36,14 +37,8 @@ from .tui_operations import (
     TuiOperations,
     UpdateStatusEffect,
 )
-from .tui_shortcuts import resolve_main_shortcut, resolve_shortcut
-from .tui_navigation import (
-    AcceptCandidate, AddSectionEditor, BuildPronunciation, ClearAdjustmentFeedback,
-    EditPronunciationItem, NavigationAction, NavigationContext,
-    OpenClearCandidatesConfirmation, DeleteCaption, OpenHelp, OpenDictionary, OpenSettingsEditor,
-    OpenCaptionEditor, PlayCandidate, Quit, RegenerateAll, RegenerateCandidate,
-    StartGeneration, TuiNavigation, UpdateNavigationStatus,
-)
+from .tui_shortcuts import resolve_shortcut
+from .tui_navigation import NavigationAction, NavigationContext, TuiNavigation
 from .voiceger_adapter import VoicegerAdapter
 
 
@@ -106,6 +101,17 @@ class TuiApp:
             dispatch_operation_effects=self._dispatch_operation_effects,
             open_help=self._open_help,
             activate_quit=self._activate_quit,
+        )
+        self._batch_item_controller = TuiBatchItemController(self._batch)
+        self._batch_item_bindings = BatchItemBindings(
+            actions=self._batch_action_bindings,
+            get_session=lambda: self.session,
+            get_settings=lambda: self.settings,
+            get_status=lambda: self._status,
+            clear_adjustment_feedback=lambda: setattr(
+                self, "_pressed_adjustment", None
+            ),
+            mark_adjustment_pressed=self._mark_adjustment_pressed,
         )
 
     def run(self, screen: Any) -> None:
@@ -254,236 +260,28 @@ class TuiApp:
             )
             self.session = self.session if self._batch.in_item else None
             return
-        if self._batch.handle_open_item_key(
+        self._batch_item_controller.handle_key(
             key,
-            focus_key=self._navigation.focus_key,
-            bindings=self._batch_action_bindings,
-        ):
-            return
-        if key in ("Q", "\x03"):
-            self._activate_quit()
-            return
-        main_shortcut = resolve_main_shortcut(key)
-        if main_shortcut is not None:
-            self._dispatch_navigation_actions(
-                self._navigation.activate_item(
-                    self._navigation_context(),
-                    (main_shortcut.navigation_key, None),
-                )
-            )
-            return
-        if key == "\t":
-            self._dispatch_navigation_actions(
-                self._navigation.move_section(self._navigation_context(), 1)
-            )
-            return
-        backtab = getattr(curses, "KEY_BTAB", None)
-        if backtab is not None and key == backtab:
-            self._dispatch_navigation_actions(
-                self._navigation.move_section(self._navigation_context(), -1)
-            )
-            return
-        if key in (curses.KEY_LEFT, curses.KEY_RIGHT):
-            direction = -1 if key == curses.KEY_LEFT else 1
-            if self._navigation.focus_key[0] == "generate":
-                self._adjust_take_count(direction)
-            elif (
-                self._navigation.focus_key[0] == "pronunciation"
-                and self._navigation.focus_key[1] is not None
-                and self.session is not None
-                and not self._operations.busy
-            ):
-                rows = self._pronunciation_rows()
-                index = self._navigation.focus_key[1]
-                if 0 <= index < len(rows):
-                    self._dispatch_editor_intents(
-                        self._editor_controller.adjust_pronunciation(
-                            self.session.query,
-                            rows[index],
-                            direction,
-                        )
-                    )
-            return
-        if isinstance(key, str) and len(key) == 1 and key in "123456789":
-            self._dispatch_navigation_actions(
-                self._navigation.focus_candidate(
-                    self._navigation_context(), int(key)
-                )
-            )
-            return
-        if key == "r":
-            self._dispatch_navigation_actions(
-                self._navigation.activate_regenerate_focused(
-                    self._navigation_context()
-                )
-            )
-            return
-        if key == curses.KEY_UP:
-            self._dispatch_navigation_actions(
-                self._navigation.move(self._navigation_context(), -1)
-            )
-        elif key == curses.KEY_DOWN:
-            self._dispatch_navigation_actions(
-                self._navigation.move(self._navigation_context(), 1)
-            )
-        elif key == " ":
-            if self._navigation.focus_key[0] == "candidate":
-                self._dispatch_operation_effects(
-                    self._operations.play_take(
-                        self.session, self._navigation.focus_key[1]
-                    )
-                )
-        elif key in _ENTER_KEYS:
-            self._dispatch_navigation_actions(
-                self._navigation.activate_focused_item(self._navigation_context())
-            )
+            self._batch_item_bindings,
+        )
 
     def _navigation_context(self) -> NavigationContext:
-        return NavigationContext.from_session(
-            self.session,
-            pronunciation_count=(
-                len(self._pronunciation_rows())
-                if self.session is not None
-                else 0
-            ),
-            busy=self._operations.busy,
-            has_item_navigator=self._batch.in_item,
+        return self._batch_item_controller.navigation_context(
+            self._batch_item_bindings
         )
 
     def _dispatch_navigation_actions(
         self,
         actions: Sequence[NavigationAction],
     ) -> None:
-        for action in actions:
-            if isinstance(action, ClearAdjustmentFeedback):
-                self._pressed_adjustment = None
-            elif isinstance(action, UpdateNavigationStatus):
-                self._status = action.status
-            elif isinstance(action, OpenSettingsEditor):
-                self._open_settings_editor(action.selected_field, edit=action.edit)
-            elif isinstance(action, OpenCaptionEditor):
-                self._open_caption_editor()
-            elif isinstance(action, DeleteCaption):
-                self._operations.stop_playback()
-                self._batch.request_delete_open_item()
-            elif isinstance(action, OpenClearCandidatesConfirmation):
-                if self._operations.busy:
-                    self._status = "Finish or cancel synthesis before clearing candidates."
-                elif self.session is not None and self.session.candidates:
-                    self._dispatch_editor_intents(
-                        self._editor_controller.open_clear_candidates_confirmation(
-                            origin=self._navigation.focus_key
-                        )
-                    )
-            elif isinstance(action, EditPronunciationItem):
-                self._edit_selected_pronunciation(action.index)
-            elif isinstance(action, AddSectionEditor):
-                self._dispatch_editor_intents(
-                    self._editor_controller.open_add_section(
-                        self.session.query if self.session is not None else None,
-                        pure_japanese_utterance_text=(
-                            self.session.pure_japanese_utterance_text
-                            if self.session is not None
-                            else None
-                        ),
-                        origin=self._navigation.focus_key,
-                        busy=self._operations.busy,
-                    )
-                )
-            elif isinstance(action, StartGeneration):
-                effects = self._operations.start_generation(
-                    self.session,
-                    take_count=self.settings.take_count,
-                    navigation_revision=self._navigation.revision,
-                )
-                if (
-                    self._operations.busy
-                    and self._operations.worker_operation == "initial"
-                ):
-                    self._batch.clear_open_item_acceptance()
-                self._dispatch_operation_effects(effects)
-            elif isinstance(action, RegenerateAll):
-                self._dispatch_operation_effects(
-                    self._operations.start_regenerate_all(
-                        self.session,
-                        take_count=self.settings.take_count,
-                        navigation_revision=self._navigation.revision,
-                    )
-                )
-            elif isinstance(action, BuildPronunciation):
-                self._request_build_pronunciation()
-            elif isinstance(action, AcceptCandidate):
-                self._batch.accept_open_item(
-                    action.number,
-                    pronunciation_index=self._navigation.pronunciation_index,
-                    bindings=self._batch_action_bindings,
-                )
-            elif isinstance(action, RegenerateCandidate):
-                self._dispatch_operation_effects(
-                    self._operations.start_regeneration(
-                        self.session,
-                        action.number,
-                        take_count=self.settings.take_count,
-                        navigation_revision=self._navigation.revision,
-                    )
-                )
-            elif isinstance(action, PlayCandidate):
-                self._operations.current_take = action.number
-                self._dispatch_operation_effects(
-                    self._operations.play_take(self.session, action.number)
-                )
-            elif isinstance(action, OpenDictionary):
-                self._dispatch_editor_intents(self._dictionary_controller.open_menu())
-            elif isinstance(action, OpenHelp):
-                self._open_help()
-            elif isinstance(action, Quit):
-                self._activate_quit()
-
-    def _request_build_pronunciation(self) -> None:
-        if self.session is None:
-            return
-        if self.session.utterance_manually_edited:
-            self._dispatch_editor_intents(
-                self._editor_controller.open_build_confirmation(
-                    origin=self._navigation.focus_key
-                )
-            )
-            return
-        self._build_pronunciation_from_caption()
+        self._batch_item_controller.dispatch_navigation_actions(
+            actions,
+            self._batch_item_bindings,
+        )
 
     def _build_pronunciation_from_caption(self) -> str | None:
-        if self.session is None:
-            return "there is no active session"
-        try:
-            self.session.build_pronunciation_from_caption()
-        except Exception as exc:
-            self._status = f"Error: Pronunciation was not rebuilt: {exc}"
-            return str(exc)
-        self._operations.stop_playback()
-        self._editor_controller.clear_groupings()
-        self._operations.clear_current_take()
-        self._dispatch_navigation_actions(
-            self._navigation.reset_after_rebuild(self._navigation_context())
-        )
-        self._status = "Pronunciation rebuilt from Caption."
-        return None
-
-    def _adjust_take_count(self, direction: int) -> None:
-        if self._operations.busy:
-            self._pressed_adjustment = None
-            self._status = "Wait for the current synthesis operation to finish."
-            return
-        count = self.settings.take_count
-        updated = min(100, max(1, count + direction))
-        if updated == count:
-            self._pressed_adjustment = None
-            return
-        self._mark_adjustment_pressed("navigation", "generate", direction)
-        self._change_settings(take_count=updated, report_success=False)
-        self._dispatch_navigation_actions(
-            self._navigation.set_focus_key(
-                self._navigation_context(), ("generate", None)
-            )
+        return self._batch_item_controller.build_pronunciation_from_caption(
+            self._batch_item_bindings
         )
 
     def _activate_quit(self) -> None:
@@ -496,30 +294,12 @@ class TuiApp:
         )
 
     def _segments(self) -> list[tuple[str, str, int | None]]:
-        if self.session is None:
-            return []
-        query = self.session.query
-        if query.voicegerSegments is None:
-            return [
-                ("ja", self.session.pure_japanese_utterance_text or "", None)
-            ]
-        return [
-            (segment.language, segment.text, index)
-            for index, segment in enumerate(query.voicegerSegments)
-        ]
+        return self._batch_item_controller.segments(self.session)
 
     def _pronunciation_rows(self) -> tuple[PronunciationRow, ...]:
-        if self.session is None:
-            return ()
-        rows = self._editor_controller.pronunciation_rows(
-            self.session.query,
-            self._segments(),
+        return self._batch_item_controller.pronunciation_rows(
+            self._batch_item_bindings
         )
-        if self._editor_controller.grouping_error:
-            self._status = self._editor_controller.grouping_error
-        elif self._status.startswith("Error: Cannot align English word pronunciation:"):
-            self._status = ""
-        return rows
 
     def _open_caption_editor(self, initial: str | None = None) -> None:
         intents = self._editor_controller.open_caption(
@@ -548,19 +328,9 @@ class TuiApp:
         self._dispatch_editor_intents(intents)
 
     def _edit_selected_pronunciation(self, pronunciation_index: int) -> None:
-        if self.session is None or self._operations.busy:
-            return
-        rows = self._pronunciation_rows()
-        if not 0 <= pronunciation_index < len(rows):
-            return
-        self._dispatch_editor_intents(
-            self._editor_controller.open_pronunciation_item(
-                self.session.query,
-                rows,
-                pronunciation_index,
-                origin=("pronunciation", pronunciation_index),
-                busy=self._operations.busy,
-            )
+        self._batch_item_controller.edit_selected_pronunciation(
+            pronunciation_index,
+            self._batch_item_bindings,
         )
 
     def _apply_session_query(
