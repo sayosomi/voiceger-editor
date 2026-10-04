@@ -51,6 +51,19 @@ class TuiInputReaderTests(unittest.TestCase):
             reader.set_bracketed_paste(True)
             self.assertEqual(reader.read(screen), "\n")
 
+    def test_keypad_enter_inside_bracketed_paste_is_preserved_as_newline(self):
+        reader = TuiInputReader()
+        screen = FakeScreen(
+            list("\x1b[200~first")
+            + [curses.KEY_ENTER]
+            + list("second\x1b[201~")
+        )
+        with patch("voiceger_editor.tui_input.curses.putp"):
+            reader.set_bracketed_paste(True)
+            event = reader.read(screen)
+
+        self.assertEqual(event, PasteText("first\nsecond"))
+
     def test_unmatched_escape_sequence_is_not_consumed(self):
         reader = TuiInputReader()
         screen = FakeScreen(["\x1b", "[", "X"])
