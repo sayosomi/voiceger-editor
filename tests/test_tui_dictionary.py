@@ -4,8 +4,12 @@ from types import SimpleNamespace
 
 from voiceger_editor.openjtalk_dictionary import expand_word_type, normalize_surface
 from voiceger_editor.pronunciation import parse_pronunciation
-from voiceger_editor.tui_dictionary import TuiDictionaryController
+from voiceger_editor.tui_dictionary import (
+    DictionaryOperationIntent,
+    TuiDictionaryController,
+)
 from voiceger_editor.tui_editors import PreviewIntent
+from voiceger_editor.tui_status import StatusKind
 from voiceger_editor.user_dictionary import JapaneseWordType
 
 
@@ -104,6 +108,20 @@ class TuiDictionaryControllerTests(unittest.TestCase):
 
     def key(self, value):
         return self.controller.handle_key(value)
+
+    def finish_operation(self, intents):
+        operation = next(
+            item for item in intents if isinstance(item, DictionaryOperationIntent)
+        )
+        value = operation.work()
+        completion = self.controller.complete_operation(operation.request, value)
+        return operation, completion
+
+    @staticmethod
+    def operation(intents):
+        return next(
+            item for item in intents if isinstance(item, DictionaryOperationIntent)
+        )
 
     def test_menu_counts_and_lists_are_surface_sorted(self):
         self.core.japanese["b"] = ja_word("ぶどう")
@@ -231,11 +249,19 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         intents = controller.handle_key("\n")
 
         editor = controller.editor
+        operation = next(
+            item for item in intents if isinstance(item, DictionaryOperationIntent)
+        )
+        self.assertEqual(operation.status, "Generating Japanese pronunciation…")
+        self.assertEqual(operation.request.operation, "generate_japanese_pronunciation")
+        self.assertEqual(operation.request.language, "ja")
+        self.assertEqual(calls, [])
+        value = operation.work()
+        controller.complete_operation(operation.request, value)
         self.assertEqual(calls, ["ずんだもん"])
         self.assertEqual(editor.payload["pronunciation"], "ズンダモン")
         self.assertEqual(editor.payload["accent"], 2)
         self.assertEqual(editor.payload["moras"], ("ズ", "ン", "ダ", "モ", "ン"))
-        self.assertEqual(intents[0].status, "Pronunciation generated from Surface.")
 
         editor.payload["pronunciation"] = "マニュアル"
         editor.payload["moras"] = ("マ", "ニュ", "ア", "ル")
@@ -246,7 +272,13 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.assertEqual(calls, ["ずんだもん"])
         self.assertEqual(editor.payload["pronunciation"], "マニュアル")
 
-        controller.handle_key("g")
+        intents = controller.handle_key("g")
+        operation = next(
+            item for item in intents if isinstance(item, DictionaryOperationIntent)
+        )
+        self.assertEqual(calls, ["ずんだもん"])
+        value = operation.work()
+        controller.complete_operation(operation.request, value)
         self.assertEqual(calls, ["ずんだもん", "ずんだもん"])
         self.assertEqual(editor.payload["pronunciation"], "ズンダモン")
         self.assertEqual(editor.payload["accent"], 3)
@@ -274,9 +306,17 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         controller.handle_key("a")
         self.assertEqual(controller.editor.active_field, "surface")
         controller.handle_key("Voiceger")
-        controller.handle_key("\n")
+        intents = controller.handle_key("\n")
 
         editor = controller.editor
+        operation = next(
+            item for item in intents if isinstance(item, DictionaryOperationIntent)
+        )
+        self.assertEqual(operation.status, "Generating English pronunciation…")
+        self.assertEqual(operation.request.operation, "generate_english_pronunciation")
+        self.assertEqual(calls, [])
+        value = operation.work()
+        controller.complete_operation(operation.request, value)
         self.assertEqual(calls, ["Voiceger"])
         self.assertEqual(
             editor.payload["phonemes"],
@@ -285,10 +325,215 @@ class TuiDictionaryControllerTests(unittest.TestCase):
 
         previous = editor.payload["phonemes"]
         editor.payload["surface"] = "two words"
-        controller.handle_key("g")
+        intents = controller.handle_key("g")
+        operation = next(
+            item for item in intents if isinstance(item, DictionaryOperationIntent)
+        )
         self.assertEqual(editor.payload["phonemes"], previous)
-        self.assertIn("exactly one word", editor.error)
+        with self.assertRaisesRegex(ValueError, "exactly one word"):
+            operation.work()
+        completed = controller.complete_operation(
+            operation.request,
+            error=ValueError("English dictionary Surface must resolve to exactly one word"),
+        )
+        self.assertIn("Pronunciation was not generated: English dictionary Surface", completed[0].status)
+        self.assertEqual(editor.payload["phonemes"], previous)
         self.assertEqual(self.core.english, {})
+
+    def test_generation_save_and_delete_failures_keep_both_languages_retryable(self):
+        for language in ("ja", "en"):
+            with self.subTest(language=language, operation="generation"):
+                core = FakeDictionaryCore()
+                controller = TuiDictionaryController(
+                    core,
+                    input_prefix=lambda _editor: "▶ ",
+                    japanese_pronunciation=lambda _surface: parse_pronunciation("カ'ナ"),
+                    english_word_groups=lambda surface: ((surface, ("K", "AE1")),),
+                )
+                if language == "ja":
+                    controller.open_quick_save_japanese(
+                        surface="かな", pronunciation="カ'ナ"
+                    )
+                    editor = controller.editor
+                    previous = (
+                        editor.payload["pronunciation"],
+                        editor.payload["moras"],
+                        editor.payload["accent"],
+                    )
+                else:
+                    controller.open_quick_save_english(
+                        surface="hello", phonemes="HH AH0"
+                    )
+                    editor = controller.editor
+                    previous = editor.payload["phonemes"]
+                operation = self.operation(controller.handle_key("g"))
+                failure = RuntimeError("analysis failed")
+                completion = controller.complete_operation(
+                    operation.request,
+                    error=failure,
+                )
+                self.assertEqual(completion[0].status, "Pronunciation was not generated: analysis failed")
+                self.assertIs(completion[0].status.kind, StatusKind.ERROR)
+                self.assertIs(controller.editor, editor)
+                if language == "ja":
+                    self.assertEqual(
+                        (
+                            editor.payload["pronunciation"],
+                            editor.payload["moras"],
+                            editor.payload["accent"],
+                        ),
+                        previous,
+                    )
+                else:
+                    self.assertEqual(editor.payload["phonemes"], previous)
+                retry = self.operation(controller.handle_key("g"))
+                self.assertEqual(editor.error, "")
+                self.assertEqual(retry.status, "Generating Japanese pronunciation…" if language == "ja" else "Generating English pronunciation…")
+
+            with self.subTest(language=language, operation="save"):
+                core = FakeDictionaryCore()
+                controller = TuiDictionaryController(
+                    core,
+                    input_prefix=lambda _editor: "▶ ",
+                )
+                if language == "ja":
+                    controller.open_quick_save_japanese(
+                        surface="かな", pronunciation="カ'ナ"
+                    )
+                else:
+                    controller.open_quick_save_english(
+                        surface="hello", phonemes="HH AH0"
+                    )
+                editor = controller.editor
+                operation = self.operation(controller.handle_key("s"))
+                completion = controller.complete_operation(
+                    operation.request,
+                    error=RuntimeError("save failed"),
+                )
+                self.assertEqual(completion[0].status, "Dictionary word was not saved: save failed")
+                self.assertIs(completion[0].status.kind, StatusKind.ERROR)
+                self.assertIs(controller.editor, editor)
+                self.assertTrue(editor.payload["quick_save"])
+                retry = self.operation(controller.handle_key("s"))
+                self.assertEqual(retry.status, "Saving Japanese dictionary word…" if language == "ja" else "Saving English dictionary word…")
+
+            with self.subTest(language=language, operation="delete"):
+                core = FakeDictionaryCore()
+                if language == "ja":
+                    core.japanese["word-1"] = ja_word("雨", "アメ", 1)
+                else:
+                    core.english["hello"] = en_word("hello", ["HH", "AH0"])
+                controller = TuiDictionaryController(
+                    core,
+                    input_prefix=lambda _editor: "▶ ",
+                )
+                controller.open_menu()
+                controller.handle_key("j" if language == "ja" else "e")
+                controller.handle_key("x")
+                confirmation = controller.editor
+                operation = self.operation(controller.handle_key("d"))
+                completion = controller.complete_operation(
+                    operation.request,
+                    error=RuntimeError("delete failed"),
+                )
+                self.assertEqual(completion[0].status, "Dictionary word was not deleted: delete failed")
+                self.assertIs(completion[0].status.kind, StatusKind.ERROR)
+                self.assertIs(controller.editor, confirmation)
+                self.assertEqual(controller.editor.kind, "dictionary_delete_confirmation")
+                self.assertTrue(core.japanese if language == "ja" else core.english)
+                retry = self.operation(controller.handle_key("d"))
+                self.assertEqual(retry.status, "Deleting Japanese dictionary word…" if language == "ja" else "Deleting English dictionary word…")
+
+    def test_completion_does_not_apply_result_to_a_different_dictionary_editor(self):
+        self.controller.open_quick_save_english(
+            surface="hello",
+            phonemes="HH AH0",
+        )
+        operation = self.operation(self.controller.handle_key("g"))
+        other_editor = self.controller._menu_state()
+        self.controller.editor = other_editor
+
+        completion = self.controller.complete_operation(
+            operation.request,
+            ("HH", "AH1"),
+        )
+
+        self.assertEqual(len(completion), 1)
+        self.assertEqual(completion[0].status, "")
+        self.assertIs(self.controller.editor, other_editor)
+        self.assertNotIn("phonemes", other_editor.payload)
+
+    def test_operation_work_uses_snapshots_when_the_live_draft_changes(self):
+        calls = []
+        controller = TuiDictionaryController(
+            self.core,
+            input_prefix=lambda _editor: "▶ ",
+            english_word_groups=lambda surface: calls.append(surface)
+            or ((surface, ("R", "EH1", "K")),),
+        )
+        controller.open_quick_save_english(
+            surface="record",
+            phonemes="R EH1 K",
+        )
+        editor = controller.editor
+        generation = self.operation(controller.handle_key("g"))
+        editor.payload["surface"] = "mutated"
+
+        generation_value = generation.work()
+
+        self.assertEqual(calls, ["record"])
+        self.assertEqual(generation_value, ("R", "EH1", "K"))
+
+        editor.payload["surface"] = "record"
+        editor.payload["phonemes"] = ("R", "EH1", "K")
+        save = self.operation(controller.handle_key("s"))
+        editor.payload["surface"] = "changed after snapshot"
+        editor.payload["phonemes"] = ("K", "AE1", "T")
+
+        save.work()
+
+        self.assertIn("record", self.core.english)
+        self.assertEqual(self.core.english["record"].phonemes, ["R", "EH1", "K"])
+        self.assertNotIn("changed after snapshot", self.core.english)
+
+        self.core.japanese["word-1"] = ja_word("雨", "アメ", 1)
+        controller.open_menu()
+        controller.handle_key("j")
+        controller.handle_key("x")
+        deletion = self.operation(controller.handle_key("d"))
+        controller.editor.payload["identifier"] = "missing"
+
+        deletion.work()
+
+        self.assertNotIn("word-1", self.core.japanese)
+
+    def test_empty_surface_validation_does_not_create_background_work(self):
+        for language in ("ja", "en"):
+            with self.subTest(language=language):
+                controller = TuiDictionaryController(
+                    FakeDictionaryCore(),
+                    input_prefix=lambda _editor: "▶ ",
+                )
+                if language == "ja":
+                    controller.open_quick_save_japanese(
+                        surface="かな", pronunciation="カ'ナ"
+                    )
+                else:
+                    controller.open_quick_save_english(
+                        surface="hello", phonemes="HH AH0"
+                    )
+                editor = controller.editor
+                editor.payload["surface"] = "  "
+
+                self.assertEqual(controller.handle_key("g"), ())
+                self.assertEqual(controller.handle_key("s"), ())
+                self.assertEqual(editor.error, "Surface must not be empty.")
+                self.assertFalse(
+                    any(
+                        isinstance(item, DictionaryOperationIntent)
+                        for item in controller.handle_key("g")
+                    )
+                )
 
     def test_japanese_quick_save_prefills_current_edit_and_updates_existing(self):
         self.core.japanese["existing"] = ja_word(
@@ -308,7 +553,11 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.assertEqual(editor.payload["accent"], 2)
         self.assertEqual(editor.payload["priority"], 7)
 
-        self.key("s")
+        intents = self.key("s")
+        self.assertEqual(intents[0].status, "Saving Japanese dictionary word…")
+        self.assertIs(self.controller.editor, editor)
+        self.assertEqual(self.core.japanese["existing"].accent_type, 4)
+        self.finish_operation(intents)
 
         self.assertIsNone(self.controller.editor)
         saved = self.core.japanese["existing"]
@@ -420,7 +669,8 @@ class TuiDictionaryControllerTests(unittest.TestCase):
             editor.payload["phonemes"],
             ("R", "EH0", "K", "ER1", "D"),
         )
-        self.key("s")
+        intents = self.key("s")
+        self.finish_operation(intents)
         self.assertIsNone(self.controller.editor)
         self.assertEqual(
             self.core.english["record"].phonemes,
@@ -448,7 +698,6 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.key(curses.KEY_DOWN)
         self.assertEqual(self.controller.editor.selection, "cancel")
         self.key("\n")
-
         self.assertEqual(self.controller.editor.kind, "dictionary_japanese_list")
         self.assertIn("ja", self.core.japanese)
 
@@ -459,7 +708,11 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.key(curses.KEY_DOWN)
         self.key(curses.KEY_UP)
         self.assertEqual(self.controller.editor.selection, "delete")
-        self.key("\n")
+        intents = self.key("\n")
+        self.assertEqual(intents[0].status, "Deleting English dictionary word…")
+        self.assertEqual(self.controller.editor.kind, "dictionary_delete_confirmation")
+        self.assertIn("hello", self.core.english)
+        self.finish_operation(intents)
 
         self.assertEqual(self.controller.editor.kind, "dictionary_english_list")
         self.assertEqual(self.core.english, {})
@@ -476,7 +729,10 @@ class TuiDictionaryControllerTests(unittest.TestCase):
             moras=("ア", "メ"),
             accent=1,
         )
-        self.key("s")
+        intents = self.key("s")
+        self.assertEqual(intents[0].status, "Saving Japanese dictionary word…")
+        self.assertEqual(self.core.japanese, {})
+        self.finish_operation(intents)
         self.assertEqual(self.controller.editor.kind, "dictionary_japanese_list")
         self.assertEqual(len(self.core.japanese), 1)
 
@@ -486,7 +742,11 @@ class TuiDictionaryControllerTests(unittest.TestCase):
             self.controller.editor.kind,
             "dictionary_delete_confirmation",
         )
-        self.key("d")
+        intents = self.key("d")
+        self.assertEqual(intents[0].status, "Deleting Japanese dictionary word…")
+        self.assertEqual(self.controller.editor.kind, "dictionary_delete_confirmation")
+        self.assertEqual(len(self.core.japanese), 1)
+        self.finish_operation(intents)
         self.assertEqual(self.core.japanese, {})
 
         self.key("\x1b")
@@ -499,13 +759,20 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         editor.active_field = None
         editor.payload["surface"] = "hello"
         editor.payload["phonemes"] = ("HH", "AH0", "L", "OW1")
-        self.key("s")
+        intents = self.key("s")
+        self.assertEqual(intents[0].status, "Saving English dictionary word…")
+        self.assertEqual(self.core.english, {})
+        self.finish_operation(intents)
         self.assertEqual(self.controller.editor.kind, "dictionary_english_list")
         self.assertIn("hello", self.core.english)
 
         self.controller.editor.selection = ("entry", 0)
         self.key("x")
-        self.key("d")
+        intents = self.key("d")
+        self.assertEqual(intents[0].status, "Deleting English dictionary word…")
+        self.assertEqual(self.controller.editor.kind, "dictionary_delete_confirmation")
+        self.assertIn("hello", self.core.english)
+        self.finish_operation(intents)
         self.assertEqual(self.core.english, {})
 
     def test_management_edit_existing_entries_for_both_languages(self):
@@ -522,7 +789,10 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.controller.editor.input_value = "飴"
         self.controller.editor.input_cursor = 1
         self.key("\n")
-        self.key("s")
+        intents = self.key("s")
+        self.assertEqual(intents[0].status, "Saving Japanese dictionary word…")
+        self.assertEqual(self.core.japanese["existing-ja"].surface, normalize_surface("雨"))
+        self.finish_operation(intents)
 
         self.assertEqual(self.controller.editor.kind, "dictionary_japanese_list")
         self.assertEqual(self.core.japanese["existing-ja"].surface, normalize_surface("飴"))
@@ -538,7 +808,10 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.controller.editor.input_value = "hello2"
         self.controller.editor.input_cursor = len("hello2")
         self.key("\n")
-        self.key("s")
+        intents = self.key("s")
+        self.assertEqual(intents[0].status, "Saving English dictionary word…")
+        self.assertIn("hello", self.core.english)
+        self.finish_operation(intents)
 
         self.assertEqual(self.controller.editor.kind, "dictionary_english_list")
         self.assertNotIn("hello", self.core.english)

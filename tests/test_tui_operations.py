@@ -8,9 +8,16 @@ import unittest
 from unittest.mock import Mock, patch
 
 from voiceger_editor.caption_batch import CaptionBatch, CaptionBatchItem
+from voiceger_editor.tui_dictionary import (
+    DictionaryOperationIntent,
+    DictionaryOperationRequest,
+)
+from voiceger_editor.tui_editors import EditorState
 from voiceger_editor.tui_operations import (
     BatchCandidateReplacedEffect,
     CandidateReplacedEffect,
+    DictionaryOperationCompletedEffect,
+    DictionaryOperationCompletedEvent,
     DiscardInitialBatchEffect,
     FocusEffect,
     PlayPreviewEffect,
@@ -219,6 +226,136 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(session.candidates, [session_candidate])
         self.assertFalse(any(isinstance(item, FocusEffect) for item in effects))
         self.assertFalse(any(isinstance(item, DiscardInitialBatchEffect) for item in effects))
+
+    def test_dictionary_operation_is_deferred_until_status_can_render_and_completes(self):
+        editor = EditorState(
+            kind="dictionary_japanese_entry",
+            title="ADD JAPANESE DICTIONARY WORD",
+            origin=("dictionary", None),
+            selection="save",
+        )
+        request = DictionaryOperationRequest(
+            operation="save_japanese",
+            language="ja",
+            editor_snapshot=editor,
+            originating_editor=editor,
+        )
+        started = Event()
+        release = Event()
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        def work():
+            started.set()
+            if not release.wait(timeout=1):
+                raise RuntimeError("test release timeout")
+            print("hidden dictionary output")
+            return "saved"
+
+        intent = DictionaryOperationIntent(
+            request,
+            "Saving Japanese dictionary word…",
+            work,
+        )
+        with patch("sys.stdout", stdout), patch("sys.stderr", stderr):
+            effects = self.operations.start_dictionary_operation(intent)
+
+        self.assertEqual(
+            effects,
+            (UpdateStatusEffect("Saving Japanese dictionary word…"),),
+        )
+        self.assertFalse(started.is_set())
+        self.assertTrue(self.operations.busy)
+        self.assertEqual(self.operations.worker_operation, "dictionary")
+        self.assertIsNone(self.operations.worker)
+        self.assertIsNotNone(self.operations._pending_worker)
+
+        self.operations.start_pending_worker()
+        self.assertTrue(started.wait(timeout=1))
+        self.assertTrue(self.operations.busy)
+        self.assertEqual(self.consume(), ())
+        release.set()
+        self.operations.join_worker()
+
+        event = self.operations.events.get_nowait()
+        self.assertIsInstance(event, DictionaryOperationCompletedEvent)
+        self.assertIs(event.request, request)
+        self.assertEqual(event.value, "saved")
+        self.assertIsNone(event.error)
+        self.assertTrue(self.operations.events.empty())
+        self.operations.events.put(event)
+        completion = self.consume()
+
+        self.assertEqual(
+            completion,
+            (
+                DictionaryOperationCompletedEffect(
+                    request=request,
+                    value="saved",
+                ),
+            ),
+        )
+        self.assertFalse(self.operations.busy)
+        self.assertEqual(self.operations.operation_completed, 1)
+        self.assertIsNone(self.operations.worker_operation)
+        self.assertIsNone(self.operations.worker_target)
+        self.assertIsNone(self.operations._cancellation_event)
+        self.assertFalse(self.operations.cancellation_requested)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_dictionary_operation_failure_is_typed_and_clears_shared_busy_state(self):
+        editor = EditorState(
+            kind="dictionary_english_entry",
+            title="ADD ENGLISH DICTIONARY WORD",
+            origin=("dictionary", None),
+            selection="save",
+        )
+        request = DictionaryOperationRequest(
+            operation="save_english",
+            language="en",
+            editor_snapshot=editor,
+            originating_editor=editor,
+        )
+        error = RuntimeError("persistence failed")
+        intent = DictionaryOperationIntent(
+            request,
+            "Saving English dictionary word…",
+            lambda: (_ for _ in ()).throw(error),
+        )
+
+        self.operations.start_dictionary_operation(intent)
+        self.assertEqual(
+            self.operations.start_preview(
+                FakeSession(),
+                AudioQuery(accent_phrases=[]),
+            ),
+            (UpdateStatusEffect("Wait for the current operation to finish."),),
+        )
+        self.assertEqual(
+            self.operations.request_shutdown(),
+            (
+                UpdateStatusEffect(
+                    "Finishing the current Dictionary operation before cleanup…"
+                ),
+            ),
+        )
+        self.operations.start_pending_worker()
+        self.operations.join_worker()
+
+        completion = self.consume()
+        self.assertEqual(
+            completion,
+            (
+                DictionaryOperationCompletedEffect(
+                    request=request,
+                    error=error,
+                ),
+            ),
+        )
+        self.assertEqual(self.operations.worker_error, error)
+        self.assertFalse(self.operations.busy)
+        self.assertIsNone(self.operations.worker_operation)
 
     def test_initial_generation_initializes_progress_and_clears_current_take(self):
         session = FakeSession()
