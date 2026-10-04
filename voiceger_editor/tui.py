@@ -47,6 +47,7 @@ from .tui_operations import (
     UpdateStatusEffect,
 )
 from .tui_navigation import NavigationAction, NavigationContext, TuiNavigation
+from .tui_input import TuiInputReader
 from .voiceger_adapter import VoicegerAdapter
 
 
@@ -103,6 +104,7 @@ class TuiApp:
         )
         self._pressed_adjustment: tuple[str, str, int] | None = None
         self._renderer = TuiRenderer()
+        self._input = TuiInputReader()
         self._batch_action_bindings = tui_batch.BatchActionBindings(
             operations=self._operations,
             navigation=self._navigation,
@@ -209,6 +211,7 @@ class TuiApp:
                 self._operations.start_pending_worker()
                 self._read_key()
         finally:
+            self._input.close()
             try:
                 self._operations.join_worker()
             finally:
@@ -219,12 +222,19 @@ class TuiApp:
                         self._batch.close_sessions()
 
     def _read_key(self) -> Any:
+        editor = self._editor_controller.editor
+        self._input.set_bracketed_paste(
+            bool(
+                editor is not None
+                and editor.kind == "caption"
+                and editor.active_field is not None
+                and editor.payload.get("multiline", False)
+            )
+        )
         try:
-            key = self._screen.get_wch()
+            key = self._input.read(self._screen)
         except KeyboardInterrupt:
             self._activate_quit()
-            return None
-        except curses.error:
             return None
         if key == -1:
             return None
