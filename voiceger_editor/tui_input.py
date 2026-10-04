@@ -97,7 +97,9 @@ class TuiInputReader:
                 key = screen.get_wch()
             except curses.error:
                 return None
-            if not isinstance(key, str):
+            if key == curses.KEY_ENTER:
+                key = "\n"
+            elif not isinstance(key, str):
                 continue
             self._paste_buffer += key
             if not self._paste_buffer.endswith(_PASTE_END):
