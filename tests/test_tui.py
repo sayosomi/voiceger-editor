@@ -1234,6 +1234,14 @@ class TuiTests(unittest.TestCase):
 
         app._handle_key("\n")
 
+        self.assertEqual(accepted_session.accept_calls, [])
+        self.assertFalse(accepted_item.is_accepted)
+        self.assertIn("Saving Take 1…", app._status)
+
+        app._operations.start_pending_worker()
+        app._operations.join_worker()
+        app._consume_events()
+
         self.assertEqual(accepted_session.accept_calls, [1])
         self.assertTrue(accepted_item.is_accepted)
         self.assertEqual(accepted_item.accepted_take_number, 1)
@@ -1326,12 +1334,20 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(app._batch.in_item)
         self.assertIs(app.session, session)
         self.assertFalse(item.is_accepted)
+        self.assertEqual(session.accept_calls, [])
+        self.assertIn("Saving Take 1…", app._status)
+
+        app._operations.start_pending_worker()
+        app._operations.join_worker()
+        app._consume_events()
+
+        self.assertFalse(item.is_accepted)
         self.assertEqual(
             [candidate.number for candidate in session.candidates],
             [1],
         )
         self.assertIn(
-            "Could not save take 1: disk full",
+            "Take 1 was not saved: disk full",
             app._status,
         )
         self.assertIs(app._status.kind, StatusKind.ERROR)
