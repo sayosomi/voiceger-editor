@@ -19,6 +19,12 @@ from voiceger_editor.tui_rendering import (
     TuiRenderer,
     TuiRenderState,
 )
+from voiceger_editor.tui_status import (
+    EMPTY_STATUS,
+    error_status,
+    info_status,
+    warning_status,
+)
 from voiceger_editor.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
@@ -141,7 +147,7 @@ def render_state(
     session=None,
     settings=None,
     focus_key=("settings_summary", None),
-    status="",
+    status=EMPTY_STATUS,
     segments=(
         ("ja", "明日は", 0),
         ("en", "hello everyone", 1),
@@ -248,11 +254,11 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(renderer._error_color_attr, 202)
         self.assertEqual(renderer._warning_color_attr, 303)
         self.assertEqual(
-            renderer._status_attribute("Error: failed"),
+            renderer._status_attribute(error_status("failed")),
             curses.A_BOLD | 202,
         )
         self.assertEqual(
-            renderer._status_attribute("Warning: failed"),
+            renderer._status_attribute(warning_status("failed")),
             curses.A_BOLD | 303,
         )
 
@@ -265,11 +271,11 @@ class TuiRenderingTests(unittest.TestCase):
             renderer.initialize_colors()
 
         self.assertEqual(
-            renderer._status_attribute("Error: failed"),
+            renderer._status_attribute(error_status("failed")),
             curses.A_BOLD | curses.A_REVERSE,
         )
         self.assertEqual(
-            renderer._status_attribute("Warning: failed"),
+            renderer._status_attribute(warning_status("failed")),
             curses.A_BOLD | curses.A_REVERSE,
         )
 
@@ -343,7 +349,7 @@ class TuiRenderingTests(unittest.TestCase):
 
         screen = FakeScreen()
         self.renderer.render_batch_list(
-            screen, batch, ("caption", 0), "", screen.rows, screen.columns
+            screen, batch, ("caption", 0), EMPTY_STATUS, screen.rows, screen.columns
         )
         header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
         self.assertEqual(
@@ -360,7 +366,7 @@ class TuiRenderingTests(unittest.TestCase):
         )
         screen.drawn.clear()
         self.renderer.render_batch_list(
-            screen, single, ("caption", 0), "", screen.rows, screen.columns
+            screen, single, ("caption", 0), EMPTY_STATUS, screen.rows, screen.columns
         )
         header = next(text for row, _column, text, _attr in screen.drawn if row == 0)
         self.assertEqual(
@@ -382,7 +388,7 @@ class TuiRenderingTests(unittest.TestCase):
             screen,
             batch,
             ("caption", 1),
-            "",
+            EMPTY_STATUS,
             screen.rows,
             screen.columns,
             delete_confirmation_caption="second caption",
@@ -406,7 +412,7 @@ class TuiRenderingTests(unittest.TestCase):
             screen,
             batch,
             ("caption", 1),
-            "",
+            EMPTY_STATUS,
             screen.rows,
             screen.columns,
             delete_confirmation_caption="second caption",
@@ -689,7 +695,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertNotIn("F5", visible)
         self.assertNotIn("Ctrl+G", visible)
         back = next(item for item in screen.drawn if item[2] == "▶ Back")
-        self.assertEqual(back[0], screen.rows - 1)
+        self.assertEqual(back[0], screen.rows - 2)
         self.assertTrue(back[3] & curses.A_REVERSE)
 
     def test_help_back_stays_visible_when_help_content_exceeds_short_terminal(self):
@@ -698,7 +704,7 @@ class TuiRenderingTests(unittest.TestCase):
                 screen = FakeScreen(rows=height, columns=80)
                 self.renderer.render_help(screen, screen.columns)
                 back = next(item for item in screen.drawn if item[2] == "▶ Back")
-                self.assertEqual(back[0], height - 1)
+                self.assertEqual(back[0], height - 2)
                 self.assertTrue(back[3] & curses.A_REVERSE)
                 self.assertFalse(
                     any(row >= height for row, _column, _text, _attr in screen.drawn)
@@ -722,7 +728,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn(": Quit", bottom_visible)
         self.assertNotIn(f"Docs: {DOCUMENTATION_URL}", bottom_visible)
         back = next(item for item in screen.drawn if item[2] == "▶ Back")
-        self.assertEqual(back[0], screen.rows - 1)
+        self.assertEqual(back[0], screen.rows - 2)
         self.assertTrue(back[3] & curses.A_REVERSE)
 
     def test_help_shortcut_emphasis_does_not_bold_explanations(self):
@@ -928,12 +934,12 @@ class TuiRenderingTests(unittest.TestCase):
             kind="caption", title="EDIT CAPTION TEXT", selection="draft",
             payload={"draft": "caption"}, active_field="draft",
             input_value="caption", input_cursor=7,
-            error="Error: invalid Caption", scroll=0,
+            error=error_status("invalid Caption"), scroll=0,
         )
         error_screen = FakeScreen(rows=10, columns=80)
         self.renderer.render_editor(
             error_screen,
-            render_state(editor=editor, status="Saved output.wav."),
+            render_state(editor=editor, status=info_status("Saved output.wav.")),
             error_screen.rows,
             error_screen.columns,
         )
@@ -944,11 +950,11 @@ class TuiRenderingTests(unittest.TestCase):
         ]
         self.assertEqual(error_status, ["Error: invalid Caption"])
 
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         status_screen = FakeScreen(rows=10, columns=80)
         self.renderer.render_editor(
             status_screen,
-            render_state(editor=editor, status="Saved output.wav."),
+            render_state(editor=editor, status=info_status("Saved output.wav.")),
             status_screen.rows,
             status_screen.columns,
         )
@@ -957,7 +963,7 @@ class TuiRenderingTests(unittest.TestCase):
             for row, _column, text, _attr in status_screen.drawn
             if row == status_screen.rows - 1
         ]
-        self.assertEqual(existing_status, ["Saved output.wav."])
+        self.assertEqual(existing_status, ["Status: Saved output.wav."])
 
     def test_build_confirmation_document_warns_and_orders_actions(self):
         editor = SimpleNamespace(
@@ -1394,7 +1400,10 @@ class TuiRenderingTests(unittest.TestCase):
 
     def test_no_per_page_footer_and_status_only_when_present(self):
         session = FakeSession(candidates=(candidate(1),))
-        state = render_state(session=session, status="Saved output.wav.")
+        state = render_state(
+            session=session,
+            status=info_status("Saved output.wav."),
+        )
         screen = FakeScreen()
         with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
             self.renderer.render_navigation(screen, state, screen.rows, screen.columns)
@@ -1412,8 +1421,8 @@ class TuiRenderingTests(unittest.TestCase):
 
     def test_long_warning_wraps_at_bottom_without_overlapping_navigation(self):
         session = FakeSession(candidates=(candidate(1),))
-        warning = (
-            "Warning: Saved saved.wav. LAB generation failed: "
+        warning = warning_status(
+            "Saved saved.wav. LAB generation failed: "
             "mixed-language timing provenance is unavailable: "
             "mixed LAB timing capture failed: detailed runtime reason"
         )
@@ -1461,6 +1470,9 @@ class TuiRenderingTests(unittest.TestCase):
         ]
         self.assertTrue(navigation_rows)
         self.assertLess(max(navigation_rows), first_status)
+        self.assertFalse(
+            any(row >= screen.rows for row, _column, _text, _attr in screen.drawn)
+        )
 
     def test_main_action_and_candidate_rows_show_visible_shortcuts(self):
         state = render_state(
