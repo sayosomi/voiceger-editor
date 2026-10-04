@@ -8,7 +8,7 @@ from typing import Any, Callable, Optional, Sequence, Union
 
 from .caption_batch import CaptionBatch
 from .tui_navigation import TuiNavigation
-from .tui_operations import OperationEffect, TakeAcceptedEffect, TuiOperations
+from .tui_operations import OperationEffect, TuiOperations
 from .tui_shortcuts import (
     resolve_batch_list_caption_shortcut,
     resolve_batch_list_shortcut,
@@ -217,92 +217,6 @@ class TuiBatchController:
 
     def complete_acceptance(self, item_id: str, take_number: int) -> None:
         self.batch.mark_accepted(item_id, take_number)
-
-    def accept_open_item(
-        self,
-        number: int,
-        *,
-        pronunciation_index: int,
-        bindings: BatchActionBindings,
-    ) -> None:
-        item_id = self.open_item_id
-        if item_id is None:
-            return
-        item = self.batch.get_item(item_id)
-        session = item.session
-        had_active_batch = session.has_active_batch
-        effects = bindings.operations.accept_take(
-            session,
-            number,
-            busy=bindings.operations.busy,
-            pronunciation_index=pronunciation_index,
-        )
-        bindings.dispatch_operation_effects(effects)
-        saved = any(isinstance(effect, TakeAcceptedEffect) for effect in effects)
-        if not had_active_batch or not saved:
-            return
-        self.complete_acceptance(item_id, number)
-
-    def handle_open_item_key(
-        self,
-        key: Any,
-        *,
-        focus_key: tuple[str, int | None],
-        bindings: BatchActionBindings,
-    ) -> bool:
-        if key == _ESCAPE:
-            bindings.operations.stop_playback()
-            bindings.operations.clear_current_take()
-            bindings.editor_controller.clear_groupings()
-            self.close_item()
-            bindings.set_session(None)
-            bindings.set_status("")
-            return True
-
-        direction: int | None = None
-        if key == "[":
-            direction = -1
-        elif key == "]":
-            direction = 1
-        elif focus_key == ("batch_item", None):
-            if key == curses.KEY_LEFT:
-                direction = -1
-            elif key == curses.KEY_RIGHT:
-                direction = 1
-        if direction is None:
-            return False
-        self.move_open_item(direction, bindings=bindings)
-        return True
-
-    def move_open_item(
-        self,
-        direction: int,
-        *,
-        bindings: BatchActionBindings,
-    ) -> None:
-        index = self.item_index
-        if index is None or direction == 0:
-            return
-        if bindings.operations.busy:
-            bindings.set_status(
-                "Wait for the current synthesis operation to finish."
-            )
-            return
-        target = index + (-1 if direction < 0 else 1)
-        if target < 0:
-            bindings.set_status("First Caption.")
-            return
-        if target >= len(self.batch):
-            bindings.set_status("Last Caption.")
-            return
-
-        bindings.operations.stop_playback()
-        bindings.operations.clear_current_take()
-        bindings.editor_controller.clear_groupings()
-        bindings.set_session(self.open_item(target))
-        bindings.navigation.focus_key = ("batch_item", None)
-        bindings.navigation.reset_pronunciation_index()
-        bindings.set_status("")
 
     def close_sessions(self) -> None:
         for session in self.sessions:
