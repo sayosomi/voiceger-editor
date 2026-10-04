@@ -16,12 +16,20 @@ from typing import Any, Callable, Iterable, Union
 
 from .caption_batch import CaptionBatch
 from .session import UtteranceSession
+from .tui_status import Status, error_status, info_status, warning_status
 from .voicevox_api_models import AudioQuery
 
 
 @dataclass(frozen=True)
 class UpdateStatusEffect:
-    status: str
+    status: Status
+
+    def __init__(self, status: Status | str) -> None:
+        object.__setattr__(
+            self,
+            "status",
+            status if isinstance(status, Status) else info_status(status),
+        )
 
 
 @dataclass(frozen=True)
@@ -334,7 +342,7 @@ class TuiOperations:
             values = session.generate_takes()
         except Exception as exc:
             return (
-                UpdateStatusEffect(f"Error: Could not start take generation: {exc}"),
+                UpdateStatusEffect(error_status(f"Could not start take generation: {exc}")),
             )
         self.current_take = None
         return self.run_worker(
@@ -379,7 +387,7 @@ class TuiOperations:
             values = session.regenerate_all_takes()
         except Exception as exc:
             return (
-                UpdateStatusEffect(f"Error: Could not regenerate all takes: {exc}"),
+                UpdateStatusEffect(error_status(f"Could not regenerate all takes: {exc}")),
             )
         return self.run_worker(
             lambda: values,
@@ -405,7 +413,7 @@ class TuiOperations:
         try:
             query_snapshot = query.model_copy(deep=True)
         except Exception as exc:
-            return (UpdateStatusEffect(f"Error: Could not start Preview: {exc}"),)
+            return (UpdateStatusEffect(error_status(f"Could not start Preview: {exc}")),)
 
         # A single owned player is reused for takes and previews. Stopping it
         # does not clear the user's selected candidate.
@@ -539,7 +547,7 @@ class TuiOperations:
             if isinstance(event, PreviewFailedEvent):
                 self.worker_error = event.error
                 effects.append(
-                    UpdateStatusEffect(f"Error: Preview failed: {event.error}")
+                    UpdateStatusEffect(error_status(f"Preview failed: {event.error}"))
                 )
                 continue
             if isinstance(event, BatchGenerationProgressEvent):
@@ -572,9 +580,11 @@ class TuiOperations:
                 self.worker_error = event.error
                 effects.append(
                     UpdateStatusEffect(
-                        "Error: Batch generation failed at "
-                        f"Caption {event.caption_number}/{event.caption_total}, "
-                        f"Take {event.take_number}/{event.take_total}: {event.error}"
+                        error_status(
+                            "Batch generation failed at "
+                            f"Caption {event.caption_number}/{event.caption_total}, "
+                            f"Take {event.take_number}/{event.take_total}: {event.error}"
+                        )
                     )
                 )
                 continue
@@ -622,11 +632,11 @@ class TuiOperations:
                 self.worker_error = value
                 if self.worker_operation == "preview":
                     effects.append(
-                        UpdateStatusEffect(f"Error: Preview failed: {value}")
+                        UpdateStatusEffect(error_status(f"Preview failed: {value}"))
                     )
                 else:
                     effects.append(
-                        UpdateStatusEffect(f"Error: Generation failed: {value}")
+                        UpdateStatusEffect(error_status(f"Generation failed: {value}"))
                     )
                 if (
                     self.worker_operation == "initial"
@@ -674,7 +684,7 @@ class TuiOperations:
                         f"{self.operation_completed} replacement(s)."
                     )
                 elif self.worker_error is not None:
-                    status = f"Error: Generation failed: {self.worker_error}"
+                    status = error_status(f"Generation failed: {self.worker_error}")
                 elif (
                     operation == "initial"
                     and session is not None
@@ -733,7 +743,7 @@ class TuiOperations:
             sf.write(wav_path, audio, sampling_rate)
         except Exception as exc:
             temporary_directory.cleanup()
-            return (UpdateStatusEffect(f"Error: Could not prepare Preview: {exc}"),)
+            return (UpdateStatusEffect(error_status(f"Could not prepare Preview: {exc}")),)
         return self._play_path(
             wav_path,
             status="Playing pronunciation Preview.",
@@ -770,16 +780,18 @@ class TuiOperations:
         except OSError as exc:
             if preview_temporary_directory is not None:
                 preview_temporary_directory.cleanup()
-            return (UpdateStatusEffect(f"Error: {error_prefix}: {exc}"),)
+            return (UpdateStatusEffect(error_status(f"{error_prefix}: {exc}")),)
 
-    def _missing_player_status(self) -> str:
+    def _missing_player_status(self) -> Status:
         if self._platform() == "win32":
-            return (
-                "Error: Playback on Windows requires ffplay.exe in PATH. "
+            return error_status(
+                "Playback on Windows requires ffplay.exe in PATH. "
                 "Install an FFmpeg build that includes ffplay.exe and add its bin "
                 "directory to PATH."
             )
-        return "Error: Playback needs afplay (macOS) or ffplay (other systems)."
+        return error_status(
+            "Playback needs afplay (macOS) or ffplay (other systems)."
+        )
 
     def _player_command(self, wav_path: Path) -> list[str] | None:
         if self._platform() == "darwin":
@@ -839,7 +851,7 @@ class TuiOperations:
             saved = session.accept_take(number)
         except Exception as exc:
             return (
-                UpdateStatusEffect(f"Error: Could not save take {number}: {exc}"),
+                UpdateStatusEffect(error_status(f"Could not save take {number}: {exc}")),
             )
         self.current_take = None
         sidecars = []
@@ -849,10 +861,10 @@ class TuiOperations:
         if lab_path is not None:
             sidecars.append(lab_path.name)
         names = [saved.wav_path.name, *sidecars]
-        status = f"Saved {' and '.join(names)}."
+        status = info_status(f"Saved {' and '.join(names)}.")
         lab_warning = getattr(saved, "lab_warning", None)
         if lab_warning:
-            status = f"Warning: {status} {lab_warning}"
+            status = warning_status(f"{status} {lab_warning}")
         return (
             TakeAcceptedEffect(number),
             UpdateStatusEffect(status),

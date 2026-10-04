@@ -17,7 +17,8 @@ The TUI is split between a composition root and focused owners. The composition 
 | `voiceger_editor/tui_shortcuts.py` | Declarative Main primary-action shortcuts plus editor/modal selectable-item metadata; visible shortcut labels and dispatch share the same declarations, while editor/modal declarations also own selection order, shortcut behavior, conditions, and explicit no-shortcut exceptions. |
 | `voiceger_editor/tui_settings.py` | TUI runtime/persisted Settings reconciliation, persistence outcomes, synthesis-setting invalidation policy, and Batch default Take-count synchronization. |
 | `voiceger_editor/tui_operations.py` | Synthesis worker lifecycle and event queue; operation progress; candidate playback and acceptance; typed operation effects. |
-| `voiceger_editor/tui_rendering.py` | Batch List, Batch Item navigation, editor, and help document construction; terminal rendering; render-state presentation; terminal drawing behavior. |
+| `voiceger_editor/tui_status.py` | Shared semantic TUI Status model, severity constructors, and the single visible prefix formatter. |
+| `voiceger_editor/tui_rendering.py` | Batch List, Batch Item navigation, editor, and help document construction; shared Status footer layout/rendering; render-state presentation; terminal drawing behavior. |
 | `voiceger_editor/tui_display.py` | Pure display-cell width; wrapping and truncation; cursor movement across wrapped input; phoneme and display-formatting helpers. |
 
 ## Dependency direction

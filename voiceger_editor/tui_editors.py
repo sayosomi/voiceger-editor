@@ -47,6 +47,7 @@ from .settings import (
 )
 from .tui_display import _display_width, _move_wrapped_cursor
 from .tui_shortcuts import menu_items, resolve_shortcut
+from .tui_status import EMPTY_STATUS, Status, error_status, info_status
 from .voicevox_api_models import AudioQuery
 
 
@@ -135,7 +136,7 @@ class EditorState:
     input_value: str = ""
     input_cursor: int = 0
     input_original: str = ""
-    error: str = ""
+    error: Status = EMPTY_STATUS
     scroll: int = 0
 
 
@@ -143,12 +144,20 @@ class EditorState:
 class ReplaceQueryIntent:
     query: AudioQuery
     editor_kind: str
-    success_status: str
+    success_status: Status
     grouping_index: int | None = None
     accepted_grouping: EnglishGroupingCache | None = None
     deleted_segment_index: int | None = None
     pure_japanese_utterance_text: str | None = None
     close_editor: bool = True
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.success_status, Status):
+            object.__setattr__(
+                self,
+                "success_status",
+                info_status(str(self.success_status)),
+            )
 
 
 @dataclass(frozen=True)
@@ -174,12 +183,23 @@ class ApplySettingsIntent:
 @dataclass(frozen=True)
 class CloseEditorIntent:
     origin: tuple[str, int | None]
-    status: str
+    status: Status
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.status, Status):
+            object.__setattr__(self, "status", info_status(str(self.status)))
 
 
 @dataclass(frozen=True)
 class UpdateStatusIntent:
-    status: str
+    status: Status
+
+    def __init__(self, status: Status | str) -> None:
+        object.__setattr__(
+            self,
+            "status",
+            status if isinstance(status, Status) else info_status(status),
+        )
 
 
 @dataclass(frozen=True)
@@ -258,7 +278,7 @@ class BuildPronunciationResult:
 
 @dataclass(frozen=True)
 class SettingsApplicationResult:
-    error_status: str | None = None
+    error_status: Status | None = None
 
 
 class TuiEditorController:
@@ -273,7 +293,7 @@ class TuiEditorController:
     ) -> None:
         self.editor: EditorState | None = None
         self.grouping_cache: dict[int, EnglishGroupingCache] = {}
-        self.grouping_error: str | None = None
+        self.grouping_error: Status | None = None
         self._english_word_groups = english_word_groups
         self._available_styles = available_styles
         self._input_prefix = input_prefix
@@ -379,7 +399,7 @@ class TuiEditorController:
                 ),
             )
         if query is None:
-            return (UpdateStatusIntent("Error: There is no active utterance."),)
+            return (UpdateStatusIntent(error_status("There is no active utterance.")),)
         self.editor = EditorState(
             kind="add_section",
             title="ADD SECTION",
@@ -406,7 +426,7 @@ class TuiEditorController:
         if busy or parent is None or parent.kind not in {"japanese", "english_word"}:
             return ()
         if query is None:
-            return (UpdateStatusIntent("Error: There is no active utterance."),)
+            return (UpdateStatusIntent(error_status("There is no active utterance.")),)
 
         segment_index = parent.payload["segment_index"]
         language = "ja" if parent.kind == "japanese" else "en"
@@ -414,18 +434,18 @@ class TuiEditorController:
             if query.voicegerSegments is not None or pure_japanese_utterance_text is None:
                 return (
                     UpdateStatusIntent(
-                        "Error: The pure Japanese section text is unavailable."
+                        error_status("The pure Japanese section text is unavailable.")
                     ),
                 )
             source_text = pure_japanese_utterance_text
         else:
             if query.voicegerSegments is None or type(segment_index) is not int:
-                return (UpdateStatusIntent("Error: The selected section is unavailable."),)
+                return (UpdateStatusIntent(error_status("The selected section is unavailable.")),)
             if not 0 <= segment_index < len(query.voicegerSegments):
-                return (UpdateStatusIntent("Error: The selected section is unavailable."),)
+                return (UpdateStatusIntent(error_status("The selected section is unavailable.")),)
             segment = query.voicegerSegments[segment_index]
             if segment.language != language:
-                return (UpdateStatusIntent("Error: The selected section changed."),)
+                return (UpdateStatusIntent(error_status("The selected section changed.")),)
             source_text = segment.text
 
         can_delete = (
@@ -470,7 +490,7 @@ class TuiEditorController:
                     if model_index is None or not 0 <= model_index < len(
                         query.voicegerSegments
                     ):
-                        self.grouping_error = "Error: Japanese segment references are unavailable."
+                        self.grouping_error = error_status("Japanese segment references are unavailable.")
                         continue
                     segment = query.voicegerSegments[model_index]
                     start = segment.accentPhraseStart
@@ -483,7 +503,7 @@ class TuiEditorController:
                         or start < 0
                         or start + count > len(query.accent_phrases)
                     ):
-                        self.grouping_error = "Error: Japanese segment references are invalid."
+                        self.grouping_error = error_status("Japanese segment references are invalid.")
                         continue
                 try:
                     canonical = japanese_pronunciation(
@@ -496,14 +516,13 @@ class TuiEditorController:
                     )
                     punctuation_suffixes = _punctuation_suffixes(canonical)
                 except Exception as exc:
-                    self.grouping_error = (
-                        "Error: Cannot reconstruct Japanese pronunciation: "
-                        f"{exc}"
+                    self.grouping_error = error_status(
+                        f"Cannot reconstruct Japanese pronunciation: {exc}"
                     )
                     continue
                 if len(punctuation_suffixes) != count:
-                    self.grouping_error = (
-                        "Error: Japanese pronunciation phrases do not match "
+                    self.grouping_error = error_status(
+                        "Japanese pronunciation phrases do not match "
                         "their query references."
                     )
                     continue
@@ -532,7 +551,7 @@ class TuiEditorController:
                     grouping = self.english_grouping(query, model_index)
                 except Exception as exc:
                     self.grouping_error = (
-                        f"Error: Cannot align English word pronunciation: {exc}"
+                        error_status(f"Cannot align English word pronunciation: {exc}")
                     )
                     continue
                 vowel_offset = 0
@@ -549,8 +568,8 @@ class TuiEditorController:
                         )
                     except ValueError as exc:
                         if group.editable:
-                            self.grouping_error = (
-                                "Error: Cannot align English word pronunciation: "
+                            self.grouping_error = error_status(
+                                "Cannot align English word pronunciation: "
                                 f"invalid word phonemes: {exc}"
                             )
                             invalid_word_group = True
@@ -627,7 +646,7 @@ class TuiEditorController:
             except Exception as exc:
                 return (
                     UpdateStatusIntent(
-                        f"Error: Cannot edit Japanese pronunciation: {exc}"
+                        error_status(f"Cannot edit Japanese pronunciation: {exc}")
                     ),
                 )
             self.editor = EditorState(
@@ -658,7 +677,7 @@ class TuiEditorController:
             except Exception as exc:
                 return (
                     UpdateStatusIntent(
-                        f"Error: Cannot edit English word pronunciation: {exc}"
+                        error_status(f"Cannot edit English word pronunciation: {exc}")
                     ),
                 )
             self.editor = EditorState(
@@ -680,7 +699,7 @@ class TuiEditorController:
             )
         return (
             UpdateStatusIntent(
-                f"Error: Pronunciation editing is not available for {row.language!r}."
+                error_status(f"Pronunciation editing is not available for {row.language!r}.")
             ),
         )
 
@@ -802,7 +821,7 @@ class TuiEditorController:
         except Exception as exc:
             return (
                 *clear,
-                UpdateStatusIntent(f"Error: Pronunciation was not changed: {exc}"),
+                UpdateStatusIntent(error_status(f"Pronunciation was not changed: {exc}")),
             )
 
     def reconcile_groupings(self, query: AudioQuery) -> None:
@@ -843,7 +862,7 @@ class TuiEditorController:
         editor.input_value = value
         editor.input_cursor = len(value)
         editor.input_original = value
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (ClearAdjustmentFeedbackIntent(),)
 
     def selection_keys(self) -> list[str]:
@@ -867,7 +886,7 @@ class TuiEditorController:
         if target == index:
             return ()
         editor.selection = keys[target]
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (ClearAdjustmentFeedbackIntent(),)
 
     def move_settings_section(self, direction: int) -> tuple[EditorIntent, ...]:
@@ -892,7 +911,7 @@ class TuiEditorController:
         )
         target = (current + (1 if direction > 0 else -1)) % len(sections)
         editor.selection = sections[target][0]
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (ClearAdjustmentFeedbackIntent(),)
 
     def handle_key(
@@ -928,11 +947,11 @@ class TuiEditorController:
                 editor.input_value = editor.input_original
                 editor.input_cursor = len(editor.input_original)
                 editor.active_field = None
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent(""),)
             if editor.kind == "japanese" and isinstance(key, str) and "/" in key:
                 editor.error = (
-                    "Error: Use spaces for phrase boundaries; '/' is not used in this editor."
+                    error_status("Use spaces for phrase boundaries; '/' is not used in this editor.")
                 )
                 return ()
             input_changed = False
@@ -981,7 +1000,7 @@ class TuiEditorController:
             if input_changed and editor.kind in {
                 "japanese", "english_word", "section_text", "add_section"
             }:
-                editor.error = ""
+                editor.error = EMPTY_STATUS
             return ()
 
         if key in ("q", "Q", "\x03"):
@@ -997,7 +1016,7 @@ class TuiEditorController:
         shortcut = resolve_shortcut(editor.kind, key, editor.payload)
         if shortcut is not None:
             editor.selection = shortcut.key
-            editor.error = ""
+            editor.error = EMPTY_STATUS
             if shortcut.shortcut_mode == "focus":
                 return (ClearAdjustmentFeedbackIntent(),)
             return self._activate_selection(settings, query, current_caption)
@@ -1014,7 +1033,7 @@ class TuiEditorController:
                 key == curses.KEY_LEFT and language == "en"
             ):
                 editor.payload["language"] = "en" if language == "ja" else "ja"
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (ClearAdjustmentFeedbackIntent(), UpdateStatusIntent(""))
             return ()
         if key == _ESCAPE:
@@ -1044,13 +1063,13 @@ class TuiEditorController:
                 return self.apply(settings, query, current_caption)
             if selected == "clear":
                 self._set_caption_draft(editor, "")
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("Caption draft cleared."),)
             if selected == "reset":
                 self._set_caption_draft(
                     editor, editor.payload["opening_caption"]
                 )
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("Caption draft reset."),)
             if selected == "back":
                 return self.cancel()
@@ -1088,13 +1107,13 @@ class TuiEditorController:
                 )
             if selected == "clear":
                 self._set_pronunciation_draft(editor, "")
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("Japanese pronunciation draft cleared."),)
             if selected == "reset":
                 self._set_pronunciation_draft(
                     editor, editor.payload["opening_draft"]
                 )
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("Japanese pronunciation draft reset."),)
             if selected == "back":
                 return self.cancel()
@@ -1111,7 +1130,7 @@ class TuiEditorController:
                 draft["top_k"] = str(VOICEGER_DEFAULT_TOP_K)
                 draft["top_p"] = f"{VOICEGER_DEFAULT_TOP_P:.2f}"
                 draft["temperature"] = f"{VOICEGER_DEFAULT_TEMPERATURE:.2f}"
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (
                     ClearAdjustmentFeedbackIntent(),
                     UpdateStatusIntent("Sampling reset to Voiceger defaults."),
@@ -1120,7 +1139,7 @@ class TuiEditorController:
                 editor.payload["draft_settings"] = self._settings_draft(
                     editor.payload["opening_settings"]
                 )
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (
                     ClearAdjustmentFeedbackIntent(),
                     UpdateStatusIntent("Settings draft reset."),
@@ -1152,13 +1171,13 @@ class TuiEditorController:
                 )
             if selected == "clear":
                 self._set_pronunciation_draft(editor, "")
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("English phoneme draft cleared."),)
             if selected == "reset":
                 self._set_pronunciation_draft(
                     editor, editor.payload["opening_draft"]
                 )
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("English phoneme draft reset."),)
             if selected == "back":
                 return self.cancel()
@@ -1171,7 +1190,7 @@ class TuiEditorController:
                 return self.apply_section_text(query)
             if selected == "reset":
                 self._set_text_draft(editor, editor.payload["opening_text"])
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("Section text draft reset."),)
             if selected == "delete_section":
                 return self.open_delete_confirmation()
@@ -1184,12 +1203,12 @@ class TuiEditorController:
                 return self.add_section(query)
             if selected == "clear":
                 self._set_text_draft(editor, "")
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("New section draft cleared."),)
             if selected == "reset":
                 editor.payload["language"] = editor.payload["opening_language"]
                 self._set_text_draft(editor, editor.payload["opening_draft"])
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("New section draft reset."),)
             if selected == "back":
                 return self.cancel()
@@ -1295,9 +1314,9 @@ class TuiEditorController:
                     new_groups=self._english_word_groups(text),
                 )
         except Exception as exc:
-            editor.error = f"Error: Preview failed: {exc}"
+            editor.error = error_status(f"Preview failed: {exc}")
             return ()
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (PreviewIntent(preview_query),)
 
     def apply_section_text(
@@ -1339,7 +1358,7 @@ class TuiEditorController:
                 accepted_grouping = self._grouping_cache(text, merged)
                 pure_text = None
         except Exception as exc:
-            editor.error = f"Error: Section text was not changed: {exc}"
+            editor.error = error_status(f"Section text was not changed: {exc}")
             return ()
         return (
             ReplaceQueryIntent(
@@ -1412,7 +1431,7 @@ class TuiEditorController:
                 segment_index=segment_index,
             )
         except Exception as exc:
-            section_editor.error = f"Error: Section was not deleted: {exc}"
+            section_editor.error = error_status(f"Section was not deleted: {exc}")
             return ()
         return (
             ReplaceQueryIntent(
@@ -1457,7 +1476,7 @@ class TuiEditorController:
                 grouping_index = len(updated.voicegerSegments) - 1
                 accepted_grouping = self._grouping_cache(text, generated)
         except Exception as exc:
-            editor.error = f"Error: Section was not added: {exc}"
+            editor.error = error_status(f"Section was not added: {exc}")
             return ()
         language_name = "Japanese" if language == "ja" else "English"
         return (
@@ -1506,9 +1525,9 @@ class TuiEditorController:
                     draft_phonemes=draft_phonemes,
                 )
         except Exception as exc:
-            editor.error = f"Error: Preview failed: {exc}"
+            editor.error = error_status(f"Preview failed: {exc}")
             return ()
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (PreviewIntent(preview_query),)
 
     def _finish_field(self) -> tuple[EditorIntent, ...]:
@@ -1522,12 +1541,12 @@ class TuiEditorController:
                 take_count = int(value)
             except (TypeError, ValueError):
                 editor.error = (
-                    "Error: Take count must be an integer from 1 through 100."
+                    error_status("Take count must be an integer from 1 through 100.")
                 )
                 return ()
             if not 1 <= take_count <= 100:
                 editor.error = (
-                    "Error: Take count must be an integer from 1 through 100."
+                    error_status("Take count must be an integer from 1 through 100.")
                 )
                 return ()
             value = str(take_count)
@@ -1536,10 +1555,10 @@ class TuiEditorController:
             try:
                 top_k = int(value)
             except (TypeError, ValueError):
-                editor.error = "Error: Top K must be an integer from 1 through 100."
+                editor.error = error_status("Top K must be an integer from 1 through 100.")
                 return ()
             if not 1 <= top_k <= 100:
-                editor.error = "Error: Top K must be an integer from 1 through 100."
+                editor.error = error_status("Top K must be an integer from 1 through 100.")
                 return ()
             value = str(top_k)
             editor.input_value = value
@@ -1549,12 +1568,12 @@ class TuiEditorController:
                 numeric = Decimal(value)
             except (InvalidOperation, TypeError, ValueError):
                 editor.error = (
-                    f"Error: {label} must be a finite number from 0.00 through 1.00."
+                    error_status(f"{label} must be a finite number from 0.00 through 1.00.")
                 )
                 return ()
             if not numeric.is_finite() or not Decimal("0") <= numeric <= Decimal("1"):
                 editor.error = (
-                    f"Error: {label} must be a finite number from 0.00 through 1.00."
+                    error_status(f"{label} must be a finite number from 0.00 through 1.00.")
                 )
                 return ()
             value = f"{numeric:.2f}"
@@ -1572,7 +1591,7 @@ class TuiEditorController:
         editor.active_field = None
         editor.input_original = value
         editor.input_cursor = len(value)
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         if editor.kind == "settings":
             status = ""
         else:
@@ -1611,7 +1630,7 @@ class TuiEditorController:
                     segment_index=editor.payload["segment_index"],
                 )
             except Exception as exc:
-                editor.error = f"Error: Pronunciation was not changed: {exc}"
+                editor.error = error_status(f"Pronunciation was not changed: {exc}")
                 return ()
             return (
                 ReplaceQueryIntent(
@@ -1646,7 +1665,7 @@ class TuiEditorController:
                     phoneme_groups=tuple(group.phonemes for group in groups),
                 )
             except Exception as exc:
-                editor.error = f"Error: English phonemes were not changed: {exc}"
+                editor.error = error_status(f"English phonemes were not changed: {exc}")
                 return ()
             accepted_grouping = EnglishGroupingCache(
                 grouping.source_text, tuple(groups)
@@ -1682,7 +1701,7 @@ class TuiEditorController:
                 temperature=float(draft["temperature"]),
             )
         except (TypeError, ValueError, SettingsError) as exc:
-            editor.error = f"Error: Settings were not changed: {exc}"
+            editor.error = error_status(f"Settings were not changed: {exc}")
             return ()
         return (ApplySettingsIntent(updated),)
 
@@ -1694,7 +1713,7 @@ class TuiEditorController:
         editor = self.editor
         if result.error is not None:
             if editor is None:
-                return (UpdateStatusIntent(f"Error: Query was not changed: {result.error}"),)
+                return (UpdateStatusIntent(error_status(f"Query was not changed: {result.error}")),)
             error_prefix = {
                 "japanese": "Pronunciation was not changed",
                 "english_word": "English pronunciation was not changed",
@@ -1702,7 +1721,7 @@ class TuiEditorController:
                 "add_section": "Section was not added",
                 "delete_section": "Section was not deleted",
             }.get(intent.editor_kind, "Query was not changed")
-            editor.error = f"Error: {error_prefix}: {result.error}"
+            editor.error = error_status(f"{error_prefix}: {result.error}")
             return ()
         if intent.deleted_segment_index is not None:
             self.remap_groupings_after_deletion(
@@ -1727,7 +1746,7 @@ class TuiEditorController:
         if editor is None:
             return ()
         if result.error is not None:
-            editor.error = f"Error: Caption was not changed: {result.error}"
+            editor.error = error_status(f"Caption was not changed: {result.error}")
             return ()
         if result.unchanged:
             return self._close_editor("Caption unchanged.")
@@ -1747,10 +1766,10 @@ class TuiEditorController:
             if editor is None:
                 return (
                     UpdateStatusIntent(
-                        f"Error: Pronunciation was not rebuilt: {result.error}"
+                        error_status(f"Pronunciation was not rebuilt: {result.error}")
                     ),
                 )
-            editor.error = f"Error: Pronunciation was not rebuilt: {result.error}"
+            editor.error = error_status(f"Pronunciation was not rebuilt: {result.error}")
             return ()
         self.editor = None
         return (ClearAdjustmentFeedbackIntent(),)
@@ -1762,7 +1781,7 @@ class TuiEditorController:
         editor = self.editor
         if editor is None:
             return ()
-        if result.error_status is not None and result.error_status.startswith("Error:"):
+        if result.error_status is not None:
             editor.error = result.error_status
             return ()
         return self._close_editor("Settings saved.")
@@ -1823,19 +1842,19 @@ class TuiEditorController:
         if selected == "style_id":
             styles = self._available_styles()
             if not styles:
-                editor.error = "Error: No available styles can be selected."
+                editor.error = error_status("No available styles can be selected.")
                 return clear_feedback
             try:
                 current_id = int(draft["style_id"])
             except (TypeError, ValueError):
-                editor.error = "Error: Style ID must be a positive integer."
+                editor.error = error_status("Style ID must be a positive integer.")
                 return clear_feedback
             index = next(
                 (i for i, style in enumerate(styles) if style.id == current_id),
                 None,
             )
             if index is None:
-                editor.error = f"Error: Style ID {current_id} is not available."
+                editor.error = error_status(f"Style ID {current_id} is not available.")
                 return clear_feedback
             target = index + direction
             if not 0 <= target < len(styles):
@@ -1853,35 +1872,35 @@ class TuiEditorController:
                 updated = current + Decimal("0.01") * direction
                 updated = max(Decimal("0.01"), updated)
             except (InvalidOperation, ValueError):
-                editor.error = "Error: Speed must be a positive finite number."
+                editor.error = error_status("Speed must be a positive finite number.")
                 return clear_feedback
             if updated == current:
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return clear_feedback
             draft["speed"] = f"{updated:.2f}"
         elif selected == "take_count":
             try:
                 current = int(draft["take_count"])
             except (TypeError, ValueError):
-                editor.error = "Error: Take count must be an integer from 1 through 100."
+                editor.error = error_status("Take count must be an integer from 1 through 100.")
                 return clear_feedback
             updated = min(100, max(1, current + direction))
             if updated == current:
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return clear_feedback
             draft["take_count"] = str(updated)
         elif selected == "top_k":
             try:
                 current = int(draft["top_k"])
             except (TypeError, ValueError):
-                editor.error = "Error: Top K must be an integer from 1 through 100."
+                editor.error = error_status("Top K must be an integer from 1 through 100.")
                 return clear_feedback
             if not 1 <= current <= 100:
-                editor.error = "Error: Top K must be an integer from 1 through 100."
+                editor.error = error_status("Top K must be an integer from 1 through 100.")
                 return clear_feedback
             updated = min(100, max(1, current + direction))
             if updated == current:
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return clear_feedback
             draft["top_k"] = str(updated)
         elif selected in {"top_p", "temperature"}:
@@ -1890,7 +1909,7 @@ class TuiEditorController:
                 current = Decimal(str(draft[selected]))
             except (InvalidOperation, TypeError, ValueError):
                 editor.error = (
-                    f"Error: {label} must be a finite number from 0.00 through 1.00."
+                    error_status(f"{label} must be a finite number from 0.00 through 1.00.")
                 )
                 return clear_feedback
             if (
@@ -1898,16 +1917,16 @@ class TuiEditorController:
                 or not Decimal("0") <= current <= Decimal("1")
             ):
                 editor.error = (
-                    f"Error: {label} must be a finite number from 0.00 through 1.00."
+                    error_status(f"{label} must be a finite number from 0.00 through 1.00.")
                 )
                 return clear_feedback
             updated = current + Decimal("0.05") * direction
             updated = min(Decimal("1.00"), max(Decimal("0.00"), updated))
             if updated == current:
-                editor.error = ""
+                editor.error = EMPTY_STATUS
                 return clear_feedback
             draft[selected] = f"{updated:.2f}"
         elif selected in {"save_text", "save_lab"}:
             draft[selected] = not bool(draft[selected])
-        editor.error = ""
+        editor.error = EMPTY_STATUS
         return (feedback,)

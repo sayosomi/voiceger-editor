@@ -35,6 +35,7 @@ from .tui_shortcuts import (
     main_shortcut,
     menu_item,
 )
+from .tui_status import EMPTY_STATUS, Status, StatusKind, format_status
 
 
 _HELP_ITEMS = (
@@ -86,7 +87,7 @@ class EditorRenderState(Protocol):
     active_field: str | None
     input_value: str
     input_cursor: int
-    error: str
+    error: Status
 
 
 @dataclass(frozen=True)
@@ -97,7 +98,7 @@ class TuiRenderState:
     settings: Settings
     session: UtteranceSession | None
     focus_key: tuple[str, int | None]
-    status: str
+    status: Status
     segments: Sequence[tuple[str, str, int | None]]
     pronunciation_rows: Sequence[PronunciationRow]
     busy: bool
@@ -117,6 +118,15 @@ class NavigationLine:
     key: tuple[str, int | None] | None
     focus_owner: tuple[str, int | None] | None = None
     bold_spans: tuple[tuple[int, int], ...] = ()
+
+
+@dataclass(frozen=True)
+class StatusFooterLayout:
+    """Rows reserved for the shared TUI Status footer."""
+
+    start_row: int
+    lines: tuple[str, ...]
+    status: Status | None
 
 
 def _active_input_prefix(editor: EditorRenderState) -> str:
@@ -192,17 +202,63 @@ class TuiRenderer:
     def _focus_attribute(self) -> int:
         return self._attribute("A_REVERSE") | self._color_attr
 
-    def _status_attribute(self, status: str) -> int:
+    def _status_attribute(self, status: Status) -> int:
         attr = self._attribute("A_BOLD")
-        if status.startswith("Error:"):
+        if status.kind is StatusKind.ERROR:
             return attr | (
                 self._error_color_attr or self._attribute("A_REVERSE")
             )
-        if status.startswith("Warning:"):
+        if status.kind is StatusKind.WARNING:
             return attr | (
                 self._warning_color_attr or self._attribute("A_REVERSE")
             )
         return attr
+
+    def _status_footer_layout(
+        self,
+        status: Status,
+        height: int,
+        width: int,
+        *,
+        fallback_hint: str | None = None,
+    ) -> StatusFooterLayout:
+        visible_status = status if status else None
+        text = (
+            format_status(visible_status)
+            if visible_status is not None
+            else (fallback_hint or "")
+        )
+        lines = tuple(_wrap_text(text, max(1, width - 1))) if text else ()
+        reserved_height = max(1, len(lines))
+        start_row = max(0, height - reserved_height)
+        if height <= 0:
+            visible_lines: tuple[str, ...] = ()
+        else:
+            visible_lines = lines[: max(0, height - start_row)]
+        return StatusFooterLayout(start_row, visible_lines, visible_status)
+
+    def _render_status_footer(
+        self,
+        screen: Any,
+        layout: StatusFooterLayout,
+        width: int,
+    ) -> None:
+        if not layout.lines:
+            return
+        attr = (
+            self._status_attribute(layout.status)
+            if layout.status is not None
+            else self._attribute("A_BOLD")
+        )
+        for offset, line in enumerate(layout.lines):
+            self._safe_add(
+                screen,
+                layout.start_row + offset,
+                0,
+                line,
+                width,
+                attr,
+            )
 
     @staticmethod
     def _adjustment_press_direction(
@@ -278,19 +334,33 @@ class TuiRenderer:
 
         return rows
 
-    def help_max_scroll(self, height: int, width: int) -> int:
+    def help_max_scroll(
+        self,
+        height: int,
+        width: int,
+        status: Status = EMPTY_STATUS,
+    ) -> int:
         """Return the largest valid Help body scroll offset."""
 
-        back_row = max(0, height - 1)
+        footer = self._status_footer_layout(status, height, width)
+        back_row = max(0, footer.start_row - 1)
         body_rows = max(0, back_row - 1)
         return max(0, len(self.help_document(width)) - body_rows)
 
-    def render_help(self, screen: Any, width: int, scroll: int = 0) -> int:
+    def render_help(
+        self,
+        screen: Any,
+        width: int,
+        scroll: int = 0,
+        *,
+        status: Status = EMPTY_STATUS,
+    ) -> int:
         """Render one Help viewport and return its clamped scroll offset."""
 
         safe_add = self._safe_add
         height = screen.getmaxyx()[0]
-        back_row = max(0, height - 1)
+        footer = self._status_footer_layout(status, height, width)
+        back_row = max(0, footer.start_row - 1)
         if back_row > 0:
             safe_add(screen, 0, 0, "HELP", width, self._attribute("A_BOLD"))
 
@@ -307,14 +377,16 @@ class TuiRenderer:
             for column, value, is_bold in segments:
                 safe_add(screen, row, column, value, width, bold if is_bold else 0)
 
-        safe_add(
-            screen,
-            back_row,
-            0,
-            f"▶ {menu_item('help', 'back').display_label}",
-            width,
-            self._focus_attribute(),
-        )
+        if footer.start_row > 0:
+            safe_add(
+                screen,
+                back_row,
+                0,
+                f"▶ {menu_item('help', 'back').display_label}",
+                width,
+                self._focus_attribute(),
+            )
+        self._render_status_footer(screen, footer, width)
         return scroll
 
     def render_batch_delete_confirmation(
@@ -322,6 +394,7 @@ class TuiRenderer:
         screen: Any,
         caption: str,
         selection: str,
+        status: Status,
         height: int,
         width: int,
     ) -> None:
@@ -362,7 +435,8 @@ class TuiRenderer:
                 ),
             )
         )
-        viewport_height = max(1, height - 2)
+        footer = self._status_footer_layout(status, height, width)
+        viewport_height = max(0, footer.start_row - 1)
         focused_index = next(
             index for index, (_line, key) in enumerate(document) if key == "delete"
         )
@@ -378,6 +452,7 @@ class TuiRenderer:
                 width,
                 self._focus_attribute() if key == selection else 0,
             )
+        self._render_status_footer(screen, footer, width)
 
     def batch_list_document(
         self,
@@ -443,7 +518,7 @@ class TuiRenderer:
         screen: Any,
         batch: CaptionBatch,
         focus_key: tuple[str, int | None],
-        status: str,
+        status: Status,
         height: int,
         width: int,
         *,
@@ -457,6 +532,7 @@ class TuiRenderer:
                 screen,
                 delete_confirmation_caption,
                 delete_confirmation_selection,
+                status,
                 height,
                 width,
             )
@@ -482,17 +558,8 @@ class TuiRenderer:
             self._attribute("A_BOLD"),
         )
         lines = self.batch_list_document(batch, focus_key, width)
-        visible_status = status
-        if visible_status and not visible_status.startswith(("Error:", "Warning:")):
-            visible_status = f"Status: {visible_status}"
-        status_lines = (
-            _wrap_text(visible_status, max(1, width - 1))
-            if visible_status
-            else []
-        )
-        status_height = max(1, len(status_lines))
-        status_start = max(1, height - status_height)
-        viewport_height = max(0, status_start - 2)
+        footer = self._status_footer_layout(status, height, width)
+        viewport_height = max(0, footer.start_row - 2)
         focused_index = next(
             (
                 index
@@ -515,17 +582,7 @@ class TuiRenderer:
                 width,
                 self._focus_attribute() if focused else 0,
             )
-        if status_lines:
-            status_attr = self._status_attribute(visible_status)
-            for offset, line in enumerate(status_lines):
-                safe_add(
-                    screen,
-                    status_start + offset,
-                    0,
-                    line,
-                    width,
-                    status_attr,
-                )
+        self._render_status_footer(screen, footer, width)
 
     def render_navigation(
         self,
@@ -606,17 +663,8 @@ class TuiRenderer:
         )
 
         lines = self.navigation_document(state, width)
-        status = state.status
-        if status and not status.startswith(("Error:", "Warning:")):
-            status = f"Status: {status}"
-        status_lines = (
-            _wrap_text(status, max(1, width - 1))
-            if status
-            else []
-        )
-        status_height = max(1, len(status_lines))
-        status_start = max(0, height - status_height)
-        viewport_height = max(0, status_start - 4)
+        footer = self._status_footer_layout(state.status, height, width)
+        viewport_height = max(0, footer.start_row - 4)
         focused_index = next(
             (
                 index
@@ -646,17 +694,7 @@ class TuiRenderer:
                     word_attr,
                 )
 
-        if status_lines:
-            status_attr = self._status_attribute(status)
-            for offset, line in enumerate(status_lines):
-                safe_add(
-                    screen,
-                    status_start + offset,
-                    0,
-                    line,
-                    width,
-                    status_attr,
-                )
+        self._render_status_footer(screen, footer, width)
 
     def navigation_document(
         self,
@@ -1289,8 +1327,18 @@ class TuiRenderer:
         document = document[1:]
         if cursor_line is not None:
             cursor_line -= 1
-        status_row = max(0, height - 1)
-        viewport_height = max(1, status_row - 1)
+        status = editor.error or state.status
+        footer = self._status_footer_layout(
+            status,
+            height,
+            width,
+            fallback_hint=(
+                "Enter: Finish editing   Esc: Back"
+                if not status and editor.active_field is not None
+                else None
+            ),
+        )
+        viewport_height = max(0, footer.start_row - 1)
         focused_line = next(
             (
                 index
@@ -1307,18 +1355,7 @@ class TuiRenderer:
         for offset, (line, key) in enumerate(document[start : start + viewport_height]):
             attr = self._focus_attribute() if key == editor.selection else 0
             safe_add(screen, offset + 1, 0, line, width, attr)
-        status = editor.error or state.status
-        if not status and editor.active_field is not None:
-            status = "Enter: Finish editing   Esc: Back"
-        if status:
-            safe_add(
-                screen,
-                status_row,
-                0,
-                status,
-                width,
-                self._status_attribute(status),
-            )
+        self._render_status_footer(screen, footer, width)
         if cursor_line is not None and start <= cursor_line < start + viewport_height:
             try:
                 screen.move(

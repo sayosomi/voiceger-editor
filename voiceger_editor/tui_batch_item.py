@@ -32,6 +32,7 @@ from .tui_navigation import (
 )
 from .tui_operations import TakeAcceptedEffect
 from .tui_shortcuts import resolve_main_shortcut
+from .tui_status import EMPTY_STATUS, Status, error_status, info_status
 
 
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
@@ -45,7 +46,7 @@ class BatchItemBindings:
     actions: BatchActionBindings
     get_session: Callable[[], Any | None]
     get_settings: Callable[[], Settings]
-    get_status: Callable[[], str]
+    get_status: Callable[[], Status]
     clear_adjustment_feedback: Callable[[], None]
     mark_adjustment_pressed: Callable[[str, str, int], None]
 
@@ -185,7 +186,9 @@ class TuiBatchItemController:
             elif isinstance(action, OpenClearCandidatesConfirmation):
                 if actions.operations.busy:
                     actions.set_status(
-                        "Finish or cancel synthesis before clearing candidates."
+                        info_status(
+                            "Finish or cancel synthesis before clearing candidates."
+                        )
                     )
                 elif session is not None and session.candidates:
                     actions.dispatch_editor_intents(
@@ -284,7 +287,9 @@ class TuiBatchItemController:
         try:
             session.build_pronunciation_from_caption()
         except Exception as exc:
-            actions.set_status(f"Error: Pronunciation was not rebuilt: {exc}")
+            actions.set_status(
+                error_status(f"Pronunciation was not rebuilt: {exc}")
+            )
             return str(exc)
         actions.operations.stop_playback()
         actions.editor_controller.clear_groupings()
@@ -295,7 +300,7 @@ class TuiBatchItemController:
             ),
             bindings,
         )
-        actions.set_status("Pronunciation rebuilt from Caption.")
+        actions.set_status(info_status("Pronunciation rebuilt from Caption."))
         return None
 
     def adjust_take_count(
@@ -307,7 +312,7 @@ class TuiBatchItemController:
         if actions.operations.busy:
             bindings.clear_adjustment_feedback()
             actions.set_status(
-                "Wait for the current synthesis operation to finish."
+                info_status("Wait for the current synthesis operation to finish.")
             )
             return
         count = bindings.get_settings().take_count
@@ -353,16 +358,19 @@ class TuiBatchItemController:
         if session is None:
             return ()
         actions = bindings.actions
+        previous_grouping_error = actions.editor_controller.grouping_error
         rows = actions.editor_controller.pronunciation_rows(
             session.query,
             self.segments(session),
         )
-        if actions.editor_controller.grouping_error:
-            actions.set_status(actions.editor_controller.grouping_error)
-        elif bindings.get_status().startswith(
-            "Error: Cannot align English word pronunciation:"
+        grouping_error = actions.editor_controller.grouping_error
+        if grouping_error:
+            actions.set_status(grouping_error)
+        elif (
+            previous_grouping_error
+            and bindings.get_status() == previous_grouping_error
         ):
-            actions.set_status("")
+            actions.set_status(EMPTY_STATUS)
         return rows
 
     def edit_selected_pronunciation(
@@ -424,15 +432,15 @@ class TuiBatchItemController:
         actions = bindings.actions
         if actions.operations.busy:
             actions.set_status(
-                "Wait for the current synthesis operation to finish."
+                info_status("Wait for the current synthesis operation to finish.")
             )
             return
         target = index + (-1 if direction < 0 else 1)
         if target < 0:
-            actions.set_status("First Caption.")
+            actions.set_status(info_status("First Caption."))
             return
         if target >= len(self.batch.batch):
-            actions.set_status("Last Caption.")
+            actions.set_status(info_status("Last Caption."))
             return
 
         actions.operations.stop_playback()
@@ -441,7 +449,7 @@ class TuiBatchItemController:
         actions.set_session(self.batch.open_item(target))
         actions.navigation.focus_key = ("batch_item", None)
         actions.navigation.reset_pronunciation_index()
-        actions.set_status("")
+        actions.set_status(EMPTY_STATUS)
 
     def _handle_item_navigation_key(
         self,
@@ -455,7 +463,7 @@ class TuiBatchItemController:
             actions.editor_controller.clear_groupings()
             self.batch.close_item()
             actions.set_session(None)
-            actions.set_status("")
+            actions.set_status(EMPTY_STATUS)
             return True
 
         direction: int | None = None

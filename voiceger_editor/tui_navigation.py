@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional, Tuple, Union
 
+from .tui_status import Status, info_status
+
 
 FocusKey = Tuple[str, Optional[int]]
 
@@ -52,7 +54,14 @@ class ClearAdjustmentFeedback:
 
 @dataclass(frozen=True)
 class UpdateNavigationStatus:
-    status: str
+    status: Status
+
+    def __init__(self, status: Status | str) -> None:
+        object.__setattr__(
+            self,
+            "status",
+            status if isinstance(status, Status) else info_status(status),
+        )
 
 
 @dataclass(frozen=True)

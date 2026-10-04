@@ -22,6 +22,7 @@ from voiceger_editor.tui_operations import (
     TuiOperations,
     UpdateStatusEffect,
 )
+from voiceger_editor.tui_status import StatusKind, error_status, warning_status
 from voiceger_editor.voicevox_api_models import AudioQuery
 
 
@@ -144,7 +145,9 @@ class TuiOperationsTests(unittest.TestCase):
             self.operations.start_generation(failing, take_count=4, navigation_revision=0),
             (
                 UpdateStatusEffect(
-                    "Error: Could not start take generation: generator setup failed"
+                    error_status(
+                        "Could not start take generation: generator setup failed"
+                    )
                 ),
             ),
         )
@@ -209,7 +212,7 @@ class TuiOperationsTests(unittest.TestCase):
 
         self.assertEqual(
             effects,
-            (UpdateStatusEffect("Error: Preview failed: model unavailable"),),
+            (UpdateStatusEffect(error_status("Preview failed: model unavailable")),),
         )
         self.assertFalse(self.operations.busy)
         self.assertEqual(self.operations.current_take, 2)
@@ -588,11 +591,11 @@ class TuiOperationsTests(unittest.TestCase):
                 UpdateStatusEffect("Generating 2/2 · 1 ready"),
                 FocusEffect(("candidate", 1)),
                 PlayTakeEffect(1),
-                UpdateStatusEffect("Error: Generation failed: second synthesis failed"),
+                UpdateStatusEffect(error_status("Generation failed: second synthesis failed")),
                 StopPlaybackEffect(),
                 DiscardInitialBatchEffect(),
                 FocusEffect(("pronunciation", 3)),
-                UpdateStatusEffect("Error: Generation failed: second synthesis failed"),
+                UpdateStatusEffect(error_status("Generation failed: second synthesis failed")),
             ),
         )
         self.assertFalse(self.operations.busy)
@@ -614,8 +617,8 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(
             self.consume(session),
             (
-                UpdateStatusEffect("Error: Generation failed: replacement failed"),
-                UpdateStatusEffect("Error: Generation failed: replacement failed"),
+                UpdateStatusEffect(error_status("Generation failed: replacement failed")),
+                UpdateStatusEffect(error_status("Generation failed: replacement failed")),
             ),
         )
         self.assertEqual(session.candidates, [existing])
@@ -666,7 +669,9 @@ class TuiOperationsTests(unittest.TestCase):
             ),
             (
                 UpdateStatusEffect(
-                    "Error: Could not regenerate all takes: regeneration unavailable"
+                    error_status(
+                        "Could not regenerate all takes: regeneration unavailable"
+                    )
                 ),
             ),
         )
@@ -802,9 +807,11 @@ class TuiOperationsTests(unittest.TestCase):
                     self.operations.play_take(self.playback_session(), 3),
                     (
                         UpdateStatusEffect(
-                            "Error: Playback on Windows requires ffplay.exe in PATH. "
-                            "Install an FFmpeg build that includes ffplay.exe and add its "
-                            "bin directory to PATH."
+                            error_status(
+                                "Playback on Windows requires ffplay.exe in PATH. "
+                                "Install an FFmpeg build that includes ffplay.exe and add its "
+                                "bin directory to PATH."
+                            )
                         ),
                     ),
                 )
@@ -815,7 +822,9 @@ class TuiOperationsTests(unittest.TestCase):
                     self.operations.play_take(self.playback_session(), 3),
                     (
                         UpdateStatusEffect(
-                            "Error: Playback needs afplay (macOS) or ffplay (other systems)."
+                            error_status(
+                                "Playback needs afplay (macOS) or ffplay (other systems)."
+                            )
                         ),
                     ),
                 )
@@ -830,7 +839,11 @@ class TuiOperationsTests(unittest.TestCase):
                 ):
                     self.assertEqual(
                         self.operations.play_take(self.playback_session(), 3),
-                        (UpdateStatusEffect("Error: Could not play take 3: spawn failed"),),
+                        (
+                            UpdateStatusEffect(
+                                error_status("Could not play take 3: spawn failed")
+                            ),
+                        ),
                     )
 
     def test_unavailable_candidate_does_not_stop_current_playback(self):
@@ -946,8 +959,10 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(
             effects[-1],
             UpdateStatusEffect(
-                "Warning: Saved saved.wav. "
-                "LAB generation failed: Julius executable not found"
+                warning_status(
+                    "Saved saved.wav. "
+                    "LAB generation failed: Julius executable not found"
+                )
             ),
         )
 
@@ -963,7 +978,11 @@ class TuiOperationsTests(unittest.TestCase):
                 busy=False,
                 pronunciation_index=0,
             ),
-            (UpdateStatusEffect("Error: Could not save take 3: save failed"),),
+            (
+                UpdateStatusEffect(
+                    error_status("Could not save take 3: save failed")
+                ),
+            ),
         )
         self.assertEqual(self.operations.current_take, 3)
         self.assertEqual(session.candidates, [original])
@@ -1269,9 +1288,10 @@ class TuiBatchGenerationTests(unittest.TestCase):
         ]
         self.assertEqual(
             statuses[-1],
-            "Error: Batch generation failed at Caption 2/3, "
+            "Batch generation failed at Caption 2/3, "
             "Take 2/2: failing failed at take 2",
         )
+        self.assertIs(statuses[-1].kind, StatusKind.ERROR)
         self.assertEqual(operations.operation_completed, 3)
         self.assertFalse(operations.busy)
 

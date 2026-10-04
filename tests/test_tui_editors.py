@@ -25,6 +25,7 @@ from voiceger_editor.tui_editors import (
     UpdateStatusIntent,
 )
 from voiceger_editor.tui_rendering import _active_input_prefix
+from voiceger_editor.tui_status import StatusKind, error_status
 from voiceger_editor.query_editing import japanese_pronunciation
 from voiceger_editor.pronunciation import parse_pronunciation
 from voiceger_editor.voicevox_api_models import (
@@ -787,7 +788,8 @@ class TuiEditorControllerTests(unittest.TestCase):
         editor.input_value = "bad pronunciation"
         intents = controller.preview(japanese)
         self.assertFalse(any(isinstance(item, PreviewIntent) for item in intents))
-        self.assertIn("Error: Preview failed:", editor.error)
+        self.assertIn("Preview failed:", editor.error)
+        self.assertIs(editor.error.kind, StatusKind.ERROR)
         self.assertEqual(japanese.model_dump(), original)
 
     def test_english_preview_intent_uses_transient_grouping_and_rejects_invalid_draft(self):
@@ -833,7 +835,8 @@ class TuiEditorControllerTests(unittest.TestCase):
         editor.input_value = "HH AH3"
         intents = controller.preview(query)
         self.assertFalse(any(isinstance(item, PreviewIntent) for item in intents))
-        self.assertIn("Error: Preview failed:", editor.error)
+        self.assertIn("Preview failed:", editor.error)
+        self.assertIs(editor.error.kind, StatusKind.ERROR)
         self.assertEqual(query.model_dump(), original)
 
     def test_clear_reset_back_preserve_the_opening_draft_for_both_kinds(self):
@@ -1094,7 +1097,10 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(intents, ())
         self.assertEqual(query.model_dump(), original_query)
         self.assertEqual(editor.input_value, "hh ah3 l ow2")
-        self.assertTrue(editor.error.startswith("Error: English phonemes were not changed:"))
+        self.assertTrue(
+            editor.error.startswith("English phonemes were not changed:")
+        )
+        self.assertIs(editor.error.kind, StatusKind.ERROR)
         controller.handle_key(
             curses.KEY_UP, settings=self.settings(), query=query, current_caption="source"
         )
@@ -1324,7 +1330,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         )
         self.assertEqual(
             controller.editor.error,
-            "Error: Style ID 2 is not available.",
+            error_status("Style ID 2 is not available."),
         )
 
     def test_sampling_settings_adjust_edit_reset_and_apply_as_draft(self):
