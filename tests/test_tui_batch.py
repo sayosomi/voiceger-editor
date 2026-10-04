@@ -18,8 +18,9 @@ from voiceger_editor.tui_batch import (
 
 
 class FakeSession:
-    def __init__(self, caption):
+    def __init__(self, caption, *, prepared=True):
         self.caption = caption
+        self.is_prepared = prepared
         self.candidates = []
         self.closed = False
         self.close_calls = 0
@@ -41,6 +42,7 @@ class TuiBatchControllerTests(unittest.TestCase):
         operations.busy = False
         operations.worker_operation = None
         operations.start_batch_generation.return_value = ()
+        operations.start_session_preparation.return_value = ()
         navigation = SimpleNamespace(
             focus_key=("takes", None),
             revision=7,
@@ -305,6 +307,32 @@ class TuiBatchControllerTests(unittest.TestCase):
         bindings.set_status.assert_called_once_with("")
         self.assertEqual(controller.item_title, "BATCH ITEM")
         self.assertEqual(controller.item_position, (2, 2))
+
+        bindings.operations.start_session_preparation.assert_not_called()
+
+    def test_dispatch_open_unprepared_item_defers_pronunciation_preparation(self):
+        controller = TuiBatchController(default_take_count=4)
+        controller.add_caption(
+            "slow caption",
+            session_factory=lambda caption: FakeSession(
+                caption,
+                prepared=False,
+            ),
+        )
+        bindings = self.make_bindings()
+        effects = (SimpleNamespace(kind="prepare"),)
+        bindings.operations.start_session_preparation.return_value = effects
+        session = controller.batch.items[0].session
+
+        controller.dispatch_actions((OpenBatchItem(0),), bindings)
+
+        bindings.set_session.assert_called_once_with(session)
+        bindings.set_status.assert_called_once_with("")
+        bindings.operations.start_session_preparation.assert_called_once_with(
+            session,
+            rebuild=False,
+        )
+        bindings.dispatch_operation_effects.assert_called_once_with(effects)
 
     def test_dispatch_generate_selected_uses_owned_batch_and_navigation_revision(self):
         controller = self.make_controller("first\nsecond")
