@@ -354,7 +354,12 @@ class TuiApp:
             self._batch_item_bindings
         )
 
-    def _open_caption_editor(self, initial: str | None = None) -> None:
+    def _open_caption_editor(
+        self,
+        initial: str | None = None,
+        *,
+        multiline: bool = False,
+    ) -> None:
         intents = self._editor_controller.open_caption(
             initial,
             current_caption=(
@@ -362,6 +367,7 @@ class TuiApp:
             ),
             origin=self._navigation.focus_key if self._batch.in_item else self._batch.focus_key,
             busy=self._operations.busy,
+            multiline=multiline,
         )
         self._dispatch_editor_intents(intents)
 
