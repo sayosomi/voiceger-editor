@@ -1344,9 +1344,12 @@ class TuiRenderer:
         safe_add = self._safe_add
         document, cursor_line, cursor_column = self.editor_document(state, width)
         header, header_key = document[0]
-        header_attr = self._attribute("A_REVERSE") | self._attribute("A_BOLD")
-        if header_key is not None and header_key == editor.selection:
-            header_attr |= self._focus_attribute()
+        if header_key is None:
+            header_attr = self._attribute("A_REVERSE") | self._attribute("A_BOLD")
+        else:
+            header_attr = self._attribute("A_BOLD")
+            if header_key == editor.selection:
+                header_attr |= self._focus_attribute()
         safe_add(
             screen,
             0,

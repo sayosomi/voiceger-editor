@@ -734,12 +734,18 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.assertNotIn("draft", self.core.english)
 
     def test_add_and_quick_save_entry_screens_do_not_have_navigator(self):
-        self.controller.open_menu()
-        self.key("e")
-        self.key("a")
-        editor = self.controller.editor
-        self.assertIsNone(editor.payload["entry_index"])
-        self.assertIsNone(editor.payload["entry_total"])
+        for language in ("ja", "en"):
+            with self.subTest(language=language):
+                controller = TuiDictionaryController(
+                    FakeDictionaryCore(),
+                    input_prefix=lambda _editor: "▶ ",
+                )
+                controller.open_menu()
+                controller.handle_key("j" if language == "ja" else "e")
+                controller.handle_key("a")
+                editor = controller.editor
+                self.assertIsNone(editor.payload["entry_index"])
+                self.assertIsNone(editor.payload["entry_total"])
 
         self.controller.open_quick_save_english(
             surface="record",
@@ -762,6 +768,25 @@ class TuiDictionaryControllerTests(unittest.TestCase):
 
         self.assertEqual(editor.payload["entry_index"], 0)
         self.assertEqual(editor.payload["accent"], 2)
+
+        self.controller.open_menu()
+        self.core.english["first"] = en_word(
+            "first", ["F", "ER1", "S", "T"]
+        )
+        self.core.english["second"] = en_word(
+            "second", ["S", "EH1", "K", "AH0", "N", "D"]
+        )
+        self.key("e")
+        self.key("\n")
+        editor = self.controller.editor
+        editor.selection = "phonemes"
+        self.key(curses.KEY_RIGHT)
+
+        self.assertEqual(editor.payload["entry_index"], 0)
+        self.assertEqual(
+            editor.payload["phonemes"],
+            ("F", "ER1", "S", "T"),
+        )
 
     def test_dirty_back_and_escape_require_discard_confirmation(self):
         self.controller.open_quick_save_english(
