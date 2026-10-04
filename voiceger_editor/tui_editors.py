@@ -268,6 +268,7 @@ class QueryApplicationResult:
 class CaptionApplicationResult:
     unchanged: bool = False
     initial_session_created: bool = False
+    added_caption_count: int = 0
     error: str | None = None
 
 
@@ -1750,11 +1751,19 @@ class TuiEditorController:
             return ()
         if result.unchanged:
             return self._close_editor("Caption unchanged.")
-        status = (
-            "Caption set and pronunciation built."
-            if result.initial_session_created
-            else "Caption updated."
-        )
+        if result.added_caption_count:
+            count = result.added_caption_count
+            status = (
+                "Caption added."
+                if count == 1
+                else f"{count} Captions added."
+            )
+        else:
+            status = (
+                "Caption set."
+                if result.initial_session_created
+                else "Caption updated."
+            )
         return self._close_editor(status)
 
     def complete_build_confirmation(
