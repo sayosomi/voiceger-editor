@@ -338,23 +338,14 @@ class TuiApp:
             )
 
     def _navigation_context(self) -> NavigationContext:
-        session = self.session
-        return NavigationContext(
-            has_session=session is not None,
+        return NavigationContext.from_session(
+            self.session,
             pronunciation_count=(
                 len(self._pronunciation_rows())
-                if session is not None
+                if self.session is not None
                 else 0
             ),
-            candidate_numbers=(
-                tuple(candidate.number for candidate in session.candidates)
-                if session is not None
-                else ()
-            ),
             busy=self._operations.busy,
-            has_active_batch=(
-                session.has_active_batch if session is not None else False
-            ),
             has_item_navigator=self._batch.in_item,
         )
 
