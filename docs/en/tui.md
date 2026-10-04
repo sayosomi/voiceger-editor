@@ -35,6 +35,12 @@ deletion. `Generate selected` is the entry point for the sequential multi-Captio
 generation workflow; the scheduling behavior is implemented separately from the
 navigation layer.
 
+`Add captions` accepts multiple lines at once. While its text field is active,
+Enter inserts a line break and Ctrl+D finishes editing; then activate `Apply`.
+Each non-empty line becomes one independent Caption in the same order, while
+blank-only lines are ignored. The normal editor for an existing Caption still
+uses Enter to finish editing and never splits that Caption into multiple items.
+
 ## Main controls
 
 - Up / Down: move through selectable rows.
