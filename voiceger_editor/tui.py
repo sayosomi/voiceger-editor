@@ -36,6 +36,7 @@ from .tui_operations import (
     CandidateReplacedEffect,
     DictionaryOperationCompletedEffect,
     DiscardInitialBatchEffect,
+    SessionPreparationCompletedEffect,
     FocusEffect,
     OperationEffect,
     PlayPreviewEffect,
@@ -189,7 +190,7 @@ class TuiApp:
                     self._batch.add_captions(caption, session_factory=self._new_session)
                 except Exception as exc:
                     self._status = error_status(
-                        f"Unable to prepare Caption batch: {exc}"
+                        f"Unable to add Caption batch: {exc}"
                     )
 
             while not self._exit_requested:
@@ -286,7 +287,11 @@ class TuiApp:
             intents = self._editor_controller.handle_key(
                 key,
                 settings=self.settings,
-                query=self.session.query if self.session is not None else None,
+                query=(
+                    self.session.query
+                    if self.session is not None and self.session.is_prepared
+                    else None
+                ),
                 current_caption=(
                     self.session.caption if self.session is not None else None
                 ),
@@ -337,7 +342,7 @@ class TuiApp:
         self._dispatch_operation_effects(self._operations.request_shutdown())
 
     def _new_session(self, caption: str) -> UtteranceSession:
-        return UtteranceSession.from_text(
+        return UtteranceSession.from_caption(
             adapter=self.adapter, caption=caption, settings=self.settings
         )
 
@@ -401,11 +406,18 @@ class TuiApp:
 
     def _apply_caption(self, caption: str) -> CaptionApplicationResult:
         if not self._batch.in_item:
+            before_count = len(self._batch.batch)
             try:
-                self._batch.add_caption(caption, session_factory=self._new_session)
+                self._batch.add_captions(
+                    caption,
+                    session_factory=self._new_session,
+                )
             except Exception as exc:
                 return CaptionApplicationResult(error=str(exc))
-            return CaptionApplicationResult(initial_session_created=True)
+            added_count = len(self._batch.batch) - before_count
+            if added_count == 0:
+                return CaptionApplicationResult(error="caption must not be empty")
+            return CaptionApplicationResult(added_caption_count=added_count)
         if self.session is not None and caption == self.session.caption:
             return CaptionApplicationResult(unchanged=True)
         if self.session is not None:
@@ -572,6 +584,13 @@ class TuiApp:
                         effect.value,
                         effect.error,
                     )
+                )
+            elif isinstance(effect, SessionPreparationCompletedEffect):
+                self._batch_item_controller.complete_preparation(
+                    effect.session,
+                    rebuild=effect.rebuild,
+                    error=effect.error,
+                    bindings=self._batch_item_bindings,
                 )
             elif isinstance(effect, BatchCandidateReplacedEffect):
                 self._batch.invalidate_acceptance_for_replacement(

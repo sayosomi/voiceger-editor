@@ -73,30 +73,33 @@ class UtteranceSession:
         *,
         adapter: VoicegerAdapter,
         caption: str,
-        query: AudioQuery,
+        query: AudioQuery | None,
         settings: Settings,
         pure_japanese_utterance_text: str | None = None,
     ) -> None:
         _validate_caption(caption)
-        _validate_query(query)
+        if query is not None:
+            _validate_query(query)
         _validate_settings(settings)
 
-        owned_query = deepcopy(query)
-        owned_query.speedScale = settings.speed
         style = get_style(adapter.voiceger_root, settings.style_id)
 
         self._adapter = adapter
         self._caption = caption
-        self._query = owned_query
+        self._query: AudioQuery | None = None
         self._pure_japanese_utterance_text = None
-        if owned_query.voicegerSegments is None:
-            actual_text = (
-                pure_japanese_utterance_text
-                if pure_japanese_utterance_text is not None
-                else caption
-            )
-            _validate_caption(actual_text)
-            self._pure_japanese_utterance_text = actual_text
+        if query is not None:
+            owned_query = deepcopy(query)
+            owned_query.speedScale = settings.speed
+            self._query = owned_query
+            if owned_query.voicegerSegments is None:
+                actual_text = (
+                    pure_japanese_utterance_text
+                    if pure_japanese_utterance_text is not None
+                    else caption
+                )
+                _validate_caption(actual_text)
+                self._pure_japanese_utterance_text = actual_text
         self._settings = settings
         self._style = style
         self._active_batch: TakeBatch | None = None
@@ -105,6 +108,25 @@ class UtteranceSession:
             dict[str, Any],
         ] = {}
         self._utterance_manually_edited = False
+
+    @classmethod
+    def from_caption(
+        cls,
+        *,
+        adapter: VoicegerAdapter,
+        caption: str,
+        settings: Settings,
+    ) -> UtteranceSession:
+        """Create a lightweight Caption session without preparing its query."""
+
+        _validate_caption(caption)
+        _validate_settings(settings)
+        return cls(
+            adapter=adapter,
+            caption=caption,
+            query=None,
+            settings=settings,
+        )
 
     @classmethod
     def from_text(
@@ -135,6 +157,12 @@ class UtteranceSession:
         )
 
     @property
+    def is_prepared(self) -> bool:
+        """Whether pronunciation/query preparation has completed successfully."""
+
+        return self._query is not None
+
+    @property
     def caption(self) -> str:
         """The current editable Caption, which may differ from the query."""
 
@@ -144,7 +172,7 @@ class UtteranceSession:
     def pure_japanese_utterance_text(self) -> str | None:
         """Actual source text for a pure-Japanese query, when applicable."""
 
-        if self._query.voicegerSegments is not None:
+        if self._query is None or self._query.voicegerSegments is not None:
             return None
         return self._pure_japanese_utterance_text
 
@@ -152,9 +180,10 @@ class UtteranceSession:
     def synthesis_source_text(self) -> str:
         """Return the source text represented by the current synthesis query."""
 
-        if self._query.voicegerSegments is not None:
+        query = self._require_prepared_query()
+        if query.voicegerSegments is not None:
             return "".join(
-                segment.text for segment in self._query.voicegerSegments
+                segment.text for segment in query.voicegerSegments
             )
         return self._pure_japanese_utterance_text or ""
 
@@ -190,7 +219,7 @@ class UtteranceSession:
     def query(self) -> AudioQuery:
         """Return a copy so callers cannot mutate session-owned query state."""
 
-        return deepcopy(self._query)
+        return deepcopy(self._require_prepared_query())
 
     def replace_caption(self, caption: str) -> None:
         """Replace only Caption, leaving query state and active takes untouched."""
@@ -222,8 +251,8 @@ class UtteranceSession:
         self._pure_japanese_utterance_text = actual_pure_japanese_text
         self._utterance_manually_edited = True
 
-    def build_pronunciation_from_caption(self) -> None:
-        """Build and atomically install a fresh complete query from Caption."""
+    def prepare_from_caption(self) -> None:
+        """Prepare and atomically install a fresh complete query from Caption."""
 
         self._adapter.ensure_japanese_dictionary_active()
         replacement_query = build_mixed_audio_query(
@@ -243,13 +272,21 @@ class UtteranceSession:
         self._pure_japanese_utterance_text = pure_japanese_text
         self._utterance_manually_edited = False
 
+    def build_pronunciation_from_caption(self) -> None:
+        """Rebuild pronunciation/query from the current Caption."""
+
+        self.prepare_from_caption()
+
     def replace_settings(self, settings: Settings) -> None:
         """Resolve new settings before invalidating the current take batch."""
 
         _validate_settings(settings)
         style = get_style(self._adapter.voiceger_root, settings.style_id)
-        replacement_query = deepcopy(self._query)
-        replacement_query.speedScale = settings.speed
+        replacement_query = (
+            deepcopy(self._query) if self._query is not None else None
+        )
+        if replacement_query is not None:
+            replacement_query.speedScale = settings.speed
 
         synthesis_fields = ("style_id", "speed", "top_k", "top_p", "temperature")
         if any(
@@ -265,6 +302,7 @@ class UtteranceSession:
         """Synthesize or reuse a transient deterministic Preview result."""
 
         _validate_query(query)
+        self._require_prepared_query()
         query_snapshot = AudioQuery.model_validate(query.model_dump())
         style_snapshot = deepcopy(self._style)
         adapter = self._adapter
@@ -302,7 +340,7 @@ class UtteranceSession:
         if self._active_batch is not None:
             raise RuntimeError("a take batch is already active")
 
-        query_snapshot = deepcopy(self._query)
+        query_snapshot = deepcopy(self._require_prepared_query())
         style_snapshot = self._style
         settings_snapshot = deepcopy(self._settings)
         source_text_snapshot = self.synthesis_source_text
@@ -393,6 +431,11 @@ class UtteranceSession:
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.close()
+
+    def _require_prepared_query(self) -> AudioQuery:
+        if self._query is None:
+            raise RuntimeError("pronunciation/query is not prepared")
+        return self._query
 
     def _require_active_batch(self) -> TakeBatch:
         if self._active_batch is None:

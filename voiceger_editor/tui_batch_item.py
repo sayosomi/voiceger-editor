@@ -198,19 +198,31 @@ class TuiBatchItemController:
             elif isinstance(action, EditPronunciationItem):
                 self.edit_selected_pronunciation(action.index, bindings)
             elif isinstance(action, AddSectionEditor):
+                if session is None or not getattr(session, "is_prepared", True):
+                    actions.set_status(
+                        info_status(
+                            "Prepare pronunciation before adding a section."
+                        )
+                    )
+                    continue
                 actions.dispatch_editor_intents(
                     actions.editor_controller.open_add_section(
-                        session.query if session is not None else None,
+                        session.query,
                         pure_japanese_utterance_text=(
                             session.pure_japanese_utterance_text
-                            if session is not None
-                            else None
                         ),
                         origin=actions.navigation.focus_key,
                         busy=actions.operations.busy,
                     )
                 )
             elif isinstance(action, StartGeneration):
+                if session is not None and not getattr(session, "is_prepared", True):
+                    actions.set_status(
+                        info_status(
+                            "Prepare pronunciation before generating Takes."
+                        )
+                    )
+                    continue
                 effects = actions.operations.start_generation(
                     session,
                     take_count=settings.take_count,
@@ -273,23 +285,54 @@ class TuiBatchItemController:
                 )
             )
             return
-        self.build_pronunciation_from_caption(bindings)
+        self.start_pronunciation_preparation(bindings, rebuild=True)
 
     def build_pronunciation_from_caption(
         self,
         bindings: BatchItemBindings,
     ) -> str | None:
+        """Compatibility route for confirmed explicit pronunciation rebuilds."""
+
+        return self.start_pronunciation_preparation(bindings, rebuild=True)
+
+    def start_pronunciation_preparation(
+        self,
+        bindings: BatchItemBindings,
+        *,
+        rebuild: bool,
+    ) -> str | None:
         session = bindings.get_session()
         if session is None:
             return "there is no active session"
         actions = bindings.actions
-        try:
-            session.build_pronunciation_from_caption()
-        except Exception as exc:
-            actions.set_status(
-                error_status(f"Pronunciation was not rebuilt: {exc}")
+        actions.dispatch_operation_effects(
+            actions.operations.start_session_preparation(
+                session,
+                rebuild=rebuild,
             )
-            return str(exc)
+        )
+        return None
+
+    def complete_preparation(
+        self,
+        session: Any,
+        *,
+        rebuild: bool,
+        error: BaseException | None,
+        bindings: BatchItemBindings,
+    ) -> None:
+        """Apply one preparation result to the currently open Batch Item."""
+
+        if session is not bindings.get_session():
+            return
+        actions = bindings.actions
+        if error is not None:
+            label = "rebuilt" if rebuild else "prepared"
+            actions.set_status(
+                error_status(f"Pronunciation was not {label}: {error}")
+            )
+            return
+
         actions.operations.stop_playback()
         actions.editor_controller.clear_groupings()
         actions.operations.clear_current_take()
@@ -299,8 +342,13 @@ class TuiBatchItemController:
             ),
             bindings,
         )
-        actions.set_status(info_status("Pronunciation rebuilt from Caption."))
-        return None
+        actions.set_status(
+            info_status(
+                "Pronunciation rebuilt from Caption."
+                if rebuild
+                else "Pronunciation prepared."
+            )
+        )
 
     def adjust_take_count(
         self,
@@ -337,7 +385,7 @@ class TuiBatchItemController:
         )
 
     def segments(self, session: Any | None) -> list[tuple[str, str, int | None]]:
-        if session is None:
+        if session is None or not getattr(session, "is_prepared", True):
             return []
         query = session.query
         if query.voicegerSegments is None:
@@ -354,7 +402,7 @@ class TuiBatchItemController:
         bindings: BatchItemBindings,
     ) -> tuple[PronunciationRow, ...]:
         session = bindings.get_session()
-        if session is None:
+        if session is None or not getattr(session, "is_prepared", True):
             return ()
         actions = bindings.actions
         previous_grouping_error = actions.editor_controller.grouping_error
@@ -379,7 +427,11 @@ class TuiBatchItemController:
     ) -> None:
         session = bindings.get_session()
         actions = bindings.actions
-        if session is None or actions.operations.busy:
+        if (
+            session is None
+            or not getattr(session, "is_prepared", True)
+            or actions.operations.busy
+        ):
             return
         rows = self.pronunciation_rows(bindings)
         if not 0 <= pronunciation_index < len(rows):
@@ -441,10 +493,18 @@ class TuiBatchItemController:
         actions.operations.stop_playback()
         actions.operations.clear_current_take()
         actions.editor_controller.clear_groupings()
-        actions.set_session(self.batch.open_item(target))
+        session = self.batch.open_item(target)
+        actions.set_session(session)
         actions.navigation.focus_key = ("batch_item", None)
         actions.navigation.reset_pronunciation_index()
         actions.set_status(EMPTY_STATUS)
+        if not getattr(session, "is_prepared", True):
+            actions.dispatch_operation_effects(
+                actions.operations.start_session_preparation(
+                    session,
+                    rebuild=False,
+                )
+            )
 
     def _handle_item_navigation_key(
         self,
@@ -455,7 +515,7 @@ class TuiBatchItemController:
         if key == _ESCAPE:
             if (
                 actions.operations.busy
-                and actions.operations.worker_operation == "accept"
+                and actions.operations.worker_operation in {"accept", "prepare"}
             ):
                 return True
             actions.operations.stop_playback()

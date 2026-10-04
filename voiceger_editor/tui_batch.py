@@ -235,10 +235,18 @@ class TuiBatchController:
                 bindings.operations.stop_playback()
                 bindings.operations.clear_current_take()
                 bindings.editor_controller.clear_groupings()
-                bindings.set_session(self.open_item(action.index))
+                session = self.open_item(action.index)
+                bindings.set_session(session)
                 bindings.navigation.focus_key = ("batch_item", None)
                 bindings.navigation.reset_pronunciation_index()
                 bindings.set_status(EMPTY_STATUS)
+                if not getattr(session, "is_prepared", True):
+                    bindings.dispatch_operation_effects(
+                        bindings.operations.start_session_preparation(
+                            session,
+                            rebuild=False,
+                        )
+                    )
             elif isinstance(action, AddCaptions):
                 bindings.open_caption_editor("")
             elif isinstance(action, GenerateSelected):

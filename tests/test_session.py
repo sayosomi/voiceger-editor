@@ -242,6 +242,71 @@ class UtteranceSessionTests(unittest.TestCase):
         self.assertEqual(session.query.speedScale, self.settings.speed)
         self.assertEqual(session.query.accent_phrases[0].moras[0].text, "ア")
 
+    def test_from_caption_is_lightweight_until_explicit_preparation(self):
+        with patch(
+            "voiceger_editor.session.get_style",
+            return_value=self.style,
+        ), patch(
+            "voiceger_editor.session.build_mixed_audio_query"
+        ) as build_query:
+            session = UtteranceSession.from_caption(
+                adapter=self.adapter,
+                caption="雨 and hello",
+                settings=self.settings,
+            )
+
+        self.assertFalse(session.is_prepared)
+        self.assertEqual(session.caption, "雨 and hello")
+        self.assertIsNone(session.pure_japanese_utterance_text)
+        build_query.assert_not_called()
+        self.adapter.ensure_japanese_dictionary_active.assert_not_called()
+        with self.assertRaisesRegex(RuntimeError, "not prepared"):
+            _ = session.query
+        with self.assertRaisesRegex(RuntimeError, "not prepared"):
+            session.generate_takes()
+
+    def test_prepare_from_caption_installs_atomically_and_is_retryable(self):
+        with patch(
+            "voiceger_editor.session.get_style",
+            return_value=self.style,
+        ):
+            session = UtteranceSession.from_caption(
+                adapter=self.adapter,
+                caption="雨 and hello",
+                settings=self.settings,
+            )
+
+        with patch(
+            "voiceger_editor.session.build_mixed_audio_query",
+            side_effect=RuntimeError("g2p failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "g2p failed"):
+                session.prepare_from_caption()
+
+        self.assertFalse(session.is_prepared)
+        with self.assertRaisesRegex(RuntimeError, "not prepared"):
+            _ = session.query
+
+        automatic_query = _mixed_pronunciation_query()
+        with patch(
+            "voiceger_editor.session.build_mixed_audio_query",
+            return_value=automatic_query,
+        ) as build_query:
+            session.prepare_from_caption()
+
+        self.assertTrue(session.is_prepared)
+        self.assertEqual(
+            session.query.model_dump(),
+            automatic_query.model_copy(
+                update={"speedScale": self.settings.speed}
+            ).model_dump(),
+        )
+        build_query.assert_called_once_with(
+            "雨 and hello",
+            english_g2p=self.adapter.english_phonemes,
+            output_sampling_rate=32000,
+        )
+
     def test_caption_replacement_preserves_query_and_active_candidates(self):
         session = self.make_session(
             caption="old-ja old-en old-end",

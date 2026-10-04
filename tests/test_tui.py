@@ -136,6 +136,7 @@ def candidate(number):
 class FakeSession:
     def __init__(self, query=None, candidates=()):
         self.query = query or english_query(["AA1", "IY0", "ER1"])
+        self.is_prepared = True
         self.caption = "example"
         self.settings = Settings()
         self._pure_japanese_utterance_text = "example"
@@ -180,12 +181,16 @@ class FakeSession:
         self.replace_caption_calls.append(caption)
         self.caption = caption
 
-    def build_pronunciation_from_caption(self):
+    def prepare_from_caption(self):
         self.build_calls += 1
         if self.rebuild_error is not None:
             raise self.rebuild_error
+        self.is_prepared = True
         self.utterance_manually_edited = False
         self.candidates = ()
+
+    def build_pronunciation_from_caption(self):
+        self.prepare_from_caption()
 
     def generate_takes(self):
         if self.generate_error is not None:
@@ -1826,7 +1831,7 @@ class TuiTests(unittest.TestCase):
         app._initial_caption = "example"
         screen = FakeScreen(keys=("q",))
         with patch(
-            "voiceger_editor.tui.UtteranceSession.from_text",
+            "voiceger_editor.tui.UtteranceSession.from_caption",
             return_value=app.session,
         ), patch("voiceger_editor.tui.curses.set_escdelay") as set_escdelay:
             app.run(screen)
@@ -1849,7 +1854,7 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(preview_path.is_file())
 
         with patch(
-            "voiceger_editor.tui.UtteranceSession.from_text",
+            "voiceger_editor.tui.UtteranceSession.from_caption",
             return_value=app.session,
         ), patch("voiceger_editor.tui.curses.set_escdelay"):
             app.run(FakeScreen(keys=("q",)))
@@ -1953,13 +1958,13 @@ class TuiTests(unittest.TestCase):
         app._open_caption_editor()
         app._editor_controller.editor.input_value = "new caption"
         with patch(
-            "voiceger_editor.tui.UtteranceSession.from_text",
+            "voiceger_editor.tui.UtteranceSession.from_caption",
             side_effect=AssertionError("existing session must be reused"),
-        ) as from_text:
+        ) as from_caption:
             app._handle_key("\n")
             app._handle_key(curses.KEY_DOWN)
             app._handle_key("\n")
-        from_text.assert_not_called()
+        from_caption.assert_not_called()
         self.assertIs(app.session, session)
         self.assertIsNone(app._editor_controller.editor)
         self.assertEqual(app._navigation.focus_key, ("caption", None))
@@ -2027,14 +2032,14 @@ class TuiTests(unittest.TestCase):
         app._open_caption_editor("")
         app._editor_controller.editor.input_value = "initial caption"
         with patch(
-            "voiceger_editor.tui.UtteranceSession.from_text",
+            "voiceger_editor.tui.UtteranceSession.from_caption",
             return_value=seeded_session,
-        ) as from_text:
+        ) as from_caption:
             app._handle_key("\n")
             app._handle_key(curses.KEY_DOWN)
             app._handle_key("\n")
 
-        from_text.assert_called_once_with(
+        from_caption.assert_called_once_with(
             adapter=adapter,
             caption="initial caption",
             settings=app.settings,
@@ -2043,7 +2048,43 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(len(app._batch.batch.items), 1)
         self.assertIs(app._batch.batch.items[0].session, seeded_session)
         self.assertFalse(app._batch.in_item)
-        self.assertEqual(app._status, "Caption set and pronunciation built.")
+        self.assertEqual(app._status, "Caption added.")
+
+    def test_batch_list_apply_adds_multiple_lightweight_caption_sessions(self):
+        adapter = Mock()
+        adapter.voiceger_root = Path("/nonexistent/voiceger")
+        first = FakeSession(query=mixed_query())
+        first.caption = "first caption"
+        second = FakeSession(query=mixed_query())
+        second.caption = "second caption"
+        app = TuiApp(adapter=adapter, settings=Settings())
+
+        with patch(
+            "voiceger_editor.tui.UtteranceSession.from_caption",
+            side_effect=[first, second],
+        ) as from_caption:
+            result = app._apply_caption(
+                "first caption\n\nsecond caption"
+            )
+
+        self.assertIsNone(result.error)
+        self.assertEqual(result.added_caption_count, 2)
+        self.assertEqual(
+            [item.caption for item in app._batch.batch.items],
+            ["first caption", "second caption"],
+        )
+        self.assertEqual(
+            [item.included_for_generation for item in app._batch.batch.items],
+            [True, True],
+        )
+        self.assertNotEqual(
+            app._batch.batch.items[0].item_id,
+            app._batch.batch.items[1].item_id,
+        )
+        self.assertEqual(
+            [call.kwargs["caption"] for call in from_caption.call_args_list],
+            ["first caption", "second caption"],
+        )
 
     def test_pure_japanese_source_display_uses_utterance_after_caption_changes(self):
         query = japanese_query((("ナ",), 1), (("ノ", "ダ"), 2))
@@ -2060,23 +2101,32 @@ class TuiTests(unittest.TestCase):
         app._handle_key("\n")
         self.assertEqual(app._editor_controller.editor.payload["source_text"], "Utterance A")
 
-    def test_clean_build_runs_directly_and_clears_batch_transients(self):
+    def test_clean_build_uses_visible_deferred_preparation_lifecycle(self):
         app = self.make_app(query=mixed_query())
         app.session.candidates = (candidate(2),)
         app.session.utterance_manually_edited = False
-        old_grouping = english_grouping(app, 1)
+        english_grouping(app, 1)
         clear_groupings = Mock(wraps=app._editor_controller.clear_groupings)
         app._editor_controller.clear_groupings = clear_groupings
         app._operations.current_take = 2
         app._operations.stop_playback = Mock()
         set_navigation_focus(app, ("build_pronunciation", None))
+
         app._handle_key("\n")
+
+        self.assertEqual(app.session.build_calls, 0)
+        self.assertEqual(app._operations.worker_operation, "prepare")
+        self.assertEqual(app._status, "Rebuilding pronunciation…")
+        clear_groupings.assert_not_called()
+
+        app._operations.start_pending_worker()
+        app._operations.join_worker()
+        app._consume_events()
 
         self.assertEqual(app.session.build_calls, 1)
         self.assertIsNone(app._editor_controller.editor)
         self.assertEqual(app.session.candidates, ())
         clear_groupings.assert_called_once_with()
-        self.assertIsNot(app._editor_controller.grouping_cache[1], old_grouping)
         self.assertIsNone(app._operations.current_take)
         app._operations.stop_playback.assert_called_once_with()
         self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
@@ -2106,10 +2156,10 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(app.session.utterance_manually_edited)
         app._operations.stop_playback.assert_not_called()
 
-    def test_dirty_build_confirmation_rebuilds_only_after_explicit_action(self):
+    def test_dirty_build_confirmation_starts_deferred_rebuild_only_after_confirm(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(2),))
         app.session.utterance_manually_edited = True
-        old_grouping = english_grouping(app, 1)
+        english_grouping(app, 1)
         clear_groupings = Mock(wraps=app._editor_controller.clear_groupings)
         app._editor_controller.clear_groupings = clear_groupings
         app._operations.current_take = 2
@@ -2117,19 +2167,25 @@ class TuiTests(unittest.TestCase):
         set_navigation_focus(app, ("build_pronunciation", None))
         app._handle_key("\n")
         self.assertEqual(app.session.build_calls, 0)
+
         app._handle_key("\n")
+
+        self.assertEqual(app.session.build_calls, 0)
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app._status, "Rebuilding pronunciation…")
+        app._operations.start_pending_worker()
+        app._operations.join_worker()
+        app._consume_events()
 
         self.assertEqual(app.session.build_calls, 1)
         self.assertFalse(app.session.utterance_manually_edited)
         self.assertEqual(app.session.candidates, ())
-        self.assertIsNone(app._editor_controller.editor)
         clear_groupings.assert_called_once_with()
-        self.assertIsNot(app._editor_controller.grouping_cache[1], old_grouping)
         self.assertIsNone(app._operations.current_take)
         self.assertEqual(app._navigation.focus_key, ("pronunciation", 0))
         self.assertEqual(app._status, "Pronunciation rebuilt from Caption.")
 
-    def test_failed_confirmed_build_preserves_query_and_retains_confirmation(self):
+    def test_failed_confirmed_build_preserves_state_and_is_retryable(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(2),))
         app.session.utterance_manually_edited = True
         app.session.rebuild_error = RuntimeError("analysis failed")
@@ -2138,15 +2194,25 @@ class TuiTests(unittest.TestCase):
         candidates = app.session.candidates
         set_navigation_focus(app, ("build_pronunciation", None))
         app._handle_key("\n")
-        editor = app._editor_controller.editor
         app._handle_key("\n")
 
-        self.assertIs(app._editor_controller.editor, editor)
+        app._operations.start_pending_worker()
+        app._operations.join_worker()
+        app._consume_events()
+
+        self.assertIsNone(app._editor_controller.editor)
         self.assertEqual(app.session.query.model_dump(), query)
         self.assertEqual(app.session.candidates, candidates)
         self.assertTrue(app.session.utterance_manually_edited)
         self.assertEqual(app._operations.current_take, 2)
-        self.assertIn("analysis failed", editor.error)
+        self.assertEqual(
+            app._status,
+            error_status("Pronunciation was not rebuilt: analysis failed"),
+        )
+
+        app.session.rebuild_error = None
+        app._handle_key("p")
+        self.assertEqual(app._editor_controller.editor.kind, "build_confirmation")
 
     def test_caption_apply_failure_preserves_draft_and_remains_editable(self):
         app = self.make_app(query=mixed_query())
@@ -3503,7 +3569,7 @@ class TuiTests(unittest.TestCase):
 
         app._render = Mock(side_effect=record_render)
         with patch(
-            "voiceger_editor.tui.UtteranceSession.from_text",
+            "voiceger_editor.tui.UtteranceSession.from_caption",
             return_value=owned_session,
         ), patch("voiceger_editor.tui.curses.set_escdelay"):
             app.run(screen)
@@ -3950,7 +4016,7 @@ class TuiTests(unittest.TestCase):
         worker.start()
         screen = DrainScreen()
         with patch(
-            "voiceger_editor.tui.UtteranceSession.from_text",
+            "voiceger_editor.tui.UtteranceSession.from_caption",
             return_value=app.session,
         ):
             app.run(screen)
@@ -3991,7 +4057,7 @@ class TuiTests(unittest.TestCase):
         app.session.close = Mock(side_effect=close_session)
         worker.start()
         with patch(
-            "voiceger_editor.tui.UtteranceSession.from_text",
+            "voiceger_editor.tui.UtteranceSession.from_caption",
             return_value=app.session,
         ):
             with self.assertRaisesRegex(RuntimeError, "render failed"):
