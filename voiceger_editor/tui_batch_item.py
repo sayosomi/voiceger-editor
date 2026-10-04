@@ -367,7 +367,7 @@ class TuiBatchItemController:
         if grouping_error:
             actions.set_status(grouping_error)
         elif (
-            previous_grouping_error is not None
+            previous_grouping_error
             and bindings.get_status() == previous_grouping_error
         ):
             actions.set_status(EMPTY_STATUS)
