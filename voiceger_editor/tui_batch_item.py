@@ -30,7 +30,6 @@ from .tui_navigation import (
     StartGeneration,
     UpdateNavigationStatus,
 )
-from .tui_operations import TakeAcceptedEffect
 from .tui_shortcuts import resolve_main_shortcut
 from .tui_status import EMPTY_STATUS, Status, error_status, info_status
 
@@ -408,18 +407,14 @@ class TuiBatchItemController:
         item = self.batch.batch.get_item(item_id)
         session = item.session
         actions = bindings.actions
-        had_active_batch = session.has_active_batch
         effects = actions.operations.accept_take(
             session,
             number,
+            item_id=item_id,
             busy=actions.operations.busy,
             pronunciation_index=pronunciation_index,
         )
         actions.dispatch_operation_effects(effects)
-        saved = any(isinstance(effect, TakeAcceptedEffect) for effect in effects)
-        if not had_active_batch or not saved:
-            return
-        self.batch.complete_acceptance(item_id, number)
 
     def move_open_item(
         self,
@@ -463,7 +458,11 @@ class TuiBatchItemController:
             actions.editor_controller.clear_groupings()
             self.batch.close_item()
             actions.set_session(None)
-            actions.set_status(EMPTY_STATUS)
+            if not (
+                actions.operations.busy
+                and actions.operations.worker_operation == "accept"
+            ):
+                actions.set_status(EMPTY_STATUS)
             return True
 
         direction: int | None = None
