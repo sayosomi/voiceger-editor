@@ -80,6 +80,13 @@ class DictionaryOperationCompletedEffect:
 
 
 @dataclass(frozen=True)
+class SessionPreparationCompletedEffect:
+    session: UtteranceSession
+    rebuild: bool
+    error: BaseException | None = None
+
+
+@dataclass(frozen=True)
 class TakeAcceptanceCompletedEvent:
     item_id: str
     number: int
@@ -91,6 +98,13 @@ class TakeAcceptanceCompletedEvent:
 class DictionaryOperationCompletedEvent:
     request: DictionaryOperationRequest
     value: Any = None
+    error: BaseException | None = None
+
+
+@dataclass(frozen=True)
+class SessionPreparationCompletedEvent:
+    session: UtteranceSession
+    rebuild: bool
     error: BaseException | None = None
 
 
@@ -155,6 +169,7 @@ OperationEffect = Union[
     CandidateReplacedEffect,
     TakeAcceptedEffect,
     DictionaryOperationCompletedEffect,
+    SessionPreparationCompletedEffect,
 ]
 
 
@@ -245,6 +260,8 @@ class TuiOperations:
                             iterator = None
                             try:
                                 try:
+                                    if not item.session.is_prepared:
+                                        item.session.prepare_from_caption()
                                     replacing_existing = item.session.has_active_batch
                                     if replacing_existing:
                                         values = item.session.regenerate_all_takes(
@@ -477,6 +494,58 @@ class TuiOperations:
         self.worker.start()
         return (UpdateStatusEffect("Synthesizing pronunciation Preview…"),)
 
+    def start_session_preparation(
+        self,
+        session: UtteranceSession,
+        *,
+        rebuild: bool,
+    ) -> tuple[OperationEffect, ...]:
+        """Prepare one session after an in-progress Status has rendered."""
+
+        if self.busy:
+            return (UpdateStatusEffect("Wait for the current operation to finish."),)
+        if not rebuild and session.is_prepared:
+            return ()
+
+        self.busy = True
+        self.worker_operation = "prepare"
+        self.worker_target = None
+        self.worker_error = None
+        self.operation_completed = 0
+        self.operation_total = 1
+        self._cancellation_event = None
+        self.cancellation_requested = False
+
+        def work() -> None:
+            try:
+                with open(os.devnull, "w", encoding="utf-8") as sink:
+                    with redirect_stdout(sink), redirect_stderr(sink):
+                        session.prepare_from_caption()
+            except BaseException as exc:
+                self.events.put(
+                    SessionPreparationCompletedEvent(
+                        session=session,
+                        rebuild=rebuild,
+                        error=exc,
+                    )
+                )
+            else:
+                self.events.put(
+                    SessionPreparationCompletedEvent(
+                        session=session,
+                        rebuild=rebuild,
+                    )
+                )
+
+        self._pending_worker = (work, "voiceger-tui-pronunciation")
+        return (
+            UpdateStatusEffect(
+                "Rebuilding pronunciation…"
+                if rebuild
+                else "Preparing pronunciation…"
+            ),
+        )
+
     def start_dictionary_operation(
         self,
         intent: DictionaryOperationIntent,
@@ -612,6 +681,12 @@ class TuiOperations:
                         "Finishing the current Dictionary operation before cleanup…"
                     ),
                 )
+            if self.worker_operation == "prepare":
+                return (
+                    UpdateStatusEffect(
+                        "Finishing pronunciation preparation before cleanup…"
+                    ),
+                )
             return (UpdateStatusEffect("Finishing the current synthesis before cleanup…"),)
         return ()
 
@@ -638,6 +713,23 @@ class TuiOperations:
                 self.worker_error = event.error
                 effects.append(
                     UpdateStatusEffect(error_status(f"Preview failed: {event.error}"))
+                )
+                continue
+            if isinstance(event, SessionPreparationCompletedEvent):
+                self.busy = False
+                self.operation_completed = 1
+                self.operation_total = 1
+                self.worker_error = event.error
+                self.worker_operation = None
+                self.worker_target = None
+                self._cancellation_event = None
+                self.cancellation_requested = False
+                effects.append(
+                    SessionPreparationCompletedEffect(
+                        session=event.session,
+                        rebuild=event.rebuild,
+                        error=event.error,
+                    )
                 )
                 continue
             if isinstance(event, DictionaryOperationCompletedEvent):
