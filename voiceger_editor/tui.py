@@ -47,6 +47,7 @@ from .tui_operations import (
     UpdateStatusEffect,
 )
 from .tui_navigation import NavigationAction, NavigationContext, TuiNavigation
+from .tui_input import TuiInputReader
 from .voiceger_adapter import VoicegerAdapter
 
 
@@ -103,6 +104,7 @@ class TuiApp:
         )
         self._pressed_adjustment: tuple[str, str, int] | None = None
         self._renderer = TuiRenderer()
+        self._input = TuiInputReader()
         self._batch_action_bindings = tui_batch.BatchActionBindings(
             operations=self._operations,
             navigation=self._navigation,
@@ -219,12 +221,19 @@ class TuiApp:
                         self._batch.close_sessions()
 
     def _read_key(self) -> Any:
+        editor = self._editor_controller.editor
         try:
-            key = self._screen.get_wch()
+            key = self._input.read(
+                self._screen,
+                infer_paste_newlines=bool(
+                    editor is not None
+                    and editor.kind == "caption"
+                    and editor.active_field is not None
+                    and editor.payload.get("multiline", False)
+                ),
+            )
         except KeyboardInterrupt:
             self._activate_quit()
-            return None
-        except curses.error:
             return None
         if key == -1:
             return None
@@ -354,7 +363,12 @@ class TuiApp:
             self._batch_item_bindings
         )
 
-    def _open_caption_editor(self, initial: str | None = None) -> None:
+    def _open_caption_editor(
+        self,
+        initial: str | None = None,
+        *,
+        multiline: bool = False,
+    ) -> None:
         intents = self._editor_controller.open_caption(
             initial,
             current_caption=(
@@ -362,6 +376,7 @@ class TuiApp:
             ),
             origin=self._navigation.focus_key if self._batch.in_item else self._batch.focus_key,
             busy=self._operations.busy,
+            multiline=multiline,
         )
         self._dispatch_editor_intents(intents)
 

@@ -74,6 +74,7 @@ _HELP_ITEMS = (
     ("A / G", ": Batch List Add captions / Generate selected"),
     (None, "Menu mode: editor/modal action letters are active."),
     (None, "Editing: Enter finishes; printable shortcut letters insert text."),
+    (None, "Add captions: Ctrl+N inserts a new line; Enter finishes editing."),
     (main_shortcut("help").shortcut, ": open or close Help"),
     (main_shortcut("quit").shortcut.upper(), ": Quit"),
 )
@@ -1336,7 +1337,14 @@ class TuiRenderer:
             height,
             width,
             fallback_hint=(
-                "Enter: Finish editing   Esc: Back"
+                (
+                    "Ctrl+N: New line   Enter: Finish editing   Esc: Back"
+                    if (
+                        editor.kind == "caption"
+                        and editor.payload.get("multiline", False)
+                    )
+                    else "Enter: Finish editing   Esc: Back"
+                )
                 if not status and editor.active_field is not None
                 else None
             ),

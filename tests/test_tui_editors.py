@@ -25,6 +25,7 @@ from voiceger_editor.tui_editors import (
     UpdateStatusIntent,
 )
 from voiceger_editor.tui_rendering import _active_input_prefix
+from voiceger_editor.tui_input import PasteText
 from voiceger_editor.tui_status import StatusKind, error_status
 from voiceger_editor.query_editing import japanese_pronunciation
 from voiceger_editor.pronunciation import parse_pronunciation
@@ -130,6 +131,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(editor.kind, "caption")
         self.assertEqual(editor.title, "EDIT CAPTION TEXT")
         self.assertEqual(editor.payload["opening_caption"], "hello")
+        self.assertFalse(editor.payload["multiline"])
         self.assertEqual(editor.active_field, "draft")
         self.assertEqual(editor.input_value, "hello")
         self.assertEqual(
@@ -146,6 +148,63 @@ class TuiEditorControllerTests(unittest.TestCase):
                 "\n", settings=self.settings(), query=None, current_caption="old"
             ),
             (ApplyCaptionIntent("hello"),),
+        )
+
+    def test_add_captions_editor_accepts_paste_and_ctrl_n_newlines(self):
+        controller, _provider = self.make_controller()
+        controller.open_caption(
+            "",
+            current_caption=None,
+            origin=("add_captions", None),
+            busy=False,
+            multiline=True,
+        )
+        editor = controller.editor
+        self.assertEqual(editor.title, "ADD CAPTIONS")
+        self.assertTrue(editor.payload["multiline"])
+
+        controller.handle_key(
+            PasteText("first\n\nsecond"),
+            settings=self.settings(),
+            query=None,
+            current_caption=None,
+        )
+        controller.handle_key(
+            "\x0e",
+            settings=self.settings(),
+            query=None,
+            current_caption=None,
+        )
+        controller.handle_key(
+            "third",
+            settings=self.settings(),
+            query=None,
+            current_caption=None,
+        )
+
+        self.assertEqual(editor.input_value, "first\n\nsecond\nthird")
+        self.assertEqual(editor.active_field, "draft")
+        self.assertEqual(
+            controller.handle_key(
+                "\n",
+                settings=self.settings(),
+                query=None,
+                current_caption=None,
+            ),
+            (UpdateStatusIntent(""),),
+        )
+        self.assertIsNone(editor.active_field)
+        self.assertEqual(editor.payload["draft"], "first\n\nsecond\nthird")
+        self.assertEqual(editor.selection, "draft")
+        self.assertEqual(controller.move_selection(1), (ClearAdjustmentFeedbackIntent(),))
+        self.assertEqual(
+            controller.handle_key(
+                "\n",
+                settings=self.settings(),
+                query=None,
+                current_caption=None,
+            ),
+            (ApplyCaptionIntent("first\n\nsecond\nthird"),),
         )
 
     def test_caption_clear_reset_and_back_only_change_or_discard_draft(self):

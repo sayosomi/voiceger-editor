@@ -49,6 +49,7 @@ from .tui_display import _display_width, _move_wrapped_cursor
 from .tui_shortcuts import menu_items, resolve_shortcut
 from .tui_status import EMPTY_STATUS, Status, error_status, info_status
 from .voicevox_api_models import AudioQuery
+from .tui_input import PasteText
 
 
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
@@ -306,16 +307,21 @@ class TuiEditorController:
         current_caption: str | None,
         origin: tuple[str, int | None],
         busy: bool,
+        multiline: bool = False,
     ) -> tuple[EditorIntent, ...]:
         if busy:
             return (UpdateStatusIntent("Wait for synthesis to finish before editing Caption."),)
         current = initial if initial is not None else current_caption or ""
         self.editor = EditorState(
             kind="caption",
-            title="EDIT CAPTION TEXT",
+            title="ADD CAPTIONS" if multiline else "EDIT CAPTION TEXT",
             origin=origin,
             selection="draft",
-            payload={"draft": current, "opening_caption": current},
+            payload={
+                "draft": current,
+                "opening_caption": current,
+                "multiline": multiline,
+            },
         )
         return (
             UpdateStatusIntent(""),
@@ -937,6 +943,32 @@ class TuiEditorController:
                 ),
             )
         if editor.active_field is not None:
+            if (
+                editor.kind == "caption"
+                and editor.payload.get("multiline", False)
+                and isinstance(key, PasteText)
+            ):
+                editor.input_value = (
+                    editor.input_value[: editor.input_cursor]
+                    + key.text
+                    + editor.input_value[editor.input_cursor :]
+                )
+                editor.input_cursor += len(key.text)
+                editor.error = EMPTY_STATUS
+                return ()
+            if (
+                editor.kind == "caption"
+                and editor.payload.get("multiline", False)
+                and key == "\x0e"
+            ):
+                editor.input_value = (
+                    editor.input_value[: editor.input_cursor]
+                    + "\n"
+                    + editor.input_value[editor.input_cursor :]
+                )
+                editor.input_cursor += 1
+                editor.error = EMPTY_STATUS
+                return ()
             if key in _ENTER_KEYS:
                 return self._finish_field()
             if key == _ESCAPE:

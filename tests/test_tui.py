@@ -24,6 +24,7 @@ from voiceger_editor.tui_editors import (
     PreviewIntent,
     ReplaceQueryIntent,
 )
+from voiceger_editor.tui_input import PasteText
 from voiceger_editor.tui_operations import (
     BatchCandidateReplacedEffect,
     CandidateReplacedEffect,
@@ -1790,7 +1791,9 @@ class TuiTests(unittest.TestCase):
 
         editor = app._editor_controller.editor
         self.assertEqual(editor.kind, "caption")
+        self.assertEqual(editor.title, "ADD CAPTIONS")
         self.assertEqual(editor.origin, ("takes", None))
+        self.assertTrue(editor.payload["multiline"])
         self.assertEqual(editor.active_field, "draft")
         editor.input_value = "new caption"
         editor.input_cursor = len(editor.input_value)
@@ -2028,9 +2031,14 @@ class TuiTests(unittest.TestCase):
         adapter = Mock()
         adapter.voiceger_root = Path("/nonexistent/voiceger")
         seeded_session = FakeSession(query=mixed_query())
+        seeded_session.caption = "initial caption"
         app = TuiApp(adapter=adapter, settings=Settings())
-        app._open_caption_editor("")
-        app._editor_controller.editor.input_value = "initial caption"
+        app._handle_key("a")
+        editor = app._editor_controller.editor
+        self.assertEqual(editor.title, "ADD CAPTIONS")
+        self.assertTrue(editor.payload["multiline"])
+        editor.input_value = "initial caption"
+        editor.input_cursor = len(editor.input_value)
         with patch(
             "voiceger_editor.tui.UtteranceSession.from_caption",
             return_value=seeded_session,
@@ -2049,6 +2057,60 @@ class TuiTests(unittest.TestCase):
         self.assertIs(app._batch.batch.items[0].session, seeded_session)
         self.assertFalse(app._batch.in_item)
         self.assertEqual(app._status, "Caption added.")
+
+    def test_add_captions_multiline_editor_creates_one_selected_item_per_non_empty_line(self):
+        adapter = Mock()
+        adapter.voiceger_root = Path("/nonexistent/voiceger")
+        captions = (
+            "今日は雨なのだ。",
+            "このずんだ餅はvery sweetなのだ。",
+            "明日も元気なのだ。",
+        )
+        sessions = []
+        for caption in captions:
+            session = FakeSession(query=mixed_query())
+            session.caption = caption
+            sessions.append(session)
+        app = TuiApp(adapter=adapter, settings=Settings())
+
+        app._handle_key("a")
+        app._handle_key(
+            PasteText(
+                f"{captions[0]}\n\n{captions[1]}\n{captions[2]}"
+            )
+        )
+
+        editor = app._editor_controller.editor
+        self.assertEqual(
+            editor.input_value,
+            f"{captions[0]}\n\n{captions[1]}\n{captions[2]}",
+        )
+        self.assertEqual(editor.active_field, "draft")
+
+        with patch(
+            "voiceger_editor.tui.UtteranceSession.from_caption",
+            side_effect=sessions,
+        ) as from_caption:
+            app._handle_key("\n")
+            self.assertIsNone(editor.active_field)
+            app._handle_key(curses.KEY_DOWN)
+            self.assertEqual(editor.selection, "apply")
+            app._handle_key("\n")
+
+        items = app._batch.batch.items
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual([item.caption for item in items], list(captions))
+        self.assertEqual(
+            [item.included_for_generation for item in items],
+            [True, True, True],
+        )
+        self.assertEqual(len({item.item_id for item in items}), 3)
+        self.assertEqual([item.session for item in items], sessions)
+        self.assertEqual(
+            [call.kwargs["caption"] for call in from_caption.call_args_list],
+            list(captions),
+        )
+        self.assertEqual(app._status, "3 Captions added.")
 
     def test_batch_list_apply_adds_multiple_lightweight_caption_sessions(self):
         adapter = Mock()
@@ -2085,6 +2147,21 @@ class TuiTests(unittest.TestCase):
             [call.kwargs["caption"] for call in from_caption.call_args_list],
             ["first caption", "second caption"],
         )
+
+    def test_existing_caption_multiline_replacement_does_not_split_batch_item(self):
+        app = self.make_app(query=mixed_query(), batch_item=True)
+        session = app.session
+        item = app._batch.batch.items[0]
+        replacement = "first line\nsecond line"
+
+        result = app._apply_caption(replacement)
+
+        self.assertIsNone(result.error)
+        self.assertEqual(result.added_caption_count, 0)
+        self.assertEqual(len(app._batch.batch.items), 1)
+        self.assertIs(app._batch.batch.items[0], item)
+        self.assertIs(app._batch.batch.items[0].session, session)
+        self.assertEqual(session.caption, replacement)
 
     def test_pure_japanese_source_display_uses_utterance_after_caption_changes(self):
         query = japanese_query((("ナ",), 1), (("ノ", "ダ"), 2))
