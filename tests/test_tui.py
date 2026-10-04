@@ -602,6 +602,29 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(cancellation_event.is_set())
         self.assertEqual(app._status, "Cancelling current batch before cleanup…")
 
+    def test_help_scroll_clamp_accounts_for_status_footer_height(self):
+        app = self.make_app(query=mixed_query())
+        app._screen = FakeScreen(rows=8, columns=32)
+        app._status = info_status(
+            "This is a long shared Status message that occupies multiple footer rows."
+        )
+        app._open_help()
+        height, width = app._screen.getmaxyx()
+        max_scroll = app._renderer.help_max_scroll(
+            height,
+            width,
+            app._status,
+        )
+        self.assertGreater(
+            max_scroll,
+            app._renderer.help_max_scroll(height, width),
+        )
+
+        app._help_scroll = 10_000
+        app._handle_key(curses.KEY_DOWN)
+
+        self.assertEqual(app._help_scroll, max_scroll)
+
     def test_help_and_cancelled_editor_leave_candidates_available(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
         candidates_before = app.session.candidates
