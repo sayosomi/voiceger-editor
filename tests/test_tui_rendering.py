@@ -388,7 +388,7 @@ class TuiRenderingTests(unittest.TestCase):
             screen,
             batch,
             ("caption", 1),
-            EMPTY_STATUS,
+            info_status("Delete confirmation active."),
             screen.rows,
             screen.columns,
             delete_confirmation_caption="second caption",
@@ -406,6 +406,12 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertTrue(header[3] & curses.A_BOLD)
         delete = next(item for item in screen.drawn if "[D] Delete caption" in item[2])
         self.assertTrue(delete[3] & curses.A_REVERSE)
+        footer = next(
+            text
+            for row, _column, text, _attr in screen.drawn
+            if row == screen.rows - 1
+        )
+        self.assertEqual(footer, "Status: Delete confirmation active.")
 
         screen.drawn.clear()
         self.renderer.render_batch_list(
@@ -698,6 +704,24 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(back[0], screen.rows - 2)
         self.assertTrue(back[3] & curses.A_REVERSE)
 
+    def test_help_renders_shared_status_footer(self):
+        screen = FakeScreen(rows=12, columns=80)
+
+        self.renderer.render_help(
+            screen,
+            screen.columns,
+            status=info_status("Help notice."),
+        )
+
+        footer = next(
+            text
+            for row, _column, text, _attr in screen.drawn
+            if row == screen.rows - 1
+        )
+        back = next(item for item in screen.drawn if item[2] == "▶ Back")
+        self.assertEqual(footer, "Status: Help notice.")
+        self.assertEqual(back[0], screen.rows - 2)
+
     def test_help_back_stays_visible_when_help_content_exceeds_short_terminal(self):
         for height in (24, 8, 4, 2):
             with self.subTest(height=height):
@@ -943,12 +967,12 @@ class TuiRenderingTests(unittest.TestCase):
             error_screen.rows,
             error_screen.columns,
         )
-        error_status = [
+        error_lines = [
             text
             for row, _column, text, _attr in error_screen.drawn
             if row == error_screen.rows - 1
         ]
-        self.assertEqual(error_status, ["Error: invalid Caption"])
+        self.assertEqual(error_lines, ["Error: invalid Caption"])
 
         editor.error = EMPTY_STATUS
         status_screen = FakeScreen(rows=10, columns=80)
@@ -964,6 +988,37 @@ class TuiRenderingTests(unittest.TestCase):
             if row == status_screen.rows - 1
         ]
         self.assertEqual(existing_status, ["Status: Saved output.wav."])
+
+    def test_editor_confirmation_uses_shared_status_footer(self):
+        editor = SimpleNamespace(
+            kind="clear_candidates_confirmation",
+            title="CLEAR CANDIDATES?",
+            selection="clear",
+            payload={"warning": "Candidates will be removed."},
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error=EMPTY_STATUS,
+            scroll=0,
+        )
+        screen = FakeScreen(rows=10, columns=80)
+
+        self.renderer.render_editor(
+            screen,
+            render_state(
+                editor=editor,
+                status=warning_status("Operation warning."),
+            ),
+            screen.rows,
+            screen.columns,
+        )
+
+        footer = next(
+            text
+            for row, _column, text, _attr in screen.drawn
+            if row == screen.rows - 1
+        )
+        self.assertEqual(footer, "Warning: Operation warning.")
 
     def test_build_confirmation_document_warns_and_orders_actions(self):
         editor = SimpleNamespace(
