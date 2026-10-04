@@ -9,6 +9,7 @@ from typing import Any, Callable, Optional, Sequence, Union
 from .caption_batch import CaptionBatch
 from .tui_navigation import TuiNavigation
 from .tui_operations import OperationEffect, TuiOperations
+from .tui_status import EMPTY_STATUS, Status
 from .tui_shortcuts import (
     resolve_batch_list_caption_shortcut,
     resolve_batch_list_shortcut,
@@ -84,7 +85,7 @@ class BatchActionBindings:
     editor_controller: Any
     dictionary_controller: Any
     set_session: Callable[[Any | None], None]
-    set_status: Callable[[str], None]
+    set_status: Callable[[Status], None]
     open_caption_editor: Callable[[str | None], None]
     change_settings: Callable[..., None]
     open_settings_editor: Callable[[str | None], None]
@@ -237,7 +238,7 @@ class TuiBatchController:
                 bindings.set_session(self.open_item(action.index))
                 bindings.navigation.focus_key = ("batch_item", None)
                 bindings.navigation.reset_pronunciation_index()
-                bindings.set_status("")
+                bindings.set_status(EMPTY_STATUS)
             elif isinstance(action, AddCaptions):
                 bindings.open_caption_editor("")
             elif isinstance(action, GenerateSelected):
