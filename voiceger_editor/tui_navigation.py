@@ -267,21 +267,20 @@ class TuiNavigation:
         stops = self.major_navigation_stops(context)
         if not stops:
             return ()
-        try:
-            index = stops.index(self.focus_key)
-        except ValueError:
-            index = next(
+        current = self.focus_key
+        if current not in stops:
+            current = next(
                 (
-                    position
-                    for position, key in enumerate(stops)
+                    key
+                    for key in stops
                     if key[0] == self.focus_key[0]
                 ),
-                0,
+                stops[0],
             )
-        target = min(max(index + delta, 0), len(stops) - 1)
-        if target == index:
+        result = move_clamped_selection(current, stops, delta=delta)
+        if result is None or not result.changed:
             return ()
-        key = stops[target]
+        key = result.selection
         actions = list(self.set_focus_key(context, key, moved=True))
         actions.extend(self._candidate_playback_action(key))
         return tuple(actions)
