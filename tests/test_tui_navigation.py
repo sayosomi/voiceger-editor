@@ -46,6 +46,9 @@ class TuiNavigationTests(unittest.TestCase):
     def setUp(self):
         self.navigation = TuiNavigation()
 
+    def test_initial_batch_item_focus_is_caption(self):
+        self.assertEqual(self.navigation.focus_key, ("caption", None))
+
     def test_items_include_each_pronunciation_child_in_order(self):
         self.assertEqual(
             self.navigation.navigation_items(
