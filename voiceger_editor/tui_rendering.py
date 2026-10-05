@@ -1170,17 +1170,22 @@ class TuiRenderer:
                     str(editor.payload.get("sort_mode", "surface_asc")),
                 ),
             )
-            filter_summary = "Off"
-            if filter_active:
-                parts = []
-                if text_filter.strip():
-                    parts.append(text_filter.strip())
-                if word_type_filter != "ALL":
-                    parts.append(word_type_filter)
-                filter_summary = "On" + (
-                    f": {' · '.join(parts)}" if parts else ""
-                )
-            selectable_value("filter", filter_summary)
+            filter_configured = bool(text_filter.strip()) or word_type_filter != "ALL"
+            if not filter_configured:
+                item = menu_item(editor.kind, "filter", editor.payload)
+                wrapped_selectable_text("filter", f"{item.display_label:<14}Not set")
+            else:
+                filter_summary = "Off"
+                if filter_active:
+                    parts = []
+                    if text_filter.strip():
+                        parts.append(text_filter.strip())
+                    if word_type_filter != "ALL":
+                        parts.append(word_type_filter)
+                    filter_summary = "On" + (
+                        f": {' · '.join(parts)}" if parts else ""
+                    )
+                selectable_value("filter", filter_summary)
             selectable("add")
             if entries:
                 selectable("delete")
@@ -1214,14 +1219,18 @@ class TuiRenderer:
                     str(editor.payload.get("sort_mode", "surface_asc")),
                 ),
             )
-            selectable_value(
-                "filter",
-                (
-                    f"On: {text_filter.strip()}"
-                    if filter_active and text_filter.strip()
-                    else ("On" if filter_active else "Off")
-                ),
-            )
+            if not text_filter.strip():
+                item = menu_item(editor.kind, "filter", editor.payload)
+                wrapped_selectable_text("filter", f"{item.display_label:<14}Not set")
+            else:
+                selectable_value(
+                    "filter",
+                    (
+                        f"On: {text_filter.strip()}"
+                        if filter_active
+                        else "Off"
+                    ),
+                )
             selectable("add")
             if entries:
                 selectable("delete")
