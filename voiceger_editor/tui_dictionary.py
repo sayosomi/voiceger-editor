@@ -5,7 +5,13 @@ from __future__ import annotations
 import curses
 from copy import deepcopy
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Literal, Sequence, Union
+
+from .dictionary_export import (
+    export_voiceger_editor_dictionaries,
+    export_voicevox_dictionary,
+)
 
 from .dictionary_import import (
     DictionaryImportFormat,
@@ -77,6 +83,8 @@ DictionaryOperationIdentity = Literal[
     "delete_english",
     "load_dictionary_import",
     "commit_dictionary_import",
+    "export_voiceger_editor",
+    "export_voicevox",
 ]
 DictionaryLanguage = Literal["ja", "en"]
 
@@ -158,6 +166,7 @@ class TuiDictionaryController:
         input_prefix,
         japanese_pronunciation: Callable[[str], Any] | None = None,
         english_word_groups: Callable[[str], Sequence[tuple[str, Sequence[str]]]] | None = None,
+        output_dir: Callable[[], Path] | None = None,
     ) -> None:
         self.core = core
         self.editor: EditorState | None = None
@@ -165,6 +174,7 @@ class TuiDictionaryController:
         self._input_prefix = input_prefix
         self._japanese_pronunciation = japanese_pronunciation
         self._english_word_groups = english_word_groups
+        self._output_dir = output_dir or (lambda: Path("."))
         self._list_state = DictionaryListStateOwner(core)
         self._import_review: DictionaryImportReview | None = None
         self._import_source_path = ""
@@ -209,6 +219,52 @@ class TuiDictionaryController:
                 "japanese_count": len(self.core.list_japanese_entries()),
                 "english_count": len(self.core.list_english_entries()),
             },
+        )
+
+    @staticmethod
+    def _export_state() -> EditorState:
+        return EditorState(
+            kind="dictionary_export",
+            title="EXPORT DICTIONARY",
+            origin=("dictionary", None),
+            selection="voiceger",
+            payload={},
+        )
+
+    def _export_dictionary(
+        self,
+        target: Literal["voiceger", "voicevox"],
+    ) -> tuple[DictionaryControllerIntent, ...]:
+        editor = self.editor
+        if editor is None:
+            return ()
+
+        core = self.core
+        output_dir = Path(self._output_dir())
+        if target == "voiceger":
+            operation: DictionaryOperationIdentity = "export_voiceger_editor"
+            status = "Exporting Voiceger Editor dictionaries…"
+
+            def work() -> Any:
+                return export_voiceger_editor_dictionaries(core, output_dir)
+        else:
+            operation = "export_voicevox"
+            status = "Exporting VOICEVOX dictionary…"
+
+            def work() -> Any:
+                return export_voicevox_dictionary(core, output_dir)
+
+        request = self._operation_request(
+            editor,
+            operation=operation,
+            language=None,
+        )
+        return (
+            DictionaryOperationIntent(
+                request,
+                info_status(status),
+                work,
+            ),
         )
 
     def _clear_import_state(self) -> None:
@@ -1109,8 +1165,13 @@ class TuiDictionaryController:
             if result is not None:
                 editor.selection = result.selection
 
-        if editor.kind == "dictionary_menu":
-            apply_movement(["japanese", "english", "import", "back"])
+        if editor.kind in {
+            "dictionary_menu",
+            "dictionary_export",
+        }:
+            apply_movement(
+                [item.key for item in menu_items(editor.kind, editor.payload)]
+            )
             return ()
         if editor.kind == "dictionary_import_path":
             apply_movement(
@@ -1740,6 +1801,11 @@ class TuiDictionaryController:
                 message = f"Dictionary import was not loaded: {error}"
             elif request.operation == "commit_dictionary_import":
                 message = f"Dictionary import was not completed: {error}"
+            elif request.operation in {
+                "export_voiceger_editor",
+                "export_voicevox",
+            }:
+                message = f"Dictionary export was not completed: {error}"
             else:
                 message = f"Dictionary word was not deleted: {error}"
             editor.error = error_status(message)
@@ -1771,6 +1837,15 @@ class TuiDictionaryController:
                     f"{result.replaced} replaced, "
                     f"{result.skipped} skipped."
                 ),
+                ClearAdjustmentFeedbackIntent(),
+            )
+        if request.operation in {
+            "export_voiceger_editor",
+            "export_voicevox",
+        }:
+            filenames = ", ".join(path.name for path in value.paths)
+            return (
+                UpdateStatusIntent(f"Dictionary export complete: {filenames}"),
                 ClearAdjustmentFeedbackIntent(),
             )
         if request.operation == "generate_japanese_pronunciation":
@@ -1862,9 +1937,21 @@ class TuiDictionaryController:
                 self._clear_import_state()
                 self.editor = self._import_path_state()
                 return self._begin_field("path", "")
+            elif selected == "export":
+                self._stack.append(deepcopy(editor))
+                self.editor = self._export_state()
             elif selected == "back":
                 self._restore_parent()
             return (UpdateStatusIntent(""),)
+        if editor.kind == "dictionary_export":
+            if selected == "voiceger":
+                return self._export_dictionary("voiceger")
+            if selected == "voicevox":
+                return self._export_dictionary("voicevox")
+            if selected == "back":
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            return ()
         if editor.kind == "dictionary_import_path":
             if selected == "path":
                 return self._begin_field(
@@ -2176,6 +2263,7 @@ class TuiDictionaryController:
             "dictionary_japanese_filter",
             "dictionary_english_filter",
             "dictionary_menu",
+            "dictionary_export",
             "dictionary_import_path",
             "dictionary_import_review",
             "dictionary_import_japanese_detail",
