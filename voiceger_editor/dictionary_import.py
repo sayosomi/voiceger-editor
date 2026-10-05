@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 import json
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 from uuid import UUID
 
 from pydantic import ValidationError
