@@ -38,6 +38,7 @@ from .tui_editors import (
     QuitIntent,
     UpdateStatusIntent,
 )
+from .tui_selection import move_clamped_selection
 from .tui_shortcuts import menu_items, resolve_shortcut
 from .tui_status import EMPTY_STATUS, Status, error_status, info_status
 from .user_dictionary import JapaneseWordType, UserDictionaryCore
@@ -807,13 +808,14 @@ class TuiDictionaryController:
         editor = self.editor
         if editor is None:
             return ()
+
+        def apply_movement(keys: Sequence[Any]) -> None:
+            result = move_clamped_selection(editor.selection, keys, delta=delta)
+            if result is not None:
+                editor.selection = result.selection
+
         if editor.kind == "dictionary_menu":
-            keys = ["japanese", "english", "back"]
-            try:
-                index = keys.index(editor.selection)
-            except ValueError:
-                index = 0
-            editor.selection = keys[min(max(index + delta, 0), len(keys) - 1)]
+            apply_movement(["japanese", "english", "back"])
             return ()
         if editor.kind in {
             "dictionary_japanese_list",
@@ -824,12 +826,7 @@ class TuiDictionaryController:
             action_keys = [
                 item.key for item in menu_items(editor.kind, editor.payload)
             ]
-            keys = [*entry_keys, *action_keys]
-            try:
-                index = keys.index(editor.selection)
-            except ValueError:
-                index = 0
-            editor.selection = keys[min(max(index + delta, 0), len(keys) - 1)]
+            apply_movement([*entry_keys, *action_keys])
             if (
                 isinstance(editor.selection, tuple)
                 and editor.selection[0] == "entry"
@@ -840,26 +837,18 @@ class TuiDictionaryController:
             return ()
         if editor.kind == "dictionary_sort":
             modes = tuple(editor.payload["modes"])
-            keys = [
+            apply_movement([
                 *(("sort", index) for index in range(len(modes))),
                 "back",
-            ]
-            try:
-                index = keys.index(editor.selection)
-            except ValueError:
-                index = 0
-            editor.selection = keys[min(max(index + delta, 0), len(keys) - 1)]
+            ])
             return ()
         if editor.kind in {
             "dictionary_japanese_filter",
             "dictionary_english_filter",
         }:
-            keys = [item.key for item in menu_items(editor.kind, editor.payload)]
-            try:
-                index = keys.index(editor.selection)
-            except ValueError:
-                index = 0
-            editor.selection = keys[min(max(index + delta, 0), len(keys) - 1)]
+            apply_movement(
+                [item.key for item in menu_items(editor.kind, editor.payload)]
+            )
             return ()
         if editor.kind == "dictionary_japanese_duplicates":
             entries = editor.payload["matches"]
@@ -878,15 +867,9 @@ class TuiDictionaryController:
             )
             return ()
         if editor.kind == "dictionary_delete_confirmation":
-            keys = [
-                item.key
-                for item in menu_items(editor.kind, editor.payload)
-            ]
-            try:
-                index = keys.index(editor.selection)
-            except ValueError:
-                index = 0
-            editor.selection = keys[min(max(index + delta, 0), len(keys) - 1)]
+            apply_movement(
+                [item.key for item in menu_items(editor.kind, editor.payload)]
+            )
             return ()
         return ()
 
@@ -903,11 +886,9 @@ class TuiDictionaryController:
             and editor.payload.get("entry_total") is not None
         ):
             keys.insert(0, "entry_navigator")
-        try:
-            index = keys.index(editor.selection)
-        except ValueError:
-            index = 0
-        editor.selection = keys[min(max(index + delta, 0), len(keys) - 1)]
+        result = move_clamped_selection(editor.selection, keys, delta=delta)
+        if result is not None:
+            editor.selection = result.selection
         editor.error = EMPTY_STATUS
         return (ClearAdjustmentFeedbackIntent(),)
 
