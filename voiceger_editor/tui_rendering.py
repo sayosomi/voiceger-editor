@@ -37,7 +37,6 @@ from .tui_shortcuts import (
     menu_item,
 )
 from .tui_status import EMPTY_STATUS, Status, StatusKind, format_status
-from .user_dictionary import japanese_word_type
 
 
 _DICTIONARY_SORT_LABELS = {
@@ -1243,7 +1242,8 @@ class TuiRenderer:
                 wrap("  Surface        ", str(existing.surface))
                 wrap("  Pronunciation  ", str(existing.pronunciation))
                 plain(f"  Accent         {existing.accent_type}")
-                plain(f"  Word type      {japanese_word_type(existing).value}")
+                existing_word_type = editor.payload["existing_word_type"]
+                plain(f"  Word type      {existing_word_type.value}")
                 plain(f"  Priority       {existing.priority}")
             plain()
             selectable("back")
