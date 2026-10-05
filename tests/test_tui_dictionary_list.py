@@ -288,6 +288,126 @@ class DictionaryListControllerIntegrationTests(unittest.TestCase):
         value = operation.work()
         self.controller.complete_operation(operation.request, value)
 
+    def test_sort_shortcut_cycles_and_preserves_stable_edit_target(self):
+        self.core.japanese = {
+            "zebra": ja_word("zebra"),
+            "apple": ja_word("apple"),
+        }
+        self.controller.open_menu()
+        self.key("j")
+        self.key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.payload["entry_ids"][1], "zebra")
+
+        self.key("s")
+
+        self.assertEqual(self.controller.editor.payload["sort_mode"], "surface_desc")
+        self.assertEqual(self.controller.editor.selection, ("entry", 0))
+        self.assertEqual(self.controller.editor.payload["entry_ids"][0], "zebra")
+        self.key("\n")
+        self.assertEqual(self.controller.editor.kind, "dictionary_japanese_entry")
+        self.assertEqual(self.controller.editor.payload["word_uuid"], "zebra")
+
+    def test_japanese_filter_modal_applies_text_and_word_type_together(self):
+        self.core.japanese = {
+            "rain": ja_word(
+                "雨",
+                "アメ",
+                1,
+                word_type=JapaneseWordType.COMMON_NOUN,
+            ),
+            "candy": ja_word(
+                "飴",
+                "アメ",
+                1,
+                word_type=JapaneseWordType.PROPER_NOUN,
+            ),
+        }
+        self.controller.open_menu()
+        self.key("j")
+
+        self.key("f")
+        self.assertEqual(
+            self.controller.editor.kind,
+            "dictionary_japanese_filter",
+        )
+        self.assertEqual(self.controller.editor.selection, "text_query")
+        self.key("\n")
+        self.key("アメ")
+        self.key("\n")
+        self.key(curses.KEY_DOWN)
+        self.key(curses.KEY_RIGHT)
+        self.assertEqual(
+            self.controller.editor.payload["word_type_filter"],
+            "PROPER_NOUN",
+        )
+        self.key("a")
+
+        self.assertEqual(self.controller.editor.kind, "dictionary_japanese_list")
+        self.assertEqual(self.controller.editor.payload["text_filter"], "アメ")
+        self.assertEqual(
+            self.controller.editor.payload["word_type_filter"],
+            "PROPER_NOUN",
+        )
+        self.assertEqual(self.controller.editor.payload["visible_count"], 1)
+        self.assertEqual(self.controller.editor.payload["total_count"], 2)
+        self.assertEqual(self.controller.editor.payload["entry_ids"], ("candy",))
+
+    def test_english_filter_modal_matches_arpabet_and_clear_restores_all_entries(self):
+        self.core.english = {
+            "Apple": en_word("Apple", ["AE1", "P", "AH0", "L"]),
+            "record": en_word("record", ["R", "EH1", "K", "ER0", "D"]),
+        }
+        self.controller.open_menu()
+        self.key("e")
+        self.key("f")
+        self.key("\n")
+        self.key("ER0 D")
+        self.key("\n")
+        self.key("a")
+
+        self.assertEqual(self.controller.editor.payload["entry_ids"], ("record",))
+        self.assertEqual(self.controller.editor.payload["visible_count"], 1)
+        self.assertEqual(self.controller.editor.payload["total_count"], 2)
+
+        self.key("f")
+        self.assertEqual(
+            self.controller.editor.payload["text_query"],
+            "ER0 D",
+        )
+        self.key("c")
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_list")
+        self.assertEqual(self.controller.editor.payload["text_filter"], "")
+        self.assertEqual(self.controller.editor.payload["visible_count"], 2)
+        self.assertEqual(self.controller.editor.payload["total_count"], 2)
+
+    def test_filter_shortcut_state_survives_entry_and_delete_cancel_round_trips(self):
+        self.core.english = {
+            "record": en_word("record", ["R", "EH1", "K", "ER0", "D"]),
+            "zebra": en_word("zebra", ["Z", "IY1", "B", "R", "AH0"]),
+        }
+        self.controller.open_menu()
+        self.key("e")
+        self.key("f")
+        self.key("\n")
+        self.key("record")
+        self.key("\n")
+        self.key("a")
+
+        self.key("\n")
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_entry")
+        self.key("\x1b")
+        self.assertEqual(self.controller.editor.payload["text_filter"], "record")
+
+        self.key("x")
+        self.assertEqual(
+            self.controller.editor.kind,
+            "dictionary_delete_confirmation",
+        )
+        self.key("\x1b")
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_list")
+        self.assertEqual(self.controller.editor.payload["text_filter"], "record")
+        self.assertEqual(self.controller.editor.payload["entry_ids"], ("record",))
+
     def test_sort_recompute_preserves_stable_edit_target(self):
         self.core.japanese = {
             "zebra": ja_word("zebra"),
