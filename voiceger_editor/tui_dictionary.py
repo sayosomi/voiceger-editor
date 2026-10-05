@@ -785,8 +785,6 @@ class TuiDictionaryController:
                 index = 0
             editor.selection = keys[min(max(index + delta, 0), len(keys) - 1)]
             return ()
-        if editor.kind == "dictionary_sort":
-            return self._choose_sort()
         if editor.kind in {
             "dictionary_japanese_filter",
             "dictionary_english_filter",
@@ -1484,6 +1482,8 @@ class TuiDictionaryController:
                         entry_total=len(entries),
                     )
                 return ()
+        if editor.kind == "dictionary_sort":
+            return self._choose_sort()
         if editor.kind in {
             "dictionary_japanese_filter",
             "dictionary_english_filter",
