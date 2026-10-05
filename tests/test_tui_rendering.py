@@ -309,6 +309,26 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertTrue(header.endswith("< 2 / 4 >"))
         self.assertTrue(header_row[3] & curses.A_REVERSE)
 
+    def test_batch_item_output_row_is_a_visible_o_shortcut(self):
+        screen = FakeScreen()
+        settings = Settings(output_dir=Path("/tmp/voiceger-output"))
+        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
+            self.renderer.render_navigation(
+                screen,
+                render_state(
+                    settings=settings,
+                    focus_key=("output", None),
+                    batch_item_position=(1, 1),
+                ),
+                screen.rows,
+                screen.columns,
+                title="BATCH ITEM",
+            )
+
+        output_row = next(item for item in screen.drawn if item[0] == 2)
+        self.assertIn("▶ [O] Output: /tmp/voiceger-output", output_row[2])
+        self.assertTrue(output_row[3] & curses.A_REVERSE)
+
     def test_batch_list_header_summarizes_selection_requested_takes_and_actions(self):
         batch = CaptionBatch(default_take_count=4)
         batch.add_captions_from_text(
