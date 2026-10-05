@@ -681,7 +681,10 @@ class TuiRenderer:
             screen,
             2,
             0,
-            f"{output_marker}Output: {settings.output_dir}",
+            output_marker
+            + main_shortcut("output").display_with_label(
+                f"Output: {settings.output_dir}"
+            ),
             width,
             output_attr,
         )
@@ -1179,6 +1182,12 @@ class TuiRenderer:
             plain()
             selectable("back")
         elif editor.kind == "dictionary_export":
+            plain()
+            output_item = menu_item(editor.kind, "output", editor.payload)
+            wrapped_selectable_text(
+                "output",
+                f"{output_item.display_label}: {state.settings.output_dir}",
+            )
             plain()
             selectable("voiceger")
             plain("  Japanese + English")
