@@ -1355,6 +1355,7 @@ class TuiDictionaryController:
             }
         else:
             return ()
+        payload["warning"] = "This dictionary word will be removed."
         self.editor = EditorState(
             kind="dictionary_delete_confirmation",
             title="DELETE DICTIONARY WORD?",
