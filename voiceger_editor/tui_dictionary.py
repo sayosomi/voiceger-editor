@@ -491,8 +491,9 @@ class TuiDictionaryController:
             "dictionary_english_list",
         }:
             return ()
-        if enabled and not self._list_filter_has_criteria(editor):
-            return self._open_filter_editor()
+        if not self._list_filter_has_criteria(editor):
+            editor.selection = "filter"
+            return (ClearAdjustmentFeedbackIntent(),)
         if bool(editor.payload.get("filter_enabled")) == enabled:
             editor.selection = "filter"
             return (ClearAdjustmentFeedbackIntent(),)
