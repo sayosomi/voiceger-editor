@@ -2046,7 +2046,15 @@ class TuiEditorControllerTests(unittest.TestCase):
             busy=False,
         )
         editor = controller.editor
+        controller.handle_key(
+            "\n",
+            settings=self.settings(),
+            query=query,
+            current_caption="Caption",
+        )
+        controller.move_selection(-1)
         self.assertEqual(editor.selection, "language")
+        self.assertIsNone(editor.active_field)
         self.assertEqual(editor.payload["language"], "ja")
 
         moved_right = controller.handle_key(
