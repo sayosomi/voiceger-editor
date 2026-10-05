@@ -8,6 +8,7 @@ from voiceger_editor.dictionary_export import DictionaryExportResult
 from voiceger_editor.settings import Settings
 from voiceger_editor.tui_dictionary import (
     DictionaryOperationIntent,
+    OpenDictionarySettingsIntent,
     TuiDictionaryController,
 )
 from voiceger_editor.tui_rendering import TuiRenderer, TuiRenderState
@@ -55,9 +56,16 @@ class TuiDictionaryExportTests(unittest.TestCase):
         self.open_export()
         self.assertEqual(
             [item.key for item in menu_items("dictionary_export")],
-            ["voiceger", "voicevox", "back"],
+            ["output", "voiceger", "voicevox", "back"],
         )
+        self.assertEqual(self.controller.editor.selection, "voiceger")
 
+        self.controller.handle_key(curses.KEY_UP)
+        self.assertEqual(self.controller.editor.selection, "output")
+        self.controller.handle_key(curses.KEY_UP)
+        self.assertEqual(self.controller.editor.selection, "output")
+        self.controller.handle_key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.selection, "voiceger")
         self.controller.handle_key(curses.KEY_DOWN)
         self.assertEqual(self.controller.editor.selection, "voicevox")
         self.controller.handle_key(curses.KEY_DOWN)
@@ -66,6 +74,20 @@ class TuiDictionaryExportTests(unittest.TestCase):
         self.assertEqual(self.controller.editor.selection, "back")
         self.controller.handle_key("\x1b")
         self.assertEqual(self.controller.editor.kind, "dictionary_menu")
+
+    def test_output_shortcut_suspends_export_for_direct_settings_edit(self):
+        self.open_export()
+
+        intents = self.controller.handle_key("o")
+
+        self.assertEqual(
+            intents,
+            (OpenDictionarySettingsIntent("output_dir", edit=True),),
+        )
+        self.assertFalse(self.controller.active)
+        self.assertTrue(self.controller.restore_suspended_editor())
+        self.assertEqual(self.controller.editor.kind, "dictionary_export")
+        self.assertEqual(self.controller.editor.selection, "output")
 
     def test_voiceger_export_uses_current_output_dir_and_reports_actual_names(self):
         self.open_export()
@@ -141,9 +163,10 @@ class TuiDictionaryExportTests(unittest.TestCase):
             input_cursor=0,
             error=EMPTY_STATUS,
         )
+        settings = Settings(output_dir=Path("/shown-output"))
         state = TuiRenderState(
             voiceger_root=Path("/nonexistent/voiceger"),
-            settings=Settings(),
+            settings=settings,
             session=None,
             focus_key=("dictionary", None),
             status=EMPTY_STATUS,
@@ -162,6 +185,7 @@ class TuiDictionaryExportTests(unittest.TestCase):
             120,
         )
         rendered = "\n".join(text for text, _key in document)
+        self.assertIn("[O] Output: /shown-output", rendered)
         self.assertIn("[E] Voiceger Editor", rendered)
         self.assertIn("Japanese + English", rendered)
         self.assertIn("[V] VOICEVOX", rendered)
@@ -169,7 +193,7 @@ class TuiDictionaryExportTests(unittest.TestCase):
         self.assertIn("English dictionary is not included", rendered)
         self.assertEqual(
             [key for _text, key in document if key is not None],
-            ["voiceger", "voicevox", "back"],
+            ["output", "voiceger", "voicevox", "back"],
         )
 
 
