@@ -32,9 +32,12 @@ When a focused row exposes an ordered set of values:
 
 - Left selects the previous value.
 - Right selects the next value.
-- Cyclic values may wrap at the ends when that behavior is intentional and tested.
 
-A two-state cyclic value may therefore toggle in either direction.
+Values with a meaningful lower / upper bound, positional end, or directional order must not wrap. At an endpoint, further movement toward that endpoint leaves the value unchanged. This includes bounded numeric values, positions, and ordered levels where jumping from the maximum back to the minimum would change the meaning of the scale.
+
+Categorical values with no meaningful minimum / maximum may wrap when cyclic navigation is intentional and tested.
+
+A two-state toggle is explicitly cyclic and may therefore toggle in either direction.
 
 Changing an adjustable value should keep focus on that row.
 
