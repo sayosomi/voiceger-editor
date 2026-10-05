@@ -8,7 +8,7 @@ from typing import Any, Callable, Sequence
 
 from .settings import Settings
 from .tui_batch import BatchActionBindings, TuiBatchController
-from .tui_editors import PronunciationRow
+from .tui_editors import PronunciationRow, adjustment_feedback_intents
 from .tui_navigation import (
     AcceptCandidate,
     AddSectionEditor,
@@ -46,8 +46,6 @@ class BatchItemBindings:
     get_session: Callable[[], Any | None]
     get_settings: Callable[[], Settings]
     get_status: Callable[[], Status]
-    clear_adjustment_feedback: Callable[[], None]
-    mark_adjustment_pressed: Callable[[str, str, int], None]
 
 
 class TuiBatchItemController:
@@ -169,7 +167,9 @@ class TuiBatchItemController:
             session = bindings.get_session()
             settings = bindings.get_settings()
             if isinstance(action, ClearAdjustmentFeedback):
-                bindings.clear_adjustment_feedback()
+                actions.dispatch_editor_intents(
+                    adjustment_feedback_intents(changed=False)
+                )
             elif isinstance(action, UpdateNavigationStatus):
                 actions.set_status(action.status)
             elif isinstance(action, OpenSettingsEditor):
@@ -357,21 +357,26 @@ class TuiBatchItemController:
     ) -> None:
         actions = bindings.actions
         if actions.operations.busy:
-            bindings.clear_adjustment_feedback()
+            actions.dispatch_editor_intents(
+                adjustment_feedback_intents(changed=False)
+            )
             actions.set_status(
                 info_status("Wait for the current synthesis operation to finish.")
             )
             return
         count = bindings.get_settings().take_count
         updated = min(100, max(1, count + direction))
-        if updated == count:
-            bindings.clear_adjustment_feedback()
-            return
-        bindings.mark_adjustment_pressed(
-            "navigation",
-            "generate",
-            direction,
+        changed = updated != count
+        actions.dispatch_editor_intents(
+            adjustment_feedback_intents(
+                changed=changed,
+                area="navigation",
+                control="generate",
+                direction=direction,
+            )
         )
+        if not changed:
+            return
         actions.change_settings(
             take_count=updated,
             report_success=False,
@@ -476,34 +481,42 @@ class TuiBatchItemController:
         show_feedback: bool = False,
     ) -> None:
         index = self.batch.item_index
-        if index is None or direction == 0:
-            bindings.clear_adjustment_feedback()
-            return
         actions = bindings.actions
+        if index is None or direction == 0:
+            actions.dispatch_editor_intents(
+                adjustment_feedback_intents(changed=False)
+            )
+            return
         if actions.operations.busy:
-            bindings.clear_adjustment_feedback()
+            actions.dispatch_editor_intents(
+                adjustment_feedback_intents(changed=False)
+            )
             actions.set_status(
                 info_status("Wait for the current synthesis operation to finish.")
             )
             return
         target = index + (-1 if direction < 0 else 1)
         if target < 0:
-            bindings.clear_adjustment_feedback()
+            actions.dispatch_editor_intents(
+                adjustment_feedback_intents(changed=False)
+            )
             actions.set_status(info_status("First Caption."))
             return
         if target >= len(self.batch.batch):
-            bindings.clear_adjustment_feedback()
+            actions.dispatch_editor_intents(
+                adjustment_feedback_intents(changed=False)
+            )
             actions.set_status(info_status("Last Caption."))
             return
 
-        if show_feedback:
-            bindings.mark_adjustment_pressed(
-                "navigation",
-                "batch_item",
-                direction,
+        actions.dispatch_editor_intents(
+            adjustment_feedback_intents(
+                changed=show_feedback,
+                area="navigation",
+                control="batch_item",
+                direction=direction,
             )
-        else:
-            bindings.clear_adjustment_feedback()
+        )
         actions.operations.stop_playback()
         actions.operations.clear_current_take()
         actions.editor_controller.clear_groupings()
