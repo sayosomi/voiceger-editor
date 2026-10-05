@@ -2024,12 +2024,17 @@ class TuiEditorController:
                     error_status(f"{label} must be a finite number from 0.00 through 1.00.")
                 )
                 return clear_feedback
-            updated = current + Decimal("0.05") * direction
-            updated = min(Decimal("1.00"), max(Decimal("0.00"), updated))
-            if updated == current:
+            result = step_bounded(
+                current,
+                direction=direction,
+                step=Decimal("0.05"),
+                minimum=Decimal("0.00"),
+                maximum=Decimal("1.00"),
+            )
+            if not result.changed:
                 editor.error = EMPTY_STATUS
                 return clear_feedback
-            draft[selected] = f"{updated:.2f}"
+            draft[selected] = f"{result.value:.2f}"
         elif selected in {"save_text", "save_lab"}:
             draft[selected] = not bool(draft[selected])
         editor.error = EMPTY_STATUS
