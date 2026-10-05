@@ -1456,6 +1456,7 @@ class TuiRenderingTests(unittest.TestCase):
                 "entries": (),
                 "sort_mode": "surface_asc",
                 "text_filter": "",
+                "filter_enabled": False,
                 "word_type_filter": "ALL",
                 "visible_count": 0,
                 "total_count": 0,
@@ -1490,6 +1491,7 @@ class TuiRenderingTests(unittest.TestCase):
                 "entries": (),
                 "sort_mode": "added_desc",
                 "text_filter": "missing",
+                "filter_enabled": True,
                 "word_type_filter": None,
                 "visible_count": 0,
                 "total_count": 3,
@@ -1512,9 +1514,45 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("[S] Sort", visible)
         self.assertIn("Added ↓", visible)
         self.assertIn("[F] Filter", visible)
-        self.assertIn("missing", visible)
+        self.assertIn("On: missing", visible)
         self.assertIn("[A] Add", visible)
         self.assertNotIn("[X] Delete", visible)
+
+    def test_dictionary_sort_chooser_renders_all_modes_without_angle_brackets(self):
+        editor = SimpleNamespace(
+            kind="dictionary_sort",
+            title="SORT JAPANESE DICTIONARY",
+            selection=("sort", 1),
+            payload={
+                "language": "ja",
+                "modes": (
+                    "surface_asc",
+                    "surface_desc",
+                    "word_type",
+                    "priority_asc",
+                    "priority_desc",
+                    "added_asc",
+                    "added_desc",
+                ),
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        visible = "\n".join(line for line, _key in document)
+        self.assertIn("Surface ↑", visible)
+        self.assertIn("▶ Surface ↓", visible)
+        self.assertIn("Word type", visible)
+        self.assertIn("Priority ↓", visible)
+        self.assertIn("Added ↓", visible)
+        self.assertNotIn("< Surface", visible)
+        self.assertIn("Back", visible)
 
     def test_dictionary_filter_editors_render_focused_fields_and_actions(self):
         cases = (
@@ -1575,6 +1613,7 @@ class TuiRenderingTests(unittest.TestCase):
                 "entries": (("uuid", word),),
                 "sort_mode": "priority_desc",
                 "text_filter": "ずん",
+                "filter_enabled": True,
                 "word_type_filter": "PROPER_NOUN",
                 "visible_count": 1,
                 "total_count": 4,
@@ -1601,7 +1640,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertNotIn("Enter Edit", visible)
         self.assertIn("Showing 1 / 4 words", visible)
         self.assertTrue(any("[S] Sort" in line and "Priority ↓" in line for line, _key in document))
-        self.assertTrue(any("[F] Filter" in line and "ずん" in line for line, _key in document))
+        self.assertTrue(any("[F] Filter" in line and "On: ずん" in line for line, _key in document))
         self.assertIn(("  [A] Add", "add"), document)
         self.assertIn(("  [X] Delete", "delete"), document)
         self.assertIn(("  Back", "back"), document)
@@ -1620,6 +1659,7 @@ class TuiRenderingTests(unittest.TestCase):
                 "entry_index": 0,
                 "sort_mode": "surface_asc",
                 "text_filter": "",
+                "filter_enabled": False,
                 "word_type_filter": None,
                 "visible_count": 1,
                 "total_count": 1,
