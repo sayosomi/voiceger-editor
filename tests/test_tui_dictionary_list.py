@@ -387,8 +387,7 @@ class DictionaryListControllerIntegrationTests(unittest.TestCase):
         self.key("\n")
         editor = self.controller.editor
         editor.payload["surface"] = "recording"
-        editor.selection = "save"
-        intents = self.key("\n")
+        intents = self.key("s")
         self.finish_operation(intents)
 
         self.assertEqual(self.controller.editor.kind, "dictionary_english_list")
