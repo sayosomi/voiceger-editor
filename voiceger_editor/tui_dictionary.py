@@ -1763,8 +1763,6 @@ class TuiDictionaryController:
             "dictionary_japanese_filter",
             "dictionary_english_filter",
             "dictionary_menu",
-            "dictionary_delete_confirmation",
-            "dictionary_discard_confirmation",
         }:
             shortcut = resolve_shortcut(editor.kind, key, editor.payload)
             if shortcut is not None:
@@ -1802,12 +1800,6 @@ class TuiDictionaryController:
                 "dictionary_english_entry",
             }:
                 return self._back_from_entry()
-            if editor.kind in {
-                "dictionary_delete_confirmation",
-                "dictionary_discard_confirmation",
-            }:
-                self.editor = editor.payload["parent_editor"]
-                return (UpdateStatusIntent(""),)
             self._restore_parent()
             return (UpdateStatusIntent(""),)
 
