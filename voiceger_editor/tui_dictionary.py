@@ -978,18 +978,15 @@ class TuiDictionaryController:
                 editor.payload["accent"] = updated
             return ()
         if editor.selection == "word_type":
-            current = _WORD_TYPES.index(editor.payload["word_type"])
-            target = (current + direction) % len(_WORD_TYPES)
-            if target == current:
-                return adjustment_feedback_intents(
-                    changed=False,
-                    area="dictionary",
-                    control="word_type",
-                    direction=direction,
-                )
-            editor.payload["word_type"] = _WORD_TYPES[target]
+            result = step_cyclic(
+                editor.payload["word_type"],
+                _WORD_TYPES,
+                direction=direction,
+            )
+            if result.changed:
+                editor.payload["word_type"] = result.value
             return adjustment_feedback_intents(
-                changed=True,
+                changed=result.changed,
                 area="dictionary",
                 control="word_type",
                 direction=direction,
