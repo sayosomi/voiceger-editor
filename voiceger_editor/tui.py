@@ -18,6 +18,7 @@ from .tui_display import _adjustable_value, format_english_phonemes
 from .tui_dictionary import (
     DictionaryControllerIntent,
     DictionaryOperationIntent,
+    OpenDictionarySettingsIntent,
     TuiDictionaryController,
 )
 from .tui_help import HelpOutcome, TuiHelpController
@@ -382,10 +383,17 @@ class TuiApp:
         selected_field: str | None = None,
         *,
         edit: bool = False,
+        origin: tuple[str, int | None] | None = None,
     ) -> None:
         intents = self._editor_controller.open_settings(
             self.settings,
-            origin=self._navigation.focus_key if self._batch.in_item else self._batch.focus_key,
+            origin=(
+                origin
+                if origin is not None
+                else self._navigation.focus_key
+                if self._batch.in_item
+                else self._batch.focus_key
+            ),
             busy=self._operations.busy,
             selected_field=selected_field,
             edit=edit,
@@ -476,6 +484,12 @@ class TuiApp:
                         surface=intent.surface,
                         phonemes=intent.pronunciation,
                     )
+            elif isinstance(intent, OpenDictionarySettingsIntent):
+                self._open_settings_editor(
+                    intent.selected_field,
+                    edit=intent.edit,
+                    origin=("dictionary_export", None),
+                )
             elif isinstance(intent, DictionaryOperationIntent):
                 self._dispatch_operation_effects(
                     self._operations.start_dictionary_operation(intent)
@@ -495,6 +509,10 @@ class TuiApp:
                     self._operations.clear_current_take()
             elif isinstance(intent, CloseEditorIntent):
                 self._pressed_adjustment = None
+                if intent.origin == ("dictionary_export", None):
+                    self._dictionary_controller.restore_suspended_editor()
+                    self._status = intent.status
+                    continue
                 if self._batch.in_item:
                     self._dispatch_navigation_actions(
                         self._navigation.set_focus_key(
