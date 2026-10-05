@@ -3,6 +3,10 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
+from voiceger_editor.tui_editors import (
+    AdjustmentPressedIntent,
+    ClearAdjustmentFeedbackIntent,
+)
 from voiceger_editor.tui_batch import (
     AddCaptions,
     AdjustBatchTakeCount,
@@ -55,8 +59,6 @@ class TuiBatchControllerTests(unittest.TestCase):
             dictionary_controller=SimpleNamespace(open_menu=Mock(return_value=())),
             set_session=Mock(),
             set_status=Mock(),
-            clear_adjustment_feedback=Mock(),
-            mark_adjustment_pressed=Mock(),
             open_caption_editor=Mock(),
             change_settings=Mock(),
             open_settings_editor=Mock(),
@@ -391,10 +393,10 @@ class TuiBatchControllerTests(unittest.TestCase):
 
         controller.dispatch_actions((AdjustBatchTakeCount(1),), bindings)
 
-        bindings.mark_adjustment_pressed.assert_called_once_with(
-            "batch_list",
-            "takes",
-            1,
+        bindings.dispatch_editor_intents.assert_called_once_with(
+            (
+                AdjustmentPressedIntent("batch_list", "takes", 1),
+            )
         )
         bindings.change_settings.assert_called_once_with(
             take_count=5,
@@ -408,8 +410,9 @@ class TuiBatchControllerTests(unittest.TestCase):
 
         controller.dispatch_actions((AdjustBatchTakeCount(1),), bindings)
 
-        bindings.clear_adjustment_feedback.assert_called_once_with()
-        bindings.mark_adjustment_pressed.assert_not_called()
+        bindings.dispatch_editor_intents.assert_called_once_with(
+            (ClearAdjustmentFeedbackIntent(),)
+        )
         bindings.change_settings.assert_not_called()
 
     def test_add_captions_uses_frontend_neutral_multiline_model(self):
