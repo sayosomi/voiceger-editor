@@ -74,6 +74,8 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             dictionary_controller=dictionary,
             set_session=set_session,
             set_status=set_status,
+            clear_adjustment_feedback=Mock(),
+            mark_adjustment_pressed=Mock(),
             open_caption_editor=Mock(),
             change_settings=Mock(),
             open_settings_editor=Mock(),
@@ -121,14 +123,26 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             bindings.actions.navigation.focus_key,
             ("batch_item", None),
         )
+        bindings.mark_adjustment_pressed.assert_called_once_with(
+            "navigation",
+            "batch_item",
+            1,
+        )
 
         bindings.actions.set_status.reset_mock()
+        bindings.mark_adjustment_pressed.reset_mock()
+        bindings.clear_adjustment_feedback.reset_mock()
         subject.handle_key("]", bindings)
         self.assertEqual(batch.item_position, (2, 2))
         bindings.actions.set_status.assert_called_once_with("Last Caption.")
+        bindings.mark_adjustment_pressed.assert_not_called()
+        bindings.clear_adjustment_feedback.assert_called_once_with()
 
+        bindings.clear_adjustment_feedback.reset_mock()
         subject.handle_key("[", bindings)
         self.assertEqual(batch.item_position, (1, 2))
+        bindings.mark_adjustment_pressed.assert_not_called()
+        bindings.clear_adjustment_feedback.assert_called_once_with()
 
     def test_caption_movement_is_blocked_while_synthesis_is_busy(self):
         subject, batch, bindings, state = self.make_subject()
