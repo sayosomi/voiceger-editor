@@ -8,6 +8,7 @@ from typing import Any, Callable, Optional, Sequence, Union
 
 from .caption_batch import CaptionBatch
 from .tui_adjustments import step_bounded
+from .tui_confirmation import handle_confirmation_key
 from .tui_editors import adjustment_feedback_intents
 from .tui_navigation import TuiNavigation
 from .tui_operations import OperationEffect, TuiOperations
@@ -16,7 +17,6 @@ from .tui_status import EMPTY_STATUS, Status
 from .tui_shortcuts import (
     resolve_batch_list_caption_shortcut,
     resolve_batch_list_shortcut,
-    resolve_shortcut,
 )
 
 
@@ -322,24 +322,18 @@ class TuiBatchController:
         if self.delete_confirmation_active:
             if key == "q":
                 return (QuitBatch(),)
-            if key == _ESCAPE:
-                self._cancel_delete()
+            interaction = handle_confirmation_key(
+                "batch_delete_confirmation",
+                self._delete_confirmation_selection,
+                key,
+            )
+            if not interaction.handled:
                 return ()
-            if key in (curses.KEY_UP, curses.KEY_DOWN):
-                self._move_delete_confirmation(
-                    -1 if key == curses.KEY_UP else 1
-                )
-                return ()
-            shortcut = resolve_shortcut("batch_delete_confirmation", key)
-            if shortcut is not None and shortcut.key == "delete":
-                self._delete_confirmation_selection = "delete"
+            self._delete_confirmation_selection = interaction.selection
+            if interaction.activation == "delete":
                 self._confirm_delete()
-                return ()
-            if key in _ENTER_KEYS:
-                if self._delete_confirmation_selection == "delete":
-                    self._confirm_delete()
-                else:
-                    self._cancel_delete()
+            elif interaction.activation == "cancel":
+                self._cancel_delete()
             return ()
 
         shortcut = resolve_batch_list_shortcut(key)
@@ -399,15 +393,6 @@ class TuiBatchController:
         if name == "quit":
             return (QuitBatch(),)
         return ()
-
-    def _move_delete_confirmation(self, delta: int) -> None:
-        result = move_clamped_selection(
-            self._delete_confirmation_selection,
-            ("delete", "cancel"),
-            delta=delta,
-        )
-        if result is not None:
-            self._delete_confirmation_selection = result.selection
 
     def _cancel_delete(self) -> None:
         self._pending_delete_item_id = None
