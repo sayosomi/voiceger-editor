@@ -428,7 +428,6 @@ class DictionaryListControllerIntegrationTests(unittest.TestCase):
         self.key("e")
         self.key(curses.KEY_DOWN)
         self.key(curses.KEY_DOWN)
-        self.key(curses.KEY_DOWN)
         self.assertEqual(self.controller.editor.selection, "filter")
 
         self.key(curses.KEY_RIGHT)
