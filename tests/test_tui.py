@@ -324,6 +324,7 @@ class TuiTests(unittest.TestCase):
             app.session._pure_japanese_utterance_text = app.session.caption
         if batch_item:
             app._batch.batch.add_item(CaptionBatchItem(app.session))
+            app._batch.focus_key = ("caption", 0)
             app._batch.open_item(0)
         return app
 
@@ -1533,7 +1534,7 @@ class TuiTests(unittest.TestCase):
         self.assertIs(app.session, session)
         self.assertEqual(app._batch.item_title, "BATCH ITEM")
         self.assertEqual(app._batch.item_position, (1, 1))
-        self.assertEqual(app._navigation.focus_key, ("batch_item", None))
+        self.assertEqual(app._navigation.focus_key, ("caption", None))
 
         screen = FakeScreen()
         app._screen = screen
@@ -1606,7 +1607,7 @@ class TuiTests(unittest.TestCase):
         app._handle_key("x")
         app._handle_key("d")
         self.assertEqual(app._batch.batch.items, ())
-        self.assertEqual(app._batch.focus_key, ("takes", None))
+        self.assertEqual(app._batch.focus_key, ("add_captions", None))
         self.assertEqual(session.close_calls, 1)
         self.assertIsNone(app.session)
 
@@ -1646,7 +1647,7 @@ class TuiTests(unittest.TestCase):
         self.assertFalse(app._batch.in_item)
         self.assertIsNone(app.session)
         self.assertEqual(app._batch.batch.items, ())
-        self.assertEqual(app._batch.focus_key, ("takes", None))
+        self.assertEqual(app._batch.focus_key, ("add_captions", None))
         self.assertEqual(session.close_calls, 1)
         self.assertEqual(stop_playback.call_count, 2)
 
@@ -1820,7 +1821,7 @@ class TuiTests(unittest.TestCase):
         editor = app._editor_controller.editor
         self.assertEqual(editor.kind, "caption")
         self.assertEqual(editor.title, "ADD CAPTIONS")
-        self.assertEqual(editor.origin, ("takes", None))
+        self.assertEqual(editor.origin, ("add_captions", None))
         self.assertTrue(editor.payload["multiline"])
         self.assertEqual(editor.active_field, "draft")
         editor.input_value = "new caption"
@@ -1849,7 +1850,7 @@ class TuiTests(unittest.TestCase):
 
                 self.assertIsNone(app.session)
                 self.assertIsNone(app._editor_controller.editor)
-                self.assertEqual(app._batch.focus_key, ("takes", None))
+                self.assertEqual(app._batch.focus_key, ("add_captions", None))
                 rendered = self.rendered(screen)
                 self.assertIn("BATCH LIST", rendered)
                 self.assertIn("Takes < 4 >", rendered)
@@ -3179,7 +3180,7 @@ class TuiTests(unittest.TestCase):
         self.assertIs(app._batch.batch.items[0].session, session)
         self.assertEqual(session.candidates, (candidate(1), candidate(2)))
         self.assertIsNone(app._operations.current_take)
-        self.assertEqual(app._batch.focus_key, ("takes", None))
+        self.assertEqual(app._batch.focus_key, ("caption", 0))
 
     def test_acceptance_and_regeneration_are_unavailable_while_busy_but_replay_works(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
