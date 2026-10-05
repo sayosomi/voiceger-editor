@@ -1020,7 +1020,40 @@ class TuiRenderer:
                 title_key,
             )
         )
-        if editor.kind == "caption":
+        if editor.kind in {
+            "build_confirmation",
+            "dictionary_delete_confirmation",
+            "dictionary_discard_confirmation",
+            "delete_confirmation",
+            "clear_candidates_confirmation",
+        }:
+            details: tuple[ConfirmationDetail, ...] = ()
+            if editor.kind == "dictionary_delete_confirmation":
+                if editor.payload["language"] == "ja":
+                    pronunciation = " ".join(
+                        _japanese_mora_tokens(
+                            editor.payload["moras"],
+                            editor.payload["accent"] or len(editor.payload["moras"]),
+                        )
+                    )
+                else:
+                    pronunciation = " ".join(editor.payload["phonemes"])
+                details = (
+                    ConfirmationDetail("Surface", str(editor.payload["surface"])),
+                    ConfirmationDetail("Pronunciation", pronunciation),
+                )
+            lines.extend(
+                confirmation_lines(
+                    editor.kind,
+                    str(editor.selection),
+                    warning=str(editor.payload["warning"]),
+                    details=details,
+                    payload=editor.payload,
+                    width=width,
+                    wrap_text=_wrap_text,
+                )
+            )
+        elif editor.kind == "caption":
             plain()
             if editor.active_field == "draft":
                 input_field("draft", "▶ ")
@@ -1031,12 +1064,6 @@ class TuiRenderer:
             selectable("clear")
             selectable("reset")
             selectable("back")
-        elif editor.kind == "build_confirmation":
-            plain()
-            wrap("", editor.payload["warning"])
-            plain()
-            selectable("rebuild")
-            selectable("cancel")
         elif editor.kind == "japanese":
             plain()
             plain("Source")
@@ -1390,34 +1417,6 @@ class TuiRenderer:
             plain()
             selectable("dictionary")
             selectable("back")
-        elif editor.kind == "dictionary_delete_confirmation":
-            plain()
-            plain("Surface")
-            wrap("  ", editor.payload["surface"])
-            plain()
-            plain("Pronunciation")
-            if editor.payload["language"] == "ja":
-                display = " ".join(
-                    _japanese_mora_tokens(
-                        editor.payload["moras"],
-                        editor.payload["accent"] or len(editor.payload["moras"]),
-                    )
-                )
-            else:
-                display = " ".join(editor.payload["phonemes"])
-            wrap("  ", display)
-            plain()
-            wrap("", "This dictionary word will be removed.")
-            plain()
-            selectable("delete")
-            cancel_marker = "▶ " if editor.selection == "cancel" else "  "
-            lines.append((f"{cancel_marker}[Esc] Cancel", "cancel"))
-        elif editor.kind == "dictionary_discard_confirmation":
-            plain()
-            wrap("", "Unsaved dictionary changes will be discarded.")
-            plain()
-            selectable("discard")
-            selectable("cancel")
         elif editor.kind == "section_text":
             language = "Japanese" if editor.payload["language"] == "ja" else "English"
             plain()
@@ -1455,18 +1454,6 @@ class TuiRenderer:
             selectable("clear")
             selectable("reset")
             selectable("back")
-        elif editor.kind == "delete_confirmation":
-            plain()
-            wrap("", editor.payload["warning"])
-            plain()
-            selectable("delete")
-            selectable("cancel")
-        elif editor.kind == "clear_candidates_confirmation":
-            plain()
-            wrap("", editor.payload["warning"])
-            plain()
-            selectable("clear")
-            selectable("cancel")
         return lines, cursor_line, cursor_column
 
     @staticmethod
