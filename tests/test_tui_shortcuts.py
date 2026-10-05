@@ -75,7 +75,7 @@ class TuiShortcutTests(unittest.TestCase):
             "dictionary_menu": {
                 "j": "japanese", "e": "english", "i": "import", "x": "export",
             },
-            "dictionary_export": {"e": "voiceger", "v": "voicevox"},
+            "dictionary_export": {"o": "output", "e": "voiceger", "v": "voicevox"},
             "dictionary_import_path": {"i": "review"},
             "dictionary_import_review": {
                 "i": "import_selected", "c": "clear_selection",
@@ -125,6 +125,7 @@ class TuiShortcutTests(unittest.TestCase):
 
     def test_main_shortcuts_match_issue_49_contract_and_share_display_metadata(self):
         expected = {
+            "o": "output",
             "e": "caption",
             "p": "build_pronunciation",
             "a": "add_section",
@@ -147,7 +148,7 @@ class TuiShortcutTests(unittest.TestCase):
                     f"[{shortcut.upper()}] "
                 ))
 
-        for removed in (curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "o", "l"):
+        for removed in (curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "l"):
             with self.subTest(removed=removed):
                 self.assertIsNone(resolve_main_shortcut(removed))
 
