@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import curses
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Mapping, Optional, Sequence
 
 from .tui_display import _display_width
 from .tui_selection import move_clamped_selection
@@ -33,7 +33,7 @@ class ConfirmationDetail:
     value: str
 
 
-ConfirmationLine = tuple[str, str | None]
+ConfirmationLine = tuple[str, Optional[str]]
 WrapText = Callable[[str, int], Sequence[str]]
 
 
