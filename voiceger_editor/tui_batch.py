@@ -176,8 +176,12 @@ class TuiBatchController:
         return self.item_index + 1, len(self.batch)
 
     def add_captions(self, text: str, *, session_factory: SessionFactory) -> None:
+        was_empty = not len(self.batch)
         self.batch.add_captions_from_text(text, session_factory=session_factory)
-        self._repair_focus()
+        if was_empty and len(self.batch):
+            self.focus_key = ("caption", 0)
+        else:
+            self._repair_focus()
 
     def add_caption(self, caption: str, *, session_factory: SessionFactory) -> None:
         self.batch.add_caption(caption, session_factory=session_factory)
