@@ -199,6 +199,36 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
     "dictionary_menu": (
         MenuItem("japanese", "Japanese", "j", "action", "activate"),
         MenuItem("english", "English", "e", "action", "activate"),
+        MenuItem("import", "Import dictionary", "i", "action", "activate"),
+        _escape_action("back", "Back"),
+    ),
+    "dictionary_import_path": (
+        MenuItem(
+            "path",
+            "Path",
+            None,
+            "editable",
+            no_shortcut_reason="Enter edits the dictionary import path.",
+        ),
+        MenuItem("review", "Review file", "i", "action", "activate"),
+        _escape_action("back", "Back"),
+    ),
+    "dictionary_import_review": (
+        MenuItem("import_selected", "Import selected", "i", "action", "activate"),
+        MenuItem("clear_selection", "Clear selection", "c", "action", "activate"),
+        _escape_action("back", "Back"),
+    ),
+    "dictionary_import_japanese_detail": (
+        MenuItem(
+            "word_type",
+            "Word type",
+            None,
+            "adjustable",
+            no_shortcut_reason="Left/Right changes the imported Japanese Word type.",
+        ),
+        _escape_action("back", "Back"),
+    ),
+    "dictionary_import_english_detail": (
         _escape_action("back", "Back"),
     ),
     "dictionary_japanese_list": (

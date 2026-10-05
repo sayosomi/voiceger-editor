@@ -7,6 +7,11 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Callable, Literal, Sequence, Union
 
+from .dictionary_import import (
+    DictionaryImportFormat,
+    DictionaryImportReview,
+    prepare_dictionary_import,
+)
 from .english_stress import (
     editor_state_to_english_phonemes,
     english_phonemes_to_editor_state,
@@ -43,13 +48,25 @@ from .tui_selection import move_clamped_selection
 from .tui_shortcuts import menu_items, resolve_shortcut
 from .tui_status import EMPTY_STATUS, Status, error_status, info_status
 from .tui_text_editing import apply_text_edit_key
-from .user_dictionary import JapaneseWordType, UserDictionaryCore
+from .user_dictionary import JapaneseWordType, UserDictionaryCore, japanese_word_type
 from .voicevox_api_models import AccentPhrase, AudioQuery, Mora, VoicegerSegment
 
 
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
 _ESCAPE = "\x1b"
 _WORD_TYPES = tuple(JapaneseWordType)
+_JAPANESE_WORD_TYPE_LABELS = {
+    JapaneseWordType.PROPER_NOUN: "固有名詞",
+    JapaneseWordType.COMMON_NOUN: "普通名詞",
+    JapaneseWordType.VERB: "動詞",
+    JapaneseWordType.ADJECTIVE: "形容詞",
+    JapaneseWordType.SUFFIX: "接尾辞",
+}
+
+
+def _japanese_word_type_label(word_type: JapaneseWordType) -> str:
+    return _JAPANESE_WORD_TYPE_LABELS[word_type]
+
 
 DictionaryOperationIdentity = Literal[
     "generate_japanese_pronunciation",
@@ -58,6 +75,8 @@ DictionaryOperationIdentity = Literal[
     "save_english",
     "delete_japanese",
     "delete_english",
+    "load_dictionary_import",
+    "commit_dictionary_import",
 ]
 DictionaryLanguage = Literal["ja", "en"]
 
@@ -67,7 +86,7 @@ class DictionaryOperationRequest:
     """Snapshot the requested work and retain the originating UI editor identity."""
 
     operation: DictionaryOperationIdentity
-    language: DictionaryLanguage
+    language: DictionaryLanguage | None
     editor_snapshot: EditorState
     originating_editor: EditorState
 
@@ -147,13 +166,15 @@ class TuiDictionaryController:
         self._japanese_pronunciation = japanese_pronunciation
         self._english_word_groups = english_word_groups
         self._list_state = DictionaryListStateOwner(core)
+        self._import_review: DictionaryImportReview | None = None
+        self._import_source_path = ""
 
     @staticmethod
     def _operation_request(
         editor: EditorState,
         *,
         operation: DictionaryOperationIdentity,
-        language: DictionaryLanguage,
+        language: DictionaryLanguage | None,
     ) -> DictionaryOperationRequest:
         return DictionaryOperationRequest(
             operation=operation,
@@ -188,6 +209,277 @@ class TuiDictionaryController:
                 "japanese_count": len(self.core.list_japanese_entries()),
                 "english_count": len(self.core.list_english_entries()),
             },
+        )
+
+    def _clear_import_state(self) -> None:
+        self._import_review = None
+        self._import_source_path = ""
+
+    def _import_path_state(self, path: str = "") -> EditorState:
+        return EditorState(
+            kind="dictionary_import_path",
+            title="IMPORT DICTIONARY",
+            origin=("dictionary", None),
+            selection="path",
+            payload={"path": path},
+        )
+
+    @staticmethod
+    def _import_item_identity(item: Any) -> tuple[str, str]:
+        source_uuid = getattr(item, "source_uuid", None)
+        if source_uuid is not None:
+            return ("ja", str(source_uuid))
+        incoming = item.incoming
+        return ("en", str(incoming.surface).strip().casefold())
+
+    def _import_review_state(
+        self,
+        *,
+        preferred_identity: tuple[str, str] | None = None,
+        preferred_index: int | None = None,
+        action: str | None = None,
+    ) -> EditorState:
+        review = self._import_review
+        if review is None:
+            raise RuntimeError("dictionary import review is not available")
+        items = tuple(review.items)
+        word_type_labels = (
+            tuple(
+                _japanese_word_type_label(japanese_word_type(item.incoming))
+                for item in items
+            )
+            if review.format is DictionaryImportFormat.JAPANESE
+            else ()
+        )
+        selection: str | tuple[str, int | None]
+        if action is not None:
+            selection = action
+        elif items:
+            index = 0
+            if preferred_identity is not None:
+                for candidate_index, item in enumerate(items):
+                    if self._import_item_identity(item) == preferred_identity:
+                        index = candidate_index
+                        break
+                else:
+                    if preferred_index is not None:
+                        index = min(max(preferred_index, 0), len(items) - 1)
+            elif preferred_index is not None:
+                index = min(max(preferred_index, 0), len(items) - 1)
+            selection = ("import_entry", index)
+        else:
+            selection = "import_selected"
+        return EditorState(
+            kind="dictionary_import_review",
+            title="IMPORT DICTIONARY",
+            origin=("dictionary", None),
+            selection=selection,
+            payload={
+                "format": review.format.value,
+                "source_path": self._import_source_path,
+                "items": items,
+                "word_type_labels": word_type_labels,
+                "total_count": review.total_count,
+                "exact_duplicate_count": review.exact_duplicate_count,
+                "review_count": len(items),
+            },
+        )
+
+    def _import_detail_state(self, index: int) -> EditorState:
+        review = self._import_review
+        if review is None:
+            raise RuntimeError("dictionary import review is not available")
+        items = tuple(review.items)
+        if not 0 <= index < len(items):
+            raise IndexError("dictionary import review entry is out of range")
+        item = items[index]
+        identity = self._import_item_identity(item)
+        if review.format is DictionaryImportFormat.JAPANESE:
+            word_type = japanese_word_type(item.incoming)
+            existing_word_type = (
+                None
+                if item.existing is None
+                else japanese_word_type(item.existing)
+            )
+            return EditorState(
+                kind="dictionary_import_japanese_detail",
+                title="IMPORT JAPANESE WORD",
+                origin=("dictionary", None),
+                selection="word_type",
+                payload={
+                    "identity": identity,
+                    "item_index": index,
+                    "item": item,
+                    "word_type": word_type,
+                    "word_type_label": _japanese_word_type_label(word_type),
+                    "existing_word_type": existing_word_type,
+                    "existing_word_type_label": (
+                        None
+                        if existing_word_type is None
+                        else _japanese_word_type_label(existing_word_type)
+                    ),
+                },
+            )
+        return EditorState(
+            kind="dictionary_import_english_detail",
+            title="IMPORT ENGLISH WORD",
+            origin=("dictionary", None),
+            selection="back",
+            payload={
+                "identity": identity,
+                "item_index": index,
+                "item": item,
+            },
+        )
+
+    def _load_dictionary_import(self) -> tuple[DictionaryControllerIntent, ...]:
+        editor = self.editor
+        assert editor is not None
+        path = str(editor.payload.get("path", "")).strip()
+        if not path:
+            editor.error = error_status("Dictionary import path must not be empty.")
+            return ()
+        editor.error = EMPTY_STATUS
+        core = self.core
+
+        def work() -> DictionaryImportReview:
+            return prepare_dictionary_import(path, core)
+
+        request = self._operation_request(
+            editor,
+            operation="load_dictionary_import",
+            language=None,
+        )
+        return (
+            DictionaryOperationIntent(
+                request,
+                info_status("Loading dictionary import…"),
+                work,
+            ),
+        )
+
+    def _commit_dictionary_import(self) -> tuple[DictionaryControllerIntent, ...]:
+        editor = self.editor
+        review = self._import_review
+        if editor is None or review is None:
+            return ()
+        language: DictionaryLanguage = (
+            "ja" if review.format is DictionaryImportFormat.JAPANESE else "en"
+        )
+        core = self.core
+
+        def work() -> Any:
+            return review.commit(core)
+
+        request = self._operation_request(
+            editor,
+            operation="commit_dictionary_import",
+            language=language,
+        )
+        return (
+            DictionaryOperationIntent(
+                request,
+                info_status("Importing selected dictionary words…"),
+                work,
+            ),
+        )
+
+    def _set_import_item_selected(
+        self,
+        index: int,
+        selected: bool,
+    ) -> tuple[EditorIntent, ...]:
+        review = self._import_review
+        if review is None:
+            return ()
+        items = tuple(review.items)
+        if not 0 <= index < len(items):
+            return ()
+        item = items[index]
+        identity = self._import_item_identity(item)
+        if review.format is DictionaryImportFormat.JAPANESE:
+            review.set_selected(item.source_uuid, selected)
+        else:
+            review.set_selected(item.incoming.surface, selected)
+        self.editor = self._import_review_state(preferred_identity=identity)
+        return ()
+
+    def _clear_import_selection(self) -> tuple[EditorIntent, ...]:
+        review = self._import_review
+        if review is None:
+            return ()
+        for item in tuple(review.items):
+            if review.format is DictionaryImportFormat.JAPANESE:
+                review.set_selected(item.source_uuid, False)
+            else:
+                review.set_selected(item.incoming.surface, False)
+        self.editor = self._import_review_state(action="clear_selection")
+        return (UpdateStatusIntent("Dictionary import selection cleared."),)
+
+    def _back_from_import_detail(self) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        assert editor is not None
+        self.editor = self._import_review_state(
+            preferred_identity=editor.payload.get("identity"),
+            preferred_index=editor.payload.get("item_index"),
+        )
+        return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+
+    def _adjust_import_word_type(self, direction: int) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        review = self._import_review
+        if (
+            editor is None
+            or editor.kind != "dictionary_import_japanese_detail"
+            or review is None
+            or review.format is not DictionaryImportFormat.JAPANESE
+            or editor.selection != "word_type"
+        ):
+            return ()
+        identity = editor.payload.get("identity")
+        index = int(editor.payload.get("item_index", 0))
+        items = tuple(review.items)
+        item = next(
+            (
+                candidate
+                for candidate in items
+                if self._import_item_identity(candidate) == identity
+            ),
+            None,
+        )
+        if item is None:
+            self.editor = self._import_review_state(preferred_index=index)
+            return (UpdateStatusIntent("This entry no longer requires review."),)
+        current = japanese_word_type(item.incoming)
+        result = step_cyclic(current, _WORD_TYPES, direction=direction)
+        if not result.changed:
+            return adjustment_feedback_intents(
+                changed=False,
+                area="dictionary",
+                control="word_type",
+                direction=direction,
+            )
+        try:
+            review.set_word_type(item.source_uuid, result.value)
+        except Exception as exc:
+            editor.error = error_status(f"Word type was not changed: {exc}")
+            return ()
+        updated_items = tuple(review.items)
+        for updated_index, candidate in enumerate(updated_items):
+            if self._import_item_identity(candidate) == identity:
+                self.editor = self._import_detail_state(updated_index)
+                return adjustment_feedback_intents(
+                    changed=True,
+                    area="dictionary",
+                    control="word_type",
+                    direction=direction,
+                )
+        self.editor = self._import_review_state(preferred_index=index)
+        return (
+            UpdateStatusIntent(
+                "Entry now exactly matches the dictionary and no longer requires review."
+            ),
+            ClearAdjustmentFeedbackIntent(),
         )
 
     def open_quick_save_japanese(
@@ -718,6 +1010,7 @@ class TuiDictionaryController:
                 "moras": selected_moras,
                 "accent": selected_accent,
                 "word_type": word_type,
+                "word_type_label": _japanese_word_type_label(word_type),
                 "priority": priority,
                 "opening": opening,
                 "quick_save": quick_save,
@@ -817,7 +1110,30 @@ class TuiDictionaryController:
                 editor.selection = result.selection
 
         if editor.kind == "dictionary_menu":
-            apply_movement(["japanese", "english", "back"])
+            apply_movement(["japanese", "english", "import", "back"])
+            return ()
+        if editor.kind == "dictionary_import_path":
+            apply_movement(
+                [item.key for item in menu_items(editor.kind, editor.payload)]
+            )
+            return ()
+        if editor.kind == "dictionary_import_review":
+            entries = tuple(editor.payload["items"])
+            entry_keys = [
+                ("import_entry", index) for index in range(len(entries))
+            ]
+            action_keys = [
+                item.key for item in menu_items(editor.kind, editor.payload)
+            ]
+            apply_movement([*entry_keys, *action_keys])
+            return ()
+        if editor.kind in {
+            "dictionary_import_japanese_detail",
+            "dictionary_import_english_detail",
+        }:
+            apply_movement(
+                [item.key for item in menu_items(editor.kind, editor.payload)]
+            )
             return ()
         if editor.kind in {
             "dictionary_japanese_list",
@@ -929,6 +1245,8 @@ class TuiDictionaryController:
                 "dictionary_english_filter",
             } and name == "text_query":
                 editor.payload["text_query"] = value
+            elif editor.kind == "dictionary_import_path" and name == "path":
+                editor.payload["path"] = value
         except Exception as exc:
             editor.error = error_status(f"{exc}")
             return ()
@@ -963,6 +1281,9 @@ class TuiDictionaryController:
             )
             if result.changed:
                 editor.payload["word_type"] = result.value
+                editor.payload["word_type_label"] = _japanese_word_type_label(
+                    result.value
+                )
             return adjustment_feedback_intents(
                 changed=result.changed,
                 area="dictionary",
@@ -1415,12 +1736,43 @@ class TuiDictionaryController:
                 message = f"Pronunciation was not generated: {error}"
             elif request.operation in {"save_japanese", "save_english"}:
                 message = f"Dictionary word was not saved: {error}"
+            elif request.operation == "load_dictionary_import":
+                message = f"Dictionary import was not loaded: {error}"
+            elif request.operation == "commit_dictionary_import":
+                message = f"Dictionary import was not completed: {error}"
             else:
                 message = f"Dictionary word was not deleted: {error}"
             editor.error = error_status(message)
             return (UpdateStatusIntent(editor.error),)
 
         editor.error = EMPTY_STATUS
+        if request.operation == "load_dictionary_import":
+            self._import_review = value
+            self._import_source_path = str(
+                request.editor_snapshot.payload.get("path", "")
+            )
+            self.editor = self._import_review_state()
+            return (
+                UpdateStatusIntent(
+                    f"Dictionary import ready: {value.total_count} words found."
+                ),
+                ClearAdjustmentFeedbackIntent(),
+            )
+        if request.operation == "commit_dictionary_import":
+            result = value
+            if self._stack and self._stack[-1].kind == "dictionary_menu":
+                self._stack.pop()
+            self._clear_import_state()
+            self.editor = self._menu_state()
+            return (
+                UpdateStatusIntent(
+                    "Dictionary import complete: "
+                    f"{result.imported} imported, "
+                    f"{result.replaced} replaced, "
+                    f"{result.skipped} skipped."
+                ),
+                ClearAdjustmentFeedbackIntent(),
+            )
         if request.operation == "generate_japanese_pronunciation":
             reading, moras, accent = value
             editor.payload["pronunciation"] = reading
@@ -1505,9 +1857,51 @@ class TuiDictionaryController:
             elif selected == "english":
                 self._stack.append(deepcopy(editor))
                 self.editor = self._english_list_state()
+            elif selected == "import":
+                self._stack.append(deepcopy(editor))
+                self._clear_import_state()
+                self.editor = self._import_path_state()
+                return self._begin_field("path", "")
             elif selected == "back":
                 self._restore_parent()
             return (UpdateStatusIntent(""),)
+        if editor.kind == "dictionary_import_path":
+            if selected == "path":
+                return self._begin_field(
+                    "path",
+                    str(editor.payload.get("path", "")),
+                )
+            if selected == "review":
+                return self._load_dictionary_import()
+            if selected == "back":
+                self._clear_import_state()
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            return ()
+        if editor.kind == "dictionary_import_review":
+            if selected == "import_selected":
+                return self._commit_dictionary_import()
+            if selected == "clear_selection":
+                return self._clear_import_selection()
+            if selected == "back":
+                self._clear_import_state()
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            if (
+                isinstance(selected, tuple)
+                and selected[0] == "import_entry"
+                and isinstance(selected[1], int)
+            ):
+                self.editor = self._import_detail_state(selected[1])
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            return ()
+        if editor.kind in {
+            "dictionary_import_japanese_detail",
+            "dictionary_import_english_detail",
+        }:
+            if selected == "back":
+                return self._back_from_import_detail()
+            return ()
         if editor.kind == "dictionary_japanese_list":
             if selected == "sort":
                 return self._open_sort_editor()
@@ -1691,6 +2085,10 @@ class TuiDictionaryController:
                 }:
                     self._restore_parent()
                     return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+                if editor.kind == "dictionary_import_path":
+                    self._clear_import_state()
+                    self._restore_parent()
+                    return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
                 return self._back_from_entry()
             input_width = 1
             if key in (curses.KEY_UP, curses.KEY_DOWN):
@@ -1757,12 +2155,31 @@ class TuiDictionaryController:
                     return self._activate()
                 return ()
 
+        if (
+            editor.kind == "dictionary_import_review"
+            and key == " "
+            and isinstance(editor.selection, tuple)
+            and editor.selection[0] == "import_entry"
+            and isinstance(editor.selection[1], int)
+        ):
+            index = editor.selection[1]
+            items = tuple(editor.payload["items"])
+            if 0 <= index < len(items):
+                return self._set_import_item_selected(
+                    index,
+                    not bool(items[index].selected),
+                )
+
         if editor.kind in {
             "dictionary_japanese_entry",
             "dictionary_english_entry",
             "dictionary_japanese_filter",
             "dictionary_english_filter",
             "dictionary_menu",
+            "dictionary_import_path",
+            "dictionary_import_review",
+            "dictionary_import_japanese_detail",
+            "dictionary_import_english_detail",
         }:
             shortcut = resolve_shortcut(editor.kind, key, editor.payload)
             if shortcut is not None:
@@ -1800,8 +2217,18 @@ class TuiDictionaryController:
                 "dictionary_english_entry",
             }:
                 return self._back_from_entry()
+            if editor.kind in {
+                "dictionary_import_japanese_detail",
+                "dictionary_import_english_detail",
+            }:
+                return self._back_from_import_detail()
+            if editor.kind in {
+                "dictionary_import_path",
+                "dictionary_import_review",
+            }:
+                self._clear_import_state()
             self._restore_parent()
-            return (UpdateStatusIntent(""),)
+            return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
 
         if key == curses.KEY_UP:
             if editor.kind in {
@@ -1836,6 +2263,8 @@ class TuiDictionaryController:
                     )
             if editor.kind == "dictionary_japanese_entry":
                 return self._adjust_japanese(direction)
+            if editor.kind == "dictionary_import_japanese_detail":
+                return self._adjust_import_word_type(direction)
             if editor.kind == "dictionary_english_entry":
                 return self._adjust_english(direction)
             if editor.kind == "dictionary_japanese_filter":

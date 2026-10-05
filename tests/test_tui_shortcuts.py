@@ -72,7 +72,15 @@ class TuiShortcutTests(unittest.TestCase):
                 "d": "reset_sampling",
                 "a": "apply", "r": "reset",
             },
-            "dictionary_menu": {"j": "japanese", "e": "english"},
+            "dictionary_menu": {
+                "j": "japanese", "e": "english", "i": "import",
+            },
+            "dictionary_import_path": {"i": "review"},
+            "dictionary_import_review": {
+                "i": "import_selected", "c": "clear_selection",
+            },
+            "dictionary_import_japanese_detail": {},
+            "dictionary_import_english_detail": {},
             "dictionary_japanese_list": {
                 "s": "sort", "f": "filter", "a": "add", "x": "delete",
             },
