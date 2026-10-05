@@ -68,6 +68,13 @@ class TuiBatchControllerTests(unittest.TestCase):
             activate_quit=Mock(),
         )
 
+    def test_batch_list_initial_focus_matches_available_primary_work(self):
+        empty = self.make_controller()
+        self.assertEqual(empty.focus_key, ("add_captions", None))
+
+        populated = self.make_controller("first\nsecond")
+        self.assertEqual(populated.focus_key, ("caption", 0))
+
     def test_batch_list_items_keep_takes_captions_and_actions_in_vertical_order(self):
         controller = self.make_controller("first\nsecond")
         self.assertEqual(
@@ -154,8 +161,6 @@ class TuiBatchControllerTests(unittest.TestCase):
         controller.focus_key = ("caption", 1)
         controller.handle_key("x")
 
-        self.assertEqual(controller.delete_confirmation_selection, "delete")
-        controller.handle_key(curses.KEY_DOWN)
         self.assertEqual(controller.delete_confirmation_selection, "cancel")
         controller.handle_key(curses.KEY_DOWN)
         self.assertEqual(controller.delete_confirmation_selection, "cancel")
@@ -168,7 +173,6 @@ class TuiBatchControllerTests(unittest.TestCase):
         )
 
         controller.handle_key("x")
-        controller.handle_key(curses.KEY_DOWN)
         controller.handle_key(curses.KEY_UP)
         self.assertEqual(controller.delete_confirmation_selection, "delete")
         controller.handle_key("\n")
@@ -225,7 +229,7 @@ class TuiBatchControllerTests(unittest.TestCase):
         final.handle_key("x")
         final.handle_key("d")
         self.assertEqual(final.batch.items, ())
-        self.assertEqual(final.focus_key, ("takes", None))
+        self.assertEqual(final.focus_key, ("add_captions", None))
         self.assertEqual(only_session.close_calls, 1)
 
     def test_open_item_identity_survives_reordering(self):
@@ -271,6 +275,7 @@ class TuiBatchControllerTests(unittest.TestCase):
 
     def test_left_right_adjust_only_the_focused_batch_take_count(self):
         controller = self.make_controller("first")
+        controller.focus_key = ("takes", None)
 
         self.assertEqual(
             controller.handle_key(curses.KEY_RIGHT),
@@ -306,7 +311,7 @@ class TuiBatchControllerTests(unittest.TestCase):
         bindings.set_session.assert_called_once_with(
             controller.batch.items[1].session
         )
-        self.assertEqual(bindings.navigation.focus_key, ("batch_item", None))
+        self.assertEqual(bindings.navigation.focus_key, ("caption", None))
         bindings.navigation.reset_pronunciation_index.assert_called_once_with()
         bindings.set_status.assert_called_once_with("")
         self.assertEqual(controller.item_title, "BATCH ITEM")
