@@ -185,6 +185,8 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.assertEqual(self.controller.editor.selection, "delete")
         self.key(curses.KEY_DOWN)
         self.assertEqual(self.controller.editor.selection, "back")
+        self.key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.selection, "back")
         self.key(curses.KEY_UP)
         self.assertEqual(self.controller.editor.selection, "delete")
 
