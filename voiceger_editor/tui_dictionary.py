@@ -390,7 +390,12 @@ class TuiDictionaryController:
         if editor is not None and editor.kind == "dictionary_english_list":
             self.editor = self._english_list_state()
 
-    def _cycle_list_sort(self, direction: int = 1) -> tuple[EditorIntent, ...]:
+    def _cycle_list_sort(
+        self,
+        direction: int = 1,
+        *,
+        show_feedback: bool = False,
+    ) -> tuple[EditorIntent, ...]:
         editor = self.editor
         if editor is None:
             return ()
@@ -414,10 +419,12 @@ class TuiDictionaryController:
             return ()
         assert self.editor is not None
         self.editor.selection = "sort"
-        return (
-            UpdateStatusIntent(""),
-            AdjustmentPressedIntent("dictionary", "sort", direction),
-        )
+        if show_feedback:
+            return (
+                UpdateStatusIntent(""),
+                AdjustmentPressedIntent("dictionary", "sort", direction),
+            )
+        return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
 
     def _open_sort_editor(self) -> tuple[EditorIntent, ...]:
         editor = self.editor
@@ -1187,7 +1194,12 @@ class TuiDictionaryController:
         self.editor.selection = "entry_navigator"
         return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
 
-    def _move_open_entry(self, direction: int) -> tuple[EditorIntent, ...]:
+    def _move_open_entry(
+        self,
+        direction: int,
+        *,
+        show_feedback: bool = False,
+    ) -> tuple[EditorIntent, ...]:
         editor = self.editor
         assert editor is not None
         index = editor.payload.get("entry_index")
@@ -1205,8 +1217,8 @@ class TuiDictionaryController:
                 entry_navigation_target=target,
             )
         intents = self._open_entry_at_index(editor, target)
-        if not intents:
-            return ()
+        if not intents or not show_feedback:
+            return intents
         return tuple(
             intent
             for intent in intents
@@ -1703,6 +1715,7 @@ class TuiDictionaryController:
             "dictionary_english_entry",
         }:
             direction: int | None = None
+            show_adjustment_feedback = False
             if key == "[":
                 direction = -1
             elif key == "]":
@@ -1710,10 +1723,15 @@ class TuiDictionaryController:
             elif editor.selection == "entry_navigator":
                 if key == curses.KEY_LEFT:
                     direction = -1
+                    show_adjustment_feedback = True
                 elif key == curses.KEY_RIGHT:
                     direction = 1
+                    show_adjustment_feedback = True
             if direction is not None:
-                return self._move_open_entry(direction)
+                return self._move_open_entry(
+                    direction,
+                    show_feedback=show_adjustment_feedback,
+                )
 
         if editor.kind in {
             "dictionary_japanese_entry",
@@ -1791,7 +1809,10 @@ class TuiDictionaryController:
                 "dictionary_english_list",
             }:
                 if editor.selection == "sort":
-                    return self._cycle_list_sort(direction)
+                    return self._cycle_list_sort(
+                        direction,
+                        show_feedback=True,
+                    )
                 if editor.selection == "filter":
                     return self._set_list_filter_enabled(
                         not bool(editor.payload.get("filter_enabled")),
