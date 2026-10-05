@@ -26,7 +26,7 @@ from .tui_dictionary_list import (
     JapaneseDictionarySort,
     JapaneseWordTypeFilter,
 )
-from .tui_display import _display_width, _move_wrapped_cursor
+from .tui_display import _display_width
 from .tui_editors import (
     AdjustmentPressedIntent,
     ClearAdjustmentFeedbackIntent,
@@ -40,6 +40,7 @@ from .tui_editors import (
 )
 from .tui_shortcuts import menu_items, resolve_shortcut
 from .tui_status import EMPTY_STATUS, Status, error_status, info_status
+from .tui_text_editing import apply_text_edit_key
 from .user_dictionary import JapaneseWordType, UserDictionaryCore
 from .voicevox_api_models import AccentPhrase, AudioQuery, Mora, VoicegerSegment
 
@@ -1710,55 +1711,24 @@ class TuiDictionaryController:
                     self._restore_parent()
                     return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
                 return self._back_from_entry()
-            if key == curses.KEY_LEFT:
-                editor.input_cursor = max(0, editor.input_cursor - 1)
-                return ()
-            if key == curses.KEY_RIGHT:
-                editor.input_cursor = min(len(editor.input_value), editor.input_cursor + 1)
-                return ()
-            if key == curses.KEY_HOME or key == "\x01":
-                editor.input_cursor = 0
-                return ()
-            if key == curses.KEY_END or key == "\x05":
-                editor.input_cursor = len(editor.input_value)
-                return ()
+            input_width = 1
             if key in (curses.KEY_UP, curses.KEY_DOWN):
                 prefix = self._input_prefix(editor)
-                input_width = max(1, screen_width - 1 - _display_width(prefix))
-                editor.input_cursor = _move_wrapped_cursor(
-                    editor.input_value,
-                    editor.input_cursor,
-                    -1 if key == curses.KEY_UP else 1,
-                    input_width,
+                input_width = max(
+                    1,
+                    screen_width - 1 - _display_width(prefix),
                 )
-                return ()
-            if key in (curses.KEY_BACKSPACE, "\x7f", "\x08"):
-                if editor.input_cursor:
-                    editor.input_value = (
-                        editor.input_value[: editor.input_cursor - 1]
-                        + editor.input_value[editor.input_cursor :]
-                    )
-                    editor.input_cursor -= 1
-                editor.error = EMPTY_STATUS
-                return ()
-            if key == curses.KEY_DC:
-                if editor.input_cursor < len(editor.input_value):
-                    editor.input_value = (
-                        editor.input_value[: editor.input_cursor]
-                        + editor.input_value[editor.input_cursor + 1 :]
-                    )
-                editor.error = EMPTY_STATUS
-                return ()
-            if isinstance(key, str) and key and all(
-                char.isprintable() or char == "　" for char in key
-            ):
-                editor.input_value = (
-                    editor.input_value[: editor.input_cursor]
-                    + key
-                    + editor.input_value[editor.input_cursor :]
-                )
-                editor.input_cursor += len(key)
-                editor.error = EMPTY_STATUS
+            edit = apply_text_edit_key(
+                editor.input_value,
+                editor.input_cursor,
+                key,
+                input_width=input_width,
+            )
+            if edit.handled:
+                editor.input_value = edit.value
+                editor.input_cursor = edit.cursor
+                if edit.edit_attempted:
+                    editor.error = EMPTY_STATUS
             return ()
 
         if key in ("q", "Q", "\x03"):
