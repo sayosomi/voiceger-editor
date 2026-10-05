@@ -11,6 +11,7 @@ from .tui_adjustments import step_bounded
 from .tui_editors import adjustment_feedback_intents
 from .tui_navigation import TuiNavigation
 from .tui_operations import OperationEffect, TuiOperations
+from .tui_selection import move_clamped_selection
 from .tui_status import EMPTY_STATUS, Status
 from .tui_shortcuts import (
     resolve_batch_list_caption_shortcut,
@@ -306,13 +307,13 @@ class TuiBatchController:
         )
 
     def move(self, direction: int) -> None:
-        items = self.navigation_items()
-        try:
-            index = items.index(self.focus_key)
-        except ValueError:
-            index = 0
-        target = min(max(index + direction, 0), len(items) - 1)
-        self.focus_key = items[target]
+        result = move_clamped_selection(
+            self.focus_key,
+            self.navigation_items(),
+            delta=direction,
+        )
+        if result is not None:
+            self.focus_key = result.selection
 
     def handle_key(self, key: Any) -> tuple[BatchAction, ...]:
         if key in ("Q", "\x03"):
@@ -400,13 +401,13 @@ class TuiBatchController:
         return ()
 
     def _move_delete_confirmation(self, delta: int) -> None:
-        keys = ("delete", "cancel")
-        try:
-            index = keys.index(self._delete_confirmation_selection)
-        except ValueError:
-            index = 0
-        target = min(max(index + delta, 0), len(keys) - 1)
-        self._delete_confirmation_selection = keys[target]
+        result = move_clamped_selection(
+            self._delete_confirmation_selection,
+            ("delete", "cancel"),
+            delta=delta,
+        )
+        if result is not None:
+            self._delete_confirmation_selection = result.selection
 
     def _cancel_delete(self) -> None:
         self._pending_delete_item_id = None
