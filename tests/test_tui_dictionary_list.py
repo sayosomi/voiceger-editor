@@ -238,6 +238,27 @@ class DictionaryListStateOwnerTests(unittest.TestCase):
         self.owner.set_english_filter(text_query="er0 d")
         self.assertEqual(self.identities(self.owner.english_view()), ["record"])
 
+    def test_filter_enable_state_preserves_saved_criteria(self):
+        self.core.english = {
+            "record": en_word("record", ["R", "EH1", "K", "ER0", "D"]),
+            "zebra": en_word("zebra", ["Z", "IY1", "B", "R", "AH0"]),
+        }
+        self.owner.set_english_filter(text_query="record")
+        filtered = self.owner.english_view()
+        self.assertTrue(filtered.filter_enabled)
+        self.assertEqual(self.identities(filtered), ["record"])
+
+        self.owner.set_english_filter_enabled(False)
+        disabled = self.owner.english_view()
+        self.assertFalse(disabled.filter_enabled)
+        self.assertEqual(disabled.text_query, "record")
+        self.assertEqual(set(self.identities(disabled)), {"record", "zebra"})
+
+        self.owner.set_english_filter_enabled(True)
+        restored = self.owner.english_view()
+        self.assertTrue(restored.filter_enabled)
+        self.assertEqual(self.identities(restored), ["record"])
+
     def test_recompute_restores_visible_focus_and_falls_back_deterministically(self):
         self.core.japanese = {
             "zebra": ja_word("zebra"),
@@ -301,11 +322,23 @@ class DictionaryListControllerIntegrationTests(unittest.TestCase):
         self.key("s")
 
         self.assertEqual(self.controller.editor.payload["sort_mode"], "surface_desc")
-        self.assertEqual(self.controller.editor.selection, ("entry", 0))
+        self.assertEqual(self.controller.editor.selection, "sort")
         self.assertEqual(self.controller.editor.payload["entry_ids"][0], "zebra")
+
+        self.key(curses.KEY_RIGHT)
+        self.assertEqual(self.controller.editor.payload["sort_mode"], "word_type")
+        self.assertEqual(self.controller.editor.selection, "sort")
+        self.key(curses.KEY_LEFT)
+        self.assertEqual(self.controller.editor.payload["sort_mode"], "surface_desc")
+
         self.key("\n")
-        self.assertEqual(self.controller.editor.kind, "dictionary_japanese_entry")
-        self.assertEqual(self.controller.editor.payload["word_uuid"], "zebra")
+        self.assertEqual(self.controller.editor.kind, "dictionary_sort")
+        self.assertEqual(self.controller.editor.selection, ("sort", 1))
+        self.key(curses.KEY_DOWN)
+        self.key("\n")
+        self.assertEqual(self.controller.editor.kind, "dictionary_japanese_list")
+        self.assertEqual(self.controller.editor.payload["sort_mode"], "word_type")
+        self.assertEqual(self.controller.editor.selection, "sort")
 
     def test_japanese_filter_modal_applies_text_and_word_type_together(self):
         self.core.japanese = {
@@ -351,6 +384,57 @@ class DictionaryListControllerIntegrationTests(unittest.TestCase):
         self.assertEqual(self.controller.editor.payload["visible_count"], 1)
         self.assertEqual(self.controller.editor.payload["total_count"], 2)
         self.assertEqual(self.controller.editor.payload["entry_ids"], ("candy",))
+
+    def test_filter_row_left_right_disables_and_reenables_saved_criteria(self):
+        self.core.english = {
+            "record": en_word("record", ["R", "EH1", "K", "ER0", "D"]),
+            "zebra": en_word("zebra", ["Z", "IY1", "B", "R", "AH0"]),
+        }
+        self.controller.open_menu()
+        self.key("e")
+        self.key("f")
+        self.key("\n")
+        self.key("record")
+        self.key("\n")
+        self.key("a")
+
+        self.assertTrue(self.controller.editor.payload["filter_enabled"])
+        self.assertEqual(self.controller.editor.payload["entry_ids"], ("record",))
+
+        self.key(curses.KEY_DOWN)
+        self.key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.selection, "filter")
+        self.key(curses.KEY_LEFT)
+
+        self.assertFalse(self.controller.editor.payload["filter_enabled"])
+        self.assertEqual(self.controller.editor.payload["text_filter"], "record")
+        self.assertEqual(
+            set(self.controller.editor.payload["entry_ids"]),
+            {"record", "zebra"},
+        )
+        self.assertEqual(self.controller.editor.selection, "filter")
+
+        self.key(curses.KEY_RIGHT)
+        self.assertTrue(self.controller.editor.payload["filter_enabled"])
+        self.assertEqual(self.controller.editor.payload["text_filter"], "record")
+        self.assertEqual(self.controller.editor.payload["entry_ids"], ("record",))
+        self.assertEqual(self.controller.editor.selection, "filter")
+
+    def test_filter_row_right_opens_editor_when_no_saved_criteria_exist(self):
+        self.core.english = {
+            "record": en_word("record", ["R", "EH1", "K", "ER0", "D"]),
+        }
+        self.controller.open_menu()
+        self.key("e")
+        self.key(curses.KEY_DOWN)
+        self.key(curses.KEY_DOWN)
+        self.key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.selection, "filter")
+
+        self.key(curses.KEY_RIGHT)
+
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_filter")
+        self.assertEqual(self.controller.editor.selection, "text_query")
 
     def test_english_filter_modal_matches_arpabet_and_clear_restores_all_entries(self):
         self.core.english = {
