@@ -1759,7 +1759,9 @@ class TuiDictionaryController:
                 if editor.selection == "sort":
                     return self._cycle_list_sort(direction)
                 if editor.selection == "filter":
-                    return self._set_list_filter_enabled(direction > 0)
+                    return self._set_list_filter_enabled(
+                        not bool(editor.payload.get("filter_enabled"))
+                    )
             if editor.kind == "dictionary_japanese_entry":
                 return self._adjust_japanese(direction)
             if editor.kind == "dictionary_english_entry":
