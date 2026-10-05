@@ -37,6 +37,7 @@ from .tui_shortcuts import (
     menu_item,
 )
 from .tui_status import EMPTY_STATUS, Status, StatusKind, format_status
+from .user_dictionary import japanese_word_type
 
 
 _DICTIONARY_SORT_LABELS = {
@@ -1174,6 +1175,91 @@ class TuiRenderer:
                 item = menu_item(editor.kind, key, editor.payload)
                 count = editor.payload[count_name]
                 lines.append((f"{marker}{item.display_label:<18}{count} words", key))
+            selectable("import")
+            plain()
+            selectable("back")
+        elif editor.kind == "dictionary_import_path":
+            plain()
+            plain("File path")
+            if editor.active_field == "path":
+                input_field("path", "▶ ")
+            else:
+                wrapped_selectable_text(
+                    "path",
+                    str(editor.payload.get("path", "")) or "(not set)",
+                )
+            plain()
+            selectable("review")
+            selectable("back")
+        elif editor.kind == "dictionary_import_review":
+            plain()
+            total_count = int(editor.payload.get("total_count", 0))
+            exact_count = int(editor.payload.get("exact_duplicate_count", 0))
+            review_count = int(editor.payload.get("review_count", 0))
+            plain(f"{total_count} words found")
+            plain(f"{exact_count} already exist")
+            plain(f"{review_count} to review")
+            plain()
+            for index, item in enumerate(editor.payload.get("items", ())):
+                key = ("import_entry", index)
+                marker = "▶ " if editor.selection == key else "  "
+                checkbox = "[x]" if item.selected else "[ ]"
+                attention = "!" if item.relation.value == "conflict" else " "
+                value = f"{checkbox} {attention} {item.incoming.surface}"
+                available = max(1, width - 1 - _display_width(marker))
+                lines.append((marker + _truncate_display(value, available), key))
+            plain()
+            selectable("import_selected")
+            selectable("clear_selection")
+            selectable("back")
+        elif editor.kind == "dictionary_import_japanese_detail":
+            plain()
+            item = editor.payload["item"]
+            incoming = item.incoming
+            plain("Incoming")
+            wrap("  Surface        ", str(incoming.surface))
+            wrap("  Pronunciation  ", str(incoming.pronunciation))
+            plain(f"  Accent         {incoming.accent_type}")
+            marker = "▶ " if editor.selection == "word_type" else "  "
+            lines.append(
+                (
+                    f"{marker}Word type      "
+                    + _adjustable_value(
+                        str(editor.payload["word_type"].value),
+                        self._adjustment_press_direction(
+                            state,
+                            "dictionary",
+                            "word_type",
+                        ),
+                    ),
+                    "word_type",
+                )
+            )
+            plain(f"  Priority       {incoming.priority}")
+            existing = item.existing
+            if existing is not None:
+                plain()
+                plain("Existing")
+                wrap("  Surface        ", str(existing.surface))
+                wrap("  Pronunciation  ", str(existing.pronunciation))
+                plain(f"  Accent         {existing.accent_type}")
+                plain(f"  Word type      {japanese_word_type(existing).value}")
+                plain(f"  Priority       {existing.priority}")
+            plain()
+            selectable("back")
+        elif editor.kind == "dictionary_import_english_detail":
+            plain()
+            item = editor.payload["item"]
+            incoming = item.incoming
+            plain("Incoming")
+            wrap("  Surface        ", str(incoming.surface))
+            wrap("  Pronunciation  ", " ".join(incoming.phonemes))
+            existing = item.existing
+            if existing is not None:
+                plain()
+                plain("Existing")
+                wrap("  Surface        ", str(existing.surface))
+                wrap("  Pronunciation  ", " ".join(existing.phonemes))
             plain()
             selectable("back")
         elif editor.kind == "dictionary_japanese_list":
