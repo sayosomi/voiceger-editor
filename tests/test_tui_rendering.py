@@ -1431,6 +1431,7 @@ class TuiRenderingTests(unittest.TestCase):
             selection=("import_entry", 1),
             payload={
                 "items": items,
+                "word_type_labels": ("固有名詞", "普通名詞"),
                 "total_count": 3,
                 "exact_duplicate_count": 1,
                 "review_count": 2,
@@ -1450,8 +1451,8 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("3 words found", labels)
         self.assertIn("1 already exist", labels)
         self.assertIn("2 to review", labels)
-        self.assertIn("  [x]   ずんだもん", labels)
-        self.assertIn("▶ [ ] ! 雨", labels)
+        self.assertIn("  [x]   ずんだもん  固有名詞", labels)
+        self.assertIn("▶ [ ] ! 雨  普通名詞", labels)
         self.assertFalse(any("CONFLICT" in line or "NEW" in line for line in labels))
         self.assertIn(("  [I] Import selected", "import_selected"), document)
         self.assertIn(("  [C] Clear selection", "clear_selection"), document)
@@ -1474,6 +1475,7 @@ class TuiRenderingTests(unittest.TestCase):
             payload={
                 "item": japanese_item,
                 "word_type": JapaneseWordType.COMMON_NOUN,
+                "word_type_label": "普通名詞",
             },
             active_field=None,
             input_value="",
@@ -1490,7 +1492,8 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("  Surface        雨", labels)
         self.assertIn("  Pronunciation  アメ", labels)
         self.assertIn("  Accent         1", labels)
-        self.assertTrue(any("Word type" in line and "COMMON_NOUN" in line for line in labels))
+        self.assertTrue(any("品詞" in line and "普通名詞" in line for line in labels))
+        self.assertFalse(any("COMMON_NOUN" in line for line in labels))
         self.assertIn("  Priority       6", labels)
 
         english_item = SimpleNamespace(
