@@ -201,18 +201,6 @@ def classify_japanese_entry(
     )
 
 
-def _validate_japanese_uniqueness(entries: Mapping[str, UserDictWord]) -> None:
-    seen: dict[tuple[str, JapaneseWordType], str] = {}
-    for word_uuid, word in entries.items():
-        identity = japanese_logical_identity(word)
-        previous_uuid = seen.get(identity)
-        if previous_uuid is not None and previous_uuid != word_uuid:
-            raise UserDictionaryInputError(
-                "同じSurfaceと品詞の単語が既に登録されています"
-            )
-        seen[identity] = word_uuid
-
-
 class EnglishUserDictionaryEntry(BaseModel):
     """An exact spelling mapped to validated Voiceger ARPAbet tokens."""
 
@@ -635,7 +623,6 @@ class UserDictionaryCore:
             for word_uuid, word in imported.items():
                 if override or word_uuid not in candidate:
                     candidate[word_uuid] = word
-            _validate_japanese_uniqueness(candidate)
             self._commit_japanese(candidate)
 
     @staticmethod
