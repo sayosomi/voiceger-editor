@@ -45,9 +45,10 @@ from .settings import (
     VOICEGER_DEFAULT_TOP_K,
     VOICEGER_DEFAULT_TOP_P,
 )
-from .tui_display import _display_width, _move_wrapped_cursor
+from .tui_display import _display_width
 from .tui_shortcuts import menu_items, resolve_shortcut
 from .tui_status import EMPTY_STATUS, Status, error_status, info_status
+from .tui_text_editing import apply_text_edit_key
 from .voicevox_api_models import AudioQuery
 from .tui_input import PasteText
 
@@ -1009,75 +1010,28 @@ class TuiEditorController:
                     error_status("Use spaces for phrase boundaries; '/' is not used in this editor.")
                 )
                 return ()
-            input_changed = False
-            if key == curses.KEY_LEFT:
-                editor.input_cursor = max(0, editor.input_cursor - 1)
-            elif key == curses.KEY_RIGHT:
-                editor.input_cursor = min(len(editor.input_value), editor.input_cursor + 1)
-            elif key == curses.KEY_HOME or key == "\x01":
-                editor.input_cursor = 0
-            elif key == curses.KEY_END or key == "\x05":
-                editor.input_cursor = len(editor.input_value)
-            elif key in (curses.KEY_UP, curses.KEY_DOWN):
+            input_width = 1
+            if key in (curses.KEY_UP, curses.KEY_DOWN):
                 prefix = self._input_prefix(editor)
-                input_width = max(1, screen_width - 1 - _display_width(prefix))
-                editor.input_cursor = _move_wrapped_cursor(
-                    editor.input_value,
-                    editor.input_cursor,
-                    -1 if key == curses.KEY_UP else 1,
-                    input_width,
+                input_width = max(
+                    1,
+                    screen_width - 1 - _display_width(prefix),
                 )
-            elif key in (curses.KEY_BACKSPACE, "\x7f", "\x08"):
-                if editor.input_cursor:
-                    editor.input_value = (
-                        editor.input_value[: editor.input_cursor - 1]
-                        + editor.input_value[editor.input_cursor :]
-                    )
-                    editor.input_cursor -= 1
-                    input_changed = True
-            elif key == curses.KEY_DC:
-                if editor.input_cursor < len(editor.input_value):
-                    editor.input_value = (
-                        editor.input_value[: editor.input_cursor]
-                        + editor.input_value[editor.input_cursor + 1 :]
-                    )
-                    input_changed = True
-            elif isinstance(key, str) and key and all(
-                char.isprintable() or char == "　" for char in key
-            ):
-                editor.input_value = (
-                    editor.input_value[: editor.input_cursor]
-                    + key
-                    + editor.input_value[editor.input_cursor :]
-                )
-                editor.input_cursor += len(key)
-                input_changed = True
-            if input_changed and editor.kind in {
-                "japanese", "english_word", "section_text", "add_section"
-            }:
-                editor.error = EMPTY_STATUS
+            edit = apply_text_edit_key(
+                editor.input_value,
+                editor.input_cursor,
+                key,
+                input_width=input_width,
+            )
+            if edit.handled:
+                editor.input_value = edit.value
+                editor.input_cursor = edit.cursor
+                if edit.text_changed and editor.kind in {
+                    "japanese", "english_word", "section_text", "add_section"
+                }:
+                    editor.error = EMPTY_STATUS
             return ()
 
-        if key in ("q", "Q", "\x03"):
-            return (QuitIntent(),)
-        if key == "?":
-            return (OpenHelpIntent(),)
-        if editor.kind == "settings":
-            if key == "\t":
-                return self.move_settings_section(1)
-            backtab = getattr(curses, "KEY_BTAB", None)
-            if backtab is not None and key == backtab:
-                return self.move_settings_section(-1)
-        shortcut = resolve_shortcut(editor.kind, key, editor.payload)
-        if shortcut is not None:
-            editor.selection = shortcut.key
-            editor.error = EMPTY_STATUS
-            if shortcut.shortcut_mode == "focus":
-                return (ClearAdjustmentFeedbackIntent(),)
-            return self._activate_selection(settings, query, current_caption)
-
-        if editor.kind == "settings" and key in (curses.KEY_LEFT, curses.KEY_RIGHT):
-            return self.adjust_settings(-1 if key == curses.KEY_LEFT else 1)
         if (
             editor.kind == "add_section"
             and editor.selection == "language"
