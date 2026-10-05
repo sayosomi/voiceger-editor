@@ -55,6 +55,18 @@ from .voicevox_api_models import AccentPhrase, AudioQuery, Mora, VoicegerSegment
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
 _ESCAPE = "\x1b"
 _WORD_TYPES = tuple(JapaneseWordType)
+_JAPANESE_WORD_TYPE_LABELS = {
+    JapaneseWordType.PROPER_NOUN: "固有名詞",
+    JapaneseWordType.COMMON_NOUN: "普通名詞",
+    JapaneseWordType.VERB: "動詞",
+    JapaneseWordType.ADJECTIVE: "形容詞",
+    JapaneseWordType.SUFFIX: "接尾辞",
+}
+
+
+def _japanese_word_type_label(word_type: JapaneseWordType) -> str:
+    return _JAPANESE_WORD_TYPE_LABELS[word_type]
+
 
 DictionaryOperationIdentity = Literal[
     "generate_japanese_pronunciation",
@@ -231,6 +243,14 @@ class TuiDictionaryController:
         if review is None:
             raise RuntimeError("dictionary import review is not available")
         items = tuple(review.items)
+        word_type_labels = (
+            tuple(
+                _japanese_word_type_label(japanese_word_type(item.incoming))
+                for item in items
+            )
+            if review.format is DictionaryImportFormat.JAPANESE
+            else ()
+        )
         selection: str | tuple[str, int | None]
         if action is not None:
             selection = action
@@ -258,6 +278,7 @@ class TuiDictionaryController:
                 "format": review.format.value,
                 "source_path": self._import_source_path,
                 "items": items,
+                "word_type_labels": word_type_labels,
                 "total_count": review.total_count,
                 "exact_duplicate_count": review.exact_duplicate_count,
                 "review_count": len(items),
@@ -274,6 +295,12 @@ class TuiDictionaryController:
         item = items[index]
         identity = self._import_item_identity(item)
         if review.format is DictionaryImportFormat.JAPANESE:
+            word_type = japanese_word_type(item.incoming)
+            existing_word_type = (
+                None
+                if item.existing is None
+                else japanese_word_type(item.existing)
+            )
             return EditorState(
                 kind="dictionary_import_japanese_detail",
                 title="IMPORT JAPANESE WORD",
@@ -283,11 +310,13 @@ class TuiDictionaryController:
                     "identity": identity,
                     "item_index": index,
                     "item": item,
-                    "word_type": japanese_word_type(item.incoming),
-                    "existing_word_type": (
+                    "word_type": word_type,
+                    "word_type_label": _japanese_word_type_label(word_type),
+                    "existing_word_type": existing_word_type,
+                    "existing_word_type_label": (
                         None
-                        if item.existing is None
-                        else japanese_word_type(item.existing)
+                        if existing_word_type is None
+                        else _japanese_word_type_label(existing_word_type)
                     ),
                 },
             )
