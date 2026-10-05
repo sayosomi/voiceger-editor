@@ -16,7 +16,8 @@ Choose:
 
 - Japanese;
 - English;
-- Import dictionary.
+- Import dictionary;
+- Export dictionary.
 
 ## Japanese dictionary
 
@@ -162,6 +163,32 @@ operation and reports imported, replaced, and skipped counts when complete.
 
 Invalid or unsupported input is rejected before the active dictionary is
 changed. Back exits the import workflow without committing the review.
+
+## Export a dictionary
+
+Choose **Export dictionary** from the top-level Dictionary screen.
+
+**Voiceger Editor** export writes the current dictionaries as two separate
+native JSON files:
+
+    YYYYMMDDHHMM_user_dict.json
+    YYYYMMDDHHMM_english_user_dict.json
+
+There is no combined bundle format. The Japanese and English files preserve
+their canonical dictionary order.
+
+**VOICEVOX** export writes the Japanese dictionary only, using the same
+UUID-keyed expanded UserDictWord JSON shape used for Japanese import:
+
+    YYYYMMDDHHMM_voicevox_user_dict.json
+
+The English dictionary is not included in VOICEVOX export.
+
+Exports are written to the current Settings.output_dir, the same configured
+output directory used for accepted audio. Existing files are never overwritten.
+If a name already exists, Voiceger Editor adds -2, -3, and so on before the
+.json extension. A paired Voiceger Editor export always uses the same suffix
+for both files.
 
 ## Save from a pronunciation editor
 
