@@ -1741,6 +1741,23 @@ class TuiDictionaryController:
                 )
 
         if editor.kind in {
+            "dictionary_delete_confirmation",
+            "dictionary_discard_confirmation",
+        }:
+            interaction = handle_confirmation_key(
+                editor.kind,
+                str(editor.selection),
+                key,
+                editor.payload,
+            )
+            if interaction.handled:
+                editor.selection = interaction.selection
+                editor.error = EMPTY_STATUS
+                if interaction.activation is not None:
+                    return self._activate()
+                return ()
+
+        if editor.kind in {
             "dictionary_japanese_entry",
             "dictionary_english_entry",
             "dictionary_japanese_filter",
