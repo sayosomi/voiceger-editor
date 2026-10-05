@@ -414,9 +414,20 @@ class DictionaryListControllerIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(self.controller.editor.selection, "filter")
 
-        self.key(curses.KEY_RIGHT)
+        self.key(curses.KEY_LEFT)
         self.assertTrue(self.controller.editor.payload["filter_enabled"])
         self.assertEqual(self.controller.editor.payload["text_filter"], "record")
+        self.assertEqual(self.controller.editor.payload["entry_ids"], ("record",))
+        self.assertEqual(self.controller.editor.selection, "filter")
+
+        self.key(curses.KEY_RIGHT)
+        self.assertFalse(self.controller.editor.payload["filter_enabled"])
+        self.assertEqual(
+            set(self.controller.editor.payload["entry_ids"]),
+            {"record", "zebra"},
+        )
+        self.key(curses.KEY_RIGHT)
+        self.assertTrue(self.controller.editor.payload["filter_enabled"])
         self.assertEqual(self.controller.editor.payload["entry_ids"], ("record",))
         self.assertEqual(self.controller.editor.selection, "filter")
 
