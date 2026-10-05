@@ -992,18 +992,17 @@ class TuiDictionaryController:
                 direction=direction,
             )
         if editor.selection == "priority":
-            current = editor.payload["priority"]
-            updated = min(10, max(0, current + direction))
-            if updated == current:
-                return adjustment_feedback_intents(
-                    changed=False,
-                    area="dictionary",
-                    control="priority",
-                    direction=direction,
-                )
-            editor.payload["priority"] = updated
+            result = step_bounded(
+                editor.payload["priority"],
+                direction=direction,
+                step=1,
+                minimum=0,
+                maximum=10,
+            )
+            if result.changed:
+                editor.payload["priority"] = result.value
             return adjustment_feedback_intents(
-                changed=True,
+                changed=result.changed,
                 area="dictionary",
                 control="priority",
                 direction=direction,
