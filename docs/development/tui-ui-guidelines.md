@@ -26,6 +26,17 @@ must allow the focused value to be changed with Left / Right.
 
 Do not use `< >` for a read-only status, a row that only opens another screen, or a state where Left / Right currently has no meaningful effect. If a value is not currently adjustable, render it without angle brackets.
 
+When a Left / Right key press actually changes an angle-bracket value, the next render should temporarily double the arrow on the pressed side:
+
+```text
+<<Value >
+< Value>>
+```
+
+Do not show the doubled arrow when the value did not change, including at a bounded endpoint or when the control is not currently adjustable. Equivalent shortcuts such as a dedicated cycle key do not use this Left / Right press feedback.
+
+Angle-bracket position navigators, such as the current Batch Item or Dictionary entry position, follow the same feedback rule when they are adjusted with Left / Right.
+
 ## Left / Right semantics
 
 When a focused row exposes an ordered set of values:
