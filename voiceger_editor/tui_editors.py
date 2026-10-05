@@ -260,6 +260,28 @@ EditorIntent = Union[
 ]
 
 
+def adjustment_feedback_intents(
+    *,
+    changed: bool,
+    area: str | None = None,
+    control: str | None = None,
+    direction: int = 0,
+) -> tuple[EditorIntent, ...]:
+    """Return the shared transient feedback intent for one Left / Right action."""
+
+    if not changed:
+        return (ClearAdjustmentFeedbackIntent(),)
+    if area is None or control is None:
+        raise ValueError("changed adjustment feedback requires area and control")
+    return (
+        AdjustmentPressedIntent(
+            area,
+            control,
+            -1 if direction < 0 else 1,
+        ),
+    )
+
+
 @dataclass(frozen=True)
 class QueryApplicationResult:
     error: str | None = None
@@ -1061,14 +1083,28 @@ class TuiEditorController:
             and editor.selection == "language"
             and key in (curses.KEY_LEFT, curses.KEY_RIGHT)
         ):
+            direction = -1 if key == curses.KEY_LEFT else 1
             language = editor.payload["language"]
             if (key == curses.KEY_RIGHT and language == "ja") or (
                 key == curses.KEY_LEFT and language == "en"
             ):
                 editor.payload["language"] = "en" if language == "ja" else "ja"
                 editor.error = EMPTY_STATUS
-                return (ClearAdjustmentFeedbackIntent(), UpdateStatusIntent(""))
-            return ()
+                return (
+                    *adjustment_feedback_intents(
+                        changed=True,
+                        area="editor",
+                        control="language",
+                        direction=direction,
+                    ),
+                    UpdateStatusIntent(""),
+                )
+            return adjustment_feedback_intents(
+                changed=False,
+                area="editor",
+                control="language",
+                direction=direction,
+            )
         if key == _ESCAPE:
             return self.cancel()
         if key == curses.KEY_UP:
@@ -1878,8 +1914,18 @@ class TuiEditorController:
             "top_k", "top_p", "temperature",
         }:
             return ()
-        clear_feedback = (ClearAdjustmentFeedbackIntent(),)
-        feedback = AdjustmentPressedIntent("settings", selected, direction)
+        clear_feedback = adjustment_feedback_intents(
+            changed=False,
+            area="settings",
+            control=selected,
+            direction=direction,
+        )
+        feedback = adjustment_feedback_intents(
+            changed=True,
+            area="settings",
+            control=selected,
+            direction=direction,
+        )
         if selected == "style_id":
             styles = self._available_styles()
             if not styles:
@@ -1970,4 +2016,4 @@ class TuiEditorController:
         elif selected in {"save_text", "save_lab"}:
             draft[selected] = not bool(draft[selected])
         editor.error = EMPTY_STATUS
-        return (feedback,)
+        return feedback

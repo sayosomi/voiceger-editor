@@ -23,6 +23,7 @@ from voiceger_editor.tui_editors import (
     SettingsApplicationResult,
     TuiEditorController,
     UpdateStatusIntent,
+    adjustment_feedback_intents,
 )
 from voiceger_editor.tui_rendering import _active_input_prefix
 from voiceger_editor.tui_input import PasteText
@@ -121,6 +122,36 @@ class TuiEditorControllerTests(unittest.TestCase):
     @staticmethod
     def settings():
         return Settings(output_dir=Path("/tmp/voiceger-editor-tests"))
+
+    def test_adjustment_feedback_helper_normalizes_shared_intents(self):
+        self.assertEqual(
+            adjustment_feedback_intents(changed=False),
+            (ClearAdjustmentFeedbackIntent(),),
+        )
+        self.assertEqual(
+            adjustment_feedback_intents(
+                changed=True,
+                area="dictionary",
+                control="priority",
+                direction=-3,
+            ),
+            (
+                AdjustmentPressedIntent("dictionary", "priority", -1),
+            ),
+        )
+        self.assertEqual(
+            adjustment_feedback_intents(
+                changed=True,
+                area="settings",
+                control="top_k",
+                direction=7,
+            ),
+            (
+                AdjustmentPressedIntent("settings", "top_k", 1),
+            ),
+        )
+        with self.assertRaises(ValueError):
+            adjustment_feedback_intents(changed=True)
 
     def test_caption_editor_requires_explicit_apply_after_finishing_input(self):
         controller, _provider = self.make_controller()
@@ -2035,6 +2066,69 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.complete_query_application(replacement, QueryApplicationResult())
         self.assertEqual(controller.grouping_cache[1].source_text, "very hello everyone")
         self.assertEqual(controller.grouping_cache[1].groups[1].phonemes, manual_hello)
+
+    def test_add_section_language_arrow_feedback_only_on_change(self):
+        query = mixed_query()
+        controller, _provider = self.make_controller()
+        controller.open_add_section(
+            query,
+            pure_japanese_utterance_text=None,
+            origin=("add_section", None),
+            busy=False,
+        )
+        editor = controller.editor
+        controller.handle_key(
+            "\n",
+            settings=self.settings(),
+            query=query,
+            current_caption="Caption",
+        )
+        controller.move_selection(-1)
+        self.assertEqual(editor.selection, "language")
+        self.assertIsNone(editor.active_field)
+        self.assertEqual(editor.payload["language"], "ja")
+
+        moved_right = controller.handle_key(
+            curses.KEY_RIGHT,
+            settings=self.settings(),
+            query=query,
+            current_caption="Caption",
+        )
+        self.assertEqual(editor.payload["language"], "en")
+        self.assertEqual(
+            moved_right,
+            (
+                AdjustmentPressedIntent("editor", "language", 1),
+                UpdateStatusIntent(""),
+            ),
+        )
+
+        blocked_right = controller.handle_key(
+            curses.KEY_RIGHT,
+            settings=self.settings(),
+            query=query,
+            current_caption="Caption",
+        )
+        self.assertEqual(editor.payload["language"], "en")
+        self.assertEqual(
+            blocked_right,
+            (ClearAdjustmentFeedbackIntent(),),
+        )
+
+        moved_left = controller.handle_key(
+            curses.KEY_LEFT,
+            settings=self.settings(),
+            query=query,
+            current_caption="Caption",
+        )
+        self.assertEqual(editor.payload["language"], "ja")
+        self.assertEqual(
+            moved_left,
+            (
+                AdjustmentPressedIntent("editor", "language", -1),
+                UpdateStatusIntent(""),
+            ),
+        )
 
     def test_add_clear_reset_and_back_keep_the_opening_language_and_empty_draft(self):
         query = mixed_query()

@@ -5,6 +5,10 @@ from unittest.mock import Mock
 
 from voiceger_editor.settings import Settings
 from voiceger_editor.tui_batch import BatchActionBindings, TuiBatchController
+from voiceger_editor.tui_editors import (
+    AdjustmentPressedIntent,
+    ClearAdjustmentFeedbackIntent,
+)
 from voiceger_editor.tui_batch_item import (
     BatchItemBindings,
     TuiBatchItemController,
@@ -87,8 +91,6 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             get_session=lambda: state["session"],
             get_settings=lambda: state["settings"],
             get_status=lambda: state["status"],
-            clear_adjustment_feedback=Mock(),
-            mark_adjustment_pressed=Mock(),
         )
         return (
             TuiBatchItemController(batch),
@@ -121,14 +123,27 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             bindings.actions.navigation.focus_key,
             ("batch_item", None),
         )
+        bindings.actions.dispatch_editor_intents.assert_called_once_with(
+            (
+                AdjustmentPressedIntent("navigation", "batch_item", 1),
+            )
+        )
 
         bindings.actions.set_status.reset_mock()
+        bindings.actions.dispatch_editor_intents.reset_mock()
         subject.handle_key("]", bindings)
         self.assertEqual(batch.item_position, (2, 2))
         bindings.actions.set_status.assert_called_once_with("Last Caption.")
+        bindings.actions.dispatch_editor_intents.assert_called_once_with(
+            (ClearAdjustmentFeedbackIntent(),)
+        )
 
+        bindings.actions.dispatch_editor_intents.reset_mock()
         subject.handle_key("[", bindings)
         self.assertEqual(batch.item_position, (1, 2))
+        bindings.actions.dispatch_editor_intents.assert_called_once_with(
+            (ClearAdjustmentFeedbackIntent(),)
+        )
 
     def test_caption_movement_is_blocked_while_synthesis_is_busy(self):
         subject, batch, bindings, state = self.make_subject()
@@ -236,10 +251,10 @@ class TuiBatchItemControllerTests(unittest.TestCase):
 
         subject.handle_key(curses.KEY_RIGHT, bindings)
 
-        bindings.mark_adjustment_pressed.assert_called_once_with(
-            "navigation",
-            "generate",
-            1,
+        bindings.actions.dispatch_editor_intents.assert_called_once_with(
+            (
+                AdjustmentPressedIntent("navigation", "generate", 1),
+            )
         )
         bindings.actions.change_settings.assert_called_once_with(
             take_count=5,

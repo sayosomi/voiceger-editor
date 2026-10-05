@@ -3,6 +3,10 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
+from voiceger_editor.tui_editors import (
+    AdjustmentPressedIntent,
+    ClearAdjustmentFeedbackIntent,
+)
 from voiceger_editor.tui_batch import (
     AddCaptions,
     AdjustBatchTakeCount,
@@ -389,11 +393,27 @@ class TuiBatchControllerTests(unittest.TestCase):
 
         controller.dispatch_actions((AdjustBatchTakeCount(1),), bindings)
 
+        bindings.dispatch_editor_intents.assert_called_once_with(
+            (
+                AdjustmentPressedIntent("batch_list", "takes", 1),
+            )
+        )
         bindings.change_settings.assert_called_once_with(
             take_count=5,
             report_success=False,
         )
         self.assertEqual(controller.batch.default_take_count, 4)
+
+    def test_dispatch_take_adjustment_at_endpoint_clears_feedback(self):
+        controller = TuiBatchController(default_take_count=100)
+        bindings = self.make_bindings()
+
+        controller.dispatch_actions((AdjustBatchTakeCount(1),), bindings)
+
+        bindings.dispatch_editor_intents.assert_called_once_with(
+            (ClearAdjustmentFeedbackIntent(),)
+        )
+        bindings.change_settings.assert_not_called()
 
     def test_add_captions_uses_frontend_neutral_multiline_model(self):
         controller = self.make_controller()

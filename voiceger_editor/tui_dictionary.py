@@ -27,8 +27,10 @@ from .tui_dictionary_list import (
 )
 from .tui_display import _display_width, _move_wrapped_cursor
 from .tui_editors import (
+    AdjustmentPressedIntent,
     ClearAdjustmentFeedbackIntent,
     EditorIntent,
+    adjustment_feedback_intents,
     EditorState,
     OpenHelpIntent,
     PreviewIntent,
@@ -389,7 +391,12 @@ class TuiDictionaryController:
         if editor is not None and editor.kind == "dictionary_english_list":
             self.editor = self._english_list_state()
 
-    def _cycle_list_sort(self, direction: int = 1) -> tuple[EditorIntent, ...]:
+    def _cycle_list_sort(
+        self,
+        direction: int = 1,
+        *,
+        show_feedback: bool = False,
+    ) -> tuple[EditorIntent, ...]:
         editor = self.editor
         if editor is None:
             return ()
@@ -397,17 +404,51 @@ class TuiDictionaryController:
             modes = JAPANESE_SORT_MODES
             current = editor.payload["sort_mode"]
             target = modes[(modes.index(current) + direction) % len(modes)]
+            if target == current:
+                editor.selection = "sort"
+                return adjustment_feedback_intents(
+                    changed=False,
+                    area="dictionary",
+                    control="sort",
+                    direction=direction,
+                )
             self.set_japanese_list_sort(target)
         elif editor.kind == "dictionary_english_list":
             modes = ENGLISH_SORT_MODES
             current = editor.payload["sort_mode"]
             target = modes[(modes.index(current) + direction) % len(modes)]
+            if target == current:
+                editor.selection = "sort"
+                return adjustment_feedback_intents(
+                    changed=False,
+                    area="dictionary",
+                    control="sort",
+                    direction=direction,
+                )
             self.set_english_list_sort(target)
         else:
             return ()
         assert self.editor is not None
         self.editor.selection = "sort"
-        return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+        if show_feedback:
+            return (
+                UpdateStatusIntent(""),
+                *adjustment_feedback_intents(
+                    changed=True,
+                    area="dictionary",
+                    control="sort",
+                    direction=direction,
+                ),
+            )
+        return (
+            UpdateStatusIntent(""),
+            *adjustment_feedback_intents(
+                changed=False,
+                area="dictionary",
+                control="sort",
+                direction=direction,
+            ),
+        )
 
     def _open_sort_editor(self) -> tuple[EditorIntent, ...]:
         editor = self.editor
@@ -484,6 +525,7 @@ class TuiDictionaryController:
     def _set_list_filter_enabled(
         self,
         enabled: bool,
+        direction: int,
     ) -> tuple[EditorIntent, ...]:
         editor = self.editor
         if editor is None or editor.kind not in {
@@ -493,10 +535,20 @@ class TuiDictionaryController:
             return ()
         if not self._list_filter_has_criteria(editor):
             editor.selection = "filter"
-            return (ClearAdjustmentFeedbackIntent(),)
+            return adjustment_feedback_intents(
+                changed=False,
+                area="dictionary",
+                control="filter",
+                direction=direction,
+            )
         if bool(editor.payload.get("filter_enabled")) == enabled:
             editor.selection = "filter"
-            return (ClearAdjustmentFeedbackIntent(),)
+            return adjustment_feedback_intents(
+                changed=False,
+                area="dictionary",
+                control="filter",
+                direction=direction,
+            )
         self._remember_list_focus(editor)
         if editor.kind == "dictionary_japanese_list":
             self._list_state.set_japanese_filter_enabled(enabled)
@@ -506,7 +558,15 @@ class TuiDictionaryController:
             self.editor = self._english_list_state()
         assert self.editor is not None
         self.editor.selection = "filter"
-        return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+        return (
+            UpdateStatusIntent(""),
+            *adjustment_feedback_intents(
+                changed=True,
+                area="dictionary",
+                control="filter",
+                direction=direction,
+            ),
+        )
 
     def _open_filter_editor(self) -> tuple[EditorIntent, ...]:
         editor = self.editor
@@ -592,7 +652,12 @@ class TuiDictionaryController:
         editor.payload["word_type_filter"] = JAPANESE_WORD_TYPE_FILTERS[
             (index + direction) % len(JAPANESE_WORD_TYPE_FILTERS)
         ]
-        return (ClearAdjustmentFeedbackIntent(),)
+        return adjustment_feedback_intents(
+            changed=True,
+            area="dictionary",
+            control="word_type",
+            direction=direction,
+        )
 
     def _japanese_entry_state(
         self,
@@ -916,12 +981,37 @@ class TuiDictionaryController:
         if editor.selection == "word_type":
             current = _WORD_TYPES.index(editor.payload["word_type"])
             target = (current + direction) % len(_WORD_TYPES)
+            if target == current:
+                return adjustment_feedback_intents(
+                    changed=False,
+                    area="dictionary",
+                    control="word_type",
+                    direction=direction,
+                )
             editor.payload["word_type"] = _WORD_TYPES[target]
-            return ()
+            return adjustment_feedback_intents(
+                changed=True,
+                area="dictionary",
+                control="word_type",
+                direction=direction,
+            )
         if editor.selection == "priority":
             current = editor.payload["priority"]
-            editor.payload["priority"] = min(10, max(0, current + direction))
-            return ()
+            updated = min(10, max(0, current + direction))
+            if updated == current:
+                return adjustment_feedback_intents(
+                    changed=False,
+                    area="dictionary",
+                    control="priority",
+                    direction=direction,
+                )
+            editor.payload["priority"] = updated
+            return adjustment_feedback_intents(
+                changed=True,
+                area="dictionary",
+                control="priority",
+                direction=direction,
+            )
         return ()
 
     def _adjust_english(self, direction: int) -> tuple[EditorIntent, ...]:
@@ -1162,7 +1252,12 @@ class TuiDictionaryController:
         self.editor.selection = "entry_navigator"
         return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
 
-    def _move_open_entry(self, direction: int) -> tuple[EditorIntent, ...]:
+    def _move_open_entry(
+        self,
+        direction: int,
+        *,
+        show_feedback: bool = False,
+    ) -> tuple[EditorIntent, ...]:
         editor = self.editor
         assert editor is not None
         index = editor.payload.get("entry_index")
@@ -1179,7 +1274,19 @@ class TuiDictionaryController:
                 editor,
                 entry_navigation_target=target,
             )
-        return self._open_entry_at_index(editor, target)
+        intents = self._open_entry_at_index(editor, target)
+        if not intents or not show_feedback:
+            return intents
+        return tuple(
+            intent
+            for intent in intents
+            if not isinstance(intent, ClearAdjustmentFeedbackIntent)
+        ) + adjustment_feedback_intents(
+            changed=True,
+            area="dictionary",
+            control="entry_navigator",
+            direction=direction,
+        )
 
     def _back_from_entry(self) -> tuple[EditorIntent, ...]:
         editor = self.editor
@@ -1669,6 +1776,7 @@ class TuiDictionaryController:
             "dictionary_english_entry",
         }:
             direction: int | None = None
+            show_adjustment_feedback = False
             if key == "[":
                 direction = -1
             elif key == "]":
@@ -1676,10 +1784,15 @@ class TuiDictionaryController:
             elif editor.selection == "entry_navigator":
                 if key == curses.KEY_LEFT:
                     direction = -1
+                    show_adjustment_feedback = True
                 elif key == curses.KEY_RIGHT:
                     direction = 1
+                    show_adjustment_feedback = True
             if direction is not None:
-                return self._move_open_entry(direction)
+                return self._move_open_entry(
+                    direction,
+                    show_feedback=show_adjustment_feedback,
+                )
 
         if editor.kind in {
             "dictionary_japanese_entry",
@@ -1757,10 +1870,14 @@ class TuiDictionaryController:
                 "dictionary_english_list",
             }:
                 if editor.selection == "sort":
-                    return self._cycle_list_sort(direction)
+                    return self._cycle_list_sort(
+                        direction,
+                        show_feedback=True,
+                    )
                 if editor.selection == "filter":
                     return self._set_list_filter_enabled(
-                        not bool(editor.payload.get("filter_enabled"))
+                        not bool(editor.payload.get("filter_enabled")),
+                        direction,
                     )
             if editor.kind == "dictionary_japanese_entry":
                 return self._adjust_japanese(direction)

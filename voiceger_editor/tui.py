@@ -126,10 +126,6 @@ class TuiApp:
             get_session=lambda: self.session,
             get_settings=lambda: self.settings,
             get_status=lambda: self._status,
-            clear_adjustment_feedback=lambda: setattr(
-                self, "_pressed_adjustment", None
-            ),
-            mark_adjustment_pressed=self._mark_adjustment_pressed,
         )
 
     @property
@@ -699,6 +695,7 @@ class TuiApp:
                 width,
                 delete_confirmation_caption=self._batch.delete_confirmation_caption,
                 delete_confirmation_selection=self._batch.delete_confirmation_selection,
+                pressed_adjustment=self._pressed_adjustment,
             )
         else:
             self._dispatch_navigation_actions(

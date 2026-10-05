@@ -8,6 +8,10 @@ from voiceger_editor.tui_dictionary import (
     TuiDictionaryController,
 )
 from voiceger_editor.tui_dictionary_list import DictionaryListStateOwner
+from voiceger_editor.tui_editors import (
+    AdjustmentPressedIntent,
+    ClearAdjustmentFeedbackIntent,
+)
 from voiceger_editor.user_dictionary import JapaneseWordType
 
 
@@ -319,16 +323,28 @@ class DictionaryListControllerIntegrationTests(unittest.TestCase):
         self.key(curses.KEY_DOWN)
         self.assertEqual(self.controller.editor.payload["entry_ids"][1], "zebra")
 
-        self.key("s")
+        shortcut_intents = self.key("s")
 
+        self.assertIn(ClearAdjustmentFeedbackIntent(), shortcut_intents)
+        self.assertFalse(
+            any(isinstance(item, AdjustmentPressedIntent) for item in shortcut_intents)
+        )
         self.assertEqual(self.controller.editor.payload["sort_mode"], "surface_desc")
         self.assertEqual(self.controller.editor.selection, "sort")
         self.assertEqual(self.controller.editor.payload["entry_ids"][0], "zebra")
 
-        self.key(curses.KEY_RIGHT)
+        right_intents = self.key(curses.KEY_RIGHT)
+        self.assertIn(
+            AdjustmentPressedIntent("dictionary", "sort", 1),
+            right_intents,
+        )
         self.assertEqual(self.controller.editor.payload["sort_mode"], "word_type")
         self.assertEqual(self.controller.editor.selection, "sort")
-        self.key(curses.KEY_LEFT)
+        left_intents = self.key(curses.KEY_LEFT)
+        self.assertIn(
+            AdjustmentPressedIntent("dictionary", "sort", -1),
+            left_intents,
+        )
         self.assertEqual(self.controller.editor.payload["sort_mode"], "surface_desc")
 
         self.key("\n")
@@ -368,7 +384,11 @@ class DictionaryListControllerIntegrationTests(unittest.TestCase):
         self.key("アメ")
         self.key("\n")
         self.key(curses.KEY_DOWN)
-        self.key(curses.KEY_RIGHT)
+        word_type_intents = self.key(curses.KEY_RIGHT)
+        self.assertIn(
+            AdjustmentPressedIntent("dictionary", "word_type", 1),
+            word_type_intents,
+        )
         self.assertEqual(
             self.controller.editor.payload["word_type_filter"],
             "PROPER_NOUN",
@@ -404,7 +424,11 @@ class DictionaryListControllerIntegrationTests(unittest.TestCase):
         self.key(curses.KEY_DOWN)
         self.key(curses.KEY_DOWN)
         self.assertEqual(self.controller.editor.selection, "filter")
-        self.key(curses.KEY_LEFT)
+        disable_intents = self.key(curses.KEY_LEFT)
+        self.assertIn(
+            AdjustmentPressedIntent("dictionary", "filter", -1),
+            disable_intents,
+        )
 
         self.assertFalse(self.controller.editor.payload["filter_enabled"])
         self.assertEqual(self.controller.editor.payload["text_filter"], "record")
@@ -420,7 +444,11 @@ class DictionaryListControllerIntegrationTests(unittest.TestCase):
         self.assertEqual(self.controller.editor.payload["entry_ids"], ("record",))
         self.assertEqual(self.controller.editor.selection, "filter")
 
-        self.key(curses.KEY_RIGHT)
+        disable_right_intents = self.key(curses.KEY_RIGHT)
+        self.assertIn(
+            AdjustmentPressedIntent("dictionary", "filter", 1),
+            disable_right_intents,
+        )
         self.assertFalse(self.controller.editor.payload["filter_enabled"])
         self.assertEqual(
             set(self.controller.editor.payload["entry_ids"]),
@@ -443,7 +471,11 @@ class DictionaryListControllerIntegrationTests(unittest.TestCase):
 
         for key in (curses.KEY_LEFT, curses.KEY_RIGHT):
             with self.subTest(key=key):
-                self.key(key)
+                intents = self.key(key)
+                self.assertEqual(
+                    intents,
+                    (ClearAdjustmentFeedbackIntent(),),
+                )
                 self.assertEqual(
                     self.controller.editor.kind,
                     "dictionary_english_list",

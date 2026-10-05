@@ -16,6 +16,7 @@ from voiceger_editor.tui_editors import (
 from voiceger_editor.tui_display import _display_width
 from voiceger_editor.tui_rendering import (
     _HELP_ITEMS,
+    _positioned_title,
     TuiRenderer,
     TuiRenderState,
 )
@@ -2007,6 +2008,86 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertLess(max(navigation_rows), first_status)
         self.assertFalse(
             any(row >= screen.rows for row, _column, _text, _attr in screen.drawn)
+        )
+
+    def test_angle_bracket_controls_show_transient_arrow_feedback(self):
+        batch = CaptionBatch(default_take_count=4)
+        batch_lines = self.renderer.batch_list_document(
+            batch,
+            ("takes", None),
+            80,
+            ("batch_list", "takes", 1),
+        )
+        self.assertIn(
+            "▶ Takes < 4>>",
+            [line.text for line in batch_lines],
+        )
+
+        dictionary_editor = SimpleNamespace(
+            kind="dictionary_english_list",
+            title="ENGLISH DICTIONARY",
+            selection="sort",
+            payload={
+                "entries": (),
+                "sort_mode": "surface_asc",
+                "text_filter": "",
+                "filter_enabled": False,
+                "word_type_filter": None,
+                "visible_count": 0,
+                "total_count": 0,
+                "can_delete": False,
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+        dictionary_document, _, _ = self.renderer.editor_document(
+            render_state(
+                editor=dictionary_editor,
+                pressed_adjustment=("dictionary", "sort", -1),
+            ),
+            80,
+        )
+        sort_line = next(
+            line for line, key in dictionary_document if key == "sort"
+        )
+        self.assertIn("<<Surface ↑ >", sort_line)
+
+        add_section_editor = SimpleNamespace(
+            kind="add_section",
+            title="ADD SECTION",
+            selection="language",
+            payload={
+                "language": "ja",
+                "draft": "",
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+        add_section_document, _, _ = self.renderer.editor_document(
+            render_state(
+                editor=add_section_editor,
+                pressed_adjustment=("editor", "language", 1),
+            ),
+            80,
+        )
+        language_line = next(
+            line for line, key in add_section_document if key == "language"
+        )
+        self.assertIn("< Japanese>>", language_line)
+
+        self.assertTrue(
+            _positioned_title(
+                "BATCH ITEM",
+                (2, 3),
+                80,
+                1,
+            ).endswith("< 2 / 3>>")
         )
 
     def test_main_action_and_candidate_rows_show_visible_shortcuts(self):
