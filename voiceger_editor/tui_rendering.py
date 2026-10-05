@@ -1138,7 +1138,7 @@ class TuiRenderer:
             word_type_filter = str(
                 editor.payload.get("word_type_filter") or "ALL"
             )
-            filter_active = bool(text_filter.strip()) or word_type_filter != "ALL"
+            filter_active = bool(editor.payload.get("filter_enabled", False))
             visible_count = int(editor.payload.get("visible_count", len(entries)))
             total_count = int(editor.payload.get("total_count", len(entries)))
             if filter_active:
@@ -1177,7 +1177,9 @@ class TuiRenderer:
                     parts.append(text_filter.strip())
                 if word_type_filter != "ALL":
                     parts.append(word_type_filter)
-                filter_summary = " · ".join(parts)
+                filter_summary = "On" + (
+                    f": {' · '.join(parts)}" if parts else ""
+                )
             selectable_value("filter", filter_summary)
             selectable("add")
             if entries:
@@ -1187,7 +1189,7 @@ class TuiRenderer:
             plain()
             entries = editor.payload["entries"]
             text_filter = str(editor.payload.get("text_filter", ""))
-            filter_active = bool(text_filter.strip())
+            filter_active = bool(editor.payload.get("filter_enabled", False))
             visible_count = int(editor.payload.get("visible_count", len(entries)))
             total_count = int(editor.payload.get("total_count", len(entries)))
             if filter_active:
@@ -1214,11 +1216,26 @@ class TuiRenderer:
             )
             selectable_value(
                 "filter",
-                text_filter.strip() if filter_active else "Off",
+                (
+                    f"On: {text_filter.strip()}"
+                    if filter_active and text_filter.strip()
+                    else ("On" if filter_active else "Off")
+                ),
             )
             selectable("add")
             if entries:
                 selectable("delete")
+            selectable("back")
+        elif editor.kind == "dictionary_sort":
+            plain()
+            modes = tuple(editor.payload["modes"])
+            for index, mode in enumerate(modes):
+                key = ("sort", index)
+                wrapped_selectable_text(
+                    key,
+                    _DICTIONARY_SORT_LABELS.get(str(mode), str(mode)),
+                )
+            plain()
             selectable("back")
         elif editor.kind == "dictionary_japanese_filter":
             plain()
