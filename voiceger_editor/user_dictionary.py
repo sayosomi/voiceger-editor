@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from enum import Enum
 import json
 import os
@@ -42,6 +43,14 @@ class JapaneseWordType(str, Enum):
     VERB = "VERB"
     ADJECTIVE = "ADJECTIVE"
     SUFFIX = "SUFFIX"
+
+
+class JapaneseDictionaryEntryRelation(str, Enum):
+    """Relationship between one Japanese word and the current dictionary."""
+
+    NEW = "new"
+    EXACT = "exact"
+    CONFLICT = "conflict"
 
 
 def _check_newlines_and_null(text: str) -> str:
@@ -127,6 +136,81 @@ class UserDictWord(BaseModel):
                 f"expect: 0 <= accent_type <= {self.mora_count}"
             )
         return self
+
+
+@dataclass(frozen=True)
+class JapaneseDictionaryEntryClassification:
+    """Reusable logical-identity comparison result for Japanese dictionary words."""
+
+    relation: JapaneseDictionaryEntryRelation
+    existing_uuid: str | None = None
+
+
+def japanese_word_type(word: UserDictWord) -> JapaneseWordType:
+    """Return the canonical Word type encoded by a validated Japanese word."""
+
+    for word_type in JapaneseWordType:
+        if expand_word_type(word_type.value)["context_id"] == word.context_id:
+            return word_type
+    raise UserDictionaryInputError("対応していない品詞です")
+
+
+def japanese_logical_identity(
+    word: UserDictWord,
+) -> tuple[str, JapaneseWordType]:
+    """Return the normalized Surface + Word type logical identity."""
+
+    return normalize_surface(word.surface), japanese_word_type(word)
+
+
+def classify_japanese_entry(
+    entries: Mapping[str, UserDictWord],
+    incoming: UserDictWord,
+    *,
+    exclude_uuid: str | None = None,
+) -> JapaneseDictionaryEntryClassification:
+    """Classify an incoming word by the Japanese logical-identity invariant."""
+
+    identity = japanese_logical_identity(incoming)
+    match: tuple[str, UserDictWord] | None = None
+    for word_uuid, existing in entries.items():
+        if exclude_uuid is not None and word_uuid == exclude_uuid:
+            continue
+        if japanese_logical_identity(existing) != identity:
+            continue
+        if match is not None:
+            raise UserDictionaryInputError(
+                "Japanese dictionary contains duplicate logical entries"
+            )
+        match = (word_uuid, existing)
+
+    if match is None:
+        return JapaneseDictionaryEntryClassification(
+            JapaneseDictionaryEntryRelation.NEW
+        )
+
+    word_uuid, existing = match
+    relation = (
+        JapaneseDictionaryEntryRelation.EXACT
+        if existing.model_dump(mode="json") == incoming.model_dump(mode="json")
+        else JapaneseDictionaryEntryRelation.CONFLICT
+    )
+    return JapaneseDictionaryEntryClassification(
+        relation,
+        existing_uuid=word_uuid,
+    )
+
+
+def _validate_japanese_uniqueness(entries: Mapping[str, UserDictWord]) -> None:
+    seen: dict[tuple[str, JapaneseWordType], str] = {}
+    for word_uuid, word in entries.items():
+        identity = japanese_logical_identity(word)
+        previous_uuid = seen.get(identity)
+        if previous_uuid is not None and previous_uuid != word_uuid:
+            raise UserDictionaryInputError(
+                "同じSurfaceと品詞の単語が既に登録されています"
+            )
+        seen[identity] = word_uuid
 
 
 class EnglishUserDictionaryEntry(BaseModel):
@@ -327,6 +411,15 @@ class UserDictionaryCore:
                 for word_uuid, word in self._japanese.items()
             }
 
+    def classify_japanese_word(
+        self,
+        word: UserDictWord,
+    ) -> JapaneseDictionaryEntryClassification:
+        """Compare one validated word against the current logical entries."""
+
+        with self._lock:
+            return classify_japanese_entry(self._japanese, word)
+
     def _ensure_japanese_active_locked(self, *, force: bool = False) -> None:
         try:
             self.openjtalk_dictionary.ensure_active(
@@ -442,8 +535,13 @@ class UserDictionaryCore:
             word_type=word_type,
             priority=priority,
         )
-        word_uuid = str(uuid4())
         with self._lock:
+            classification = classify_japanese_entry(self._japanese, word)
+            if classification.relation is not JapaneseDictionaryEntryRelation.NEW:
+                raise UserDictionaryInputError(
+                    "同じSurfaceと品詞の単語が既に登録されています"
+                )
+            word_uuid = str(uuid4())
             candidate = dict(self._japanese)
             candidate[word_uuid] = word
             self._commit_japanese(candidate)
@@ -478,6 +576,15 @@ class UserDictionaryCore:
             if normalized_uuid not in self._japanese:
                 raise UserDictionaryInputError(
                     "UUIDに該当するワードが見つかりませんでした"
+                )
+            classification = classify_japanese_entry(
+                self._japanese,
+                word,
+                exclude_uuid=normalized_uuid,
+            )
+            if classification.relation is not JapaneseDictionaryEntryRelation.NEW:
+                raise UserDictionaryInputError(
+                    "同じSurfaceと品詞の単語が既に登録されています"
                 )
             candidate = dict(self._japanese)
             candidate[normalized_uuid] = word
@@ -528,6 +635,7 @@ class UserDictionaryCore:
             for word_uuid, word in imported.items():
                 if override or word_uuid not in candidate:
                     candidate[word_uuid] = word
+            _validate_japanese_uniqueness(candidate)
             self._commit_japanese(candidate)
 
     @staticmethod
