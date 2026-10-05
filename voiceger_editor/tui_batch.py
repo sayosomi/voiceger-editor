@@ -103,11 +103,11 @@ class TuiBatchController:
 
     def __init__(self, *, default_take_count: int) -> None:
         self.batch = CaptionBatch(default_take_count=default_take_count)
-        self.focus_key: BatchFocusKey = ("takes", None)
+        self.focus_key: BatchFocusKey = ("add_captions", None)
         self._open_item_id: str | None = None
         self._pending_delete_item_id: str | None = None
         self._pending_delete_from_item = False
-        self._delete_confirmation_selection = "delete"
+        self._delete_confirmation_selection = "cancel"
 
     @property
     def item_index(self) -> int | None:
@@ -159,7 +159,7 @@ class TuiBatchController:
         except KeyError:
             self._pending_delete_item_id = None
             self._pending_delete_from_item = False
-            self._delete_confirmation_selection = "delete"
+            self._delete_confirmation_selection = "cancel"
             self._repair_focus()
             return None
 
@@ -189,7 +189,7 @@ class TuiBatchController:
             return
         self._pending_delete_item_id = item_id
         self._pending_delete_from_item = True
-        self._delete_confirmation_selection = "delete"
+        self._delete_confirmation_selection = "cancel"
 
     def open_item(self, index: int) -> Any:
         if not 0 <= index < len(self.batch):
@@ -240,7 +240,7 @@ class TuiBatchController:
                 bindings.editor_controller.clear_groupings()
                 session = self.open_item(action.index)
                 bindings.set_session(session)
-                bindings.navigation.focus_key = ("batch_item", None)
+                bindings.navigation.focus_key = ("caption", None)
                 bindings.navigation.reset_pronunciation_index()
                 bindings.set_status(EMPTY_STATUS)
                 if not getattr(session, "is_prepared", True):
@@ -351,7 +351,7 @@ class TuiBatchController:
                 if 0 <= index < len(self.batch):
                     self._pending_delete_item_id = self.batch.items[index].item_id
                     self._pending_delete_from_item = False
-                    self._delete_confirmation_selection = "delete"
+                    self._delete_confirmation_selection = "cancel"
             return ()
 
         if key == curses.KEY_UP:
@@ -397,7 +397,7 @@ class TuiBatchController:
     def _cancel_delete(self) -> None:
         self._pending_delete_item_id = None
         self._pending_delete_from_item = False
-        self._delete_confirmation_selection = "delete"
+        self._delete_confirmation_selection = "cancel"
         self._repair_focus()
 
     def _confirm_delete(self) -> None:
@@ -410,14 +410,14 @@ class TuiBatchController:
         removed = self.batch.remove_item(item_id)
         self._pending_delete_item_id = None
         self._pending_delete_from_item = False
-        self._delete_confirmation_selection = "delete"
+        self._delete_confirmation_selection = "cancel"
         removed.session.close()
         if from_item:
             self._open_item_id = None
         if len(self.batch):
             self.focus_key = ("caption", min(index, len(self.batch) - 1))
         else:
-            self.focus_key = ("takes", None)
+            self.focus_key = ("add_captions", None)
 
     def _next_unaccepted_generated_index(self, current_index: int) -> int | None:
         if len(self.batch) < 2:
@@ -433,5 +433,5 @@ class TuiBatchController:
         items = self.navigation_items()
         if self.focus_key not in items:
             self.focus_key = (
-                ("caption", 0) if len(self.batch) else ("takes", None)
+                ("caption", 0) if len(self.batch) else ("add_captions", None)
             )
