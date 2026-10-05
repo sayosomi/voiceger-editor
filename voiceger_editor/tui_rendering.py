@@ -1462,7 +1462,7 @@ class TuiRenderer:
             marker = "▶ " if editor.selection == "word_type" else "  "
             lines.append(
                 (
-                    f"{marker}Word type      {_adjustable_value(str(editor.payload['word_type'].value), self._adjustment_press_direction(state, 'dictionary', 'word_type'))}",
+                    f"{marker}Word type      {_adjustable_value(str(editor.payload['word_type_label']), self._adjustment_press_direction(state, 'dictionary', 'word_type'))}",
                     "word_type",
                 )
             )
