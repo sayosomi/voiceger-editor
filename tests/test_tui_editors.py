@@ -335,7 +335,16 @@ class TuiEditorControllerTests(unittest.TestCase):
     def test_build_confirmation_cancel_and_escape_close_without_build_intent(self):
         controller, _provider = self.make_controller()
         controller.open_build_confirmation(origin=("build_pronunciation", None))
-        controller.move_selection(1)
+        self.assertEqual(
+            controller.handle_key(
+                curses.KEY_DOWN,
+                settings=self.settings(),
+                query=None,
+                current_caption="caption",
+            ),
+            (ClearAdjustmentFeedbackIntent(),),
+        )
+        self.assertEqual(controller.editor.selection, "cancel")
         intents = controller.handle_key(
             "\n", settings=self.settings(), query=None, current_caption="caption"
         )
