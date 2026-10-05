@@ -168,6 +168,10 @@ changed. Back exits the import workflow without committing the review.
 
 Choose **Export dictionary** from the top-level Dictionary screen.
 
+The Export screen shows the current output directory as **[O] Output**. Select
+that row, press Enter, or press **O** to edit Output in Settings; saving or
+cancelling Settings returns to the Export screen.
+
 **Voiceger Editor** export writes the current dictionaries as two separate
 native JSON files:
 
