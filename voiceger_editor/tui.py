@@ -485,11 +485,17 @@ class TuiApp:
                         phonemes=intent.pronunciation,
                     )
             elif isinstance(intent, OpenDictionarySettingsIntent):
-                self._open_settings_editor(
-                    intent.selected_field,
-                    edit=intent.edit,
-                    origin=("dictionary_export", None),
-                )
+                if self._operations.busy:
+                    self._status = info_status(
+                        "Wait for synthesis to finish before changing settings."
+                    )
+                    continue
+                if self._dictionary_controller.suspend_editor():
+                    self._open_settings_editor(
+                        intent.selected_field,
+                        edit=intent.edit,
+                        origin=("dictionary_export", None),
+                    )
             elif isinstance(intent, DictionaryOperationIntent):
                 self._dispatch_operation_effects(
                     self._operations.start_dictionary_operation(intent)
