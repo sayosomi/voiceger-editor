@@ -972,7 +972,7 @@ class TuiRenderer:
             item = menu_item(editor.kind, key, editor.payload)
             wrapped_selectable_text(
                 key,
-                f"{item.display_label:<14}{_adjustable_value(value, self._adjustment_press_direction(state, "dictionary", key))}",
+                f"{item.display_label:<14}{_adjustable_value(value, self._adjustment_press_direction(state, 'dictionary', key))}",
             )
 
         def wrapped_selectable_text(
@@ -1294,7 +1294,7 @@ class TuiRenderer:
             marker = "▶ " if editor.selection == "word_type" else "  "
             lines.append(
                 (
-                    f"{marker}Word type      {_adjustable_value(str(editor.payload['word_type_filter']), self._adjustment_press_direction(state, "dictionary", "word_type"))}",
+                    f"{marker}Word type      {_adjustable_value(str(editor.payload['word_type_filter']), self._adjustment_press_direction(state, 'dictionary', 'word_type'))}",
                     "word_type",
                 )
             )
@@ -1358,14 +1358,14 @@ class TuiRenderer:
             marker = "▶ " if editor.selection == "word_type" else "  "
             lines.append(
                 (
-                    f"{marker}Word type      {_adjustable_value(str(editor.payload['word_type'].value), self._adjustment_press_direction(state, "dictionary", "word_type"))}",
+                    f"{marker}Word type      {_adjustable_value(str(editor.payload['word_type'].value), self._adjustment_press_direction(state, 'dictionary', 'word_type'))}",
                     "word_type",
                 )
             )
             marker = "▶ " if editor.selection == "priority" else "  "
             lines.append(
                 (
-                    f"{marker}Priority       {_adjustable_value(str(editor.payload['priority']), self._adjustment_press_direction(state, "dictionary", "priority"))}",
+                    f"{marker}Priority       {_adjustable_value(str(editor.payload['priority']), self._adjustment_press_direction(state, 'dictionary', 'priority'))}",
                     "priority",
                 )
             )
@@ -1457,7 +1457,7 @@ class TuiRenderer:
             language_item = menu_item(editor.kind, "language", editor.payload)
             lines.append(
                 (
-                    f"{marker}{language_item.label:<12}{_adjustable_value(language, self._adjustment_press_direction(state, "editor", "language"))}",
+                    f"{marker}{language_item.label:<12}{_adjustable_value(language, self._adjustment_press_direction(state, 'editor', 'language'))}",
                     "language",
                 )
             )
