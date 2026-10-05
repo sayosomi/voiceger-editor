@@ -1478,7 +1478,11 @@ class TuiRenderingTests(unittest.TestCase):
         )
         self.assertIn(("▶ [A] Add", "add"), document)
         self.assertTrue(any("[S] Sort" in line for line, _key in document))
-        self.assertTrue(any("[F] Filter" in line for line, _key in document))
+        filter_line = next(line for line, key in document if key == "filter")
+        self.assertIn("[F] Filter", filter_line)
+        self.assertIn("Not set", filter_line)
+        self.assertNotIn("<", filter_line)
+        self.assertNotIn(">", filter_line)
         self.assertIn(("  [Esc] Back", "back"), document)
         self.assertFalse(any("[X] Delete" in line for line, _key in document))
 
@@ -1517,6 +1521,33 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("On: missing", visible)
         self.assertIn("[A] Add", visible)
         self.assertNotIn("[X] Delete", visible)
+
+    def test_configured_disabled_filter_keeps_angle_bracket_off_state(self):
+        editor = SimpleNamespace(
+            kind="dictionary_english_list",
+            title="ENGLISH DICTIONARY",
+            selection="filter",
+            payload={
+                "entries": (),
+                "sort_mode": "surface_asc",
+                "text_filter": "record",
+                "filter_enabled": False,
+                "word_type_filter": None,
+                "visible_count": 0,
+                "total_count": 0,
+                "can_delete": False,
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        filter_line = next(line for line, key in document if key == "filter")
+        self.assertIn("< Off >", filter_line)
 
     def test_dictionary_sort_chooser_renders_all_modes_without_angle_brackets(self):
         editor = SimpleNamespace(
@@ -1679,7 +1710,11 @@ class TuiRenderingTests(unittest.TestCase):
 
         self.assertIn(("▶ [A] Add", "add"), document)
         self.assertTrue(any("[S] Sort" in line and "Surface ↑" in line for line, _key in document))
-        self.assertTrue(any("[F] Filter" in line and "Off" in line for line, _key in document))
+        filter_line = next(line for line, key in document if key == "filter")
+        self.assertIn("[F] Filter", filter_line)
+        self.assertIn("Not set", filter_line)
+        self.assertNotIn("<", filter_line)
+        self.assertNotIn(">", filter_line)
         self.assertIn(("  [X] Delete", "delete"), document)
         self.assertIn(("  [Esc] Back", "back"), document)
         self.assertNotIn("Enter Edit", visible)
