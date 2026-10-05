@@ -311,10 +311,11 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.open_build_confirmation(origin=("build_pronunciation", None))
         editor = controller.editor
         self.assertEqual(editor.title, "REBUILD PRONUNCIATION?")
+        self.assertEqual(editor.selection, "cancel")
         self.assertIn("manual pronunciation or utterance edits", editor.payload["warning"].lower())
         self.assertEqual(
             controller.handle_key(
-                "\n", settings=self.settings(), query=None, current_caption="caption"
+                "r", settings=self.settings(), query=None, current_caption="caption"
             ),
             (BuildPronunciationIntent(),),
         )
@@ -335,15 +336,6 @@ class TuiEditorControllerTests(unittest.TestCase):
     def test_build_confirmation_cancel_and_escape_close_without_build_intent(self):
         controller, _provider = self.make_controller()
         controller.open_build_confirmation(origin=("build_pronunciation", None))
-        self.assertEqual(
-            controller.handle_key(
-                curses.KEY_DOWN,
-                settings=self.settings(),
-                query=None,
-                current_caption="caption",
-            ),
-            (ClearAdjustmentFeedbackIntent(),),
-        )
         self.assertEqual(controller.editor.selection, "cancel")
         intents = controller.handle_key(
             "\n", settings=self.settings(), query=None, current_caption="caption"
@@ -2242,6 +2234,7 @@ class TuiEditorControllerTests(unittest.TestCase):
             "\n", settings=self.settings(), query=query, current_caption="caption"
         )
         confirmation = controller.editor
+        self.assertEqual(confirmation.selection, "cancel")
         self.assertEqual(confirmation.title, "DELETE SECTION?")
         self.assertEqual(
             confirmation.payload["warning"],
@@ -2260,9 +2253,10 @@ class TuiEditorControllerTests(unittest.TestCase):
         confirmation = controller.editor
 
         self.assertEqual(confirmation.title, "CLEAR CANDIDATES?")
+        self.assertEqual(confirmation.selection, "cancel")
         self.assertIn("candidate WAV files will be discarded", confirmation.payload["warning"])
         canceled = controller.handle_key(
-            "\x1b", settings=self.settings(), query=None, current_caption="Caption"
+            "\n", settings=self.settings(), query=None, current_caption="Caption"
         )
 
         self.assertIsNone(controller.editor)
