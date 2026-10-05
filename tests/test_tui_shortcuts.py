@@ -78,11 +78,11 @@ class TuiShortcutTests(unittest.TestCase):
             "dictionary_japanese_duplicates": {},
             "dictionary_japanese_entry": {
                 "g": "generate_pronunciation", "p": "preview",
-                "s": "save", "d": "dictionary",
+                "s": "save", "x": "delete", "d": "dictionary",
             },
             "dictionary_english_entry": {
                 "g": "generate_pronunciation", "p": "preview",
-                "s": "save", "d": "dictionary",
+                "s": "save", "x": "delete", "d": "dictionary",
             },
             "batch_delete_confirmation": {"d": "delete"},
             "dictionary_delete_confirmation": {"d": "delete"},
