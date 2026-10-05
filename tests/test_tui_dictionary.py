@@ -8,7 +8,11 @@ from voiceger_editor.tui_dictionary import (
     DictionaryOperationIntent,
     TuiDictionaryController,
 )
-from voiceger_editor.tui_editors import PreviewIntent
+from voiceger_editor.tui_editors import (
+    AdjustmentPressedIntent,
+    ClearAdjustmentFeedbackIntent,
+    PreviewIntent,
+)
 from voiceger_editor.tui_shortcuts import menu_items
 from voiceger_editor.tui_status import StatusKind
 from voiceger_editor.user_dictionary import JapaneseWordType
@@ -608,7 +612,11 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.assertEqual(editor.payload["accent"], 2)
 
         editor.selection = "word_type"
-        self.key(curses.KEY_RIGHT)
+        word_type_intents = self.key(curses.KEY_RIGHT)
+        self.assertIn(
+            AdjustmentPressedIntent("dictionary", "word_type", 1),
+            word_type_intents,
+        )
         self.assertEqual(editor.payload["word_type"], JapaneseWordType.COMMON_NOUN)
         editor.payload["word_type"] = JapaneseWordType.SUFFIX
         self.key(curses.KEY_RIGHT)
@@ -622,11 +630,28 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.assertEqual(editor.payload["accent"], 1)
 
         editor.selection = "priority"
+        editor.payload["priority"] = 5
+        priority_intents = self.key(curses.KEY_RIGHT)
+        self.assertIn(
+            AdjustmentPressedIntent("dictionary", "priority", 1),
+            priority_intents,
+        )
+        self.assertEqual(editor.payload["priority"], 6)
+
         editor.payload["priority"] = 10
-        self.key(curses.KEY_RIGHT)
+        upper_boundary = self.key(curses.KEY_RIGHT)
+        self.assertEqual(
+            upper_boundary,
+            (ClearAdjustmentFeedbackIntent(),),
+        )
         self.assertEqual(editor.payload["priority"], 10)
+
         editor.payload["priority"] = 0
-        self.key(curses.KEY_LEFT)
+        lower_boundary = self.key(curses.KEY_LEFT)
+        self.assertEqual(
+            lower_boundary,
+            (ClearAdjustmentFeedbackIntent(),),
+        )
         self.assertEqual(editor.payload["priority"], 0)
 
         before = dict(self.core.japanese)
@@ -677,7 +702,13 @@ class TuiDictionaryControllerTests(unittest.TestCase):
                     normalize_surface(surfaces[0]) if language == "ja" else surfaces[0],
                 )
 
-                controller.handle_key("]")
+                shortcut_move = controller.handle_key("]")
+                self.assertFalse(
+                    any(
+                        isinstance(item, AdjustmentPressedIntent)
+                        for item in shortcut_move
+                    )
+                )
                 editor = controller.editor
                 self.assertEqual(editor.payload["entry_index"], 1)
                 self.assertEqual(editor.payload["entry_total"], 2)
@@ -691,15 +722,37 @@ class TuiDictionaryControllerTests(unittest.TestCase):
                 self.assertEqual(boundary[0].status, "Last dictionary word.")
                 self.assertEqual(controller.editor.payload["entry_index"], 1)
 
-                controller.handle_key(curses.KEY_LEFT)
+                left_move = controller.handle_key(curses.KEY_LEFT)
+                self.assertIn(
+                    AdjustmentPressedIntent(
+                        "dictionary",
+                        "entry_navigator",
+                        -1,
+                    ),
+                    left_move,
+                )
                 self.assertEqual(controller.editor.payload["entry_index"], 0)
                 self.assertEqual(controller.editor.selection, "entry_navigator")
 
                 boundary = controller.handle_key(curses.KEY_LEFT)
+                self.assertFalse(
+                    any(
+                        isinstance(item, AdjustmentPressedIntent)
+                        for item in boundary
+                    )
+                )
                 self.assertEqual(boundary[0].status, "First dictionary word.")
                 self.assertEqual(controller.editor.payload["entry_index"], 0)
 
-                controller.handle_key(curses.KEY_RIGHT)
+                right_move = controller.handle_key(curses.KEY_RIGHT)
+                self.assertIn(
+                    AdjustmentPressedIntent(
+                        "dictionary",
+                        "entry_navigator",
+                        1,
+                    ),
+                    right_move,
+                )
                 self.assertEqual(controller.editor.payload["entry_index"], 1)
 
                 controller.handle_key("\x1b")
