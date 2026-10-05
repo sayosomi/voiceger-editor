@@ -181,6 +181,22 @@ class TuiEditorControllerTests(unittest.TestCase):
             (ApplyCaptionIntent("hello"),),
         )
 
+    def test_editor_selection_movement_clamps_at_both_ends(self):
+        controller, _provider = self.make_controller()
+        controller.open_caption(
+            "hello", current_caption="old", origin=("caption", None), busy=False
+        )
+        editor = controller.editor
+        keys = controller.selection_keys()
+
+        editor.selection = keys[0]
+        self.assertEqual(controller.move_selection(-1), ())
+        self.assertEqual(editor.selection, keys[0])
+
+        editor.selection = keys[-1]
+        self.assertEqual(controller.move_selection(1), ())
+        self.assertEqual(editor.selection, keys[-1])
+
     def test_add_captions_editor_accepts_paste_and_ctrl_n_newlines(self):
         controller, _provider = self.make_controller()
         controller.open_caption(

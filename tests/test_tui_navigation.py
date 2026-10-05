@@ -150,6 +150,30 @@ class TuiNavigationTests(unittest.TestCase):
         )
         self.assertEqual(self.navigation.focus_key, ("add_section", None))
 
+    def test_up_and_down_clamp_at_endpoints_without_navigation_side_effects(self):
+        state = context(has_session=False)
+        items = self.navigation.navigation_items(state)
+
+        self.navigation.focus_key = items[0]
+        revision = self.navigation.revision
+        self.assertEqual(self.navigation.move(state, -1), ())
+        self.assertEqual(self.navigation.focus_key, items[0])
+        self.assertEqual(self.navigation.revision, revision)
+
+        self.navigation.focus_key = items[-1]
+        self.assertEqual(self.navigation.move(state, 1), ())
+        self.assertEqual(self.navigation.focus_key, items[-1])
+        self.assertEqual(self.navigation.revision, revision)
+
+        stops = self.navigation.major_navigation_stops(state)
+        self.navigation.focus_key = stops[0]
+        self.assertEqual(self.navigation.move_section(state, -1), ())
+        self.assertEqual(self.navigation.focus_key, stops[0])
+        self.navigation.focus_key = stops[-1]
+        self.assertEqual(self.navigation.move_section(state, 1), ())
+        self.assertEqual(self.navigation.focus_key, stops[-1])
+        self.assertEqual(self.navigation.revision, revision)
+
     def test_candidate_rows_play_on_arrow_and_remember_last_pronunciation_child(self):
         state = context(pronunciation_count=3, candidate_numbers=(4, 7))
         self.navigation.set_focus_key(state, ("pronunciation", 2))

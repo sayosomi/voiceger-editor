@@ -47,6 +47,7 @@ from .settings import (
 )
 from .tui_adjustments import step_bounded, step_cyclic
 from .tui_display import _display_width
+from .tui_selection import move_clamped_selection
 from .tui_shortcuts import menu_items, resolve_shortcut
 from .tui_status import EMPTY_STATUS, Status, error_status, info_status
 from .tui_text_editing import apply_text_edit_key
@@ -906,17 +907,14 @@ class TuiEditorController:
         editor = self.editor
         if editor is None:
             return ()
-        keys = self.selection_keys()
-        if not keys:
+        result = move_clamped_selection(
+            editor.selection,
+            self.selection_keys(),
+            delta=delta,
+        )
+        if result is None or not result.changed:
             return ()
-        try:
-            index = keys.index(editor.selection)
-        except ValueError:
-            index = 0
-        target = min(max(index + delta, 0), len(keys) - 1)
-        if target == index:
-            return ()
-        editor.selection = keys[target]
+        editor.selection = result.selection
         editor.error = EMPTY_STATUS
         return (ClearAdjustmentFeedbackIntent(),)
 
