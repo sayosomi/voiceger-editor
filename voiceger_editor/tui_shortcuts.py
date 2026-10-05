@@ -202,8 +202,8 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         _escape_action("back", "Back"),
     ),
     "dictionary_japanese_list": (
-        MenuItem("sort", "Sort", "s", "action", "activate"),
-        MenuItem("filter", "Filter", "f", "action", "activate"),
+        MenuItem("sort", "Sort", "s", "adjustable", "activate"),
+        MenuItem("filter", "Filter", "f", "adjustable", "activate"),
         MenuItem("add", "Add", "a", "action", "activate"),
         MenuItem(
             "delete",
@@ -216,8 +216,8 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         _escape_action("back", "Back"),
     ),
     "dictionary_english_list": (
-        MenuItem("sort", "Sort", "s", "action", "activate"),
-        MenuItem("filter", "Filter", "f", "action", "activate"),
+        MenuItem("sort", "Sort", "s", "adjustable", "activate"),
+        MenuItem("filter", "Filter", "f", "adjustable", "activate"),
         MenuItem("add", "Add", "a", "action", "activate"),
         MenuItem(
             "delete",
@@ -227,6 +227,9 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
             "activate",
             condition_key="can_delete",
         ),
+        _escape_action("back", "Back"),
+    ),
+    "dictionary_sort": (
         _escape_action("back", "Back"),
     ),
     "dictionary_japanese_filter": (
