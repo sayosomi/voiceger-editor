@@ -1996,11 +1996,17 @@ class TuiEditorController:
             if not 1 <= current <= 100:
                 editor.error = error_status("Top K must be an integer from 1 through 100.")
                 return clear_feedback
-            updated = min(100, max(1, current + direction))
-            if updated == current:
+            result = step_bounded(
+                current,
+                direction=direction,
+                step=1,
+                minimum=1,
+                maximum=100,
+            )
+            if not result.changed:
                 editor.error = EMPTY_STATUS
                 return clear_feedback
-            draft["top_k"] = str(updated)
+            draft["top_k"] = str(result.value)
         elif selected in {"top_p", "temperature"}:
             label = "Top P" if selected == "top_p" else "Temperature"
             try:
