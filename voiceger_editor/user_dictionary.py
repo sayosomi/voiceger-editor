@@ -290,14 +290,13 @@ class UserDictionaryCore:
     def _serialize_japanese(entries: Mapping[str, UserDictWord]) -> bytes:
         payload = {
             word_uuid: word.model_dump(mode="json")
-            for word_uuid, word in sorted(entries.items())
+            for word_uuid, word in entries.items()
         }
         return (
             json.dumps(
                 payload,
                 ensure_ascii=False,
                 indent=2,
-                sort_keys=True,
                 allow_nan=False,
             )
             + "\n"
@@ -309,14 +308,13 @@ class UserDictionaryCore:
     ) -> bytes:
         payload = {
             surface: entry.phonemes
-            for surface, entry in sorted(entries.items())
+            for surface, entry in entries.items()
         }
         return (
             json.dumps(
                 payload,
                 ensure_ascii=False,
                 indent=2,
-                sort_keys=True,
                 allow_nan=False,
             )
             + "\n"
@@ -526,10 +524,10 @@ class UserDictionaryCore:
             raise UserDictionaryInputError(str(exc)) from exc
 
         with self._lock:
-            if override:
-                candidate = {**self._japanese, **imported}
-            else:
-                candidate = {**imported, **self._japanese}
+            candidate = dict(self._japanese)
+            for word_uuid, word in imported.items():
+                if override or word_uuid not in candidate:
+                    candidate[word_uuid] = word
             self._commit_japanese(candidate)
 
     @staticmethod
@@ -560,6 +558,23 @@ class UserDictionaryCore:
                     return list(entry.phonemes)
         return None
 
+    def _replace_english_entry_preserving_order(
+        self,
+        original_key: str,
+        entry: EnglishUserDictionaryEntry,
+    ) -> dict[str, EnglishUserDictionaryEntry]:
+        candidate: dict[str, EnglishUserDictionaryEntry] = {}
+        replaced = False
+        for old_surface, old_entry in self._english.items():
+            if self._english_key(old_surface) == original_key:
+                candidate[entry.surface] = entry
+                replaced = True
+            else:
+                candidate[old_surface] = old_entry
+        if not replaced:
+            candidate[entry.surface] = entry
+        return candidate
+
     def set_english_entry(
         self,
         surface: str,
@@ -577,12 +592,7 @@ class UserDictionaryCore:
             raise UserDictionaryInputError(str(exc)) from exc
 
         with self._lock:
-            candidate = {
-                old_surface: old_entry
-                for old_surface, old_entry in self._english.items()
-                if self._english_key(old_surface) != key
-            }
-            candidate[surface] = entry
+            candidate = self._replace_english_entry_preserving_order(key, entry)
             try:
                 _atomic_write(self.english_path, self._serialize_english(candidate))
             except Exception as exc:
@@ -634,12 +644,10 @@ class UserDictionaryCore:
                     "English dictionary target surface already exists"
                 )
 
-            candidate = {
-                old_surface: old_entry
-                for old_surface, old_entry in self._english.items()
-                if self._english_key(old_surface) != original_key
-            }
-            candidate[surface] = entry
+            candidate = self._replace_english_entry_preserving_order(
+                original_key,
+                entry,
+            )
             try:
                 _atomic_write(self.english_path, self._serialize_english(candidate))
             except Exception as exc:

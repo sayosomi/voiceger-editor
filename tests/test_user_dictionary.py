@@ -150,6 +150,103 @@ class UserDictionaryTests(unittest.TestCase):
             },
         )
 
+
+    def test_japanese_file_order_is_canonical_through_mutations_and_import(self):
+        first_uuid = self.add_word(
+            surface="一語",
+            pronunciation="イチゴ",
+            accent_type=2,
+        )
+        second_uuid = self.add_word(
+            surface="二語",
+            pronunciation="ニゴ",
+            accent_type=2,
+        )
+        original_entries = self.core.list_japanese_entries()
+        legacy_order = sorted((first_uuid, second_uuid), reverse=True)
+        legacy_payload = {
+            word_uuid: original_entries[word_uuid].model_dump(mode="json")
+            for word_uuid in legacy_order
+        }
+        self.core.japanese_path.write_text(
+            json.dumps(legacy_payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        loaded = UserDictionaryCore(
+            self.voiceger_root,
+            data_directory=self.data_dir,
+            openjtalk_dictionary=FakeBackend(),
+        )
+        self.assertEqual(
+            list(loaded.list_japanese_entries()),
+            legacy_order,
+        )
+
+        appended_uuid = "11111111-1111-4111-8111-111111111111"
+        with patch(
+            "voiceger_editor.user_dictionary.uuid4",
+            return_value=appended_uuid,
+        ):
+            self.assertEqual(
+                loaded.add_japanese_word(
+                    surface="三語",
+                    pronunciation="サンゴ",
+                    accent_type=2,
+                ),
+                appended_uuid,
+            )
+        expected_order = [*legacy_order, appended_uuid]
+        self.assertEqual(
+            list(json.loads(loaded.japanese_path.read_text(encoding="utf-8"))),
+            expected_order,
+        )
+
+        loaded.update_japanese_word(
+            legacy_order[0],
+            surface="更新語",
+            pronunciation="コウシンゴ",
+            accent_type=0,
+        )
+        self.assertEqual(
+            list(loaded.list_japanese_entries()),
+            expected_order,
+        )
+
+        existing_word = loaded.list_japanese_entries()[legacy_order[1]]
+        imported_uuid_1 = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+        imported_uuid_2 = "22222222-2222-4222-8222-222222222222"
+        loaded.import_japanese(
+            {
+                legacy_order[1]: existing_word,
+                imported_uuid_1: existing_word,
+                imported_uuid_2: existing_word,
+            },
+            override=False,
+        )
+        expected_order.extend((imported_uuid_1, imported_uuid_2))
+        self.assertEqual(
+            list(loaded.list_japanese_entries()),
+            expected_order,
+        )
+
+        loaded.delete_japanese_word(legacy_order[1])
+        expected_order.remove(legacy_order[1])
+        self.assertEqual(
+            list(json.loads(loaded.japanese_path.read_text(encoding="utf-8"))),
+            expected_order,
+        )
+
+        reloaded = UserDictionaryCore(
+            self.voiceger_root,
+            data_directory=self.data_dir,
+            openjtalk_dictionary=FakeBackend(),
+        )
+        self.assertEqual(
+            list(reloaded.list_japanese_entries()),
+            expected_order,
+        )
+
     def test_all_supported_word_types_and_voicevox_cost_candidates(self):
         for word_type, data in WORD_TYPE_DATA.items():
             with self.subTest(word_type=word_type):
@@ -543,6 +640,71 @@ class UserDictionaryTests(unittest.TestCase):
             self.assertIs(engine._global_jtalk, last_known_good)
             self.assertIs(openjtalk_dictionary._ACTIVE_COMPILATION, compiled)
             compiled.close()
+
+
+    def test_english_file_order_is_canonical_through_mutations(self):
+        self.core.english_path.parent.mkdir(parents=True, exist_ok=True)
+        self.core.english_path.write_text(
+            json.dumps(
+                {
+                    "Zulu": ["Z", "UW1", "L", "UW0"],
+                    "Alpha": ["AE1", "L", "F", "AH0"],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        loaded = UserDictionaryCore(
+            self.voiceger_root,
+            data_directory=self.data_dir,
+            openjtalk_dictionary=FakeBackend(),
+        )
+        self.assertEqual(
+            list(loaded.list_english_entries()),
+            ["Zulu", "Alpha"],
+        )
+
+        loaded.add_english_entry("Mike", ["M", "AY1", "K"])
+        self.assertEqual(
+            list(json.loads(loaded.english_path.read_text(encoding="utf-8"))),
+            ["Zulu", "Alpha", "Mike"],
+        )
+
+        loaded.set_english_entry("ALPHA", ["AE1", "L", "F", "AH0"])
+        self.assertEqual(
+            list(loaded.list_english_entries()),
+            ["Zulu", "ALPHA", "Mike"],
+        )
+
+        loaded.update_english_entry(
+            "Zulu",
+            surface="ZuluPrime",
+            phonemes=["Z", "UW1", "L", "UW0"],
+        )
+        self.assertEqual(
+            list(loaded.list_english_entries()),
+            ["ZuluPrime", "ALPHA", "Mike"],
+        )
+
+        loaded.delete_english_entry("ALPHA")
+        expected_order = ["ZuluPrime", "Mike"]
+        self.assertEqual(
+            list(json.loads(loaded.english_path.read_text(encoding="utf-8"))),
+            expected_order,
+        )
+
+        reloaded = UserDictionaryCore(
+            self.voiceger_root,
+            data_directory=self.data_dir,
+            openjtalk_dictionary=FakeBackend(),
+        )
+        self.assertEqual(
+            list(reloaded.list_english_entries()),
+            expected_order,
+        )
 
     def test_english_update_atomically_renames_and_rejects_collisions(self):
         self.core.set_english_entry("record", ["R", "EH1", "K", "ER0", "D"])
