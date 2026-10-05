@@ -54,6 +54,13 @@ VOICEGER_ROOT=~/voiceger_v2 \
 - Keep TUI architecture regression tests green.
 - See [`docs/development/tui-architecture.md`](docs/development/tui-architecture.md) for the subsystem ownership map and placement guidance.
 
+## TUI UI conventions
+
+- Before settling the implementation contract for any Task that changes TUI-visible presentation, navigation, focus behavior, key interaction, editor or modal interaction, or Status behavior, read [`docs/development/tui-ui-guidelines.md`](docs/development/tui-ui-guidelines.md).
+- Treat that document as the canonical owner of reusable cross-screen TUI interaction and presentation conventions.
+- If a Task introduces a new reusable cross-screen convention or changes an existing one, update the guideline in the same change and cover the resulting behavior with focused tests where applicable.
+- Keep feature-specific behavior, screen-specific menu order, and exact feature semantics out of the shared guideline; those belong in the feature owner, Issue contract, and focused tests.
+
 ## Manual testing and generated files
 
 - Do not create temporary JSON, WAV, logs, or other test artifacts in the repository root.
