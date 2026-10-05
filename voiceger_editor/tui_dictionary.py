@@ -284,6 +284,11 @@ class TuiDictionaryController:
                     "item_index": index,
                     "item": item,
                     "word_type": japanese_word_type(item.incoming),
+                    "existing_word_type": (
+                        None
+                        if item.existing is None
+                        else japanese_word_type(item.existing)
+                    ),
                 },
             )
         return EditorState(
