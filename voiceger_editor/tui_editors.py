@@ -363,7 +363,7 @@ class TuiEditorController:
             kind="build_confirmation",
             title="REBUILD PRONUNCIATION?",
             origin=origin,
-            selection="rebuild",
+            selection="cancel",
             payload={
                 "warning": "Manual pronunciation or utterance edits will be replaced."
             },
@@ -1451,7 +1451,7 @@ class TuiEditorController:
             kind="delete_confirmation",
             title="DELETE SECTION?",
             origin=editor.origin,
-            selection="delete",
+            selection="cancel",
             payload={
                 "warning": "This section will be removed from the synthesized utterance.",
                 "parent_editor": deepcopy(editor),
@@ -1468,7 +1468,7 @@ class TuiEditorController:
             kind="clear_candidates_confirmation",
             title="CLEAR CANDIDATES?",
             origin=origin,
-            selection="clear",
+            selection="cancel",
             payload={
                 "warning": (
                     "All generated candidate WAV files will be discarded."
