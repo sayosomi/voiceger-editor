@@ -278,6 +278,15 @@ class TuiDictionaryController:
             ),
         )
 
+    def suspend_editor(self) -> bool:
+        """Suspend the active Dictionary screen for a temporary external editor."""
+
+        if self.editor is None:
+            return False
+        self._suspended_editor = self.editor
+        self.editor = None
+        return True
+
     def restore_suspended_editor(self) -> bool:
         """Restore a Dictionary screen after a temporary external editor."""
 
@@ -293,8 +302,6 @@ class TuiDictionaryController:
         editor = self.editor
         if editor is None or editor.kind != "dictionary_export":
             return ()
-        self._suspended_editor = editor
-        self.editor = None
         return (OpenDictionarySettingsIntent("output_dir", edit=True),)
 
     def _clear_import_state(self) -> None:
