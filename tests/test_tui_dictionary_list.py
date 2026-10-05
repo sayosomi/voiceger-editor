@@ -420,7 +420,7 @@ class DictionaryListControllerIntegrationTests(unittest.TestCase):
         self.assertEqual(self.controller.editor.payload["entry_ids"], ("record",))
         self.assertEqual(self.controller.editor.selection, "filter")
 
-    def test_filter_row_right_opens_editor_when_no_saved_criteria_exist(self):
+    def test_filter_row_arrows_do_nothing_when_no_saved_criteria_exist(self):
         self.core.english = {
             "record": en_word("record", ["R", "EH1", "K", "ER0", "D"]),
         }
@@ -430,8 +430,18 @@ class DictionaryListControllerIntegrationTests(unittest.TestCase):
         self.key(curses.KEY_DOWN)
         self.assertEqual(self.controller.editor.selection, "filter")
 
-        self.key(curses.KEY_RIGHT)
+        for key in (curses.KEY_LEFT, curses.KEY_RIGHT):
+            with self.subTest(key=key):
+                self.key(key)
+                self.assertEqual(
+                    self.controller.editor.kind,
+                    "dictionary_english_list",
+                )
+                self.assertEqual(self.controller.editor.selection, "filter")
+                self.assertFalse(self.controller.editor.payload["filter_enabled"])
+                self.assertEqual(self.controller.editor.payload["text_filter"], "")
 
+        self.key("\n")
         self.assertEqual(self.controller.editor.kind, "dictionary_english_filter")
         self.assertEqual(self.controller.editor.selection, "text_query")
 
