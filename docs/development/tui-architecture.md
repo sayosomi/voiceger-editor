@@ -15,6 +15,7 @@ Keyboard interaction and presentation conventions are documented separately in [
 | `voiceger_editor/tui_dictionary.py` | User-dictionary modal state, keyboard interaction, quick-save resolution, CRUD drafts, confirmation policy, operation request snapshots, and UI-thread application of Dictionary analysis and persistence results. |
 | `voiceger_editor/tui_help.py` | Help open/closed state, scroll position, close/quit key outcomes, and Help scroll/clamping policy. |
 | `voiceger_editor/tui_input.py` | Terminal input decoding; Add captions paste-newline inference from already queued input while preserving ordinary curses keys and terminal modes. |
+| `voiceger_editor/tui_text_editing.py` | Shared feature-neutral editable-field text/cursor key mechanics: horizontal and wrapped vertical cursor movement, Home/End, deletion, printable insertion, and handled/change result reporting. |
 | `voiceger_editor/tui_navigation.py` | Selectable item ordering; focus state; remembered pronunciation segment; navigation revision; Up/Down and major-section movement; navigation action interpretation. |
 | `voiceger_editor/tui_adjustments.py` | Pure shared Left / Right value-stepping helpers for bounded values and intentionally cyclic categorical choices; returns updated values plus changed / unchanged state without owning feature-specific ranges, steps, or options. |
 | `voiceger_editor/tui_editors.py` | Editor state and drafts; text, Japanese, English, and settings interaction policy; English grouping cache; editor validation; typed editor intents and results. |
