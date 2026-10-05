@@ -389,7 +389,7 @@ class TuiTests(unittest.TestCase):
         set_navigation_focus(app, ("output", None))
         app._render()
         output = next(item for item in screen.drawn if item[0] == 2)
-        self.assertTrue(output[2].startswith("▶ Output:"))
+        self.assertTrue(output[2].startswith("▶ [O] Output:"))
         self.assertTrue(output[3] & curses.A_REVERSE)
         self.assertIn(("settings", None), navigation_items(app))
         self.assertEqual(
