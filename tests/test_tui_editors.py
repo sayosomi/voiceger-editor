@@ -359,6 +359,25 @@ class TuiEditorControllerTests(unittest.TestCase):
         )
         self.assertIsNone(controller.editor)
 
+        controller, _provider = self.make_controller()
+        controller.open_build_confirmation(origin=("build_pronunciation", None))
+        self.assertEqual(
+            controller.handle_key(
+                "\x1b",
+                settings=self.settings(),
+                query=None,
+                current_caption="caption",
+            ),
+            (
+                ClearAdjustmentFeedbackIntent(),
+                CloseEditorIntent(
+                    ("build_pronunciation", None),
+                    "Pronunciation rebuild cancelled.",
+                ),
+            ),
+        )
+        self.assertIsNone(controller.editor)
+
     def test_pronunciation_rows_are_one_per_phrase_and_english_word(self):
         groups = {
             "hello everyone": (
