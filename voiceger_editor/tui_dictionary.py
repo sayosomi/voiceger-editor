@@ -404,8 +404,8 @@ class TuiDictionaryController:
         if editor.kind == "dictionary_japanese_list":
             modes = JAPANESE_SORT_MODES
             current = editor.payload["sort_mode"]
-            target = modes[(modes.index(current) + direction) % len(modes)]
-            if target == current:
+            result = step_cyclic(current, modes, direction=direction)
+            if not result.changed:
                 editor.selection = "sort"
                 return adjustment_feedback_intents(
                     changed=False,
@@ -413,12 +413,12 @@ class TuiDictionaryController:
                     control="sort",
                     direction=direction,
                 )
-            self.set_japanese_list_sort(target)
+            self.set_japanese_list_sort(result.value)
         elif editor.kind == "dictionary_english_list":
             modes = ENGLISH_SORT_MODES
             current = editor.payload["sort_mode"]
-            target = modes[(modes.index(current) + direction) % len(modes)]
-            if target == current:
+            result = step_cyclic(current, modes, direction=direction)
+            if not result.changed:
                 editor.selection = "sort"
                 return adjustment_feedback_intents(
                     changed=False,
@@ -426,7 +426,7 @@ class TuiDictionaryController:
                     control="sort",
                     direction=direction,
                 )
-            self.set_english_list_sort(target)
+            self.set_english_list_sort(result.value)
         else:
             return ()
         assert self.editor is not None
