@@ -410,6 +410,34 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_menu")
         self.assertIsNone(app._editor_controller.editor)
 
+    def test_export_output_settings_return_to_export_on_cancel_and_save(self):
+        app = self.make_app(query=mixed_query())
+
+        app._handle_key("d")
+        app._handle_key("x")
+        self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_export")
+
+        app._handle_key("o")
+        self.assertFalse(app._dictionary_controller.active)
+        self.assertEqual(app._editor_controller.editor.kind, "settings")
+        self.assertEqual(app._editor_controller.editor.selection, "output_dir")
+        self.assertEqual(app._editor_controller.editor.active_field, "output_dir")
+
+        app._handle_key("\x1b")
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_export")
+        self.assertEqual(app._dictionary_controller.editor.selection, "output")
+
+        app._handle_key("o")
+        self.assertEqual(app._editor_controller.editor.active_field, "output_dir")
+        app._handle_key("\n")
+        with patch("voiceger_editor.tui.save_settings") as save:
+            app._handle_key("a")
+        save.assert_called_once()
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_export")
+        self.assertEqual(app._dictionary_controller.editor.selection, "output")
+
     def test_pronunciation_editor_dictionary_actions_preserve_editor_state(self):
         app = self.make_app(query=mixed_query())
         app._edit_selected_pronunciation(0)
