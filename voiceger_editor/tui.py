@@ -101,6 +101,7 @@ class TuiApp:
             input_prefix=_active_input_prefix,
             japanese_pronunciation=self.adapter.japanese_dictionary_pronunciation,
             english_word_groups=self.adapter.english_word_phoneme_groups,
+            output_dir=lambda: self.settings.output_dir,
         )
         self._pressed_adjustment: tuple[str, str, int] | None = None
         self._renderer = TuiRenderer()
