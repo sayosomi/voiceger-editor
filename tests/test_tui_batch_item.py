@@ -145,6 +145,16 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             (ClearAdjustmentFeedbackIntent(),)
         )
 
+    def test_output_shortcut_opens_output_settings_directly(self):
+        subject, _batch, bindings, _state = self.make_subject()
+
+        subject.handle_key("o", bindings)
+
+        bindings.actions.open_settings_editor.assert_called_once_with(
+            "output_dir",
+            edit=True,
+        )
+
     def test_caption_movement_is_blocked_while_synthesis_is_busy(self):
         subject, batch, bindings, state = self.make_subject()
         bindings.actions.operations.busy = True
