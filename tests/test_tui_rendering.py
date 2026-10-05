@@ -26,6 +26,7 @@ from voiceger_editor.tui_status import (
     info_status,
     warning_status,
 )
+from voiceger_editor.user_dictionary import JapaneseWordType
 from voiceger_editor.voicevox_api_models import (
     AccentPhrase,
     AudioQuery,
@@ -1391,6 +1392,138 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn(("▶ [J] Japanese      2 words", "japanese"), document)
         self.assertIn(("  [E] English       1 words", "english"), document)
         self.assertIn(("  [Esc] Back", "back"), document)
+
+    def test_dictionary_menu_renders_import_entry_point(self):
+        editor = SimpleNamespace(
+            kind="dictionary_menu",
+            title="DICTIONARY",
+            selection="import",
+            payload={"japanese_count": 2, "english_count": 1},
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+
+        self.assertIn(("▶ [I] Import dictionary", "import"), document)
+
+    def test_dictionary_import_review_is_compact_and_marks_conflicts_after_checkbox(self):
+        items = (
+            SimpleNamespace(
+                selected=True,
+                relation=SimpleNamespace(value="new"),
+                incoming=SimpleNamespace(surface="ずんだもん"),
+            ),
+            SimpleNamespace(
+                selected=False,
+                relation=SimpleNamespace(value="conflict"),
+                incoming=SimpleNamespace(surface="雨"),
+            ),
+        )
+        editor = SimpleNamespace(
+            kind="dictionary_import_review",
+            title="IMPORT DICTIONARY",
+            selection=("import_entry", 1),
+            payload={
+                "items": items,
+                "total_count": 3,
+                "exact_duplicate_count": 1,
+                "review_count": 2,
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        labels = [line for line, _key in document]
+
+        self.assertIn("3 words found", labels)
+        self.assertIn("1 already exist", labels)
+        self.assertIn("2 to review", labels)
+        self.assertIn("  [x]   ずんだもん", labels)
+        self.assertIn("▶ [ ] ! 雨", labels)
+        self.assertFalse(any("CONFLICT" in line or "NEW" in line for line in labels))
+        self.assertIn(("  [I] Import selected", "import_selected"), document)
+        self.assertIn(("  [C] Clear selection", "clear_selection"), document)
+        self.assertIn(("  [Esc] Back", "back"), document)
+
+    def test_dictionary_import_detail_renders_japanese_fields_and_english_comparison(self):
+        japanese_item = SimpleNamespace(
+            incoming=SimpleNamespace(
+                surface="雨",
+                pronunciation="アメ",
+                accent_type=1,
+                priority=6,
+            ),
+            existing=None,
+        )
+        japanese = SimpleNamespace(
+            kind="dictionary_import_japanese_detail",
+            title="IMPORT JAPANESE WORD",
+            selection="word_type",
+            payload={
+                "item": japanese_item,
+                "word_type": JapaneseWordType.COMMON_NOUN,
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=japanese), 80
+        )
+        labels = [line for line, _key in document]
+        self.assertIn("Incoming", labels)
+        self.assertIn("  Surface        雨", labels)
+        self.assertIn("  Pronunciation  アメ", labels)
+        self.assertIn("  Accent         1", labels)
+        self.assertTrue(any("Word type" in line and "COMMON_NOUN" in line for line in labels))
+        self.assertIn("  Priority       6", labels)
+
+        english_item = SimpleNamespace(
+            incoming=SimpleNamespace(
+                surface="Voiceger",
+                phonemes=["V", "OY1", "AH0", "JH", "ER0"],
+            ),
+            existing=SimpleNamespace(
+                surface="Voiceger",
+                phonemes=["V", "OY1", "JH", "ER0"],
+            ),
+        )
+        english = SimpleNamespace(
+            kind="dictionary_import_english_detail",
+            title="IMPORT ENGLISH WORD",
+            selection="back",
+            payload={"item": english_item},
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=english), 80
+        )
+        labels = [line for line, _key in document]
+        self.assertIn("Incoming", labels)
+        self.assertIn("Existing", labels)
+        self.assertTrue(any("V OY1 AH0 JH ER0" in line for line in labels))
+        self.assertTrue(any("V OY1 JH ER0" in line for line in labels))
+        self.assertFalse(any("Word type" in line for line in labels))
 
     def test_dictionary_delete_confirmation_matches_common_modal(self):
         cases = (
