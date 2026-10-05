@@ -233,29 +233,6 @@ class TuiDictionaryControllerTests(unittest.TestCase):
                 "Existing": EnglishUserDictionaryEntry(
                     surface="Existing",
                     phonemes=["IH0", "G", "Z", "IH1", "S", "T", "IH0", "NG"],
-                )
-            },
-            [
-                EnglishUserDictionaryEntry(
-                    surface="Existing",
-                    phonemes=["EH1", "G", "Z", "IH0", "S", "T", "IH0", "NG"],
-                ),
-                EnglishUserDictionaryEntry(
-                    surface="New",
-                    phonemes=["N", "UW1"],
-                ),
-                EnglishUserDictionaryEntry(
-                    surface="Same",
-                    phonemes=["S", "EY1", "M"],
-                ),
-            ],
-        )
-        # Rebuild with Same in the base so it becomes an omitted exact duplicate.
-        review = EnglishDictionaryImportReview(
-            {
-                "Existing": EnglishUserDictionaryEntry(
-                    surface="Existing",
-                    phonemes=["IH0", "G", "Z", "IH1", "S", "T", "IH0", "NG"],
                 ),
                 "Same": EnglishUserDictionaryEntry(
                     surface="Same",
@@ -327,6 +304,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
             "アメ",
             1,
             word_type=JapaneseWordType.COMMON_NOUN,
+            priority=6,
         )
         review = JapaneseDictionaryImportReview(
             {"existing": existing},
@@ -382,8 +360,8 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.assertEqual(self.controller.editor.kind, "dictionary_menu")
         self.assertEqual(self.controller.editor.payload["english_count"], 1)
         self.assertIn("Voiceger", self.core.english)
-        self.assertIn("1 imported", completion[0].status.text)
-        self.assertIn("0 replaced", completion[0].status.text)
+        self.assertIn("1 imported", str(completion[0].status))
+        self.assertIn("0 replaced", str(completion[0].status))
         self.assertIn("0 skipped", completion[0].status.text)
 
     def test_invalid_import_load_keeps_dictionary_and_path_screen(self):
