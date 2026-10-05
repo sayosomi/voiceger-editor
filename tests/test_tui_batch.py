@@ -55,6 +55,8 @@ class TuiBatchControllerTests(unittest.TestCase):
             dictionary_controller=SimpleNamespace(open_menu=Mock(return_value=())),
             set_session=Mock(),
             set_status=Mock(),
+            clear_adjustment_feedback=Mock(),
+            mark_adjustment_pressed=Mock(),
             open_caption_editor=Mock(),
             change_settings=Mock(),
             open_settings_editor=Mock(),
@@ -389,11 +391,26 @@ class TuiBatchControllerTests(unittest.TestCase):
 
         controller.dispatch_actions((AdjustBatchTakeCount(1),), bindings)
 
+        bindings.mark_adjustment_pressed.assert_called_once_with(
+            "batch_list",
+            "takes",
+            1,
+        )
         bindings.change_settings.assert_called_once_with(
             take_count=5,
             report_success=False,
         )
         self.assertEqual(controller.batch.default_take_count, 4)
+
+    def test_dispatch_take_adjustment_at_endpoint_clears_feedback(self):
+        controller = TuiBatchController(default_take_count=100)
+        bindings = self.make_bindings()
+
+        controller.dispatch_actions((AdjustBatchTakeCount(1),), bindings)
+
+        bindings.clear_adjustment_feedback.assert_called_once_with()
+        bindings.mark_adjustment_pressed.assert_not_called()
+        bindings.change_settings.assert_not_called()
 
     def test_add_captions_uses_frontend_neutral_multiline_model(self):
         controller = self.make_controller()
