@@ -718,7 +718,7 @@ class TuiRenderingTests(unittest.TestCase):
             self.assertNotIn(removed, visible)
         self.assertNotIn("F5", visible)
         self.assertNotIn("Ctrl+G", visible)
-        back = next(item for item in screen.drawn if item[2] == "▶ Back")
+        back = next(item for item in screen.drawn if item[2] == "▶ [Esc] Back")
         self.assertEqual(back[0], screen.rows - 2)
         self.assertTrue(back[3] & curses.A_REVERSE)
 
@@ -736,7 +736,7 @@ class TuiRenderingTests(unittest.TestCase):
             for row, _column, text, _attr in screen.drawn
             if row == screen.rows - 1
         )
-        back = next(item for item in screen.drawn if item[2] == "▶ Back")
+        back = next(item for item in screen.drawn if item[2] == "▶ [Esc] Back")
         self.assertEqual(footer, "Status: Help notice.")
         self.assertEqual(back[0], screen.rows - 2)
 
@@ -745,7 +745,7 @@ class TuiRenderingTests(unittest.TestCase):
             with self.subTest(height=height):
                 screen = FakeScreen(rows=height, columns=80)
                 self.renderer.render_help(screen, screen.columns)
-                back = next(item for item in screen.drawn if item[2] == "▶ Back")
+                back = next(item for item in screen.drawn if item[2] == "▶ [Esc] Back")
                 self.assertEqual(back[0], height - 2)
                 self.assertTrue(back[3] & curses.A_REVERSE)
                 self.assertFalse(
@@ -769,7 +769,7 @@ class TuiRenderingTests(unittest.TestCase):
         bottom_visible = self.rendered(screen)
         self.assertIn(": Quit", bottom_visible)
         self.assertNotIn(f"Docs: {DOCUMENTATION_URL}", bottom_visible)
-        back = next(item for item in screen.drawn if item[2] == "▶ Back")
+        back = next(item for item in screen.drawn if item[2] == "▶ [Esc] Back")
         self.assertEqual(back[0], screen.rows - 2)
         self.assertTrue(back[3] & curses.A_REVERSE)
 
@@ -798,7 +798,7 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line for line, _key in document]
         self.assertEqual(document[0][0], "EDIT CAPTION TEXT")
         self.assertEqual(
-            labels[-4:], ["  [A] Apply", "  [C] Clear", "  [R] Reset", "  Back"]
+            labels[-4:], ["  [A] Apply", "  [C] Clear", "  [R] Reset", "  [Esc] Back"]
         )
         self.assertEqual(labels.index(""), 1)
         self.assertEqual(labels.index("", 2), labels.index("▶ hello") + 1)
@@ -1079,7 +1079,7 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line for line, _key in document]
         self.assertEqual(document[0][0], "REBUILD PRONUNCIATION?")
         self.assertIn("Manual pronunciation or utterance edits will be replaced.", labels)
-        self.assertEqual(labels[-2:], ["▶ [R] Rebuild", "  Cancel"])
+        self.assertEqual(labels[-2:], ["▶ [R] Rebuild", "  [Esc] Cancel"])
         self.assertIsNone(cursor_line)
 
     def test_japanese_editor_shows_wrapped_source_and_active_direct_notation(self):
@@ -1114,7 +1114,7 @@ class TuiRenderingTests(unittest.TestCase):
                 "  [E] Edit text",
                 "  [C] Clear",
                 "  [R] Reset",
-                "  Back",
+                "  [Esc] Back",
             ],
         )
 
@@ -1389,7 +1389,7 @@ class TuiRenderingTests(unittest.TestCase):
 
         self.assertIn(("▶ [J] Japanese      2 words", "japanese"), document)
         self.assertIn(("  [E] English       1 words", "english"), document)
-        self.assertIn(("  Back", "back"), document)
+        self.assertIn(("  [Esc] Back", "back"), document)
 
     def test_dictionary_delete_confirmation_matches_common_modal(self):
         cases = (
@@ -1452,7 +1452,16 @@ class TuiRenderingTests(unittest.TestCase):
             kind="dictionary_japanese_list",
             title="JAPANESE DICTIONARY",
             selection="add",
-            payload={"entries": ()},
+            payload={
+                "entries": (),
+                "sort_mode": "surface_asc",
+                "text_filter": "",
+                "filter_enabled": False,
+                "word_type_filter": "ALL",
+                "visible_count": 0,
+                "total_count": 0,
+                "can_delete": False,
+            },
             active_field=None,
             input_value="",
             input_cursor=0,
@@ -1468,8 +1477,158 @@ class TuiRenderingTests(unittest.TestCase):
             any("No Japanese dictionary words." in line for line, _key in document)
         )
         self.assertIn(("▶ [A] Add", "add"), document)
-        self.assertIn(("  Back", "back"), document)
+        self.assertTrue(any("[S] Sort" in line for line, _key in document))
+        filter_line = next(line for line, key in document if key == "filter")
+        self.assertIn("[F] Filter", filter_line)
+        self.assertIn("Not set", filter_line)
+        self.assertNotIn("<", filter_line)
+        self.assertNotIn(">", filter_line)
+        self.assertIn(("  [Esc] Back", "back"), document)
         self.assertFalse(any("[X] Delete" in line for line, _key in document))
+
+    def test_filtered_dictionary_no_match_keeps_actions_and_shown_total_count(self):
+        editor = SimpleNamespace(
+            kind="dictionary_english_list",
+            title="ENGLISH DICTIONARY",
+            selection="filter",
+            payload={
+                "entries": (),
+                "sort_mode": "added_desc",
+                "text_filter": "missing",
+                "filter_enabled": True,
+                "word_type_filter": None,
+                "visible_count": 0,
+                "total_count": 3,
+                "can_delete": False,
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        visible = "\n".join(line for line, _key in document)
+
+        self.assertIn("Showing 0 / 3 words", visible)
+        self.assertIn("No matching English dictionary words.", visible)
+        self.assertIn("[S] Sort", visible)
+        self.assertIn("Added ↓", visible)
+        self.assertIn("[F] Filter", visible)
+        self.assertIn("On: missing", visible)
+        self.assertIn("[A] Add", visible)
+        self.assertNotIn("[X] Delete", visible)
+
+    def test_configured_disabled_filter_keeps_angle_bracket_off_state(self):
+        editor = SimpleNamespace(
+            kind="dictionary_english_list",
+            title="ENGLISH DICTIONARY",
+            selection="filter",
+            payload={
+                "entries": (),
+                "sort_mode": "surface_asc",
+                "text_filter": "record",
+                "filter_enabled": False,
+                "word_type_filter": None,
+                "visible_count": 0,
+                "total_count": 0,
+                "can_delete": False,
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        filter_line = next(line for line, key in document if key == "filter")
+        self.assertIn("< Off >", filter_line)
+
+    def test_dictionary_sort_chooser_renders_all_modes_without_angle_brackets(self):
+        editor = SimpleNamespace(
+            kind="dictionary_sort",
+            title="SORT JAPANESE DICTIONARY",
+            selection=("sort", 1),
+            payload={
+                "language": "ja",
+                "modes": (
+                    "surface_asc",
+                    "surface_desc",
+                    "word_type",
+                    "priority_asc",
+                    "priority_desc",
+                    "added_asc",
+                    "added_desc",
+                ),
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        visible = "\n".join(line for line, _key in document)
+        self.assertIn("Surface ↑", visible)
+        self.assertIn("▶ Surface ↓", visible)
+        self.assertIn("Word type", visible)
+        self.assertIn("Priority ↓", visible)
+        self.assertIn("Added ↓", visible)
+        self.assertNotIn("< Surface", visible)
+        self.assertIn("[Esc] Back", visible)
+
+    def test_dictionary_filter_editors_render_focused_fields_and_actions(self):
+        cases = (
+            SimpleNamespace(
+                kind="dictionary_japanese_filter",
+                title="FILTER JAPANESE DICTIONARY",
+                selection="word_type",
+                payload={
+                    "language": "ja",
+                    "text_query": "アメ",
+                    "word_type_filter": "PROPER_NOUN",
+                },
+                active_field=None,
+                input_value="",
+                input_cursor=0,
+                error="",
+                scroll=0,
+            ),
+            SimpleNamespace(
+                kind="dictionary_english_filter",
+                title="FILTER ENGLISH DICTIONARY",
+                selection="text_query",
+                payload={"language": "en", "text_query": "ER0 D"},
+                active_field=None,
+                input_value="",
+                input_cursor=0,
+                error="",
+                scroll=0,
+            ),
+        )
+        for editor in cases:
+            with self.subTest(kind=editor.kind):
+                document, _cursor_line, _cursor_column = self.renderer.editor_document(
+                    render_state(editor=editor), 80
+                )
+                visible = "\n".join(line for line, _key in document)
+                self.assertIn("[A] Apply", visible)
+                self.assertIn("[C] Clear filter", visible)
+                self.assertIn("[Esc] Back", visible)
+                if editor.kind == "dictionary_japanese_filter":
+                    self.assertIn("Surface / Pronunciation", visible)
+                    self.assertIn("PROPER_NOUN", visible)
+                else:
+                    self.assertIn("Surface / ARPAbet", visible)
+                    self.assertIn("ER0 D", visible)
 
     def test_japanese_dictionary_list_uses_main_mora_accent_display(self):
         word = SimpleNamespace(
@@ -1481,7 +1640,16 @@ class TuiRenderingTests(unittest.TestCase):
             kind="dictionary_japanese_list",
             title="JAPANESE DICTIONARY",
             selection=("entry", 0),
-            payload={"entries": (("uuid", word),)},
+            payload={
+                "entries": (("uuid", word),),
+                "sort_mode": "priority_desc",
+                "text_filter": "ずん",
+                "filter_enabled": True,
+                "word_type_filter": "PROPER_NOUN",
+                "visible_count": 1,
+                "total_count": 4,
+                "can_delete": True,
+            },
             active_field=None,
             input_value="",
             input_cursor=0,
@@ -1501,9 +1669,12 @@ class TuiRenderingTests(unittest.TestCase):
         visible = "\n".join(line for line, _key in document)
         self.assertNotIn("accent_type", visible)
         self.assertNotIn("Enter Edit", visible)
+        self.assertIn("Showing 1 / 4 words", visible)
+        self.assertTrue(any("[S] Sort" in line and "Priority ↓" in line for line, _key in document))
+        self.assertTrue(any("[F] Filter" in line and "On: ずん" in line for line, _key in document))
         self.assertIn(("  [A] Add", "add"), document)
         self.assertIn(("  [X] Delete", "delete"), document)
-        self.assertIn(("  Back", "back"), document)
+        self.assertIn(("  [Esc] Back", "back"), document)
 
     def test_english_dictionary_list_renders_selectable_actions(self):
         entry = SimpleNamespace(
@@ -1514,7 +1685,17 @@ class TuiRenderingTests(unittest.TestCase):
             kind="dictionary_english_list",
             title="ENGLISH DICTIONARY",
             selection="add",
-            payload={"entries": (entry,), "entry_index": 0},
+            payload={
+                "entries": (entry,),
+                "entry_index": 0,
+                "sort_mode": "surface_asc",
+                "text_filter": "",
+                "filter_enabled": False,
+                "word_type_filter": None,
+                "visible_count": 1,
+                "total_count": 1,
+                "can_delete": True,
+            },
             active_field=None,
             input_value="",
             input_cursor=0,
@@ -1528,8 +1709,14 @@ class TuiRenderingTests(unittest.TestCase):
         visible = "\n".join(line for line, _key in document)
 
         self.assertIn(("▶ [A] Add", "add"), document)
+        self.assertTrue(any("[S] Sort" in line and "Surface ↑" in line for line, _key in document))
+        filter_line = next(line for line, key in document if key == "filter")
+        self.assertIn("[F] Filter", filter_line)
+        self.assertIn("Not set", filter_line)
+        self.assertNotIn("<", filter_line)
+        self.assertNotIn(">", filter_line)
         self.assertIn(("  [X] Delete", "delete"), document)
-        self.assertIn(("  Back", "back"), document)
+        self.assertIn(("  [Esc] Back", "back"), document)
         self.assertNotIn("Enter Edit", visible)
 
     def test_english_word_editor_opens_on_full_stressed_phoneme_input(self):
@@ -1562,7 +1749,7 @@ class TuiRenderingTests(unittest.TestCase):
                 "  [E] Edit text",
                 "  [C] Clear",
                 "  [R] Reset",
-                "  Back",
+                "  [Esc] Back",
             ],
         )
 
@@ -1596,7 +1783,7 @@ class TuiRenderingTests(unittest.TestCase):
                 "  [A] Apply",
                 "  [R] Reset",
                 "  [D] Delete section",
-                "  Back",
+                "  [Esc] Back",
             ],
         )
         self.assertIsNotNone(cursor_line)
@@ -1622,7 +1809,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("▶ ", labels)
         self.assertEqual(
             labels[-4:],
-            ["  [A] Add", "  [C] Clear", "  [R] Reset", "  Back"],
+            ["  [A] Add", "  [C] Clear", "  [R] Reset", "  [Esc] Back"],
         )
 
     def test_delete_confirmation_document_uses_required_warning_and_choices(self):
@@ -1643,7 +1830,7 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line for line, _key in document]
         self.assertEqual(labels[0], "DELETE SECTION?")
         self.assertIn("This section will be removed from the synthesized utterance.", labels)
-        self.assertEqual(labels[-2:], ["▶ [D] Delete", "  Cancel"])
+        self.assertEqual(labels[-2:], ["▶ [D] Delete", "  [Esc] Cancel"])
 
     def test_clear_candidates_confirmation_names_discarded_wav_files(self):
         editor = SimpleNamespace(
@@ -1665,7 +1852,7 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line for line, _key in document]
         self.assertEqual(labels[0], "CLEAR CANDIDATES?")
         self.assertIn("All generated candidate WAV files will be discarded.", labels)
-        self.assertEqual(labels[-2:], ["▶ [C] Clear candidates", "  Cancel"])
+        self.assertEqual(labels[-2:], ["▶ [C] Clear candidates", "  [Esc] Cancel"])
 
     def test_settings_use_sections_shortcuts_and_candidate_clearing_markers(self):
         editor = SimpleNamespace(
@@ -1695,7 +1882,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("[D] Reset sampling to Voiceger defaults", visible)
         self.assertIn("[A] Apply and save", visible)
         self.assertIn("[R] Reset", visible)
-        self.assertIn("Back", visible)
+        self.assertIn("[Esc] Back", visible)
         self.assertIn(
             "* Applying this setting clears existing candidates.",
             visible,

@@ -38,6 +38,17 @@ from .tui_shortcuts import (
 from .tui_status import EMPTY_STATUS, Status, StatusKind, format_status
 
 
+_DICTIONARY_SORT_LABELS = {
+    "surface_asc": "Surface ↑",
+    "surface_desc": "Surface ↓",
+    "word_type": "Word type",
+    "priority_asc": "Priority ↑",
+    "priority_desc": "Priority ↓",
+    "added_asc": "Added ↑",
+    "added_desc": "Added ↓",
+}
+
+
 _HELP_ITEMS = (
     ("Up/Down", ": move one selectable item"),
     (
@@ -933,6 +944,13 @@ class TuiRenderer:
             item = menu_item(editor.kind, key, editor.payload)
             lines.append((marker + item.display_label, key))
 
+        def selectable_value(key: str, value: str) -> None:
+            item = menu_item(editor.kind, key, editor.payload)
+            wrapped_selectable_text(
+                key,
+                f"{item.display_label:<14}< {value} >",
+            )
+
         def wrapped_selectable_text(
             key: str | tuple[str, int | None],
             value: str,
@@ -1116,8 +1134,21 @@ class TuiRenderer:
         elif editor.kind == "dictionary_japanese_list":
             plain()
             entries = editor.payload["entries"]
+            text_filter = str(editor.payload.get("text_filter", ""))
+            word_type_filter = str(
+                editor.payload.get("word_type_filter") or "ALL"
+            )
+            filter_active = bool(editor.payload.get("filter_enabled", False))
+            visible_count = int(editor.payload.get("visible_count", len(entries)))
+            total_count = int(editor.payload.get("total_count", len(entries)))
+            if filter_active:
+                plain(f"  Showing {visible_count} / {total_count} words")
             if not entries:
-                plain("  No Japanese dictionary words.")
+                plain(
+                    "  No matching Japanese dictionary words."
+                    if filter_active and total_count
+                    else "  No Japanese dictionary words."
+                )
             for index, (_word_uuid, word) in enumerate(entries):
                 parsed = parse_pronunciation(word.pronunciation + "'")
                 display = " ".join(
@@ -1132,6 +1163,29 @@ class TuiRenderer:
                     f"{word.surface}      {display}",
                 )
             plain()
+            selectable_value(
+                "sort",
+                _DICTIONARY_SORT_LABELS.get(
+                    str(editor.payload.get("sort_mode", "surface_asc")),
+                    str(editor.payload.get("sort_mode", "surface_asc")),
+                ),
+            )
+            filter_configured = bool(text_filter.strip()) or word_type_filter != "ALL"
+            if not filter_configured:
+                item = menu_item(editor.kind, "filter", editor.payload)
+                wrapped_selectable_text("filter", f"{item.display_label:<14}Not set")
+            else:
+                filter_summary = "Off"
+                if filter_active:
+                    parts = []
+                    if text_filter.strip():
+                        parts.append(text_filter.strip())
+                    if word_type_filter != "ALL":
+                        parts.append(word_type_filter)
+                    filter_summary = "On" + (
+                        f": {' · '.join(parts)}" if parts else ""
+                    )
+                selectable_value("filter", filter_summary)
             selectable("add")
             if entries:
                 selectable("delete")
@@ -1139,8 +1193,18 @@ class TuiRenderer:
         elif editor.kind == "dictionary_english_list":
             plain()
             entries = editor.payload["entries"]
+            text_filter = str(editor.payload.get("text_filter", ""))
+            filter_active = bool(editor.payload.get("filter_enabled", False))
+            visible_count = int(editor.payload.get("visible_count", len(entries)))
+            total_count = int(editor.payload.get("total_count", len(entries)))
+            if filter_active:
+                plain(f"  Showing {visible_count} / {total_count} words")
             if not entries:
-                plain("  No English dictionary words.")
+                plain(
+                    "  No matching English dictionary words."
+                    if filter_active and total_count
+                    else "  No English dictionary words."
+                )
             for index, entry in enumerate(entries):
                 key = ("entry", index)
                 wrapped_selectable_text(
@@ -1148,9 +1212,78 @@ class TuiRenderer:
                     f"{entry.surface}      {' '.join(entry.phonemes)}",
                 )
             plain()
+            selectable_value(
+                "sort",
+                _DICTIONARY_SORT_LABELS.get(
+                    str(editor.payload.get("sort_mode", "surface_asc")),
+                    str(editor.payload.get("sort_mode", "surface_asc")),
+                ),
+            )
+            if not text_filter.strip():
+                item = menu_item(editor.kind, "filter", editor.payload)
+                wrapped_selectable_text("filter", f"{item.display_label:<14}Not set")
+            else:
+                selectable_value(
+                    "filter",
+                    (
+                        f"On: {text_filter.strip()}"
+                        if filter_active
+                        else "Off"
+                    ),
+                )
             selectable("add")
             if entries:
                 selectable("delete")
+            selectable("back")
+        elif editor.kind == "dictionary_sort":
+            plain()
+            modes = tuple(editor.payload["modes"])
+            for index, mode in enumerate(modes):
+                key = ("sort", index)
+                wrapped_selectable_text(
+                    key,
+                    _DICTIONARY_SORT_LABELS.get(str(mode), str(mode)),
+                )
+            plain()
+            selectable("back")
+        elif editor.kind == "dictionary_japanese_filter":
+            plain()
+            plain("Surface / Pronunciation")
+            if editor.active_field == "text_query":
+                input_field("text_query", "▶ Query          ")
+            else:
+                marker = "▶ " if editor.selection == "text_query" else "  "
+                wrap(
+                    marker + "Query          ",
+                    str(editor.payload["text_query"]) or "(any)",
+                    "text_query",
+                )
+            marker = "▶ " if editor.selection == "word_type" else "  "
+            lines.append(
+                (
+                    f"{marker}Word type      < {editor.payload['word_type_filter']} >",
+                    "word_type",
+                )
+            )
+            plain()
+            selectable("apply")
+            selectable("clear")
+            selectable("back")
+        elif editor.kind == "dictionary_english_filter":
+            plain()
+            plain("Surface / ARPAbet")
+            if editor.active_field == "text_query":
+                input_field("text_query", "▶ Query          ")
+            else:
+                marker = "▶ " if editor.selection == "text_query" else "  "
+                wrap(
+                    marker + "Query          ",
+                    str(editor.payload["text_query"]) or "(any)",
+                    "text_query",
+                )
+            plain()
+            selectable("apply")
+            selectable("clear")
             selectable("back")
         elif editor.kind == "dictionary_japanese_duplicates":
             plain()

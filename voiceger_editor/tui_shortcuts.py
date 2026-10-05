@@ -75,7 +75,7 @@ _BATCH_LIST_CAPTION_SHORTCUTS: tuple[MainShortcut, ...] = (
 def _escape_action(key: str, label: str) -> MenuItem:
     return MenuItem(
         key,
-        label,
+        f"[Esc] {label}",
         None,
         "action",
         no_shortcut_reason="Esc is the common one-level-back key.",
@@ -202,13 +202,65 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         _escape_action("back", "Back"),
     ),
     "dictionary_japanese_list": (
+        MenuItem("sort", "Sort", "s", "adjustable", "activate"),
+        MenuItem("filter", "Filter", "f", "adjustable", "activate"),
         MenuItem("add", "Add", "a", "action", "activate"),
-        MenuItem("delete", "Delete", "x", "action", "activate"),
+        MenuItem(
+            "delete",
+            "Delete",
+            "x",
+            "action",
+            "activate",
+            condition_key="can_delete",
+        ),
         _escape_action("back", "Back"),
     ),
     "dictionary_english_list": (
+        MenuItem("sort", "Sort", "s", "adjustable", "activate"),
+        MenuItem("filter", "Filter", "f", "adjustable", "activate"),
         MenuItem("add", "Add", "a", "action", "activate"),
-        MenuItem("delete", "Delete", "x", "action", "activate"),
+        MenuItem(
+            "delete",
+            "Delete",
+            "x",
+            "action",
+            "activate",
+            condition_key="can_delete",
+        ),
+        _escape_action("back", "Back"),
+    ),
+    "dictionary_sort": (
+        _escape_action("back", "Back"),
+    ),
+    "dictionary_japanese_filter": (
+        MenuItem(
+            "text_query",
+            "Query",
+            None,
+            "editable",
+            no_shortcut_reason="Enter edits the Surface/Pronunciation query.",
+        ),
+        MenuItem(
+            "word_type",
+            "Word type",
+            None,
+            "adjustable",
+            no_shortcut_reason="Left/Right changes the focused word type filter.",
+        ),
+        MenuItem("apply", "Apply", "a", "action", "activate"),
+        MenuItem("clear", "Clear filter", "c", "action", "activate"),
+        _escape_action("back", "Back"),
+    ),
+    "dictionary_english_filter": (
+        MenuItem(
+            "text_query",
+            "Query",
+            None,
+            "editable",
+            no_shortcut_reason="Enter edits the Surface/ARPAbet query.",
+        ),
+        MenuItem("apply", "Apply", "a", "action", "activate"),
+        MenuItem("clear", "Clear filter", "c", "action", "activate"),
         _escape_action("back", "Back"),
     ),
     "dictionary_japanese_duplicates": (

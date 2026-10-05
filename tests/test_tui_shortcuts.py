@@ -73,8 +73,15 @@ class TuiShortcutTests(unittest.TestCase):
                 "a": "apply", "r": "reset",
             },
             "dictionary_menu": {"j": "japanese", "e": "english"},
-            "dictionary_japanese_list": {"a": "add", "x": "delete"},
-            "dictionary_english_list": {"a": "add", "x": "delete"},
+            "dictionary_japanese_list": {
+                "s": "sort", "f": "filter", "a": "add", "x": "delete",
+            },
+            "dictionary_english_list": {
+                "s": "sort", "f": "filter", "a": "add", "x": "delete",
+            },
+            "dictionary_sort": {},
+            "dictionary_japanese_filter": {"a": "apply", "c": "clear"},
+            "dictionary_english_filter": {"a": "apply", "c": "clear"},
             "dictionary_japanese_duplicates": {},
             "dictionary_japanese_entry": {
                 "g": "generate_pronunciation", "p": "preview",
@@ -100,6 +107,12 @@ class TuiShortcutTests(unittest.TestCase):
                     if item.shortcut is not None
                 }
                 self.assertEqual(actual, mapping)
+
+    def test_dictionary_sort_and_filter_rows_are_declared_adjustable(self):
+        for kind in ("dictionary_japanese_list", "dictionary_english_list"):
+            items = {item.key: item for item in menu_items(kind, {"can_delete": True})}
+            self.assertEqual(items["sort"].kind, "adjustable")
+            self.assertEqual(items["filter"].kind, "adjustable")
 
     def test_main_shortcuts_match_issue_49_contract_and_share_display_metadata(self):
         expected = {
@@ -165,7 +178,7 @@ class TuiShortcutTests(unittest.TestCase):
         self.assertEqual(resolved.display_label, "[X] Delete caption")
         self.assertIsNone(resolve_batch_list_caption_shortcut("X"))
 
-    def test_back_and_cancel_rows_have_no_visible_b_shortcut(self):
+    def test_back_and_cancel_rows_show_explicit_esc_hint_without_b_shortcut(self):
         for screen_kind, definitions in menu_definitions().items():
             for item in definitions:
                 if item.key not in {"back", "cancel"}:
@@ -173,6 +186,10 @@ class TuiShortcutTests(unittest.TestCase):
                 with self.subTest(screen_kind=screen_kind, key=item.key):
                     self.assertIsNone(item.shortcut)
                     self.assertIn("Esc", item.no_shortcut_reason)
+                    self.assertEqual(
+                        item.display_label,
+                        f"[Esc] {'Back' if item.key == 'back' else 'Cancel'}",
+                    )
 
     def test_metadata_architecture_is_valid_and_no_shortcut_exception_is_explicit(self):
         self.assertEqual(validate_menu_definitions(), ())

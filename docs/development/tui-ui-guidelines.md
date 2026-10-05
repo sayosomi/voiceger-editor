@@ -1,0 +1,102 @@
+# TUI UI Guidelines
+
+This document is the canonical owner of interaction and presentation conventions shared across the keyboard-first TUI.
+
+Keep this document limited to durable cross-screen UI rules. Feature-specific behavior, screen-specific menu order, and exact feature semantics belong in the feature owner, its Issue contract, and focused tests. Implementation ownership and module boundaries belong in [TUI Architecture](./tui-architecture.md).
+
+## Navigation
+
+Up / Down moves focus to the previous / next selectable item.
+
+Screens that present entries followed by actions should use one vertical Up / Down navigation list unless a stronger interaction requirement justifies another structure. Selectable order should follow the visible order.
+
+An adjustment or action that does not leave the current screen should normally keep focus on the row that was operated.
+
+## Adjustable values
+
+Angle brackets are an interaction promise.
+
+A row rendered as:
+
+```text
+Label        < Value >
+```
+
+must allow the focused value to be changed with Left / Right.
+
+Do not use `< >` for a read-only status, a row that only opens another screen, or a state where Left / Right currently has no meaningful effect. If a value is not currently adjustable, render it without angle brackets.
+
+## Left / Right semantics
+
+When a focused row exposes an ordered set of values:
+
+- Left selects the previous value.
+- Right selects the next value.
+- Cyclic values may wrap at the ends when that behavior is intentional and tested.
+
+A two-state cyclic value may therefore toggle in either direction.
+
+Changing an adjustable value should keep focus on that row.
+
+## Enter and editing
+
+Enter activates the focused row's primary interaction.
+
+For an editable field, Enter starts editing when the field is focused and normally finishes editing while text entry is active.
+
+While text entry is active, printable shortcut letters are input text rather than menu shortcuts.
+
+For a row that supports both direct Left / Right adjustment and a detailed chooser or editor, Enter should open the detailed interaction rather than silently behaving like Right.
+
+Feature-specific multiline input keys or other editing exceptions belong with that feature unless they become a shared convention.
+
+## Visible shortcuts
+
+Visible shortcuts are accelerators for frequent operations.
+
+Ordinary visible actions should have a direct shortcut unless there is an explicit reason not to provide one. Render ordinary shortcut labels as:
+
+```text
+[X] Action
+```
+
+The displayed shortcut and the actual key behavior must agree.
+
+A shortcut may intentionally provide a faster action than Enter on the same row when that distinction is useful and explicit. Such differences must be deliberate and covered by focused interaction tests.
+
+## Escape actions
+
+Esc is the standard one-level-back or cancel key for editor and modal navigation.
+
+Rows whose direct key is Esc must show that key explicitly:
+
+```text
+[Esc] Back
+[Esc] Cancel
+```
+
+Do not render a selectable Back or Cancel row without the `[Esc]` hint.
+
+If an active operation intentionally gives Esc a higher-priority cancellation meaning, that behavior must be explicit and tested rather than silently changing the normal navigation contract.
+
+## Feedback for long-running work
+
+An action that may take perceptible time must provide visible Status feedback promptly enough that the TUI does not appear frozen.
+
+Status should communicate the current operation while work is in progress and provide an appropriate completion or failure outcome when the operation finishes.
+
+Exact Status wording and feature-specific progress semantics belong with the feature or operation owner rather than in this document.
+
+## Reversible state
+
+Disabling a reversible control should preserve its configured value unless an explicit Clear or Reset action removes it.
+
+## Maintenance
+
+Any Task that changes TUI-visible presentation, navigation, focus behavior, key interaction, editor or modal interaction, or Status behavior must read this document before settling the implementation contract.
+
+When a change introduces a new reusable cross-screen convention, or changes an existing one, update this document in the same change.
+
+Do not add a rule here merely because one screen behaves a certain way. Keep screen-specific behavior in its feature owner, Issue contract, and focused tests.
+
+Exceptions to a shared rule should be intentional, narrow, and tested. If the same exception starts recurring across screens, revisit the shared rule instead of accumulating screen-specific exceptions here.
