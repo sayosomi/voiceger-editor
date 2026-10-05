@@ -19,6 +19,7 @@ from .settings import (
     VOICEGER_DEFAULT_TOP_P,
 )
 from .styles import available_styles
+from .tui_confirmation import ConfirmationDetail, confirmation_lines
 from .tui_display import (
     _adjustable_value,
     _display_width,
@@ -441,30 +442,14 @@ class TuiRenderer:
             width,
             self._attribute("A_REVERSE") | self._attribute("A_BOLD"),
         )
-        document: list[tuple[str, str | None]] = [("", None), ("Caption", None)]
-        pieces = _wrap_text(caption, max(1, width - 3)) or [""]
-        document.extend((f"  {piece}", None) for piece in pieces)
-        document.extend(
-            (
-                ("", None),
-                ("This Caption and its temporary Takes will be removed.", None),
-                ("", None),
-                (
-                    (
-                        "▶ " if selection == "delete" else "  "
-                    ) + menu_item(
-                        "batch_delete_confirmation", "delete"
-                    ).display_label,
-                    "delete",
-                ),
-                (
-                    (
-                        "▶ " if selection == "cancel" else "  "
-                    ) + "[Esc] " + menu_item(
-                        "batch_delete_confirmation", "cancel"
-                    ).label,
-                    "cancel",
-                ),
+        document = list(
+            confirmation_lines(
+                "batch_delete_confirmation",
+                selection,
+                warning="This Caption and its temporary Takes will be removed.",
+                details=(ConfirmationDetail("Caption", caption),),
+                width=width,
+                wrap_text=_wrap_text,
             )
         )
         footer = self._status_footer_layout(status, height, width)
