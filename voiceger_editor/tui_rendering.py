@@ -1199,12 +1199,17 @@ class TuiRenderer:
             plain(f"{exact_count} already exist")
             plain(f"{review_count} to review")
             plain()
+            word_type_labels = tuple(editor.payload.get("word_type_labels", ()))
             for index, item in enumerate(editor.payload.get("items", ())):
                 key = ("import_entry", index)
                 marker = "▶ " if editor.selection == key else "  "
                 checkbox = "[x]" if item.selected else "[ ]"
                 attention = "!" if item.relation.value == "conflict" else " "
-                value = f"{checkbox} {attention} {item.incoming.surface}"
+                word_type_label = (
+                    word_type_labels[index] if index < len(word_type_labels) else ""
+                )
+                suffix = f"  {word_type_label}" if word_type_label else ""
+                value = f"{checkbox} {attention} {item.incoming.surface}{suffix}"
                 available = max(1, width - 1 - _display_width(marker))
                 lines.append((marker + _truncate_display(value, available), key))
             plain()
@@ -1222,9 +1227,9 @@ class TuiRenderer:
             marker = "▶ " if editor.selection == "word_type" else "  "
             lines.append(
                 (
-                    f"{marker}Word type      "
+                    f"{marker}品詞            "
                     + _adjustable_value(
-                        str(editor.payload["word_type"].value),
+                        str(editor.payload["word_type_label"]),
                         self._adjustment_press_direction(
                             state,
                             "dictionary",
@@ -1242,8 +1247,9 @@ class TuiRenderer:
                 wrap("  Surface        ", str(existing.surface))
                 wrap("  Pronunciation  ", str(existing.pronunciation))
                 plain(f"  Accent         {existing.accent_type}")
-                existing_word_type = editor.payload["existing_word_type"]
-                plain(f"  Word type      {existing_word_type.value}")
+                plain(
+                    f"  品詞            {editor.payload['existing_word_type_label']}"
+                )
                 plain(f"  Priority       {existing.priority}")
             plain()
             selectable("back")
