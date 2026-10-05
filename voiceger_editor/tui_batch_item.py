@@ -475,21 +475,30 @@ class TuiBatchItemController:
     ) -> None:
         index = self.batch.item_index
         if index is None or direction == 0:
+            bindings.clear_adjustment_feedback()
             return
         actions = bindings.actions
         if actions.operations.busy:
+            bindings.clear_adjustment_feedback()
             actions.set_status(
                 info_status("Wait for the current synthesis operation to finish.")
             )
             return
         target = index + (-1 if direction < 0 else 1)
         if target < 0:
+            bindings.clear_adjustment_feedback()
             actions.set_status(info_status("First Caption."))
             return
         if target >= len(self.batch.batch):
+            bindings.clear_adjustment_feedback()
             actions.set_status(info_status("Last Caption."))
             return
 
+        bindings.mark_adjustment_pressed(
+            "navigation",
+            "batch_item",
+            direction,
+        )
         actions.operations.stop_playback()
         actions.operations.clear_current_take()
         actions.editor_controller.clear_groupings()
