@@ -1175,6 +1175,17 @@ class TuiRenderer:
                 count = editor.payload[count_name]
                 lines.append((f"{marker}{item.display_label:<18}{count} words", key))
             selectable("import")
+            selectable("export")
+            plain()
+            selectable("back")
+        elif editor.kind == "dictionary_export":
+            plain()
+            selectable("voiceger")
+            plain("  Japanese + English")
+            plain()
+            selectable("voicevox")
+            plain("  Japanese only")
+            plain("  English dictionary is not included")
             plain()
             selectable("back")
         elif editor.kind == "dictionary_import_path":
