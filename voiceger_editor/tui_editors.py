@@ -1032,6 +1032,26 @@ class TuiEditorController:
                     editor.error = EMPTY_STATUS
             return ()
 
+        if key in ("q", "Q", "\x03"):
+            return (QuitIntent(),)
+        if key == "?":
+            return (OpenHelpIntent(),)
+        if editor.kind == "settings":
+            if key == "\t":
+                return self.move_settings_section(1)
+            backtab = getattr(curses, "KEY_BTAB", None)
+            if backtab is not None and key == backtab:
+                return self.move_settings_section(-1)
+        shortcut = resolve_shortcut(editor.kind, key, editor.payload)
+        if shortcut is not None:
+            editor.selection = shortcut.key
+            editor.error = EMPTY_STATUS
+            if shortcut.shortcut_mode == "focus":
+                return (ClearAdjustmentFeedbackIntent(),)
+            return self._activate_selection(settings, query, current_caption)
+
+        if editor.kind == "settings" and key in (curses.KEY_LEFT, curses.KEY_RIGHT):
+            return self.adjust_settings(-1 if key == curses.KEY_LEFT else 1)
         if (
             editor.kind == "add_section"
             and editor.selection == "language"
