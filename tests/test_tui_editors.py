@@ -2036,6 +2036,61 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(controller.grouping_cache[1].source_text, "very hello everyone")
         self.assertEqual(controller.grouping_cache[1].groups[1].phonemes, manual_hello)
 
+    def test_add_section_language_arrow_feedback_only_on_change(self):
+        query = mixed_query()
+        controller, _provider = self.make_controller()
+        controller.open_add_section(
+            query,
+            pure_japanese_utterance_text=None,
+            origin=("add_section", None),
+            busy=False,
+        )
+        editor = controller.editor
+        self.assertEqual(editor.selection, "language")
+        self.assertEqual(editor.payload["language"], "ja")
+
+        moved_right = controller.handle_key(
+            curses.KEY_RIGHT,
+            settings=self.settings(),
+            query=query,
+            current_caption="Caption",
+        )
+        self.assertEqual(editor.payload["language"], "en")
+        self.assertEqual(
+            moved_right,
+            (
+                AdjustmentPressedIntent("editor", "language", 1),
+                UpdateStatusIntent(""),
+            ),
+        )
+
+        blocked_right = controller.handle_key(
+            curses.KEY_RIGHT,
+            settings=self.settings(),
+            query=query,
+            current_caption="Caption",
+        )
+        self.assertEqual(editor.payload["language"], "en")
+        self.assertEqual(
+            blocked_right,
+            (ClearAdjustmentFeedbackIntent(),),
+        )
+
+        moved_left = controller.handle_key(
+            curses.KEY_LEFT,
+            settings=self.settings(),
+            query=query,
+            current_caption="Caption",
+        )
+        self.assertEqual(editor.payload["language"], "ja")
+        self.assertEqual(
+            moved_left,
+            (
+                AdjustmentPressedIntent("editor", "language", -1),
+                UpdateStatusIntent(""),
+            ),
+        )
+
     def test_add_clear_reset_and_back_keep_the_opening_language_and_empty_draft(self):
         query = mixed_query()
         controller, _provider = self.make_controller()
