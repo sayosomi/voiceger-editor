@@ -1957,15 +1957,19 @@ class TuiEditorController:
                 if not current.is_finite() or current <= 0:
                     raise InvalidOperation
                 current = current.quantize(Decimal("0.01"))
-                updated = current + Decimal("0.01") * direction
-                updated = max(Decimal("0.01"), updated)
+                result = step_bounded(
+                    current,
+                    direction=direction,
+                    step=Decimal("0.01"),
+                    minimum=Decimal("0.01"),
+                )
             except (InvalidOperation, ValueError):
                 editor.error = error_status("Speed must be a positive finite number.")
                 return clear_feedback
-            if updated == current:
+            if not result.changed:
                 editor.error = EMPTY_STATUS
                 return clear_feedback
-            draft["speed"] = f"{updated:.2f}"
+            draft["speed"] = f"{result.value:.2f}"
         elif selected == "take_count":
             try:
                 current = int(draft["take_count"])
