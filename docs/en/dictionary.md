@@ -15,7 +15,8 @@ d
 Choose:
 
 - Japanese;
-- English.
+- English;
+- Import dictionary.
 
 ## Japanese dictionary
 
@@ -126,6 +127,41 @@ Then:
 - Preview lets you listen before saving.
 
 English dictionary matching ignores letter case.
+
+## Import a dictionary
+
+Choose **Import dictionary** from the top-level Dictionary screen, enter the JSON
+file path, and open the review.
+
+Supported files are detected from their contents rather than the filename:
+
+- Japanese VOICEVOX user dictionaries using the UUID-keyed expanded
+  `UserDictWord` JSON format;
+- Japanese dictionaries exported by Voiceger Editor in the same format;
+- Voiceger Editor English dictionaries using
+  `{"surface": ["ARPABET", "TOKENS"]}`.
+
+Japanese VOICEVOX dictionaries do not need conversion before import.
+
+The review list omits exact duplicates and counts them as already existing.
+New entries start selected. Conflicting entries start unselected and are marked
+with `!` immediately after the checkbox. Use Space to select or deselect the
+focused entry, Enter to inspect its details, **Import selected** to commit the
+current selection, or **Clear selection** to deselect all review entries.
+
+Japanese import detail shows Surface, Pronunciation, Accent, Word type, and
+Priority. Only Word type can be changed during import review; Left / Right
+changes it and immediately recalculates whether that entry is new, conflicting,
+or an exact duplicate. Pronunciation, Accent, and Priority are read-only.
+English import detail is entirely read-only.
+
+When a selected Japanese conflict replaces an existing logical entry, the
+existing UUID and its canonical position are preserved. Newly imported entries
+are appended in input-file order. The import is committed as one logical
+operation and reports imported, replaced, and skipped counts when complete.
+
+Invalid or unsupported input is rejected before the active dictionary is
+changed. Back exits the import workflow without committing the review.
 
 ## Save from a pronunciation editor
 
