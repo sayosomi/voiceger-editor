@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional, Sequence, Union
 
 from .caption_batch import CaptionBatch
+from .tui_adjustments import step_bounded
 from .tui_editors import adjustment_feedback_intents
 from .tui_navigation import TuiNavigation
 from .tui_operations import OperationEffect, TuiOperations
@@ -258,20 +259,25 @@ class TuiBatchController:
                 bindings.dispatch_operation_effects(effects)
             elif isinstance(action, AdjustBatchTakeCount):
                 count = self.batch.default_take_count
-                updated = min(100, max(1, count + action.direction))
-                changed = updated != count
+                result = step_bounded(
+                    count,
+                    direction=action.direction,
+                    step=1,
+                    minimum=1,
+                    maximum=100,
+                )
                 bindings.dispatch_editor_intents(
                     adjustment_feedback_intents(
-                        changed=changed,
+                        changed=result.changed,
                         area="batch_list",
                         control="takes",
                         direction=action.direction,
                     )
                 )
-                if not changed:
+                if not result.changed:
                     continue
                 bindings.change_settings(
-                    take_count=updated,
+                    take_count=result.value,
                     report_success=False,
                 )
             elif isinstance(action, OpenBatchSettings):
