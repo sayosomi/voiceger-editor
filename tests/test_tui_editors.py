@@ -23,6 +23,7 @@ from voiceger_editor.tui_editors import (
     SettingsApplicationResult,
     TuiEditorController,
     UpdateStatusIntent,
+    adjustment_feedback_intents,
 )
 from voiceger_editor.tui_rendering import _active_input_prefix
 from voiceger_editor.tui_input import PasteText
@@ -121,6 +122,36 @@ class TuiEditorControllerTests(unittest.TestCase):
     @staticmethod
     def settings():
         return Settings(output_dir=Path("/tmp/voiceger-editor-tests"))
+
+    def test_adjustment_feedback_helper_normalizes_shared_intents(self):
+        self.assertEqual(
+            adjustment_feedback_intents(changed=False),
+            (ClearAdjustmentFeedbackIntent(),),
+        )
+        self.assertEqual(
+            adjustment_feedback_intents(
+                changed=True,
+                area="dictionary",
+                control="priority",
+                direction=-3,
+            ),
+            (
+                AdjustmentPressedIntent("dictionary", "priority", -1),
+            ),
+        )
+        self.assertEqual(
+            adjustment_feedback_intents(
+                changed=True,
+                area="settings",
+                control="top_k",
+                direction=7,
+            ),
+            (
+                AdjustmentPressedIntent("settings", "top_k", 1),
+            ),
+        )
+        with self.assertRaises(ValueError):
+            adjustment_feedback_intents(changed=True)
 
     def test_caption_editor_requires_explicit_apply_after_finishing_input(self):
         controller, _provider = self.make_controller()
