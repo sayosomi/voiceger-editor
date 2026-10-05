@@ -313,6 +313,10 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.controller._import_review = review
         self.controller._import_source_path = "/tmp/japanese.json"
         self.controller.editor = self.controller._import_review_state()
+        self.assertEqual(
+            self.controller.editor.payload["word_type_labels"],
+            ("普通名詞",),
+        )
 
         self.key("\n")
         self.assertEqual(
@@ -320,6 +324,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
             "dictionary_import_japanese_detail",
         )
         self.assertEqual(self.controller.editor.selection, "word_type")
+        self.assertEqual(self.controller.editor.payload["word_type_label"], "普通名詞")
         before = self.controller.editor.payload["item"]
         self.assertIs(before.relation, DictionaryImportRelation.NEW)
 
@@ -335,10 +340,19 @@ class TuiDictionaryControllerTests(unittest.TestCase):
             self.controller.editor.payload["word_type"],
             JapaneseWordType.PROPER_NOUN,
         )
+        self.assertEqual(self.controller.editor.payload["word_type_label"], "固有名詞")
+        self.assertEqual(
+            self.controller.editor.payload["existing_word_type_label"],
+            "固有名詞",
+        )
         self.assertFalse(after.selected)
 
         self.key("\x1b")
         self.assertEqual(self.controller.editor.kind, "dictionary_import_review")
+        self.assertEqual(
+            self.controller.editor.payload["word_type_labels"],
+            ("固有名詞",),
+        )
 
     def test_import_commit_refreshes_menu_and_reports_counts(self):
         review = EnglishDictionaryImportReview(
