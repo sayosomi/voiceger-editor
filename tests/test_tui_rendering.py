@@ -1129,6 +1129,7 @@ class TuiRenderingTests(unittest.TestCase):
                     "moras": ("ズ", "ン", "ダ", "モ", "ン"),
                     "accent": 3,
                     "word_type": SimpleNamespace(value="PROPER_NOUN"),
+                    "word_type_label": "固有名詞",
                     "priority": 5,
                     "entry_index": 0,
                     "entry_total": 4,
@@ -1176,6 +1177,7 @@ class TuiRenderingTests(unittest.TestCase):
                     "moras": (),
                     "accent": 1,
                     "word_type": SimpleNamespace(value="PROPER_NOUN"),
+                    "word_type_label": "固有名詞",
                     "priority": 5,
                     "entry_index": None,
                     "entry_total": None,
@@ -1243,6 +1245,10 @@ class TuiRenderingTests(unittest.TestCase):
                 positions = {key: index for index, key in keyed}
 
                 self.assertEqual([key for _index, key in keyed], expected_keys)
+                if kind == "dictionary_japanese_entry":
+                    visible = "\n".join(line for line, _key in document)
+                    self.assertIn("Word type      < 固有名詞 >", visible)
+                    self.assertNotIn("PROPER_NOUN", visible)
                 self.assertEqual(
                     positions["generate_pronunciation"],
                     positions["surface"] + 1,
@@ -1287,6 +1293,7 @@ class TuiRenderingTests(unittest.TestCase):
                     "moras": ("ア", "メ"),
                     "accent": 1,
                     "word_type": SimpleNamespace(value="PROPER_NOUN"),
+                    "word_type_label": "固有名詞",
                     "priority": 5,
                     "entry_index": 1,
                     "entry_total": 4,
