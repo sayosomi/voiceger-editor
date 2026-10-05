@@ -1202,6 +1202,37 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.assertNotIn("hello", self.core.english)
         self.assertIn("hello2", self.core.english)
 
+    def test_entry_surface_field_uses_shared_cursor_and_text_edit_keys(self):
+        self.controller.open_quick_save_english(
+            surface="hello",
+            phonemes="HH AH0 L OW1",
+        )
+        editor = self.controller.editor
+        editor.selection = "surface"
+
+        self.key("\n")
+        self.assertEqual(editor.active_field, "surface")
+
+        self.key(curses.KEY_HOME)
+        self.assertEqual(editor.input_cursor, 0)
+        self.key(curses.KEY_RIGHT)
+        self.key("X")
+        self.assertEqual(editor.input_value, "hXello")
+        self.assertEqual(editor.input_cursor, 2)
+
+        self.key(curses.KEY_BACKSPACE)
+        self.assertEqual(editor.input_value, "hello")
+        self.assertEqual(editor.input_cursor, 1)
+
+        self.key(curses.KEY_END)
+        self.key(curses.KEY_LEFT)
+        self.key(curses.KEY_DC)
+        self.assertEqual(editor.input_value, "hell")
+        self.assertEqual(editor.input_cursor, 4)
+
+        self.key("o")
+        self.assertEqual(editor.input_value, "hello")
+
     def test_dictionary_shortcut_from_entry_opens_top_level_menu_and_back_restores_draft(self):
         self.controller.open_quick_save_english(
             surface="hello",
