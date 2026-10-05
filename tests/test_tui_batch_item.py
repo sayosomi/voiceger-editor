@@ -265,6 +265,18 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             ("generate", None),
         )
 
+    def test_generate_take_count_endpoint_clears_feedback_without_saving(self):
+        subject, _batch, bindings, state = self.make_subject()
+        bindings.actions.navigation.focus_key = ("generate", None)
+        state["settings"] = Settings(take_count=100)
+
+        subject.handle_key(curses.KEY_RIGHT, bindings)
+
+        bindings.actions.dispatch_editor_intents.assert_called_once_with(
+            (ClearAdjustmentFeedbackIntent(),)
+        )
+        bindings.actions.change_settings.assert_not_called()
+
     def test_navigation_context_uses_pronunciation_rows_from_editor_owner(self):
         subject, _batch, bindings, _state = self.make_subject()
         row = SimpleNamespace(language="ja")
