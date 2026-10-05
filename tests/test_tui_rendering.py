@@ -1118,6 +1118,162 @@ class TuiRenderingTests(unittest.TestCase):
             ],
         )
 
+    def test_dictionary_entry_action_groups_match_add_and_edit_layout(self):
+        cases = (
+            (
+                "dictionary_japanese_entry",
+                {
+                    "surface": "ずんだもん",
+                    "moras": ("ズ", "ン", "ダ", "モ", "ン"),
+                    "accent": 3,
+                    "word_type": SimpleNamespace(value="PROPER_NOUN"),
+                    "priority": 5,
+                    "entry_index": 0,
+                    "entry_total": 4,
+                    "can_delete": True,
+                },
+                [
+                    "surface",
+                    "generate_pronunciation",
+                    "pronunciation",
+                    "word_type",
+                    "priority",
+                    "preview",
+                    "save",
+                    "delete",
+                    "dictionary",
+                    "back",
+                ],
+                True,
+            ),
+            (
+                "dictionary_english_entry",
+                {
+                    "surface": "Voiceger",
+                    "phonemes": ("V", "OY1", "AH0", "JH", "ER0"),
+                    "entry_index": 0,
+                    "entry_total": 4,
+                    "can_delete": True,
+                },
+                [
+                    "surface",
+                    "generate_pronunciation",
+                    "phonemes",
+                    "preview",
+                    "save",
+                    "delete",
+                    "dictionary",
+                    "back",
+                ],
+                True,
+            ),
+            (
+                "dictionary_japanese_entry",
+                {
+                    "surface": "",
+                    "moras": (),
+                    "accent": 1,
+                    "word_type": SimpleNamespace(value="PROPER_NOUN"),
+                    "priority": 5,
+                    "entry_index": None,
+                    "entry_total": None,
+                    "can_delete": False,
+                },
+                [
+                    "surface",
+                    "generate_pronunciation",
+                    "pronunciation",
+                    "word_type",
+                    "priority",
+                    "preview",
+                    "save",
+                    "dictionary",
+                    "back",
+                ],
+                False,
+            ),
+            (
+                "dictionary_english_entry",
+                {
+                    "surface": "",
+                    "phonemes": (),
+                    "entry_index": None,
+                    "entry_total": None,
+                    "can_delete": False,
+                },
+                [
+                    "surface",
+                    "generate_pronunciation",
+                    "phonemes",
+                    "preview",
+                    "save",
+                    "dictionary",
+                    "back",
+                ],
+                False,
+            ),
+        )
+        for kind, payload, expected_keys, can_delete in cases:
+            with self.subTest(kind=kind, can_delete=can_delete):
+                editor = SimpleNamespace(
+                    kind=kind,
+                    title=(
+                        "EDIT DICTIONARY WORD"
+                        if can_delete
+                        else "ADD DICTIONARY WORD"
+                    ),
+                    selection="surface",
+                    payload=payload,
+                    active_field=None,
+                    input_value="",
+                    input_cursor=0,
+                    error="",
+                    scroll=0,
+                )
+                document, _cursor_line, _cursor_column = self.renderer.editor_document(
+                    render_state(editor=editor), 80
+                )
+                keyed = [
+                    (index, key)
+                    for index, (_text, key) in enumerate(document)
+                    if key and key != "entry_navigator"
+                ]
+                positions = {key: index for index, key in keyed}
+
+                self.assertEqual([key for _index, key in keyed], expected_keys)
+                self.assertEqual(
+                    positions["generate_pronunciation"],
+                    positions["surface"] + 1,
+                )
+                pronunciation_key = (
+                    "pronunciation"
+                    if kind == "dictionary_japanese_entry"
+                    else "phonemes"
+                )
+                self.assertEqual(
+                    positions[pronunciation_key],
+                    positions["generate_pronunciation"] + 2,
+                )
+                last_persisted = (
+                    "priority"
+                    if kind == "dictionary_japanese_entry"
+                    else pronunciation_key
+                )
+                self.assertEqual(positions["preview"], positions[last_persisted] + 2)
+                self.assertEqual(positions["save"], positions["preview"] + 1)
+                if can_delete:
+                    self.assertEqual(positions["delete"], positions["save"] + 2)
+                    self.assertEqual(
+                        positions["dictionary"],
+                        positions["delete"] + 2,
+                    )
+                else:
+                    self.assertEqual(
+                        positions["dictionary"],
+                        positions["save"] + 2,
+                    )
+                self.assertEqual(positions["back"], positions["dictionary"] + 1)
+
     def test_dictionary_existing_entry_titles_have_right_aligned_navigator(self):
         cases = (
             SimpleNamespace(

@@ -1176,6 +1176,8 @@ class TuiRenderer:
             else:
                 marker = "▶ " if editor.selection == "surface" else "  "
                 wrap(marker + "Surface        ", editor.payload["surface"], "surface")
+            selectable("generate_pronunciation")
+            plain()
             if editor.active_field == "pronunciation":
                 input_field("pronunciation", "▶ Pronunciation  ")
             else:
@@ -1202,9 +1204,12 @@ class TuiRenderer:
                 )
             )
             plain()
-            selectable("generate_pronunciation")
             selectable("preview")
             selectable("save")
+            if editor.payload.get("can_delete"):
+                plain()
+                selectable("delete")
+            plain()
             selectable("dictionary")
             selectable("back")
         elif editor.kind == "dictionary_english_entry":
@@ -1214,6 +1219,8 @@ class TuiRenderer:
             else:
                 marker = "▶ " if editor.selection == "surface" else "  "
                 wrap(marker + "Surface        ", editor.payload["surface"], "surface")
+            selectable("generate_pronunciation")
+            plain()
             if editor.active_field == "phonemes":
                 input_field("phonemes", "▶ Pronunciation  ")
             else:
@@ -1224,9 +1231,12 @@ class TuiRenderer:
                     "phonemes",
                 )
             plain()
-            selectable("generate_pronunciation")
             selectable("preview")
             selectable("save")
+            if editor.payload.get("can_delete"):
+                plain()
+                selectable("delete")
+            plain()
             selectable("dictionary")
             selectable("back")
         elif editor.kind == "dictionary_delete_confirmation":

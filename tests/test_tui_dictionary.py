@@ -9,6 +9,7 @@ from voiceger_editor.tui_dictionary import (
     TuiDictionaryController,
 )
 from voiceger_editor.tui_editors import PreviewIntent
+from voiceger_editor.tui_shortcuts import menu_items
 from voiceger_editor.tui_status import StatusKind
 from voiceger_editor.user_dictionary import JapaneseWordType
 
@@ -838,6 +839,167 @@ class TuiDictionaryControllerTests(unittest.TestCase):
             self.core.english["record"].phonemes,
             ["R", "EH0", "K", "ER1", "D"],
         )
+
+    def test_entry_action_order_and_delete_visibility_follow_persisted_identity(self):
+        cases = (
+            (
+                "ja",
+                {"stable-ja": ja_word("ずんだもん", "ズンダモン", 3)},
+                [
+                    "surface",
+                    "generate_pronunciation",
+                    "pronunciation",
+                    "word_type",
+                    "priority",
+                    "preview",
+                    "save",
+                    "delete",
+                    "dictionary",
+                    "back",
+                ],
+            ),
+            (
+                "en",
+                {"Voiceger": en_word("Voiceger", ["V", "OY1", "AH0", "JH", "ER0"])},
+                [
+                    "surface",
+                    "generate_pronunciation",
+                    "phonemes",
+                    "preview",
+                    "save",
+                    "delete",
+                    "dictionary",
+                    "back",
+                ],
+            ),
+        )
+        for language, entries, expected in cases:
+            with self.subTest(language=language):
+                core = FakeDictionaryCore()
+                if language == "ja":
+                    core.japanese.update(entries)
+                else:
+                    core.english.update(entries)
+                controller = TuiDictionaryController(
+                    core,
+                    input_prefix=lambda _editor: "▶ ",
+                )
+                controller.open_menu()
+                controller.handle_key("j" if language == "ja" else "e")
+                controller.handle_key("\n")
+                editor = controller.editor
+
+                self.assertTrue(editor.payload["can_delete"])
+                self.assertEqual(
+                    [item.key for item in menu_items(editor.kind, editor.payload)],
+                    expected,
+                )
+
+                visited = [editor.selection]
+                for _ in range(len(expected) - 1):
+                    controller.handle_key(curses.KEY_DOWN)
+                    visited.append(controller.editor.selection)
+                self.assertEqual(visited, expected)
+
+                controller.handle_key("\x1b")
+                controller.handle_key("a")
+                editor = controller.editor
+                self.assertFalse(editor.payload["can_delete"])
+                self.assertNotIn(
+                    "delete",
+                    [item.key for item in menu_items(editor.kind, editor.payload)],
+                )
+
+    def test_edit_delete_uses_stable_identity_cancel_preserves_draft_and_success_returns_list(self):
+        self.core.japanese["stable-ja"] = ja_word("ずんだもん", "ズンダモン", 3)
+        self.core.english["Voiceger"] = en_word(
+            "Voiceger", ["V", "OY1", "AH0", "JH", "ER0"]
+        )
+
+        self.controller.open_menu()
+        self.key("j")
+        self.key("\n")
+        editor = self.controller.editor
+        editor.payload["surface"] = "draft-ja"
+
+        self.key("x")
+        self.assertEqual(self.controller.editor.kind, "dictionary_delete_confirmation")
+        self.assertEqual(self.controller.editor.payload["identifier"], "stable-ja")
+        self.key("\x1b")
+        self.assertEqual(self.controller.editor.kind, "dictionary_japanese_entry")
+        self.assertEqual(self.controller.editor.payload["surface"], "draft-ja")
+
+        self.key("x")
+        intents = self.key("d")
+        self.finish_operation(intents)
+        self.assertEqual(self.controller.editor.kind, "dictionary_japanese_list")
+        self.assertNotIn("stable-ja", self.core.japanese)
+        self.key("\x1b")
+        self.assertEqual(self.controller.editor.kind, "dictionary_menu")
+
+        self.key("e")
+        self.key("\n")
+        editor = self.controller.editor
+        self.assertEqual(editor.payload["original_surface"], "Voiceger")
+        editor.payload["surface"] = "Renamed draft"
+
+        self.key("x")
+        self.assertEqual(self.controller.editor.kind, "dictionary_delete_confirmation")
+        self.assertEqual(self.controller.editor.payload["identifier"], "Voiceger")
+        self.key("\x1b")
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_entry")
+        self.assertEqual(self.controller.editor.payload["surface"], "Renamed draft")
+
+        self.key("x")
+        intents = self.key("d")
+        self.finish_operation(intents)
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_list")
+        self.assertNotIn("Voiceger", self.core.english)
+        self.assertNotIn("Renamed draft", self.core.english)
+
+    def test_quick_save_delete_visibility_distinguishes_existing_from_new(self):
+        self.core.japanese["stable-ja"] = ja_word("ずんだもん", "ズンダモン", 3)
+        self.core.english["Voiceger"] = en_word(
+            "Voiceger", ["V", "OY1", "AH0", "JH", "ER0"]
+        )
+
+        self.controller.open_quick_save_japanese(
+            surface="ずんだもん",
+            pronunciation="ズンダ'モン",
+        )
+        self.assertTrue(self.controller.editor.payload["can_delete"])
+        self.assertIn(
+            "delete",
+            [item.key for item in menu_items(
+                self.controller.editor.kind,
+                self.controller.editor.payload,
+            )],
+        )
+
+        self.controller.open_quick_save_english(
+            surface="Voiceger",
+            phonemes="V OY1 AH0 JH ER0",
+        )
+        self.assertTrue(self.controller.editor.payload["can_delete"])
+
+        self.controller.open_quick_save_japanese(
+            surface="新語",
+            pronunciation="シン'ゴ",
+        )
+        self.assertFalse(self.controller.editor.payload["can_delete"])
+        self.assertNotIn(
+            "delete",
+            [item.key for item in menu_items(
+                self.controller.editor.kind,
+                self.controller.editor.payload,
+            )],
+        )
+
+        self.controller.open_quick_save_english(
+            surface="Newword",
+            phonemes="N UW1 W ER0 D",
+        )
+        self.assertFalse(self.controller.editor.payload["can_delete"])
 
     def test_delete_confirmation_uses_common_modal_navigation_for_both_languages(self):
         self.core.japanese["ja"] = ja_word("ずんだもん", "ズンダモン", 3)
