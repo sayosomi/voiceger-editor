@@ -16,6 +16,9 @@ from .english_stress import (
 from .openjtalk_dictionary import expand_word_type, normalize_surface
 from .pronunciation import parse_pronunciation
 from .tui_dictionary_list import (
+    ENGLISH_SORT_MODES,
+    JAPANESE_SORT_MODES,
+    JAPANESE_WORD_TYPE_FILTERS,
     DictionaryListStateOwner,
     DictionaryListView,
     EnglishDictionarySort,
@@ -288,6 +291,7 @@ class TuiDictionaryController:
             "word_type_filter": view.word_type_filter,
             "visible_count": view.shown_count,
             "total_count": view.total_count,
+            "can_delete": bool(view.entries),
         }
 
     @staticmethod
@@ -383,6 +387,110 @@ class TuiDictionaryController:
         self._list_state.set_english_filter(text_query=text_query)
         if editor is not None and editor.kind == "dictionary_english_list":
             self.editor = self._english_list_state()
+
+    def _cycle_list_sort(self) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        if editor is None:
+            return ()
+        if editor.kind == "dictionary_japanese_list":
+            modes = JAPANESE_SORT_MODES
+            current = editor.payload["sort_mode"]
+            target = modes[(modes.index(current) + 1) % len(modes)]
+            self.set_japanese_list_sort(target)
+        elif editor.kind == "dictionary_english_list":
+            modes = ENGLISH_SORT_MODES
+            current = editor.payload["sort_mode"]
+            target = modes[(modes.index(current) + 1) % len(modes)]
+            self.set_english_list_sort(target)
+        else:
+            return ()
+        return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+
+    def _open_filter_editor(self) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        if editor is None or editor.kind not in {
+            "dictionary_japanese_list",
+            "dictionary_english_list",
+        }:
+            return ()
+        self._remember_list_focus(editor)
+        self._stack.append(deepcopy(editor))
+        if editor.kind == "dictionary_japanese_list":
+            self.editor = EditorState(
+                kind="dictionary_japanese_filter",
+                title="FILTER JAPANESE DICTIONARY",
+                origin=("dictionary", None),
+                selection="text_query",
+                payload={
+                    "language": "ja",
+                    "text_query": editor.payload["text_filter"],
+                    "word_type_filter": editor.payload["word_type_filter"],
+                },
+            )
+        else:
+            self.editor = EditorState(
+                kind="dictionary_english_filter",
+                title="FILTER ENGLISH DICTIONARY",
+                origin=("dictionary", None),
+                selection="text_query",
+                payload={
+                    "language": "en",
+                    "text_query": editor.payload["text_filter"],
+                },
+            )
+        return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+
+    def _finish_filter(
+        self,
+        *,
+        clear: bool = False,
+    ) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        if editor is None or editor.kind not in {
+            "dictionary_japanese_filter",
+            "dictionary_english_filter",
+        }:
+            return ()
+        language: DictionaryLanguage = editor.payload["language"]
+        if self._stack:
+            expected = (
+                "dictionary_japanese_list"
+                if language == "ja"
+                else "dictionary_english_list"
+            )
+            if self._stack[-1].kind == expected:
+                self._stack.pop()
+        if language == "ja":
+            self._list_state.set_japanese_filter(
+                text_query="" if clear else str(editor.payload["text_query"]),
+                word_type_filter=(
+                    "ALL"
+                    if clear
+                    else editor.payload["word_type_filter"]
+                ),
+            )
+            self.editor = self._japanese_list_state()
+        else:
+            self._list_state.set_english_filter(
+                text_query="" if clear else str(editor.payload["text_query"]),
+            )
+            self.editor = self._english_list_state()
+        return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+
+    def _adjust_filter(self, direction: int) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        if (
+            editor is None
+            or editor.kind != "dictionary_japanese_filter"
+            or editor.selection != "word_type"
+        ):
+            return ()
+        current = editor.payload["word_type_filter"]
+        index = JAPANESE_WORD_TYPE_FILTERS.index(current)
+        editor.payload["word_type_filter"] = JAPANESE_WORD_TYPE_FILTERS[
+            (index + direction) % len(JAPANESE_WORD_TYPE_FILTERS)
+        ]
+        return (ClearAdjustmentFeedbackIntent(),)
 
     def _japanese_entry_state(
         self,
@@ -547,10 +655,9 @@ class TuiDictionaryController:
         }:
             entries = editor.payload["entries"]
             entry_keys = [("entry", index) for index in range(len(entries))]
-            action_keys = ["add"]
-            if entries:
-                action_keys.append("delete")
-            action_keys.append("back")
+            action_keys = [
+                item.key for item in menu_items(editor.kind, editor.payload)
+            ]
             keys = [*entry_keys, *action_keys]
             try:
                 index = keys.index(editor.selection)
@@ -564,6 +671,17 @@ class TuiDictionaryController:
             ):
                 editor.payload["entry_index"] = editor.selection[1]
                 self._remember_list_focus(editor)
+            return ()
+        if editor.kind in {
+            "dictionary_japanese_filter",
+            "dictionary_english_filter",
+        }:
+            keys = [item.key for item in menu_items(editor.kind, editor.payload)]
+            try:
+                index = keys.index(editor.selection)
+            except ValueError:
+                index = 0
+            editor.selection = keys[min(max(index + delta, 0), len(keys) - 1)]
             return ()
         if editor.kind == "dictionary_japanese_duplicates":
             entries = editor.payload["matches"]
@@ -650,6 +768,11 @@ class TuiDictionaryController:
                     normalized = normalize_english_phonemes(value.split())
                     editor.payload["phonemes"] = tuple(normalized)
                     editor.input_value = " ".join(normalized)
+            elif editor.kind in {
+                "dictionary_japanese_filter",
+                "dictionary_english_filter",
+            } and name == "text_query":
+                editor.payload["text_query"] = value
         except Exception as exc:
             editor.error = error_status(f"{exc}")
             return ()
@@ -1188,6 +1311,10 @@ class TuiDictionaryController:
                 self._restore_parent()
             return (UpdateStatusIntent(""),)
         if editor.kind == "dictionary_japanese_list":
+            if selected == "sort":
+                return self._cycle_list_sort()
+            if selected == "filter":
+                return self._open_filter_editor()
             if selected == "add":
                 self._stack.append(deepcopy(editor))
                 self.editor = self._japanese_entry_state(word_uuid=None, word=None)
@@ -1213,6 +1340,10 @@ class TuiDictionaryController:
                     )
                 return ()
         if editor.kind == "dictionary_english_list":
+            if selected == "sort":
+                return self._cycle_list_sort()
+            if selected == "filter":
+                return self._open_filter_editor()
             if selected == "add":
                 self._stack.append(deepcopy(editor))
                 self.editor = self._english_entry_state()
@@ -1238,6 +1369,23 @@ class TuiDictionaryController:
                         entry_total=len(entries),
                     )
                 return ()
+        if editor.kind in {
+            "dictionary_japanese_filter",
+            "dictionary_english_filter",
+        }:
+            if selected == "text_query":
+                return self._begin_field(
+                    "text_query",
+                    str(editor.payload["text_query"]),
+                )
+            if selected == "apply":
+                return self._finish_filter()
+            if selected == "clear":
+                return self._finish_filter(clear=True)
+            if selected == "back":
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            return ()
         if editor.kind == "dictionary_japanese_duplicates":
             if isinstance(selected, tuple) and selected[0] == "entry":
                 index = selected[1]
@@ -1337,6 +1485,12 @@ class TuiDictionaryController:
             if key in _ENTER_KEYS:
                 return self._finish_field()
             if key == _ESCAPE:
+                if editor.kind in {
+                    "dictionary_japanese_filter",
+                    "dictionary_english_filter",
+                }:
+                    self._restore_parent()
+                    return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
                 return self._back_from_entry()
             if key == curses.KEY_LEFT:
                 editor.input_cursor = max(0, editor.input_cursor - 1)
@@ -1414,6 +1568,8 @@ class TuiDictionaryController:
         if editor.kind in {
             "dictionary_japanese_entry",
             "dictionary_english_entry",
+            "dictionary_japanese_filter",
+            "dictionary_english_filter",
             "dictionary_menu",
             "dictionary_delete_confirmation",
             "dictionary_discard_confirmation",
@@ -1482,6 +1638,8 @@ class TuiDictionaryController:
                 return self._adjust_japanese(direction)
             if editor.kind == "dictionary_english_entry":
                 return self._adjust_english(direction)
+            if editor.kind == "dictionary_japanese_filter":
+                return self._adjust_filter(direction)
 
         if key in _ENTER_KEYS:
             return self._activate()
