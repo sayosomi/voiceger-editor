@@ -45,6 +45,7 @@ from .settings import (
     VOICEGER_DEFAULT_TOP_K,
     VOICEGER_DEFAULT_TOP_P,
 )
+from .tui_adjustments import step_bounded, step_cyclic
 from .tui_display import _display_width, _move_wrapped_cursor
 from .tui_shortcuts import menu_items, resolve_shortcut
 from .tui_status import EMPTY_STATUS, Status, error_status, info_status
