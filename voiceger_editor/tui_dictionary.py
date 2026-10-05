@@ -868,11 +868,6 @@ class TuiDictionaryController:
                 min(max(index + delta, 0), len(entries) - 1),
             )
             return ()
-        if editor.kind == "dictionary_delete_confirmation":
-            apply_movement(
-                [item.key for item in menu_items(editor.kind, editor.payload)]
-            )
-            return ()
         return ()
 
     def _move_entry_selection(self, delta: int) -> tuple[EditorIntent, ...]:
