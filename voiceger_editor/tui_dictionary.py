@@ -446,6 +446,7 @@ class TuiDictionaryController:
                 "quick_save": quick_save,
                 "entry_index": entry_index,
                 "entry_total": entry_total,
+                "can_delete": word_uuid is not None,
             },
         )
 
@@ -478,6 +479,7 @@ class TuiDictionaryController:
                 "quick_save": quick_save,
                 "entry_index": entry_index,
                 "entry_total": entry_total,
+                "can_delete": original_surface is not None,
             },
         )
 
@@ -594,32 +596,12 @@ class TuiDictionaryController:
 
     def _move_entry_selection(self, delta: int) -> tuple[EditorIntent, ...]:
         editor = self.editor
-        if editor is None:
+        if editor is None or editor.kind not in {
+            "dictionary_japanese_entry",
+            "dictionary_english_entry",
+        }:
             return ()
-        if editor.kind == "dictionary_japanese_entry":
-            keys = [
-                "surface",
-                "pronunciation",
-                "word_type",
-                "priority",
-                "generate_pronunciation",
-                "preview",
-                "save",
-                "dictionary",
-                "back",
-            ]
-        elif editor.kind == "dictionary_english_entry":
-            keys = [
-                "surface",
-                "phonemes",
-                "generate_pronunciation",
-                "preview",
-                "save",
-                "dictionary",
-                "back",
-            ]
-        else:
-            return ()
+        keys = [item.key for item in menu_items(editor.kind, editor.payload)]
         if (
             editor.payload.get("entry_index") is not None
             and editor.payload.get("entry_total") is not None
@@ -982,43 +964,77 @@ class TuiDictionaryController:
     def _open_delete_confirmation(self) -> tuple[EditorIntent, ...]:
         editor = self.editor
         assert editor is not None
-        identifier = self._remember_list_focus(editor)
-        if identifier is None:
-            return (UpdateStatusIntent("Select a dictionary word to delete."),)
-        identities = tuple(editor.payload.get("entry_ids", ()))
-        try:
-            index = identities.index(identifier)
-        except ValueError:
-            return ()
-        editor.payload["entry_index"] = index
-        parent_editor = deepcopy(editor)
-        parent_editor.selection = ("entry", index)
-        if editor.kind == "dictionary_japanese_list":
-            entries = editor.payload["entries"]
-            if not 0 <= index < len(entries):
+        if editor.kind in {
+            "dictionary_japanese_list",
+            "dictionary_english_list",
+        }:
+            identifier = self._remember_list_focus(editor)
+            if identifier is None:
+                return (UpdateStatusIntent("Select a dictionary word to delete."),)
+            identities = tuple(editor.payload.get("entry_ids", ()))
+            try:
+                index = identities.index(identifier)
+            except ValueError:
                 return ()
-            _entry_identifier, word = entries[index]
+            editor.payload["entry_index"] = index
+            parent_editor = deepcopy(editor)
+            parent_editor.selection = ("entry", index)
+            if editor.kind == "dictionary_japanese_list":
+                entries = editor.payload["entries"]
+                if not 0 <= index < len(entries):
+                    return ()
+                _entry_identifier, word = entries[index]
+                payload = {
+                    "language": "ja",
+                    "identifier": identifier,
+                    "surface": word.surface,
+                    "pronunciation": word.pronunciation,
+                    "accent": word.accent_type,
+                    "moras": _reading_morae(word.pronunciation),
+                    "parent_editor": parent_editor,
+                    "opened_from_entry": False,
+                }
+            else:
+                entries = editor.payload["entries"]
+                if not 0 <= index < len(entries):
+                    return ()
+                entry = entries[index]
+                payload = {
+                    "language": "en",
+                    "identifier": identifier,
+                    "surface": entry.surface,
+                    "phonemes": tuple(entry.phonemes),
+                    "parent_editor": parent_editor,
+                    "opened_from_entry": False,
+                }
+        elif editor.kind == "dictionary_japanese_entry":
+            identifier = editor.payload.get("word_uuid")
+            if identifier is None:
+                return ()
             payload = {
                 "language": "ja",
-                "identifier": identifier,
-                "surface": word.surface,
-                "pronunciation": word.pronunciation,
-                "accent": word.accent_type,
-                "moras": _reading_morae(word.pronunciation),
-                "parent_editor": parent_editor,
+                "identifier": str(identifier),
+                "surface": editor.payload["surface"],
+                "pronunciation": editor.payload["pronunciation"],
+                "accent": editor.payload["accent"],
+                "moras": tuple(editor.payload["moras"]),
+                "parent_editor": deepcopy(editor),
+                "opened_from_entry": True,
             }
-        else:
-            entries = editor.payload["entries"]
-            if not 0 <= index < len(entries):
+        elif editor.kind == "dictionary_english_entry":
+            identifier = editor.payload.get("original_surface")
+            if identifier is None:
                 return ()
-            entry = entries[index]
             payload = {
                 "language": "en",
-                "identifier": identifier,
-                "surface": entry.surface,
-                "phonemes": tuple(entry.phonemes),
-                "parent_editor": parent_editor,
+                "identifier": str(identifier),
+                "surface": editor.payload["surface"],
+                "phonemes": tuple(editor.payload["phonemes"]),
+                "parent_editor": deepcopy(editor),
+                "opened_from_entry": True,
             }
+        else:
+            return ()
         self.editor = EditorState(
             kind="dictionary_delete_confirmation",
             title="DELETE DICTIONARY WORD?",
@@ -1132,6 +1148,15 @@ class TuiDictionaryController:
                 }:
                     self._stack.clear()
         else:
+            snapshot = request.editor_snapshot
+            if bool(snapshot.payload.get("opened_from_entry")):
+                list_kind = (
+                    "dictionary_japanese_list"
+                    if request.language == "ja"
+                    else "dictionary_english_list"
+                )
+                if self._stack and self._stack[-1].kind == list_kind:
+                    self._stack.pop()
             self.editor = (
                 self._japanese_list_state()
                 if request.language == "ja"
@@ -1242,6 +1267,8 @@ class TuiDictionaryController:
                 return self._preview()
             if selected == "save":
                 return self._save()
+            if selected == "delete":
+                return self._open_delete_confirmation()
             if selected == "dictionary":
                 return self.open_menu(preserve_current=True)
             if selected == "back":
@@ -1259,6 +1286,8 @@ class TuiDictionaryController:
                 return self._preview()
             if selected == "save":
                 return self._save()
+            if selected == "delete":
+                return self._open_delete_confirmation()
             if selected == "dictionary":
                 return self.open_menu(preserve_current=True)
             if selected == "back":
