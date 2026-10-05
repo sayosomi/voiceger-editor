@@ -15,6 +15,7 @@ from .english_stress import (
 )
 from .openjtalk_dictionary import expand_word_type, normalize_surface
 from .pronunciation import parse_pronunciation
+from .tui_adjustments import step_bounded, step_cyclic
 from .tui_dictionary_list import (
     ENGLISH_SORT_MODES,
     JAPANESE_SORT_MODES,
@@ -403,8 +404,8 @@ class TuiDictionaryController:
         if editor.kind == "dictionary_japanese_list":
             modes = JAPANESE_SORT_MODES
             current = editor.payload["sort_mode"]
-            target = modes[(modes.index(current) + direction) % len(modes)]
-            if target == current:
+            result = step_cyclic(current, modes, direction=direction)
+            if not result.changed:
                 editor.selection = "sort"
                 return adjustment_feedback_intents(
                     changed=False,
@@ -412,12 +413,12 @@ class TuiDictionaryController:
                     control="sort",
                     direction=direction,
                 )
-            self.set_japanese_list_sort(target)
+            self.set_japanese_list_sort(result.value)
         elif editor.kind == "dictionary_english_list":
             modes = ENGLISH_SORT_MODES
             current = editor.payload["sort_mode"]
-            target = modes[(modes.index(current) + direction) % len(modes)]
-            if target == current:
+            result = step_cyclic(current, modes, direction=direction)
+            if not result.changed:
                 editor.selection = "sort"
                 return adjustment_feedback_intents(
                     changed=False,
@@ -425,7 +426,7 @@ class TuiDictionaryController:
                     control="sort",
                     direction=direction,
                 )
-            self.set_english_list_sort(target)
+            self.set_english_list_sort(result.value)
         else:
             return ()
         assert self.editor is not None
@@ -648,12 +649,10 @@ class TuiDictionaryController:
         ):
             return ()
         current = editor.payload["word_type_filter"]
-        index = JAPANESE_WORD_TYPE_FILTERS.index(current)
-        editor.payload["word_type_filter"] = JAPANESE_WORD_TYPE_FILTERS[
-            (index + direction) % len(JAPANESE_WORD_TYPE_FILTERS)
-        ]
+        result = step_cyclic(current, JAPANESE_WORD_TYPE_FILTERS, direction=direction)
+        editor.payload["word_type_filter"] = result.value
         return adjustment_feedback_intents(
-            changed=True,
+            changed=result.changed,
             area="dictionary",
             control="word_type",
             direction=direction,
@@ -979,35 +978,31 @@ class TuiDictionaryController:
                 editor.payload["accent"] = updated
             return ()
         if editor.selection == "word_type":
-            current = _WORD_TYPES.index(editor.payload["word_type"])
-            target = (current + direction) % len(_WORD_TYPES)
-            if target == current:
-                return adjustment_feedback_intents(
-                    changed=False,
-                    area="dictionary",
-                    control="word_type",
-                    direction=direction,
-                )
-            editor.payload["word_type"] = _WORD_TYPES[target]
+            result = step_cyclic(
+                editor.payload["word_type"],
+                _WORD_TYPES,
+                direction=direction,
+            )
+            if result.changed:
+                editor.payload["word_type"] = result.value
             return adjustment_feedback_intents(
-                changed=True,
+                changed=result.changed,
                 area="dictionary",
                 control="word_type",
                 direction=direction,
             )
         if editor.selection == "priority":
-            current = editor.payload["priority"]
-            updated = min(10, max(0, current + direction))
-            if updated == current:
-                return adjustment_feedback_intents(
-                    changed=False,
-                    area="dictionary",
-                    control="priority",
-                    direction=direction,
-                )
-            editor.payload["priority"] = updated
+            result = step_bounded(
+                editor.payload["priority"],
+                direction=direction,
+                step=1,
+                minimum=0,
+                maximum=10,
+            )
+            if result.changed:
+                editor.payload["priority"] = result.value
             return adjustment_feedback_intents(
-                changed=True,
+                changed=result.changed,
                 area="dictionary",
                 control="priority",
                 direction=direction,

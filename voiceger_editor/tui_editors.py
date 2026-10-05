@@ -45,6 +45,7 @@ from .settings import (
     VOICEGER_DEFAULT_TOP_K,
     VOICEGER_DEFAULT_TOP_P,
 )
+from .tui_adjustments import step_bounded, step_cyclic
 from .tui_display import _display_width, _move_wrapped_cursor
 from .tui_shortcuts import menu_items, resolve_shortcut
 from .tui_status import EMPTY_STATUS, Status, error_status, info_status
@@ -1956,26 +1957,36 @@ class TuiEditorController:
                 if not current.is_finite() or current <= 0:
                     raise InvalidOperation
                 current = current.quantize(Decimal("0.01"))
-                updated = current + Decimal("0.01") * direction
-                updated = max(Decimal("0.01"), updated)
+                result = step_bounded(
+                    current,
+                    direction=direction,
+                    step=Decimal("0.01"),
+                    minimum=Decimal("0.01"),
+                )
             except (InvalidOperation, ValueError):
                 editor.error = error_status("Speed must be a positive finite number.")
                 return clear_feedback
-            if updated == current:
+            if not result.changed:
                 editor.error = EMPTY_STATUS
                 return clear_feedback
-            draft["speed"] = f"{updated:.2f}"
+            draft["speed"] = f"{result.value:.2f}"
         elif selected == "take_count":
             try:
                 current = int(draft["take_count"])
             except (TypeError, ValueError):
                 editor.error = error_status("Take count must be an integer from 1 through 100.")
                 return clear_feedback
-            updated = min(100, max(1, current + direction))
-            if updated == current:
+            result = step_bounded(
+                current,
+                direction=direction,
+                step=1,
+                minimum=1,
+                maximum=100,
+            )
+            if not result.changed:
                 editor.error = EMPTY_STATUS
                 return clear_feedback
-            draft["take_count"] = str(updated)
+            draft["take_count"] = str(result.value)
         elif selected == "top_k":
             try:
                 current = int(draft["top_k"])
@@ -1985,11 +1996,17 @@ class TuiEditorController:
             if not 1 <= current <= 100:
                 editor.error = error_status("Top K must be an integer from 1 through 100.")
                 return clear_feedback
-            updated = min(100, max(1, current + direction))
-            if updated == current:
+            result = step_bounded(
+                current,
+                direction=direction,
+                step=1,
+                minimum=1,
+                maximum=100,
+            )
+            if not result.changed:
                 editor.error = EMPTY_STATUS
                 return clear_feedback
-            draft["top_k"] = str(updated)
+            draft["top_k"] = str(result.value)
         elif selected in {"top_p", "temperature"}:
             label = "Top P" if selected == "top_p" else "Temperature"
             try:
@@ -2007,13 +2024,25 @@ class TuiEditorController:
                     error_status(f"{label} must be a finite number from 0.00 through 1.00.")
                 )
                 return clear_feedback
-            updated = current + Decimal("0.05") * direction
-            updated = min(Decimal("1.00"), max(Decimal("0.00"), updated))
-            if updated == current:
+            result = step_bounded(
+                current,
+                direction=direction,
+                step=Decimal("0.05"),
+                minimum=Decimal("0.00"),
+                maximum=Decimal("1.00"),
+            )
+            if not result.changed:
                 editor.error = EMPTY_STATUS
                 return clear_feedback
-            draft[selected] = f"{updated:.2f}"
+            draft[selected] = f"{result.value:.2f}"
         elif selected in {"save_text", "save_lab"}:
-            draft[selected] = not bool(draft[selected])
+            result = step_cyclic(
+                bool(draft[selected]),
+                (False, True),
+                direction=direction,
+            )
+            if not result.changed:
+                return clear_feedback
+            draft[selected] = result.value
         editor.error = EMPTY_STATUS
         return feedback

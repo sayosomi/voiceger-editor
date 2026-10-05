@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 
 from .settings import Settings
+from .tui_adjustments import step_bounded
 from .tui_batch import BatchActionBindings, TuiBatchController
 from .tui_editors import PronunciationRow, adjustment_feedback_intents
 from .tui_navigation import (
@@ -365,20 +366,25 @@ class TuiBatchItemController:
             )
             return
         count = bindings.get_settings().take_count
-        updated = min(100, max(1, count + direction))
-        changed = updated != count
+        result = step_bounded(
+            count,
+            direction=direction,
+            step=1,
+            minimum=1,
+            maximum=100,
+        )
         actions.dispatch_editor_intents(
             adjustment_feedback_intents(
-                changed=changed,
+                changed=result.changed,
                 area="navigation",
                 control="generate",
                 direction=direction,
             )
         )
-        if not changed:
+        if not result.changed:
             return
         actions.change_settings(
-            take_count=updated,
+            take_count=result.value,
             report_success=False,
         )
         self.dispatch_navigation_actions(
