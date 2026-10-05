@@ -1010,6 +1010,7 @@ class TuiDictionaryController:
                 "moras": selected_moras,
                 "accent": selected_accent,
                 "word_type": word_type,
+                "word_type_label": _japanese_word_type_label(word_type),
                 "priority": priority,
                 "opening": opening,
                 "quick_save": quick_save,
@@ -1280,6 +1281,9 @@ class TuiDictionaryController:
             )
             if result.changed:
                 editor.payload["word_type"] = result.value
+                editor.payload["word_type_label"] = _japanese_word_type_label(
+                    result.value
+                )
             return adjustment_feedback_intents(
                 changed=result.changed,
                 area="dictionary",
