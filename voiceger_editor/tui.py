@@ -703,6 +703,7 @@ class TuiApp:
                 width,
                 delete_confirmation_caption=self._batch.delete_confirmation_caption,
                 delete_confirmation_selection=self._batch.delete_confirmation_selection,
+                pressed_adjustment=self._pressed_adjustment,
             )
         else:
             self._dispatch_navigation_actions(
