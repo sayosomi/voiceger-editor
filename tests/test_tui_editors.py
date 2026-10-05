@@ -1435,6 +1435,12 @@ class TuiEditorControllerTests(unittest.TestCase):
             (AdjustmentPressedIntent("settings", "top_k", 1),),
         )
         self.assertEqual(editor.payload["draft_settings"]["top_k"], "21")
+        editor.payload["draft_settings"]["top_k"] = "100"
+        self.assertEqual(
+            controller.adjust_settings(1),
+            (ClearAdjustmentFeedbackIntent(),),
+        )
+        self.assertEqual(editor.payload["draft_settings"]["top_k"], "100")
 
         editor.selection = "top_p"
         self.assertEqual(
