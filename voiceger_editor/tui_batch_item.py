@@ -472,6 +472,8 @@ class TuiBatchItemController:
         self,
         direction: int,
         bindings: BatchItemBindings,
+        *,
+        show_feedback: bool = False,
     ) -> None:
         index = self.batch.item_index
         if index is None or direction == 0:
@@ -494,11 +496,14 @@ class TuiBatchItemController:
             actions.set_status(info_status("Last Caption."))
             return
 
-        bindings.mark_adjustment_pressed(
-            "navigation",
-            "batch_item",
-            direction,
-        )
+        if show_feedback:
+            bindings.mark_adjustment_pressed(
+                "navigation",
+                "batch_item",
+                direction,
+            )
+        else:
+            bindings.clear_adjustment_feedback()
         actions.operations.stop_playback()
         actions.operations.clear_current_take()
         actions.editor_controller.clear_groupings()
@@ -536,6 +541,7 @@ class TuiBatchItemController:
             return True
 
         direction: int | None = None
+        show_adjustment_feedback = False
         if key == "[":
             direction = -1
         elif key == "]":
@@ -543,9 +549,15 @@ class TuiBatchItemController:
         elif actions.navigation.focus_key == ("batch_item", None):
             if key == curses.KEY_LEFT:
                 direction = -1
+                show_adjustment_feedback = True
             elif key == curses.KEY_RIGHT:
                 direction = 1
+                show_adjustment_feedback = True
         if direction is None:
             return False
-        self.move_open_item(direction, bindings)
+        self.move_open_item(
+            direction,
+            bindings,
+            show_feedback=show_adjustment_feedback,
+        )
         return True
