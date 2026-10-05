@@ -86,6 +86,8 @@ class BatchActionBindings:
     dictionary_controller: Any
     set_session: Callable[[Any | None], None]
     set_status: Callable[[Status], None]
+    clear_adjustment_feedback: Callable[[], None]
+    mark_adjustment_pressed: Callable[[str, str, int], None]
     open_caption_editor: Callable[..., None]
     change_settings: Callable[..., None]
     open_settings_editor: Callable[[str | None], None]
@@ -258,11 +260,18 @@ class TuiBatchController:
             elif isinstance(action, AdjustBatchTakeCount):
                 count = self.batch.default_take_count
                 updated = min(100, max(1, count + action.direction))
-                if updated != count:
-                    bindings.change_settings(
-                        take_count=updated,
-                        report_success=False,
-                    )
+                if updated == count:
+                    bindings.clear_adjustment_feedback()
+                    continue
+                bindings.mark_adjustment_pressed(
+                    "batch_list",
+                    "takes",
+                    action.direction,
+                )
+                bindings.change_settings(
+                    take_count=updated,
+                    report_success=False,
+                )
             elif isinstance(action, OpenBatchSettings):
                 bindings.open_settings_editor("style_id")
             elif isinstance(action, OpenBatchDictionary):
