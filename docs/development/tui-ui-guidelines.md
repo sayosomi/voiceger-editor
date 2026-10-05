@@ -1,6 +1,6 @@
 # TUI UI Guidelines
 
-This document defines reusable interaction and presentation conventions for the keyboard-first TUI. Feature-specific behavior remains owned by the relevant focused TUI module.
+This document defines interaction and presentation conventions shared across the keyboard-first TUI. Feature-specific behavior belongs in the feature owner, its Issue contract, and focused tests.
 
 ## Adjustable values
 
@@ -14,9 +14,9 @@ Label        < Value >
 
 must allow the focused value to be changed with Left / Right.
 
-Do not use `< >` for a read-only status, an action that only opens another screen, or any value that does not respond to Left / Right.
+Do not use `< >` for a read-only status, a row that only opens another screen, or any state where Left / Right has no meaningful effect.
 
-Not every adjustable value must use angle brackets when another established visualization better communicates the interaction, but every angle-bracket value must be Left / Right adjustable.
+If a value is not currently adjustable, render it without angle brackets.
 
 ## Left / Right semantics
 
@@ -26,47 +26,30 @@ When a focused row exposes an ordered set of values:
 - Right selects the next value.
 - Cyclic values may wrap at the ends when that behavior is intentional and tested.
 
-For binary enabled state:
+For a binary adjustable state:
 
 - Left means Off.
 - Right means On.
 
-If enabling a control requires missing configuration, Right should open the focused editor needed to supply that configuration instead of enabling an ineffective empty state.
+Changing an adjustable value should keep focus on that row.
 
 ## Enter semantics
 
 Enter activates the focused row's primary detailed interaction.
 
-For an adjustable row with a useful direct chooser or editor, Enter should open that chooser or editor rather than silently behaving like Right.
-
-Examples:
-
-- Dictionary Sort: Left / Right steps through sort modes; Enter opens the sort chooser.
-- Dictionary Filter: Left / Right changes Off / On; Enter opens the filter editor.
+For a row that supports both direct adjustment and a detailed chooser or editor, Enter should open the detailed interaction rather than silently behaving like Right.
 
 ## Visible shortcuts
 
-Visible shortcuts remain accelerators for frequent operations.
+Visible shortcuts are accelerators for frequent operations.
 
-A shortcut may intentionally provide a faster action than Enter on the same hybrid row when the distinction is useful and explicit. This behavior must be covered by focused interaction tests.
+A shortcut may intentionally provide a faster action than Enter on the same row when that distinction is useful and explicit. Such differences must be deliberate and covered by focused interaction tests.
 
-Example:
+Shortcut declarations, labels, selectable order, and conditions remain centralized in the shared shortcut metadata.
 
-- `S` cycles Dictionary Sort immediately.
-- Enter on the focused Sort row opens the complete sort chooser.
+## Reversible state
 
-Shortcut declarations, labels, selectable order, and conditions remain owned by `tui_shortcuts.py`.
-
-## Preserving configuration while disabled
-
-A reversible On / Off control should keep its configured value when disabled unless Clear or Reset explicitly removes it.
-
-For Dictionary Filter:
-
-- Off disables filtering but retains the query and other filter criteria.
-- Right re-enables the retained criteria.
-- Enter opens the editor with the retained criteria.
-- Clear removes the criteria and leaves filtering Off.
+Disabling a reversible control should preserve its configured value unless an explicit Clear or Reset action removes it.
 
 ## Escape actions
 
@@ -79,17 +62,17 @@ Use:
 [Esc] Cancel
 ```
 
-Do not render a selectable Back or Cancel row without the `[Esc]` hint. Esc is not treated as an ordinary letter shortcut; the visible hint is presentation metadata for the common one-level-back action.
+Do not render a selectable Back or Cancel row without the `[Esc]` hint. Esc is not treated as an ordinary letter shortcut; the visible hint communicates the direct key for that action.
 
 ## Navigation
 
-Screens that present entries followed by actions should keep one vertical Up / Down navigation list unless a feature has a stronger interaction reason to do otherwise.
+Screens that present entries followed by actions should keep one vertical Up / Down navigation list unless a stronger interaction requirement justifies another structure.
 
-Changing an adjustable value must keep focus on that adjustable row. Recomputed collections must retain stable item identity separately from the currently focused action row so later Edit / Delete actions cannot be retargeted by display-index changes.
+When a collection is recomputed, retain stable item identity separately from display position so later actions cannot be retargeted by index changes.
 
 ## Ownership
 
-- Interaction state and key behavior belong to the focused TUI owner, such as `tui_dictionary.py`.
-- Declarative row and shortcut metadata belong to `tui_shortcuts.py`.
+- Interaction state and key behavior belong to the focused feature owner.
+- Declarative row and shortcut metadata belong to the shared shortcut metadata owner.
 - Rendering consumes state and metadata; it must not reimplement business semantics.
-- Shared reusable sorting/filtering semantics belong outside rendering and should have one state owner.
+- Shared semantic state should have one owner rather than parallel UI-specific implementations.
