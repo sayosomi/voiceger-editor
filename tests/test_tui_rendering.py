@@ -1420,7 +1420,10 @@ class TuiRenderingTests(unittest.TestCase):
                     kind="dictionary_delete_confirmation",
                     title="DELETE DICTIONARY WORD?",
                     selection="delete",
-                    payload=payload,
+                    payload={
+                        **payload,
+                        "warning": "This dictionary word will be removed.",
+                    },
                     active_field=None,
                     input_value="",
                     input_cursor=0,

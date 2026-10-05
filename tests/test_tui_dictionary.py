@@ -782,6 +782,10 @@ class TuiDictionaryControllerTests(unittest.TestCase):
             self.controller.editor.kind,
             "dictionary_discard_confirmation",
         )
+        self.key(curses.KEY_DOWN)
+        self.assertEqual(self.controller.editor.selection, "cancel")
+        self.key(curses.KEY_UP)
+        self.assertEqual(self.controller.editor.selection, "discard")
 
         self.key("\x1b")
         self.assertEqual(self.controller.editor.kind, "dictionary_english_entry")

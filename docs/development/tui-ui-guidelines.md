@@ -93,6 +93,17 @@ Do not render a selectable Back or Cancel row without the `[Esc]` hint.
 
 If an active operation intentionally gives Esc a higher-priority cancellation meaning, that behavior must be explicit and tested rather than silently changing the normal navigation contract.
 
+## Confirmation screens
+
+Two-choice confirmation screens should use one ordered vertical action list backed by the declarative menu metadata.
+
+- Up / Down moves between confirmation actions without wrapping.
+- Enter activates the focused action.
+- A visible direct action shortcut activates that action immediately.
+- When cancellation is available, Esc activates Cancel and the visible cancel row is labeled `[Esc] Cancel`.
+
+The shared confirmation shell may own these interaction and presentation mechanics. Feature owners retain what is being confirmed, feature-specific payload/state, action execution, dirty-state rules, asynchronous behavior, and success/failure Status text.
+
 ## Feedback for long-running work
 
 An action that may take perceptible time must provide visible Status feedback promptly enough that the TUI does not appear frozen.
