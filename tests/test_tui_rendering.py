@@ -1452,7 +1452,15 @@ class TuiRenderingTests(unittest.TestCase):
             kind="dictionary_japanese_list",
             title="JAPANESE DICTIONARY",
             selection="add",
-            payload={"entries": ()},
+            payload={
+                "entries": (),
+                "sort_mode": "surface_asc",
+                "text_filter": "",
+                "word_type_filter": "ALL",
+                "visible_count": 0,
+                "total_count": 0,
+                "can_delete": False,
+            },
             active_field=None,
             input_value="",
             input_cursor=0,
@@ -1468,8 +1476,90 @@ class TuiRenderingTests(unittest.TestCase):
             any("No Japanese dictionary words." in line for line, _key in document)
         )
         self.assertIn(("▶ [A] Add", "add"), document)
+        self.assertTrue(any("[S] Sort" in line for line, _key in document))
+        self.assertTrue(any("[F] Filter" in line for line, _key in document))
         self.assertIn(("  Back", "back"), document)
         self.assertFalse(any("[X] Delete" in line for line, _key in document))
+
+    def test_filtered_dictionary_no_match_keeps_actions_and_shown_total_count(self):
+        editor = SimpleNamespace(
+            kind="dictionary_english_list",
+            title="ENGLISH DICTIONARY",
+            selection="filter",
+            payload={
+                "entries": (),
+                "sort_mode": "added_desc",
+                "text_filter": "missing",
+                "word_type_filter": None,
+                "visible_count": 0,
+                "total_count": 3,
+                "can_delete": False,
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        visible = "\n".join(line for line, _key in document)
+
+        self.assertIn("Showing 0 / 3 words", visible)
+        self.assertIn("No matching English dictionary words.", visible)
+        self.assertIn("[S] Sort", visible)
+        self.assertIn("Added ↓", visible)
+        self.assertIn("[F] Filter", visible)
+        self.assertIn("missing", visible)
+        self.assertIn("[A] Add", visible)
+        self.assertNotIn("[X] Delete", visible)
+
+    def test_dictionary_filter_editors_render_focused_fields_and_actions(self):
+        cases = (
+            SimpleNamespace(
+                kind="dictionary_japanese_filter",
+                title="FILTER JAPANESE DICTIONARY",
+                selection="word_type",
+                payload={
+                    "language": "ja",
+                    "text_query": "アメ",
+                    "word_type_filter": "PROPER_NOUN",
+                },
+                active_field=None,
+                input_value="",
+                input_cursor=0,
+                error="",
+                scroll=0,
+            ),
+            SimpleNamespace(
+                kind="dictionary_english_filter",
+                title="FILTER ENGLISH DICTIONARY",
+                selection="text_query",
+                payload={"language": "en", "text_query": "ER0 D"},
+                active_field=None,
+                input_value="",
+                input_cursor=0,
+                error="",
+                scroll=0,
+            ),
+        )
+        for editor in cases:
+            with self.subTest(kind=editor.kind):
+                document, _cursor_line, _cursor_column = self.renderer.editor_document(
+                    render_state(editor=editor), 80
+                )
+                visible = "\n".join(line for line, _key in document)
+                self.assertIn("[A] Apply", visible)
+                self.assertIn("[C] Clear filter", visible)
+                self.assertIn("Back", visible)
+                if editor.kind == "dictionary_japanese_filter":
+                    self.assertIn("Surface / Pronunciation", visible)
+                    self.assertIn("PROPER_NOUN", visible)
+                else:
+                    self.assertIn("Surface / ARPAbet", visible)
+                    self.assertIn("ER0 D", visible)
 
     def test_japanese_dictionary_list_uses_main_mora_accent_display(self):
         word = SimpleNamespace(
@@ -1481,7 +1571,15 @@ class TuiRenderingTests(unittest.TestCase):
             kind="dictionary_japanese_list",
             title="JAPANESE DICTIONARY",
             selection=("entry", 0),
-            payload={"entries": (("uuid", word),)},
+            payload={
+                "entries": (("uuid", word),),
+                "sort_mode": "priority_desc",
+                "text_filter": "ずん",
+                "word_type_filter": "PROPER_NOUN",
+                "visible_count": 1,
+                "total_count": 4,
+                "can_delete": True,
+            },
             active_field=None,
             input_value="",
             input_cursor=0,
@@ -1501,6 +1599,9 @@ class TuiRenderingTests(unittest.TestCase):
         visible = "\n".join(line for line, _key in document)
         self.assertNotIn("accent_type", visible)
         self.assertNotIn("Enter Edit", visible)
+        self.assertIn("Showing 1 / 4 words", visible)
+        self.assertTrue(any("[S] Sort" in line and "Priority ↓" in line for line, _key in document))
+        self.assertTrue(any("[F] Filter" in line and "ずん" in line for line, _key in document))
         self.assertIn(("  [A] Add", "add"), document)
         self.assertIn(("  [X] Delete", "delete"), document)
         self.assertIn(("  Back", "back"), document)
@@ -1514,7 +1615,16 @@ class TuiRenderingTests(unittest.TestCase):
             kind="dictionary_english_list",
             title="ENGLISH DICTIONARY",
             selection="add",
-            payload={"entries": (entry,), "entry_index": 0},
+            payload={
+                "entries": (entry,),
+                "entry_index": 0,
+                "sort_mode": "surface_asc",
+                "text_filter": "",
+                "word_type_filter": None,
+                "visible_count": 1,
+                "total_count": 1,
+                "can_delete": True,
+            },
             active_field=None,
             input_value="",
             input_cursor=0,
@@ -1528,6 +1638,8 @@ class TuiRenderingTests(unittest.TestCase):
         visible = "\n".join(line for line, _key in document)
 
         self.assertIn(("▶ [A] Add", "add"), document)
+        self.assertTrue(any("[S] Sort" in line and "Surface ↑" in line for line, _key in document))
+        self.assertTrue(any("[F] Filter" in line and "Off" in line for line, _key in document))
         self.assertIn(("  [X] Delete", "delete"), document)
         self.assertIn(("  Back", "back"), document)
         self.assertNotIn("Enter Edit", visible)
