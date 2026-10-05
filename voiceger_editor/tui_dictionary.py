@@ -1170,7 +1170,10 @@ class TuiDictionaryController:
         *,
         entry_navigation_target: int | None = None,
     ) -> tuple[EditorIntent, ...]:
-        payload: dict[str, Any] = {"parent_editor": deepcopy(editor)}
+        payload: dict[str, Any] = {
+            "parent_editor": deepcopy(editor),
+            "warning": "Unsaved dictionary changes will be discarded.",
+        }
         if entry_navigation_target is not None:
             payload["entry_navigation_target"] = entry_navigation_target
         self.editor = EditorState(
