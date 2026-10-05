@@ -2310,7 +2310,7 @@ class TuiTests(unittest.TestCase):
         app._handle_key("\n")
         self.assertEqual(app.session.build_calls, 0)
 
-        app._handle_key("\n")
+        app._handle_key("r")
 
         self.assertEqual(app.session.build_calls, 0)
         self.assertIsNone(app._editor_controller.editor)
@@ -2336,7 +2336,7 @@ class TuiTests(unittest.TestCase):
         candidates = app.session.candidates
         set_navigation_focus(app, ("build_pronunciation", None))
         app._handle_key("\n")
-        app._handle_key("\n")
+        app._handle_key("r")
 
         app._operations.start_pending_worker()
         app._operations.join_worker()
@@ -2694,6 +2694,11 @@ class TuiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             app = self.make_app(query=mixed_query())
             app.config_path = Path(directory) / "config.json"
+            for _ in range(len(navigation_items(app))):
+                if app._navigation.focus_key == ("settings", None):
+                    break
+                app._handle_key(curses.KEY_DOWN)
+            self.assertEqual(app._navigation.focus_key, ("settings", None))
             app._handle_key("\n")
             self.assertEqual(app._editor_controller.editor.kind, "settings")
             editor = app._editor_controller.editor
@@ -3544,8 +3549,14 @@ class TuiTests(unittest.TestCase):
             navigation_revision=regenerate._navigation.revision,
         )
 
+        output = self.make_app(query=mixed_query())
+        output._handle_key("o")
+        self.assertEqual(output._editor_controller.editor.kind, "settings")
+        self.assertEqual(output._editor_controller.editor.selection, "output_dir")
+        self.assertEqual(output._editor_controller.editor.active_field, "output_dir")
+
         for removed in (
-            curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "o", "x", "l"
+            curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "x", "l"
         ):
             with self.subTest(removed=removed):
                 legacy = self.make_app(query=mixed_query())
