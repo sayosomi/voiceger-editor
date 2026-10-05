@@ -106,7 +106,17 @@ class DictionaryOperationIntent:
     work: Callable[[], Any]
 
 
-DictionaryControllerIntent = Union[EditorIntent, DictionaryOperationIntent]
+@dataclass(frozen=True)
+class OpenDictionarySettingsIntent:
+    selected_field: str
+    edit: bool = False
+
+
+DictionaryControllerIntent = Union[
+    EditorIntent,
+    DictionaryOperationIntent,
+    OpenDictionarySettingsIntent,
+]
 
 
 def _reading_morae(reading: str) -> tuple[str, ...]:
@@ -178,6 +188,7 @@ class TuiDictionaryController:
         self._list_state = DictionaryListStateOwner(core)
         self._import_review: DictionaryImportReview | None = None
         self._import_source_path = ""
+        self._suspended_editor: EditorState | None = None
 
     @staticmethod
     def _operation_request(
@@ -266,6 +277,25 @@ class TuiDictionaryController:
                 work,
             ),
         )
+
+    def restore_suspended_editor(self) -> bool:
+        """Restore a Dictionary screen after a temporary external editor."""
+
+        if self._suspended_editor is None:
+            return False
+        self.editor = self._suspended_editor
+        self._suspended_editor = None
+        return True
+
+    def _open_export_output_settings(
+        self,
+    ) -> tuple[DictionaryControllerIntent, ...]:
+        editor = self.editor
+        if editor is None or editor.kind != "dictionary_export":
+            return ()
+        self._suspended_editor = editor
+        self.editor = None
+        return (OpenDictionarySettingsIntent("output_dir", edit=True),)
 
     def _clear_import_state(self) -> None:
         self._import_review = None
@@ -1562,7 +1592,7 @@ class TuiDictionaryController:
             kind="dictionary_discard_confirmation",
             title="DISCARD DICTIONARY CHANGES?",
             origin=("dictionary", None),
-            selection="discard",
+            selection="cancel",
             payload=payload,
         )
         return (UpdateStatusIntent(""),)
@@ -1742,7 +1772,7 @@ class TuiDictionaryController:
             kind="dictionary_delete_confirmation",
             title="DELETE DICTIONARY WORD?",
             origin=("dictionary", None),
-            selection="delete",
+            selection="cancel",
             payload=payload,
         )
         return (UpdateStatusIntent(""),)
@@ -1944,6 +1974,8 @@ class TuiDictionaryController:
                 self._restore_parent()
             return (UpdateStatusIntent(""),)
         if editor.kind == "dictionary_export":
+            if selected == "output":
+                return self._open_export_output_settings()
             if selected == "voiceger":
                 return self._export_dictionary("voiceger")
             if selected == "voicevox":
