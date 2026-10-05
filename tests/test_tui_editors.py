@@ -2463,7 +2463,7 @@ class TuiEditorControllerTests(unittest.TestCase):
             "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
         deletion = controller.handle_key(
-            "\n", settings=self.settings(), query=query, current_caption="Caption"
+            "d", settings=self.settings(), query=query, current_caption="Caption"
         )
         intent = next(item for item in deletion if isinstance(item, ReplaceQueryIntent))
         self.assertEqual(intent.deleted_segment_index, 1)
@@ -2496,7 +2496,7 @@ class TuiEditorControllerTests(unittest.TestCase):
             "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
         intents = controller.handle_key(
-            "\n", settings=self.settings(), query=query, current_caption="Caption"
+            "d", settings=self.settings(), query=query, current_caption="Caption"
         )
         deletion = next(item for item in intents if isinstance(item, ReplaceQueryIntent))
         self.assertIsNone(deletion.query.voicegerSegments)
