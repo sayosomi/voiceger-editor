@@ -2036,6 +2036,13 @@ class TuiEditorController:
                 return clear_feedback
             draft[selected] = f"{result.value:.2f}"
         elif selected in {"save_text", "save_lab"}:
-            draft[selected] = not bool(draft[selected])
+            result = step_cyclic(
+                bool(draft[selected]),
+                (False, True),
+                direction=direction,
+            )
+            if not result.changed:
+                return clear_feedback
+            draft[selected] = result.value
         editor.error = EMPTY_STATUS
         return feedback
