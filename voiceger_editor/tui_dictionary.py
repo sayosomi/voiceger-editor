@@ -420,11 +420,11 @@ class TuiDictionaryController:
             if target == current:
                 editor.selection = "sort"
                 return adjustment_feedback_intents(
-                changed=False,
-                area="dictionary",
-                control="filter",
-                direction=direction,
-            )
+                    changed=False,
+                    area="dictionary",
+                    control="sort",
+                    direction=direction,
+                )
             self.set_english_list_sort(target)
         else:
             return ()
@@ -440,7 +440,15 @@ class TuiDictionaryController:
                     direction=direction,
                 ),
             )
-        return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+        return (
+            UpdateStatusIntent(""),
+            *adjustment_feedback_intents(
+                changed=False,
+                area="dictionary",
+                control="sort",
+                direction=direction,
+            ),
+        )
 
     def _open_sort_editor(self) -> tuple[EditorIntent, ...]:
         editor = self.editor
@@ -527,10 +535,20 @@ class TuiDictionaryController:
             return ()
         if not self._list_filter_has_criteria(editor):
             editor.selection = "filter"
-            return (ClearAdjustmentFeedbackIntent(),)
+            return adjustment_feedback_intents(
+                changed=False,
+                area="dictionary",
+                control="filter",
+                direction=direction,
+            )
         if bool(editor.payload.get("filter_enabled")) == enabled:
             editor.selection = "filter"
-            return (ClearAdjustmentFeedbackIntent(),)
+            return adjustment_feedback_intents(
+                changed=False,
+                area="dictionary",
+                control="filter",
+                direction=direction,
+            )
         self._remember_list_focus(editor)
         if editor.kind == "dictionary_japanese_list":
             self._list_state.set_japanese_filter_enabled(enabled)
