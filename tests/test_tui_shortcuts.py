@@ -73,8 +73,9 @@ class TuiShortcutTests(unittest.TestCase):
                 "a": "apply", "r": "reset",
             },
             "dictionary_menu": {
-                "j": "japanese", "e": "english", "i": "import",
+                "j": "japanese", "e": "english", "i": "import", "x": "export",
             },
+            "dictionary_export": {"e": "voiceger", "v": "voicevox"},
             "dictionary_import_path": {"i": "review"},
             "dictionary_import_review": {
                 "i": "import_selected", "c": "clear_selection",
@@ -320,6 +321,11 @@ class TuiShortcutTests(unittest.TestCase):
             "delete_confirmation": (
                 "delete",
                 {"warning": "warning"},
+                "",
+            ),
+            "dictionary_export": (
+                "voiceger",
+                {},
                 "",
             ),
         }
