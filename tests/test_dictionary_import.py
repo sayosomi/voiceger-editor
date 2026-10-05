@@ -196,7 +196,9 @@ class DictionaryImportTests(unittest.TestCase):
             }
         )
         new_uuid = "33333333-3333-4333-8333-333333333333"
+        second_new_uuid = "77777777-7777-4777-8777-777777777777"
         new_word = make_word("新語", "シンゴ", 0)
+        second_new_word = make_word("追加語", "ツイカゴ", 0)
         path = self.write_json(
             "japanese.json",
             {
@@ -205,13 +207,14 @@ class DictionaryImportTests(unittest.TestCase):
                 "22222222-2222-4222-8222-222222222222":
                     conflict_word.model_dump(mode="json"),
                 new_uuid: new_word.model_dump(mode="json"),
+                second_new_uuid: second_new_word.model_dump(mode="json"),
             },
         )
 
         review = prepare_dictionary_import(path, self.core)
         self.assertIsInstance(review, JapaneseDictionaryImportReview)
         self.assertEqual(review.exact_duplicate_count, 1)
-        self.assertEqual(len(review.items), 2)
+        self.assertEqual(len(review.items), 3)
         by_surface = {item.incoming.surface: item for item in review.items}
         self.assertIs(
             by_surface["衝突"].relation,
@@ -221,15 +224,17 @@ class DictionaryImportTests(unittest.TestCase):
         self.assertEqual(by_surface["衝突"].existing_uuid, conflict_uuid)
         self.assertIs(by_surface["新語"].relation, DictionaryImportRelation.NEW)
         self.assertTrue(by_surface["新語"].selected)
+        self.assertIs(by_surface["追加語"].relation, DictionaryImportRelation.NEW)
+        self.assertTrue(by_surface["追加語"].selected)
 
         review.set_selected(by_surface["衝突"].source_uuid, True)
         result = review.commit(self.core)
 
-        self.assertEqual((result.imported, result.replaced, result.skipped), (1, 1, 1))
+        self.assertEqual((result.imported, result.replaced, result.skipped), (2, 1, 1))
         entries = self.core.list_japanese_entries()
         self.assertEqual(
             list(entries),
-            [exact_uuid, conflict_uuid, new_uuid],
+            [exact_uuid, conflict_uuid, new_uuid, second_new_uuid],
         )
         self.assertEqual(entries[conflict_uuid].priority, 6)
         self.assertEqual(entries[new_uuid].surface, "新語")
@@ -282,10 +287,15 @@ class DictionaryImportTests(unittest.TestCase):
 
         item = review.items[0]
         item.incoming.priority = 1
+        item.incoming.pronunciation = "ホゲ"
+        item.incoming.accent_type = 1
         result = review.commit(self.core)
 
         self.assertEqual(result.imported, 1)
-        self.assertEqual(self.core.list_japanese_entries()[source_uuid].priority, 6)
+        stored = self.core.list_japanese_entries()[source_uuid]
+        self.assertEqual(stored.priority, 6)
+        self.assertEqual(stored.pronunciation, "ホゴ")
+        self.assertEqual(stored.accent_type, 0)
 
     def test_japanese_commit_rolls_back_persistence_and_runtime_on_failure(self):
         existing_uuid = self.core.add_japanese_word(
