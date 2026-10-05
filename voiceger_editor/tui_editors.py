@@ -1976,11 +1976,17 @@ class TuiEditorController:
             except (TypeError, ValueError):
                 editor.error = error_status("Take count must be an integer from 1 through 100.")
                 return clear_feedback
-            updated = min(100, max(1, current + direction))
-            if updated == current:
+            result = step_bounded(
+                current,
+                direction=direction,
+                step=1,
+                minimum=1,
+                maximum=100,
+            )
+            if not result.changed:
                 editor.error = EMPTY_STATUS
                 return clear_feedback
-            draft["take_count"] = str(updated)
+            draft["take_count"] = str(result.value)
         elif selected == "top_k":
             try:
                 current = int(draft["top_k"])
