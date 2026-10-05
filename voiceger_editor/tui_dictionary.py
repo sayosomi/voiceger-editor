@@ -15,6 +15,13 @@ from .english_stress import (
 )
 from .openjtalk_dictionary import expand_word_type, normalize_surface
 from .pronunciation import parse_pronunciation
+from .tui_dictionary_list import (
+    DictionaryListStateOwner,
+    DictionaryListView,
+    EnglishDictionarySort,
+    JapaneseDictionarySort,
+    JapaneseWordTypeFilter,
+)
 from .tui_display import _display_width, _move_wrapped_cursor
 from .tui_editors import (
     ClearAdjustmentFeedbackIntent,
@@ -130,6 +137,7 @@ class TuiDictionaryController:
         self._input_prefix = input_prefix
         self._japanese_pronunciation = japanese_pronunciation
         self._english_word_groups = english_word_groups
+        self._list_state = DictionaryListStateOwner(core)
 
     @staticmethod
     def _operation_request(
@@ -269,35 +277,112 @@ class TuiDictionaryController:
         else:
             self.editor = parent
 
+    @staticmethod
+    def _list_payload(view: DictionaryListView) -> dict[str, Any]:
+        return {
+            "entries": view.entries,
+            "entry_ids": view.identities,
+            "entry_index": view.focused_index,
+            "sort_mode": view.sort_mode,
+            "text_filter": view.text_query,
+            "word_type_filter": view.word_type_filter,
+            "visible_count": view.shown_count,
+            "total_count": view.total_count,
+        }
+
+    @staticmethod
+    def _focused_list_identity(editor: EditorState) -> str | None:
+        identities = tuple(editor.payload.get("entry_ids", ()))
+        index = None
+        if (
+            isinstance(editor.selection, tuple)
+            and editor.selection[0] == "entry"
+            and isinstance(editor.selection[1], int)
+        ):
+            index = editor.selection[1]
+        elif isinstance(editor.payload.get("entry_index"), int):
+            index = editor.payload["entry_index"]
+        if index is None or not 0 <= index < len(identities):
+            return None
+        return str(identities[index])
+
+    def _remember_list_focus(self, editor: EditorState) -> str | None:
+        identity = self._focused_list_identity(editor)
+        if identity is None:
+            return None
+        if editor.kind == "dictionary_japanese_list":
+            self._list_state.remember_focus("ja", identity)
+        elif editor.kind == "dictionary_english_list":
+            self._list_state.remember_focus("en", identity)
+        return identity
+
     def _japanese_list_state(self) -> EditorState:
-        entries = tuple(
-            sorted(
-                self.core.list_japanese_entries().items(),
-                key=lambda item: (item[1].surface, item[0]),
-            )
-        )
+        view = self._list_state.japanese_view()
         return EditorState(
             kind="dictionary_japanese_list",
             title="JAPANESE DICTIONARY",
             origin=("dictionary", None),
-            selection=("entry", 0) if entries else "add",
-            payload={"entries": entries, "entry_index": 0 if entries else None},
+            selection=(
+                ("entry", view.focused_index)
+                if view.focused_index is not None
+                else "add"
+            ),
+            payload=self._list_payload(view),
         )
 
     def _english_list_state(self) -> EditorState:
-        entries = tuple(
-            sorted(
-                self.core.list_english_entries().values(),
-                key=lambda entry: (entry.surface, entry.surface.casefold()),
-            )
-        )
+        view = self._list_state.english_view()
         return EditorState(
             kind="dictionary_english_list",
             title="ENGLISH DICTIONARY",
             origin=("dictionary", None),
-            selection=("entry", 0) if entries else "add",
-            payload={"entries": entries, "entry_index": 0 if entries else None},
+            selection=(
+                ("entry", view.focused_index)
+                if view.focused_index is not None
+                else "add"
+            ),
+            payload=self._list_payload(view),
         )
+
+    def set_japanese_list_sort(self, sort_mode: JapaneseDictionarySort) -> None:
+        editor = self.editor
+        if editor is not None and editor.kind == "dictionary_japanese_list":
+            self._remember_list_focus(editor)
+        self._list_state.set_japanese_sort(sort_mode)
+        if editor is not None and editor.kind == "dictionary_japanese_list":
+            self.editor = self._japanese_list_state()
+
+    def set_english_list_sort(self, sort_mode: EnglishDictionarySort) -> None:
+        editor = self.editor
+        if editor is not None and editor.kind == "dictionary_english_list":
+            self._remember_list_focus(editor)
+        self._list_state.set_english_sort(sort_mode)
+        if editor is not None and editor.kind == "dictionary_english_list":
+            self.editor = self._english_list_state()
+
+    def set_japanese_list_filter(
+        self,
+        *,
+        text_query: str,
+        word_type_filter: JapaneseWordTypeFilter,
+    ) -> None:
+        editor = self.editor
+        if editor is not None and editor.kind == "dictionary_japanese_list":
+            self._remember_list_focus(editor)
+        self._list_state.set_japanese_filter(
+            text_query=text_query,
+            word_type_filter=word_type_filter,
+        )
+        if editor is not None and editor.kind == "dictionary_japanese_list":
+            self.editor = self._japanese_list_state()
+
+    def set_english_list_filter(self, *, text_query: str) -> None:
+        editor = self.editor
+        if editor is not None and editor.kind == "dictionary_english_list":
+            self._remember_list_focus(editor)
+        self._list_state.set_english_filter(text_query=text_query)
+        if editor is not None and editor.kind == "dictionary_english_list":
+            self.editor = self._english_list_state()
 
     def _japanese_entry_state(
         self,
@@ -476,6 +561,7 @@ class TuiDictionaryController:
                 and editor.selection[1] is not None
             ):
                 editor.payload["entry_index"] = editor.selection[1]
+                self._remember_list_focus(editor)
             return ()
         if editor.kind == "dictionary_japanese_duplicates":
             entries = editor.payload["matches"]
@@ -853,6 +939,7 @@ class TuiDictionaryController:
             return ()
         parent.selection = ("entry", target_index)
         parent.payload["entry_index"] = target_index
+        self._remember_list_focus(parent)
         self.editor.selection = "entry_navigator"
         return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
 
@@ -895,22 +982,20 @@ class TuiDictionaryController:
     def _open_delete_confirmation(self) -> tuple[EditorIntent, ...]:
         editor = self.editor
         assert editor is not None
-        if (
-            isinstance(editor.selection, tuple)
-            and editor.selection[0] == "entry"
-            and editor.selection[1] is not None
-        ):
-            index = editor.selection[1]
-            editor.payload["entry_index"] = index
-        else:
-            index = editor.payload.get("entry_index")
-        if index is None:
+        identifier = self._remember_list_focus(editor)
+        if identifier is None:
             return (UpdateStatusIntent("Select a dictionary word to delete."),)
+        identities = tuple(editor.payload.get("entry_ids", ()))
+        try:
+            index = identities.index(identifier)
+        except ValueError:
+            return ()
+        editor.payload["entry_index"] = index
         if editor.kind == "dictionary_japanese_list":
             entries = editor.payload["entries"]
             if not 0 <= index < len(entries):
                 return ()
-            identifier, word = entries[index]
+            _entry_identifier, word = entries[index]
             payload = {
                 "language": "ja",
                 "identifier": identifier,
@@ -927,7 +1012,7 @@ class TuiDictionaryController:
             entry = entries[index]
             payload = {
                 "language": "en",
-                "identifier": entry.surface,
+                "identifier": identifier,
                 "surface": entry.surface,
                 "phonemes": tuple(entry.phonemes),
                 "parent_editor": deepcopy(editor),
@@ -1017,6 +1102,22 @@ class TuiDictionaryController:
                 self.editor = None
                 self._stack.clear()
             else:
+                if request.language == "ja":
+                    saved_identity = snapshot.payload.get("word_uuid")
+                    if saved_identity is None and value is not None:
+                        saved_identity = str(value)
+                    self._list_state.remember_focus(
+                        "ja",
+                        None if saved_identity is None else str(saved_identity),
+                    )
+                else:
+                    saved_identity = getattr(value, "surface", None)
+                    if saved_identity is None:
+                        saved_identity = snapshot.payload.get("surface")
+                    self._list_state.remember_focus(
+                        "en",
+                        None if saved_identity is None else str(saved_identity),
+                    )
                 parent = self._stack.pop() if self._stack else self._menu_state()
                 self.editor = (
                     self._japanese_list_state()
@@ -1070,9 +1171,11 @@ class TuiDictionaryController:
                 self._restore_parent()
                 return (UpdateStatusIntent(""),)
             if isinstance(selected, tuple) and selected[0] == "entry":
-                index = selected[1]
+                identifier = self._remember_list_focus(editor)
+                identities = tuple(editor.payload.get("entry_ids", ()))
                 entries = editor.payload["entries"]
-                if index is not None and 0 <= index < len(entries):
+                if identifier is not None and identifier in identities:
+                    index = identities.index(identifier)
                     word_uuid, word = entries[index]
                     self._stack.append(deepcopy(editor))
                     self.editor = self._japanese_entry_state(
@@ -1093,15 +1196,17 @@ class TuiDictionaryController:
                 self._restore_parent()
                 return (UpdateStatusIntent(""),)
             if isinstance(selected, tuple) and selected[0] == "entry":
-                index = selected[1]
+                identifier = self._remember_list_focus(editor)
+                identities = tuple(editor.payload.get("entry_ids", ()))
                 entries = editor.payload["entries"]
-                if index is not None and 0 <= index < len(entries):
+                if identifier is not None and identifier in identities:
+                    index = identities.index(identifier)
                     entry = entries[index]
                     self._stack.append(deepcopy(editor))
                     self.editor = self._english_entry_state(
                         surface=entry.surface,
                         phonemes=entry.phonemes,
-                        original_surface=entry.surface,
+                        original_surface=identifier,
                         entry_index=index,
                         entry_total=len(entries),
                     )
@@ -1300,6 +1405,7 @@ class TuiDictionaryController:
                     and editor.selection[1] is not None
                 ):
                     editor.payload["entry_index"] = editor.selection[1]
+                    self._remember_list_focus(editor)
                 editor.selection = shortcut.key
                 editor.error = EMPTY_STATUS
                 return self._activate()
