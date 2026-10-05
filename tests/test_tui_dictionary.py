@@ -362,7 +362,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.assertIn("Voiceger", self.core.english)
         self.assertIn("1 imported", str(completion[0].status))
         self.assertIn("0 replaced", str(completion[0].status))
-        self.assertIn("0 skipped", completion[0].status.text)
+        self.assertIn("0 skipped", str(completion[0].status))
 
     def test_invalid_import_load_keeps_dictionary_and_path_screen(self):
         self.core.english["Keep"] = en_word("Keep", ["K", "IY1", "P"])
@@ -390,7 +390,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
 
         self.assertEqual(self.core.english, before)
         self.assertEqual(self.controller.editor.kind, "dictionary_import_path")
-        self.assertIn("bad dictionary", completion[0].status.text)
+        self.assertIn("bad dictionary", str(completion[0].status))
 
     def _open_import_review(self, review):
         self.controller._import_review = review
