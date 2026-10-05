@@ -15,6 +15,7 @@ from .english_stress import (
 )
 from .openjtalk_dictionary import expand_word_type, normalize_surface
 from .pronunciation import parse_pronunciation
+from .tui_adjustments import step_bounded, step_cyclic
 from .tui_dictionary_list import (
     ENGLISH_SORT_MODES,
     JAPANESE_SORT_MODES,
