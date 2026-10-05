@@ -2,6 +2,8 @@
 
 The TUI is split between a composition root and focused owners. The composition root wires the terminal lifecycle and shared application state to the subsystem responsible for each interaction.
 
+Keyboard interaction and presentation conventions are documented separately in [TUI UI Guidelines](./tui-ui-guidelines.md).
+
 ## Ownership map
 
 | Module | Responsibility |
