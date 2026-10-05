@@ -112,10 +112,6 @@ class TuiApp:
             dictionary_controller=self._dictionary_controller,
             set_session=lambda session: setattr(self, "session", session),
             set_status=lambda status: setattr(self, "_status", status),
-            clear_adjustment_feedback=lambda: setattr(
-                self, "_pressed_adjustment", None
-            ),
-            mark_adjustment_pressed=self._mark_adjustment_pressed,
             open_caption_editor=self._open_caption_editor,
             change_settings=self._change_settings,
             open_settings_editor=self._open_settings_editor,
@@ -130,10 +126,6 @@ class TuiApp:
             get_session=lambda: self.session,
             get_settings=lambda: self.settings,
             get_status=lambda: self._status,
-            clear_adjustment_feedback=lambda: setattr(
-                self, "_pressed_adjustment", None
-            ),
-            mark_adjustment_pressed=self._mark_adjustment_pressed,
         )
 
     @property
