@@ -166,7 +166,7 @@ class TuiNavigation:
     """Own focus and navigation policy without depending on application objects."""
 
     def __init__(self) -> None:
-        self.focus_key: FocusKey = ("settings_summary", None)
+        self.focus_key: FocusKey = ("caption", None)
         self.pronunciation_index = 0
         self.revision = 0
 
