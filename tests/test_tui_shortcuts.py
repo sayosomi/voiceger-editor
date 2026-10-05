@@ -79,6 +79,7 @@ class TuiShortcutTests(unittest.TestCase):
             "dictionary_english_list": {
                 "s": "sort", "f": "filter", "a": "add", "x": "delete",
             },
+            "dictionary_sort": {},
             "dictionary_japanese_filter": {"a": "apply", "c": "clear"},
             "dictionary_english_filter": {"a": "apply", "c": "clear"},
             "dictionary_japanese_duplicates": {},
@@ -106,6 +107,12 @@ class TuiShortcutTests(unittest.TestCase):
                     if item.shortcut is not None
                 }
                 self.assertEqual(actual, mapping)
+
+    def test_dictionary_sort_and_filter_rows_are_declared_adjustable(self):
+        for kind in ("dictionary_japanese_list", "dictionary_english_list"):
+            items = {item.key: item for item in menu_items(kind, {"can_delete": True})}
+            self.assertEqual(items["sort"].kind, "adjustable")
+            self.assertEqual(items["filter"].kind, "adjustable")
 
     def test_main_shortcuts_match_issue_49_contract_and_share_display_metadata(self):
         expected = {
