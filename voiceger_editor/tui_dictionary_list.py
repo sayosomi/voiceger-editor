@@ -75,6 +75,7 @@ class _ListPreferences:
     sort_mode: str
     text_query: str = ""
     word_type_filter: str = "ALL"
+    filter_enabled: bool = False
     focused_identity: str | None = None
 
 
@@ -90,6 +91,7 @@ class DictionaryListView:
     focused_index: int | None
     sort_mode: str
     text_query: str
+    filter_enabled: bool
     word_type_filter: str | None = None
 
 
@@ -123,9 +125,19 @@ class DictionaryListStateOwner:
             )
         self._japanese.text_query = str(text_query)
         self._japanese.word_type_filter = word_type_filter
+        self._japanese.filter_enabled = (
+            bool(self._japanese.text_query.strip()) or word_type_filter != "ALL"
+        )
+
+    def set_japanese_filter_enabled(self, enabled: bool) -> None:
+        self._japanese.filter_enabled = bool(enabled)
 
     def set_english_filter(self, *, text_query: str) -> None:
         self._english.text_query = str(text_query)
+        self._english.filter_enabled = bool(self._english.text_query.strip())
+
+    def set_english_filter_enabled(self, enabled: bool) -> None:
+        self._english.filter_enabled = bool(enabled)
 
     def remember_focus(self, language: Literal["ja", "en"], identity: str | None) -> None:
         preferences = self._japanese if language == "ja" else self._english
@@ -167,7 +179,7 @@ class DictionaryListStateOwner:
         ]
         total_count = len(items)
         query = self._japanese.text_query.strip()
-        if query:
+        if self._japanese.filter_enabled and query:
             surface_query = normalize_surface(query).casefold()
             pronunciation_query = query.casefold()
             items = [
@@ -180,7 +192,7 @@ class DictionaryListStateOwner:
             ]
 
         word_type_filter = self._japanese.word_type_filter
-        if word_type_filter != "ALL":
+        if self._japanese.filter_enabled and word_type_filter != "ALL":
             items = [
                 item
                 for item in items
@@ -244,6 +256,7 @@ class DictionaryListStateOwner:
             focused_index=focused_index,
             sort_mode=sort_mode,
             text_query=self._japanese.text_query,
+            filter_enabled=self._japanese.filter_enabled,
             word_type_filter=word_type_filter,
         )
 
@@ -255,7 +268,7 @@ class DictionaryListStateOwner:
         ]
         total_count = len(items)
         query = self._english.text_query.strip().casefold()
-        if query:
+        if self._english.filter_enabled and query:
             items = [
                 item
                 for item in items
@@ -298,4 +311,5 @@ class DictionaryListStateOwner:
             focused_index=focused_index,
             sort_mode=sort_mode,
             text_query=self._english.text_query,
+            filter_enabled=self._english.filter_enabled,
         )
