@@ -1061,14 +1061,18 @@ class TuiEditorController:
             and editor.selection == "language"
             and key in (curses.KEY_LEFT, curses.KEY_RIGHT)
         ):
+            direction = -1 if key == curses.KEY_LEFT else 1
             language = editor.payload["language"]
             if (key == curses.KEY_RIGHT and language == "ja") or (
                 key == curses.KEY_LEFT and language == "en"
             ):
                 editor.payload["language"] = "en" if language == "ja" else "ja"
                 editor.error = EMPTY_STATUS
-                return (ClearAdjustmentFeedbackIntent(), UpdateStatusIntent(""))
-            return ()
+                return (
+                    AdjustmentPressedIntent("editor", "language", direction),
+                    UpdateStatusIntent(""),
+                )
+            return (ClearAdjustmentFeedbackIntent(),)
         if key == _ESCAPE:
             return self.cancel()
         if key == curses.KEY_UP:
