@@ -84,6 +84,9 @@ class TuiDictionaryExportTests(unittest.TestCase):
             intents,
             (OpenDictionarySettingsIntent("output_dir", edit=True),),
         )
+        self.assertTrue(self.controller.active)
+        self.assertEqual(self.controller.editor.selection, "output")
+        self.assertTrue(self.controller.suspend_editor())
         self.assertFalse(self.controller.active)
         self.assertTrue(self.controller.restore_suspended_editor())
         self.assertEqual(self.controller.editor.kind, "dictionary_export")
