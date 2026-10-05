@@ -652,7 +652,7 @@ class TuiDictionaryController:
         result = step_cyclic(current, JAPANESE_WORD_TYPE_FILTERS, direction=direction)
         editor.payload["word_type_filter"] = result.value
         return adjustment_feedback_intents(
-            changed=True,
+            changed=result.changed,
             area="dictionary",
             control="word_type",
             direction=direction,
