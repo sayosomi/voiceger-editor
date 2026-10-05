@@ -181,11 +181,12 @@ def _positioned_title(
     title: str,
     position: tuple[int, int] | None,
     width: int,
+    direction: int | None = None,
 ) -> str:
     if position is None:
         return title
     current, total = position
-    indicator = f"< {current} / {total} >"
+    indicator = _adjustable_value(f"{current} / {total}", direction)
     available = max(1, width - 1)
     title_width = max(0, available - _display_width(indicator) - 1)
     title_part = _truncate_display(title, title_width)
@@ -490,6 +491,7 @@ class TuiRenderer:
         batch: CaptionBatch,
         focus_key: tuple[str, int | None],
         width: int,
+        pressed_adjustment: tuple[str, str, int] | None = None,
     ) -> list[NavigationLine]:
         """Build the top-level Batch List document."""
 
@@ -502,7 +504,18 @@ class TuiRenderer:
             marker = "▶ " if key == focus_key else "  "
             lines.append(NavigationLine(marker + label, key, key))
 
-        action(("takes", None), f"Takes < {batch.default_take_count} >")
+        take_direction = (
+            pressed_adjustment[2]
+            if (
+                pressed_adjustment is not None
+                and pressed_adjustment[:2] == ("batch_list", "takes")
+            )
+            else None
+        )
+        action(
+            ("takes", None),
+            f"Takes {_adjustable_value(str(batch.default_take_count), take_direction)}",
+        )
         plain()
 
         for index, item in enumerate(batch.items):
@@ -555,6 +568,7 @@ class TuiRenderer:
         *,
         delete_confirmation_caption: str | None = None,
         delete_confirmation_selection: str = "delete",
+        pressed_adjustment: tuple[str, str, int] | None = None,
     ) -> None:
         """Render the top-level Batch List screen."""
 
@@ -588,7 +602,12 @@ class TuiRenderer:
             width,
             self._attribute("A_BOLD"),
         )
-        lines = self.batch_list_document(batch, focus_key, width)
+        lines = self.batch_list_document(
+            batch,
+            focus_key,
+            width,
+            pressed_adjustment,
+        )
         footer = self._status_footer_layout(status, height, width)
         viewport_height = max(0, footer.start_row - 2)
         focused_index = next(
@@ -625,7 +644,12 @@ class TuiRenderer:
         title: str = "Voiceger Editor",
     ) -> None:
         safe_add = self._safe_add
-        header = _positioned_title(title, state.batch_item_position, width)
+        header = _positioned_title(
+            title,
+            state.batch_item_position,
+            width,
+            self._adjustment_press_direction(state, "navigation", "batch_item"),
+        )
         header_attr = self._attribute("A_BOLD")
         if state.focus_key == ("batch_item", None):
             header_attr |= self._focus_attribute()
@@ -948,7 +972,7 @@ class TuiRenderer:
             item = menu_item(editor.kind, key, editor.payload)
             wrapped_selectable_text(
                 key,
-                f"{item.display_label:<14}< {value} >",
+                f"{item.display_label:<14}{_adjustable_value(value, self._adjustment_press_direction(state, "dictionary", key))}",
             )
 
         def wrapped_selectable_text(
@@ -998,7 +1022,16 @@ class TuiRenderer:
         title_key = "entry_navigator" if entry_position is not None else None
         lines.append(
             (
-                _positioned_title(editor.title, entry_position, width),
+                _positioned_title(
+                    editor.title,
+                    entry_position,
+                    width,
+                    self._adjustment_press_direction(
+                        state,
+                        "dictionary",
+                        "entry_navigator",
+                    ),
+                ),
                 title_key,
             )
         )
@@ -1261,7 +1294,7 @@ class TuiRenderer:
             marker = "▶ " if editor.selection == "word_type" else "  "
             lines.append(
                 (
-                    f"{marker}Word type      < {editor.payload['word_type_filter']} >",
+                    f"{marker}Word type      {_adjustable_value(str(editor.payload['word_type_filter']), self._adjustment_press_direction(state, "dictionary", "word_type"))}",
                     "word_type",
                 )
             )
@@ -1325,14 +1358,14 @@ class TuiRenderer:
             marker = "▶ " if editor.selection == "word_type" else "  "
             lines.append(
                 (
-                    f"{marker}Word type      < {editor.payload['word_type'].value} >",
+                    f"{marker}Word type      {_adjustable_value(str(editor.payload['word_type'].value), self._adjustment_press_direction(state, "dictionary", "word_type"))}",
                     "word_type",
                 )
             )
             marker = "▶ " if editor.selection == "priority" else "  "
             lines.append(
                 (
-                    f"{marker}Priority       < {editor.payload['priority']} >",
+                    f"{marker}Priority       {_adjustable_value(str(editor.payload['priority']), self._adjustment_press_direction(state, "dictionary", "priority"))}",
                     "priority",
                 )
             )
@@ -1423,7 +1456,10 @@ class TuiRenderer:
             plain()
             language_item = menu_item(editor.kind, "language", editor.payload)
             lines.append(
-                (f"{marker}{language_item.label:<12}< {language} >", "language")
+                (
+                    f"{marker}{language_item.label:<12}{_adjustable_value(language, self._adjustment_press_direction(state, "editor", "language"))}",
+                    "language",
+                )
             )
             if editor.active_field == "draft":
                 input_field("draft", "▶ " if editor.selection == "draft" else "  ")
