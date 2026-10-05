@@ -75,7 +75,7 @@ _BATCH_LIST_CAPTION_SHORTCUTS: tuple[MainShortcut, ...] = (
 def _escape_action(key: str, label: str) -> MenuItem:
     return MenuItem(
         key,
-        label,
+        f"[Esc] {label}",
         None,
         "action",
         no_shortcut_reason="Esc is the common one-level-back key.",
