@@ -697,6 +697,82 @@ class UserDictionaryCore:
             self._english = candidate
         return entry.model_copy(deep=True)
 
+    def import_english(
+        self,
+        entries: Mapping[str, Sequence[str]],
+        *,
+        override: bool = False,
+    ) -> None:
+        """Validate and atomically merge English dictionary entries."""
+
+        if not isinstance(entries, Mapping):
+            raise UserDictionaryInputError(
+                "English import data must be a surface-keyed object"
+            )
+        if not isinstance(override, bool):
+            raise UserDictionaryInputError("override must be a boolean")
+
+        imported: list[tuple[str, EnglishUserDictionaryEntry]] = []
+        imported_keys: set[str] = set()
+        try:
+            for surface, phonemes in entries.items():
+                key = self._english_key(surface)
+                if key in imported_keys:
+                    raise UserDictionaryInputError(
+                        "English import contains duplicate normalized surfaces"
+                    )
+                if isinstance(phonemes, (str, bytes)) or not isinstance(
+                    phonemes, Sequence
+                ):
+                    raise UserDictionaryInputError(
+                        "English phonemes must be a token sequence"
+                    )
+                entry = EnglishUserDictionaryEntry(
+                    surface=surface,
+                    phonemes=list(phonemes),
+                )
+                imported_keys.add(key)
+                imported.append((key, entry))
+        except UserDictionaryInputError:
+            raise
+        except (ValueError, TypeError, ValidationError) as exc:
+            raise UserDictionaryInputError(str(exc)) from exc
+
+        with self._lock:
+            candidate = dict(self._english)
+            for key, entry in imported:
+                matching_surface = next(
+                    (
+                        old_surface
+                        for old_surface in candidate
+                        if self._english_key(old_surface) == key
+                    ),
+                    None,
+                )
+                if matching_surface is None:
+                    candidate[entry.surface] = entry
+                    continue
+                if not override:
+                    continue
+
+                replacement: dict[str, EnglishUserDictionaryEntry] = {}
+                for old_surface, old_entry in candidate.items():
+                    if self._english_key(old_surface) == key:
+                        replacement[entry.surface] = entry
+                    else:
+                        replacement[old_surface] = old_entry
+                candidate = replacement
+
+            if candidate == self._english:
+                return
+            try:
+                _atomic_write(self.english_path, self._serialize_english(candidate))
+            except Exception as exc:
+                raise UserDictionaryStorageError(
+                    "English dictionary could not be persisted"
+                ) from exc
+            self._english = candidate
+
     def add_english_entry(
         self,
         surface: str,
