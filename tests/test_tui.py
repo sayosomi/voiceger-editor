@@ -439,6 +439,22 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_export")
         self.assertEqual(app._dictionary_controller.editor.selection, "output")
 
+    def test_export_output_settings_busy_guard_keeps_export_visible(self):
+        app = self.make_app(query=mixed_query())
+        app._handle_key("d")
+        app._handle_key("x")
+        export_editor = app._dictionary_controller.editor
+        app._operations.busy = True
+
+        app._handle_key("o")
+
+        self.assertIs(app._dictionary_controller.editor, export_editor)
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(
+            app._status,
+            "Wait for synthesis to finish before changing settings.",
+        )
+
     def test_pronunciation_editor_dictionary_actions_preserve_editor_state(self):
         app = self.make_app(query=mixed_query())
         app._edit_selected_pronunciation(0)
