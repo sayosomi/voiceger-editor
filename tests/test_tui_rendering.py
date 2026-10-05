@@ -718,7 +718,7 @@ class TuiRenderingTests(unittest.TestCase):
             self.assertNotIn(removed, visible)
         self.assertNotIn("F5", visible)
         self.assertNotIn("Ctrl+G", visible)
-        back = next(item for item in screen.drawn if item[2] == "▶ Back")
+        back = next(item for item in screen.drawn if item[2] == "▶ [Esc] Back")
         self.assertEqual(back[0], screen.rows - 2)
         self.assertTrue(back[3] & curses.A_REVERSE)
 
@@ -736,7 +736,7 @@ class TuiRenderingTests(unittest.TestCase):
             for row, _column, text, _attr in screen.drawn
             if row == screen.rows - 1
         )
-        back = next(item for item in screen.drawn if item[2] == "▶ Back")
+        back = next(item for item in screen.drawn if item[2] == "▶ [Esc] Back")
         self.assertEqual(footer, "Status: Help notice.")
         self.assertEqual(back[0], screen.rows - 2)
 
@@ -745,7 +745,7 @@ class TuiRenderingTests(unittest.TestCase):
             with self.subTest(height=height):
                 screen = FakeScreen(rows=height, columns=80)
                 self.renderer.render_help(screen, screen.columns)
-                back = next(item for item in screen.drawn if item[2] == "▶ Back")
+                back = next(item for item in screen.drawn if item[2] == "▶ [Esc] Back")
                 self.assertEqual(back[0], height - 2)
                 self.assertTrue(back[3] & curses.A_REVERSE)
                 self.assertFalse(
@@ -769,7 +769,7 @@ class TuiRenderingTests(unittest.TestCase):
         bottom_visible = self.rendered(screen)
         self.assertIn(": Quit", bottom_visible)
         self.assertNotIn(f"Docs: {DOCUMENTATION_URL}", bottom_visible)
-        back = next(item for item in screen.drawn if item[2] == "▶ Back")
+        back = next(item for item in screen.drawn if item[2] == "▶ [Esc] Back")
         self.assertEqual(back[0], screen.rows - 2)
         self.assertTrue(back[3] & curses.A_REVERSE)
 
@@ -798,7 +798,7 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line for line, _key in document]
         self.assertEqual(document[0][0], "EDIT CAPTION TEXT")
         self.assertEqual(
-            labels[-4:], ["  [A] Apply", "  [C] Clear", "  [R] Reset", "  Back"]
+            labels[-4:], ["  [A] Apply", "  [C] Clear", "  [R] Reset", "  [Esc] Back"]
         )
         self.assertEqual(labels.index(""), 1)
         self.assertEqual(labels.index("", 2), labels.index("▶ hello") + 1)
@@ -1079,7 +1079,7 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line for line, _key in document]
         self.assertEqual(document[0][0], "REBUILD PRONUNCIATION?")
         self.assertIn("Manual pronunciation or utterance edits will be replaced.", labels)
-        self.assertEqual(labels[-2:], ["▶ [R] Rebuild", "  Cancel"])
+        self.assertEqual(labels[-2:], ["▶ [R] Rebuild", "  [Esc] Cancel"])
         self.assertIsNone(cursor_line)
 
     def test_japanese_editor_shows_wrapped_source_and_active_direct_notation(self):
@@ -1114,7 +1114,7 @@ class TuiRenderingTests(unittest.TestCase):
                 "  [E] Edit text",
                 "  [C] Clear",
                 "  [R] Reset",
-                "  Back",
+                "  [Esc] Back",
             ],
         )
 
@@ -1389,7 +1389,7 @@ class TuiRenderingTests(unittest.TestCase):
 
         self.assertIn(("▶ [J] Japanese      2 words", "japanese"), document)
         self.assertIn(("  [E] English       1 words", "english"), document)
-        self.assertIn(("  Back", "back"), document)
+        self.assertIn(("  [Esc] Back", "back"), document)
 
     def test_dictionary_delete_confirmation_matches_common_modal(self):
         cases = (
@@ -1479,7 +1479,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn(("▶ [A] Add", "add"), document)
         self.assertTrue(any("[S] Sort" in line for line, _key in document))
         self.assertTrue(any("[F] Filter" in line for line, _key in document))
-        self.assertIn(("  Back", "back"), document)
+        self.assertIn(("  [Esc] Back", "back"), document)
         self.assertFalse(any("[X] Delete" in line for line, _key in document))
 
     def test_filtered_dictionary_no_match_keeps_actions_and_shown_total_count(self):
@@ -1552,7 +1552,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("Priority ↓", visible)
         self.assertIn("Added ↓", visible)
         self.assertNotIn("< Surface", visible)
-        self.assertIn("Back", visible)
+        self.assertIn("[Esc] Back", visible)
 
     def test_dictionary_filter_editors_render_focused_fields_and_actions(self):
         cases = (
@@ -1591,7 +1591,7 @@ class TuiRenderingTests(unittest.TestCase):
                 visible = "\n".join(line for line, _key in document)
                 self.assertIn("[A] Apply", visible)
                 self.assertIn("[C] Clear filter", visible)
-                self.assertIn("Back", visible)
+                self.assertIn("[Esc] Back", visible)
                 if editor.kind == "dictionary_japanese_filter":
                     self.assertIn("Surface / Pronunciation", visible)
                     self.assertIn("PROPER_NOUN", visible)
@@ -1643,7 +1643,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertTrue(any("[F] Filter" in line and "On: ずん" in line for line, _key in document))
         self.assertIn(("  [A] Add", "add"), document)
         self.assertIn(("  [X] Delete", "delete"), document)
-        self.assertIn(("  Back", "back"), document)
+        self.assertIn(("  [Esc] Back", "back"), document)
 
     def test_english_dictionary_list_renders_selectable_actions(self):
         entry = SimpleNamespace(
@@ -1681,7 +1681,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertTrue(any("[S] Sort" in line and "Surface ↑" in line for line, _key in document))
         self.assertTrue(any("[F] Filter" in line and "Off" in line for line, _key in document))
         self.assertIn(("  [X] Delete", "delete"), document)
-        self.assertIn(("  Back", "back"), document)
+        self.assertIn(("  [Esc] Back", "back"), document)
         self.assertNotIn("Enter Edit", visible)
 
     def test_english_word_editor_opens_on_full_stressed_phoneme_input(self):
@@ -1714,7 +1714,7 @@ class TuiRenderingTests(unittest.TestCase):
                 "  [E] Edit text",
                 "  [C] Clear",
                 "  [R] Reset",
-                "  Back",
+                "  [Esc] Back",
             ],
         )
 
@@ -1748,7 +1748,7 @@ class TuiRenderingTests(unittest.TestCase):
                 "  [A] Apply",
                 "  [R] Reset",
                 "  [D] Delete section",
-                "  Back",
+                "  [Esc] Back",
             ],
         )
         self.assertIsNotNone(cursor_line)
@@ -1774,7 +1774,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("▶ ", labels)
         self.assertEqual(
             labels[-4:],
-            ["  [A] Add", "  [C] Clear", "  [R] Reset", "  Back"],
+            ["  [A] Add", "  [C] Clear", "  [R] Reset", "  [Esc] Back"],
         )
 
     def test_delete_confirmation_document_uses_required_warning_and_choices(self):
@@ -1795,7 +1795,7 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line for line, _key in document]
         self.assertEqual(labels[0], "DELETE SECTION?")
         self.assertIn("This section will be removed from the synthesized utterance.", labels)
-        self.assertEqual(labels[-2:], ["▶ [D] Delete", "  Cancel"])
+        self.assertEqual(labels[-2:], ["▶ [D] Delete", "  [Esc] Cancel"])
 
     def test_clear_candidates_confirmation_names_discarded_wav_files(self):
         editor = SimpleNamespace(
@@ -1817,7 +1817,7 @@ class TuiRenderingTests(unittest.TestCase):
         labels = [line for line, _key in document]
         self.assertEqual(labels[0], "CLEAR CANDIDATES?")
         self.assertIn("All generated candidate WAV files will be discarded.", labels)
-        self.assertEqual(labels[-2:], ["▶ [C] Clear candidates", "  Cancel"])
+        self.assertEqual(labels[-2:], ["▶ [C] Clear candidates", "  [Esc] Cancel"])
 
     def test_settings_use_sections_shortcuts_and_candidate_clearing_markers(self):
         editor = SimpleNamespace(
@@ -1847,7 +1847,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("[D] Reset sampling to Voiceger defaults", visible)
         self.assertIn("[A] Apply and save", visible)
         self.assertIn("[R] Reset", visible)
-        self.assertIn("Back", visible)
+        self.assertIn("[Esc] Back", visible)
         self.assertIn(
             "* Applying this setting clears existing candidates.",
             visible,
