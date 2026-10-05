@@ -263,14 +263,16 @@ EditorIntent = Union[
 def adjustment_feedback_intents(
     *,
     changed: bool,
-    area: str,
-    control: str,
-    direction: int,
+    area: str | None = None,
+    control: str | None = None,
+    direction: int = 0,
 ) -> tuple[EditorIntent, ...]:
     """Return the shared transient feedback intent for one Left / Right action."""
 
     if not changed:
         return (ClearAdjustmentFeedbackIntent(),)
+    if area is None or control is None:
+        raise ValueError("changed adjustment feedback requires area and control")
     return (
         AdjustmentPressedIntent(
             area,
