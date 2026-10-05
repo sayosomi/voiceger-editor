@@ -26,10 +26,7 @@ When a focused row exposes an ordered set of values:
 - Right selects the next value.
 - Cyclic values may wrap at the ends when that behavior is intentional and tested.
 
-For a binary adjustable state:
-
-- Left means Off.
-- Right means On.
+For cyclic adjustable values, Left and Right may wrap at the ends when that behavior is intentional and tested. This applies equally to two-state values.
 
 Changing an adjustable value should keep focus on that row.
 
