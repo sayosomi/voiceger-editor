@@ -991,6 +991,8 @@ class TuiDictionaryController:
         except ValueError:
             return ()
         editor.payload["entry_index"] = index
+        parent_editor = deepcopy(editor)
+        parent_editor.selection = ("entry", index)
         if editor.kind == "dictionary_japanese_list":
             entries = editor.payload["entries"]
             if not 0 <= index < len(entries):
@@ -1003,7 +1005,7 @@ class TuiDictionaryController:
                 "pronunciation": word.pronunciation,
                 "accent": word.accent_type,
                 "moras": _reading_morae(word.pronunciation),
-                "parent_editor": deepcopy(editor),
+                "parent_editor": parent_editor,
             }
         else:
             entries = editor.payload["entries"]
@@ -1015,7 +1017,7 @@ class TuiDictionaryController:
                 "identifier": identifier,
                 "surface": entry.surface,
                 "phonemes": tuple(entry.phonemes),
-                "parent_editor": deepcopy(editor),
+                "parent_editor": parent_editor,
             }
         self.editor = EditorState(
             kind="dictionary_delete_confirmation",
