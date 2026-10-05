@@ -68,6 +68,19 @@ For Dictionary Filter:
 - Enter opens the editor with the retained criteria.
 - Clear removes the criteria and leaves filtering Off.
 
+## Escape actions
+
+Rows whose direct key is Esc must show that key explicitly.
+
+Use:
+
+```text
+[Esc] Back
+[Esc] Cancel
+```
+
+Do not render a selectable Back or Cancel row without the `[Esc]` hint. Esc is not treated as an ordinary letter shortcut; the visible hint is presentation metadata for the common one-level-back action.
+
 ## Navigation
 
 Screens that present entries followed by actions should keep one vertical Up / Down navigation list unless a feature has a stronger interaction reason to do otherwise.
