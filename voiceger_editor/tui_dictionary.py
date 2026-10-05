@@ -30,6 +30,7 @@ from .tui_editors import (
     AdjustmentPressedIntent,
     ClearAdjustmentFeedbackIntent,
     EditorIntent,
+    adjustment_feedback_intents,
     EditorState,
     OpenHelpIntent,
     PreviewIntent,
@@ -405,7 +406,12 @@ class TuiDictionaryController:
             target = modes[(modes.index(current) + direction) % len(modes)]
             if target == current:
                 editor.selection = "sort"
-                return (ClearAdjustmentFeedbackIntent(),)
+                return adjustment_feedback_intents(
+                    changed=False,
+                    area="dictionary",
+                    control="sort",
+                    direction=direction,
+                )
             self.set_japanese_list_sort(target)
         elif editor.kind == "dictionary_english_list":
             modes = ENGLISH_SORT_MODES
@@ -413,7 +419,12 @@ class TuiDictionaryController:
             target = modes[(modes.index(current) + direction) % len(modes)]
             if target == current:
                 editor.selection = "sort"
-                return (ClearAdjustmentFeedbackIntent(),)
+                return adjustment_feedback_intents(
+                changed=False,
+                area="dictionary",
+                control="filter",
+                direction=direction,
+            )
             self.set_english_list_sort(target)
         else:
             return ()
@@ -422,7 +433,12 @@ class TuiDictionaryController:
         if show_feedback:
             return (
                 UpdateStatusIntent(""),
-                AdjustmentPressedIntent("dictionary", "sort", direction),
+                *adjustment_feedback_intents(
+                    changed=True,
+                    area="dictionary",
+                    control="sort",
+                    direction=direction,
+                ),
             )
         return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
 
@@ -526,7 +542,12 @@ class TuiDictionaryController:
         self.editor.selection = "filter"
         return (
             UpdateStatusIntent(""),
-            AdjustmentPressedIntent("dictionary", "filter", direction),
+            *adjustment_feedback_intents(
+                changed=True,
+                area="dictionary",
+                control="filter",
+                direction=direction,
+            ),
         )
 
     def _open_filter_editor(self) -> tuple[EditorIntent, ...]:
@@ -613,8 +634,11 @@ class TuiDictionaryController:
         editor.payload["word_type_filter"] = JAPANESE_WORD_TYPE_FILTERS[
             (index + direction) % len(JAPANESE_WORD_TYPE_FILTERS)
         ]
-        return (
-            AdjustmentPressedIntent("dictionary", "word_type", direction),
+        return adjustment_feedback_intents(
+            changed=True,
+            area="dictionary",
+            control="word_type",
+            direction=direction,
         )
 
     def _japanese_entry_state(
@@ -940,19 +964,35 @@ class TuiDictionaryController:
             current = _WORD_TYPES.index(editor.payload["word_type"])
             target = (current + direction) % len(_WORD_TYPES)
             if target == current:
-                return (ClearAdjustmentFeedbackIntent(),)
+                return adjustment_feedback_intents(
+                    changed=False,
+                    area="dictionary",
+                    control="word_type",
+                    direction=direction,
+                )
             editor.payload["word_type"] = _WORD_TYPES[target]
-            return (
-                AdjustmentPressedIntent("dictionary", "word_type", direction),
+            return adjustment_feedback_intents(
+                changed=True,
+                area="dictionary",
+                control="word_type",
+                direction=direction,
             )
         if editor.selection == "priority":
             current = editor.payload["priority"]
             updated = min(10, max(0, current + direction))
             if updated == current:
-                return (ClearAdjustmentFeedbackIntent(),)
+                return adjustment_feedback_intents(
+                    changed=False,
+                    area="dictionary",
+                    control="priority",
+                    direction=direction,
+                )
             editor.payload["priority"] = updated
-            return (
-                AdjustmentPressedIntent("dictionary", "priority", direction),
+            return adjustment_feedback_intents(
+                changed=True,
+                area="dictionary",
+                control="priority",
+                direction=direction,
             )
         return ()
 
@@ -1223,8 +1263,11 @@ class TuiDictionaryController:
             intent
             for intent in intents
             if not isinstance(intent, ClearAdjustmentFeedbackIntent)
-        ) + (
-            AdjustmentPressedIntent("dictionary", "entry_navigator", direction),
+        ) + adjustment_feedback_intents(
+            changed=True,
+            area="dictionary",
+            control="entry_navigator",
+            direction=direction,
         )
 
     def _back_from_entry(self) -> tuple[EditorIntent, ...]:
