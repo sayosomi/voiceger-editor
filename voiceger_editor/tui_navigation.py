@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional, Tuple, Union
 
+from .tui_selection import move_clamped_selection
 from .tui_status import Status, info_status
 
 
@@ -246,17 +247,14 @@ class TuiNavigation:
         return (ClearAdjustmentFeedback(),)
 
     def move(self, context: NavigationContext, delta: int) -> tuple[NavigationAction, ...]:
-        items = self.navigation_items(context)
-        if not items:
+        result = move_clamped_selection(
+            self.focus_key,
+            self.navigation_items(context),
+            delta=delta,
+        )
+        if result is None or not result.changed:
             return ()
-        try:
-            index = items.index(self.focus_key)
-        except ValueError:
-            index = 0
-        target = min(max(index + delta, 0), len(items) - 1)
-        if target == index:
-            return ()
-        key = items[target]
+        key = result.selection
         actions = list(self.set_focus_key(context, key, moved=True))
         actions.extend(self._candidate_playback_action(key))
         return tuple(actions)
@@ -269,21 +267,20 @@ class TuiNavigation:
         stops = self.major_navigation_stops(context)
         if not stops:
             return ()
-        try:
-            index = stops.index(self.focus_key)
-        except ValueError:
-            index = next(
+        current = self.focus_key
+        if current not in stops:
+            current = next(
                 (
-                    position
-                    for position, key in enumerate(stops)
+                    key
+                    for key in stops
                     if key[0] == self.focus_key[0]
                 ),
-                0,
+                stops[0],
             )
-        target = min(max(index + delta, 0), len(stops) - 1)
-        if target == index:
+        result = move_clamped_selection(current, stops, delta=delta)
+        if result is None or not result.changed:
             return ()
-        key = stops[target]
+        key = result.selection
         actions = list(self.set_focus_key(context, key, moved=True))
         actions.extend(self._candidate_playback_action(key))
         return tuple(actions)
