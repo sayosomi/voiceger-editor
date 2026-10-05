@@ -73,8 +73,14 @@ class TuiShortcutTests(unittest.TestCase):
                 "a": "apply", "r": "reset",
             },
             "dictionary_menu": {"j": "japanese", "e": "english"},
-            "dictionary_japanese_list": {"a": "add", "x": "delete"},
-            "dictionary_english_list": {"a": "add", "x": "delete"},
+            "dictionary_japanese_list": {
+                "s": "sort", "f": "filter", "a": "add", "x": "delete",
+            },
+            "dictionary_english_list": {
+                "s": "sort", "f": "filter", "a": "add", "x": "delete",
+            },
+            "dictionary_japanese_filter": {"a": "apply", "c": "clear"},
+            "dictionary_english_filter": {"a": "apply", "c": "clear"},
             "dictionary_japanese_duplicates": {},
             "dictionary_japanese_entry": {
                 "g": "generate_pronunciation", "p": "preview",
