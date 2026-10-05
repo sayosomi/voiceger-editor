@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import Enum
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -520,7 +520,10 @@ class EnglishDictionaryImportReview:
         )
 
 
-DictionaryImportReview = JapaneseDictionaryImportReview | EnglishDictionaryImportReview
+DictionaryImportReview = Union[
+    JapaneseDictionaryImportReview,
+    EnglishDictionaryImportReview,
+]
 
 
 def plan_dictionary_import(
