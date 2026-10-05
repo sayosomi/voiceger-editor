@@ -330,6 +330,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         )
         after = self.controller.editor.payload["item"]
         self.assertIs(after.relation, DictionaryImportRelation.CONFLICT)
+        self.assertIsNotNone(after.existing)
         self.assertEqual(
             self.controller.editor.payload["word_type"],
             JapaneseWordType.PROPER_NOUN,
