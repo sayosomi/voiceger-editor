@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional, Tuple, Union
 
+from .tui_selection import move_clamped_selection
 from .tui_status import Status, info_status
 
 
@@ -246,17 +247,14 @@ class TuiNavigation:
         return (ClearAdjustmentFeedback(),)
 
     def move(self, context: NavigationContext, delta: int) -> tuple[NavigationAction, ...]:
-        items = self.navigation_items(context)
-        if not items:
+        result = move_clamped_selection(
+            self.focus_key,
+            self.navigation_items(context),
+            delta=delta,
+        )
+        if result is None or not result.changed:
             return ()
-        try:
-            index = items.index(self.focus_key)
-        except ValueError:
-            index = 0
-        target = min(max(index + delta, 0), len(items) - 1)
-        if target == index:
-            return ()
-        key = items[target]
+        key = result.selection
         actions = list(self.set_focus_key(context, key, moved=True))
         actions.extend(self._candidate_playback_action(key))
         return tuple(actions)
