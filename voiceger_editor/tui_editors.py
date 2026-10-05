@@ -46,6 +46,7 @@ from .settings import (
     VOICEGER_DEFAULT_TOP_P,
 )
 from .tui_adjustments import step_bounded, step_cyclic
+from .tui_confirmation import handle_confirmation_key
 from .tui_display import _display_width
 from .tui_selection import move_clamped_selection
 from .tui_shortcuts import menu_items, resolve_shortcut
@@ -1035,6 +1036,29 @@ class TuiEditorController:
             return (QuitIntent(),)
         if key == "?":
             return (OpenHelpIntent(),)
+        if editor.kind in {
+            "build_confirmation",
+            "delete_confirmation",
+            "clear_candidates_confirmation",
+        }:
+            interaction = handle_confirmation_key(
+                editor.kind,
+                str(editor.selection),
+                key,
+                editor.payload,
+            )
+            if interaction.handled:
+                editor.selection = interaction.selection
+                editor.error = EMPTY_STATUS
+                if interaction.activation is not None:
+                    return self._activate_selection(
+                        settings,
+                        query,
+                        current_caption,
+                    )
+                if interaction.changed:
+                    return (ClearAdjustmentFeedbackIntent(),)
+                return ()
         if editor.kind == "settings":
             if key == "\t":
                 return self.move_settings_section(1)
