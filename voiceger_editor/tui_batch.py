@@ -241,6 +241,16 @@ class TuiBatchController:
     def complete_acceptance(self, item_id: str, take_number: int) -> None:
         self.batch.mark_accepted(item_id, take_number)
 
+    def discard_item_candidates(self, item_id: str) -> None:
+        """Discard candidates for one stable Batch Item regardless of current focus."""
+
+        try:
+            item = self.batch.get_item(item_id)
+        except KeyError:
+            return
+        item.session.discard_takes()
+        self.batch.clear_acceptance(item_id)
+
     def close_sessions(self) -> None:
         for session in self.sessions:
             session.close()
@@ -274,6 +284,7 @@ class TuiBatchController:
 
         for action in actions:
             if isinstance(action, OpenBatchItem):
+                bindings.navigation.mark_context_change()
                 bindings.operations.stop_playback()
                 bindings.operations.clear_current_take()
                 bindings.editor_controller.clear_groupings()
