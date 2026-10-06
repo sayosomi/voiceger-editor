@@ -597,7 +597,6 @@ class TuiRenderer:
             key = ("caption", index)
             marker = "▶ " if key == focus_key else "  "
             selected = "x" if item.included_for_generation else " "
-            candidate_count = len(item.session.candidates)
             active_progress = (
                 active_generation
                 if active_generation is not None
@@ -610,13 +609,10 @@ class TuiRenderer:
                 review_state = f"[{percent}%] "
             elif item.is_accepted:
                 review_state = "[✓] "
-            elif candidate_count:
-                target_count = batch.effective_take_count(item)
-                if candidate_count >= target_count:
-                    review_state = "[!] "
-                else:
-                    percent = round(candidate_count * 100 / target_count)
-                    review_state = f"[{percent}%] "
+            elif item.generation_outcome in {"cancelled", "failed"}:
+                review_state = "[⚠] "
+            elif item.generation_outcome == "completed":
+                review_state = "[!] "
             else:
                 review_state = ""
             prefix = f"{marker}[{selected}] {index + 1}  {review_state}"
