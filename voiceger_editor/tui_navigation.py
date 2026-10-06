@@ -19,7 +19,6 @@ class NavigationContext:
     has_session: bool
     pronunciation_count: int
     candidate_numbers: tuple[int, ...]
-    busy: bool
     has_active_batch: bool
     has_item_navigator: bool = False
 
@@ -29,7 +28,6 @@ class NavigationContext:
         session: Any | None,
         *,
         pronunciation_count: int,
-        busy: bool,
         has_item_navigator: bool,
     ) -> "NavigationContext":
         return cls(
@@ -40,7 +38,6 @@ class NavigationContext:
                 if session is not None
                 else ()
             ),
-            busy=busy,
             has_active_batch=(
                 session.has_active_batch if session is not None else False
             ),
@@ -314,12 +311,6 @@ class TuiNavigation:
         context: NavigationContext,
         key: FocusKey,
     ) -> tuple[NavigationAction, ...]:
-        if key == ("clear_candidates", None) and context.busy:
-            return (
-                UpdateNavigationStatus(
-                    "Finish or cancel synthesis before clearing candidates."
-                ),
-            )
         if key not in self.navigation_items(context):
             return ()
         name, number = key
@@ -328,52 +319,20 @@ class TuiNavigation:
         if name == "output":
             return (EditOutputPath(),)
         if name == "caption":
-            if context.busy:
-                return (
-                    UpdateNavigationStatus(
-                        "Wait for synthesis to finish before editing Caption."
-                    ),
-                )
             return (OpenCaptionEditor(),)
         if name == "pronunciation" and number is not None:
-            if context.busy:
-                return (
-                    UpdateNavigationStatus(
-                        "Wait for synthesis to finish before editing pronunciation."
-                    ),
-                )
             return (EditPronunciationItem(number),)
         if name == "add_section":
-            if context.busy:
-                return (
-                    UpdateNavigationStatus(
-                        "Wait for synthesis to finish before adding a section."
-                    ),
-                )
             return (AddSectionEditor(),)
         if name == "generate":
             return self.activate_generate(context)
         if name == "build_pronunciation":
-            if context.busy:
-                return (
-                    UpdateNavigationStatus(
-                        "Wait for the current synthesis operation to finish."
-                    ),
-                )
             return (BuildPronunciation(),)
         if name == "candidate" and number is not None:
-            if context.busy:
-                return (
-                    UpdateNavigationStatus(
-                        "Wait for generation to finish before accepting a take."
-                    ),
-                )
             return (AcceptCandidate(number),)
         if name == "clear_candidates":
             return (OpenClearCandidatesConfirmation(),)
         if name == "delete_caption":
-            if context.busy:
-                return (UpdateNavigationStatus("Finish or cancel synthesis before deleting Caption."),)
             return (DeleteCaption(),)
         if name == "settings":
             return (OpenSettingsEditor("style_id"),)
@@ -397,12 +356,6 @@ class TuiNavigation:
         self,
         context: NavigationContext,
     ) -> tuple[NavigationAction, ...]:
-        if context.busy:
-            return (
-                UpdateNavigationStatus(
-                    "Wait for the current synthesis operation to finish."
-                ),
-            )
         if (
             self.focus_key[0] != "candidate"
             or self.focus_key not in self.navigation_items(context)
