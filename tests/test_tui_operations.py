@@ -720,6 +720,30 @@ class TuiOperationsTests(unittest.TestCase):
             ),
         )
 
+    def test_single_regeneration_does_not_replay_after_navigation_changes(self):
+        replacement = candidate(2)
+        self.operations.worker_operation = "regenerate_one"
+        self.operations.worker_target = 2
+        self.operations.current_take = 2
+        self.operations.operation_total = 1
+        self.operations.operation_focus_revision = 4
+        self.operations.busy = True
+        self.operations.events.put(("candidate", replacement))
+
+        effects = self.consume(
+            FakeSession((candidate(1), replacement)),
+            revision=5,
+        )
+
+        self.assertEqual(
+            effects,
+            (
+                UpdateStatusEffect("Take 2 replacement ready."),
+                CandidateReplacedEffect(2),
+            ),
+        )
+        self.assertEqual(self.operations.current_take, 2)
+
     def test_manual_selection_during_single_regeneration_is_retained(self):
         replacement = candidate(2)
         self.operations.worker_operation = "regenerate_one"
@@ -797,6 +821,30 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(self.operations.worker_error, error)
         self.assertIsNone(self.operations.worker_operation)
         self.assertIsNone(self.operations.worker_target)
+
+    def test_initial_failure_after_navigation_does_not_steal_ui_state(self):
+        error = RuntimeError("synthesis failed")
+        session = FakeSession()
+        self.operations.worker_operation = "initial"
+        self.operations._worker_item_id = "origin"
+        self.operations.operation_total = 2
+        self.operations.operation_focus_revision = 4
+        self.operations.current_take = 2
+        self.operations.busy = True
+        self.operations.events.put(("error", error))
+        self.operations.events.put(("done", None))
+
+        effects = self.consume(session, revision=5, segment=3)
+
+        self.assertEqual(
+            effects,
+            (
+                UpdateStatusEffect(error_status("Generation failed: synthesis failed")),
+                DiscardInitialBatchEffect("origin"),
+                UpdateStatusEffect(error_status("Generation failed: synthesis failed")),
+            ),
+        )
+        self.assertEqual(self.operations.current_take, 2)
 
     def test_regeneration_failure_preserves_batch_and_status(self):
         existing = candidate(1)
