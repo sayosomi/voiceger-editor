@@ -212,10 +212,10 @@ Active Take generation has its own persistent footer line, separate from ordinar
 
 ```text
 Generating: Caption 1 · 2/4 (50%) · [Ctrl+C] Cancel generation
-Status: Caption 1 is generating (50%). Finish or cancel it before generating Caption 2.
+Warning: Generate Caption 2 is unavailable while generation is active.
 ```
 
-Generation progress continues to update without erasing the Status response to the user's attempted action. Unrelated Status messages likewise do not hide the active generation indicator. The extra progress row disappears when generation ends.
+Generation progress continues to update without erasing the Warning response to a blocked Generate action. Unrelated Status messages likewise do not hide the active generation indicator. The extra progress row disappears when generation ends.
 
 Press Ctrl+C to request generation cancellation. Cancellation occurs at a safe Take boundary rather than interrupting synthesis in the middle of one Take, so any completed Takes are preserved and the application remains open. While cancellation is available, the generation progress line shows `[Ctrl+C] Cancel generation`.
 
