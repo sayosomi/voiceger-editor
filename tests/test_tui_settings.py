@@ -37,6 +37,7 @@ class TuiSettingsControllerTests(unittest.TestCase):
         status = {"value": ""}
         batch_take_count = {"value": runtime.take_count}
         operations = Mock()
+        operations.settings_change_conflict_status.return_value = None
         if events is not None:
             operations.stop_playback.side_effect = lambda: events.append("stop")
             operations.clear_current_take.side_effect = lambda: events.append("clear")
@@ -78,6 +79,29 @@ class TuiSettingsControllerTests(unittest.TestCase):
             expected_persisted,
             Path("/tmp/config.json"),
         )
+
+    def test_operation_policy_can_allow_future_run_settings_during_generation(self):
+        controller, session, operations, save, _status, batch = self.make_controller()
+        operations.settings_change_conflict_status.return_value = None
+
+        self.assertTrue(controller.change(take_count=7, output_dir=Path("/tmp/next")))
+
+        self.assertEqual(batch["value"], 7)
+        self.assertEqual(session.settings.take_count, 7)
+        self.assertEqual(session.settings.output_dir, Path("/tmp/next"))
+        operations.settings_change_conflict_status.assert_called_once()
+        save.assert_called_once()
+
+    def test_operation_policy_blocks_conflicting_synthesis_setting_before_mutation(self):
+        controller, session, operations, save, status, _batch = self.make_controller()
+        conflict = "Synthesis settings cannot change while the current operation is active."
+        operations.settings_change_conflict_status.return_value = conflict
+
+        self.assertFalse(controller.change(speed=0.9))
+
+        self.assertEqual(session.replace_settings_calls, [])
+        save.assert_not_called()
+        self.assertEqual(status["value"], conflict)
 
     def test_synthesis_change_stops_before_session_replacement_and_clears_after(self):
         events = []
