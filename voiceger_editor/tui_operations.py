@@ -681,6 +681,23 @@ class TuiOperations:
         }
 
     @property
+    def active_item_generation_progress(self) -> tuple[str, int, int] | None:
+        """Return progress for the currently generating individual Batch Item."""
+
+        if (
+            not self.busy
+            or self.worker_operation not in {"initial", "regenerate_all"}
+            or self._worker_item_id is None
+            or self.operation_total <= 0
+        ):
+            return None
+        return (
+            self._worker_item_id,
+            self.operation_completed,
+            self.operation_total,
+        )
+
+    @property
     def cancellation_guard_armed(self) -> bool:
         """Whether Ctrl+C still belongs to the most recent cancellable generation."""
 
