@@ -1113,8 +1113,18 @@ class TuiOperations:
         navigation_revision: int,
         pronunciation_index: int,
         exit_requested: bool,
+        batch: CaptionBatch | None = None,
     ) -> tuple[OperationEffect, ...]:
         effects: list[OperationEffect] = []
+
+        def caption_label(item_id: str | None) -> str | None:
+            if batch is None or item_id is None:
+                return None
+            try:
+                item = batch.get_item(item_id)
+            except KeyError:
+                return None
+            return f"Caption {batch.items.index(item) + 1}"
         while True:
             try:
                 event = self.events.get_nowait()
@@ -1193,6 +1203,12 @@ class TuiOperations:
                 continue
             if isinstance(event, BatchGenerationProgressEvent):
                 self.operation_completed = event.overall_completed
+                self._batch_progress_item_id = event.item_id
+                self._batch_progress_caption_number = event.caption_number
+                self._batch_progress_caption_total = event.caption_total
+                self._batch_progress_take_number = event.take_number
+                self._batch_progress_take_completed = max(0, event.take_number - 1)
+                self._batch_progress_take_total = event.take_total
                 effects.append(
                     UpdateStatusEffect(
                         f"Caption {event.caption_number}/{event.caption_total} · "
@@ -1204,6 +1220,12 @@ class TuiOperations:
                 continue
             if isinstance(event, BatchCandidateReadyEvent):
                 self.operation_completed = event.overall_completed
+                self._batch_progress_item_id = event.item_id
+                self._batch_progress_caption_number = event.caption_number
+                self._batch_progress_caption_total = event.caption_total
+                self._batch_progress_take_number = event.take_number
+                self._batch_progress_take_completed = event.take_number
+                self._batch_progress_take_total = event.take_total
                 effects.append(
                     UpdateStatusEffect(
                         f"Caption {event.caption_number}/{event.caption_total} · "
@@ -1231,12 +1253,24 @@ class TuiOperations:
                 continue
             if isinstance(event, BatchGenerationFailedEvent):
                 self.worker_error = event.error
+                self._batch_progress_item_id = event.item_id
+                self._batch_progress_caption_number = event.caption_number
+                self._batch_progress_caption_total = event.caption_total
+                self._batch_progress_take_number = event.take_number
+                self._batch_progress_take_completed = max(0, event.take_number - 1)
+                self._batch_progress_take_total = event.take_total
+                owner = caption_label(event.item_id)
+                location = (
+                    owner
+                    if owner is not None
+                    else f"Caption {event.caption_number}/{event.caption_total}"
+                )
                 effects.append(
                     UpdateStatusEffect(
                         error_status(
                             "Batch generation failed at "
-                            f"Caption {event.caption_number}/{event.caption_total}, "
-                            f"Take {event.take_number}/{event.take_total}: {event.error}"
+                            f"{location}, Take {event.take_number}/{event.take_total}: "
+                            f"{event.error}"
                         )
                     )
                 )
@@ -1301,9 +1335,13 @@ class TuiOperations:
                         UpdateStatusEffect(error_status(f"Preview failed: {value}"))
                     )
                 else:
-                    effects.append(
-                        UpdateStatusEffect(error_status(f"Generation failed: {value}"))
+                    owner = caption_label(self._worker_item_id)
+                    message = (
+                        f"{owner} generation failed: {value}"
+                        if owner is not None
+                        else f"Generation failed: {value}"
                     )
+                    effects.append(UpdateStatusEffect(error_status(message)))
                 if (
                     self.worker_operation == "initial"
                     and not self.cancellation_requested
@@ -1322,6 +1360,8 @@ class TuiOperations:
 
             elif kind == "done":
                 operation = self.worker_operation
+                owner = caption_label(self._worker_item_id)
+                batch_owner = caption_label(self._batch_progress_item_id)
                 finished_full_count = (
                     operation in {"initial", "regenerate_all"}
                     and self.operation_total > 0
@@ -1334,8 +1374,11 @@ class TuiOperations:
                     status = None
                 elif operation == "batch_generate":
                     if cancelled:
+                        owner_suffix = (
+                            f" at {batch_owner}" if batch_owner is not None else ""
+                        )
                         status = (
-                            "Batch generation cancelled. "
+                            f"Batch generation cancelled{owner_suffix}. "
                             f"{self.operation_completed}/{self.operation_total} "
                             "take(s) ready."
                         )
@@ -1349,7 +1392,11 @@ class TuiOperations:
                         )
                 elif cancelled and operation == "initial":
                     ready = self.operation_completed
-                    status = f"Generation cancelled. {ready} take(s) ready."
+                    status = (
+                        f"{owner} generation cancelled. {ready} take(s) ready."
+                        if owner is not None
+                        else f"Generation cancelled. {ready} take(s) ready."
+                    )
                     if ready == 0:
                         effects.append(StopPlaybackEffect())
                         effects.append(DiscardInitialBatchEffect(self._worker_item_id))
@@ -1359,15 +1406,31 @@ class TuiOperations:
                         )
                 elif cancelled and operation == "regenerate_all":
                     status = (
-                        "Regeneration cancelled after "
+                        f"{owner} regeneration cancelled after "
+                        f"{self.operation_completed} replacement(s)."
+                        if owner is not None
+                        else "Regeneration cancelled after "
                         f"{self.operation_completed} replacement(s)."
                     )
                 elif self.worker_error is not None:
-                    status = error_status(f"Generation failed: {self.worker_error}")
+                    status = error_status(
+                        f"{owner} generation failed: {self.worker_error}"
+                        if owner is not None
+                        else f"Generation failed: {self.worker_error}"
+                    )
                 elif operation == "initial" and self.operation_completed:
-                    status = f"{self.operation_completed} take(s) ready."
+                    status = (
+                        f"{owner} generation finished. "
+                        f"{self.operation_completed} take(s) ready."
+                        if owner is not None
+                        else f"{self.operation_completed} take(s) ready."
+                    )
                 elif operation in {"regenerate_one", "regenerate_all"}:
-                    status = "Take regeneration finished."
+                    status = (
+                        f"{owner} Take regeneration finished."
+                        if owner is not None
+                        else "Take regeneration finished."
+                    )
                 elif not exit_requested:
                     status = "No takes were generated. Select Generate to try again."
                 else:
@@ -1404,6 +1467,13 @@ class TuiOperations:
                 self.worker_target = None
                 self._worker_item_id = None
                 self._owned_item_ids = frozenset()
+                self._active_operation_id = None
+                self._batch_progress_item_id = None
+                self._batch_progress_caption_number = None
+                self._batch_progress_caption_total = None
+                self._batch_progress_take_number = None
+                self._batch_progress_take_completed = 0
+                self._batch_progress_take_total = None
                 self._cancellation_event = None
                 self.cancellation_requested = False
 
