@@ -2195,8 +2195,10 @@ class TuiRenderingTests(unittest.TestCase):
             "[P] Top P *", "[T] Temperature *",
         ):
             self.assertIn(marked, visible)
-        for unmarked in ("[N] Takes", "[F] Output", "[X] TXT", "[L] LAB"):
+        for unmarked in ("[N] Takes", "[F] Output", "[O] Audio output"):
             self.assertIn(unmarked, visible)
+        self.assertNotIn("[X] TXT", visible)
+        self.assertNotIn("[L] LAB", visible)
         self.assertIn("[D] Reset sampling to Voiceger defaults", visible)
         self.assertIn("[A] Apply and save", visible)
         self.assertIn("[R] Reset", visible)
@@ -2208,7 +2210,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(
             [key for _line, key in document if key is not None],
             [
-                "style_id", "speed", "take_count", "output_dir", "save_text", "save_lab",
+                "style_id", "speed", "take_count", "output_dir", "audio_output",
                 "top_k", "top_p", "temperature", "reset_sampling",
                 "apply", "reset", "back",
             ],
@@ -2225,6 +2227,79 @@ class TuiRenderingTests(unittest.TestCase):
             active, _, _ = self.renderer.editor_document(render_state(editor=editor), 80)
         speed_lines = [line for line, key in active if key == "speed"]
         self.assertTrue(any(line.startswith("▶ Speed *") and "1.25" in line for line in speed_lines))
+
+    def test_audio_output_settings_render_draft_preview_and_sidecars(self):
+        editor = SimpleNamespace(
+            kind="audio_output_settings",
+            title="AUDIO OUTPUT",
+            selection="filename_template",
+            payload={
+                "draft_settings": {
+                    "filename_template": "{style}_{text}",
+                    "save_text": True,
+                    "save_lab": False,
+                },
+                "preview_text": "今日は雨",
+                "preview_style": "Neutral",
+                "output_extension": ".wav",
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _, _ = self.renderer.editor_document(
+            render_state(editor=editor),
+            80,
+        )
+        visible = "\n".join(line for line, _key in document)
+        self.assertIn("AUDIO OUTPUT", visible)
+        self.assertIn("Filename template  {style}_{text}", visible)
+        self.assertIn("Preview", visible)
+        self.assertIn("Neutral_今日は雨.wav", visible)
+        self.assertIn("[X] TXT", visible)
+        self.assertIn("ON", visible)
+        self.assertIn("[L] LAB", visible)
+        self.assertIn("OFF", visible)
+        self.assertIn("YYYY MM DD HH mm ss · {text} {style}", visible)
+        self.assertEqual(
+            [key for _line, key in document if key is not None],
+            ["filename_template", "save_text", "save_lab", "back"],
+        )
+
+    def test_audio_output_preview_uses_live_template_draft_and_explains_invalid_input(self):
+        editor = SimpleNamespace(
+            kind="audio_output_settings",
+            title="AUDIO OUTPUT",
+            selection="filename_template",
+            payload={
+                "draft_settings": {
+                    "filename_template": "{text}",
+                    "save_text": False,
+                    "save_lab": False,
+                },
+                "preview_text": "sample",
+                "preview_style": "Neutral",
+                "output_extension": ".wav",
+            },
+            active_field="filename_template",
+            input_value="{take}_{text}",
+            input_cursor=len("{take}_{text}"),
+            error="",
+            scroll=0,
+        )
+
+        document, cursor_line, _ = self.renderer.editor_document(
+            render_state(editor=editor),
+            80,
+        )
+        visible = "\n".join(line for line, _key in document)
+        self.assertIn("▶ Filename template  {take}_{text}", visible)
+        self.assertIn("Invalid:", visible)
+        self.assertIn("unsupported date/time token", visible)
+        self.assertIsNotNone(cursor_line)
 
     def test_settings_style_display_falls_back_to_id_when_unresolved(self):
         editor = SimpleNamespace(
