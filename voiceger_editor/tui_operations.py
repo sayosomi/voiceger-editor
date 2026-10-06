@@ -221,7 +221,7 @@ class TuiOperations:
 
         if self.busy:
             return (
-                UpdateStatusEffect("A sequential take operation is already running."),
+                UpdateStatusEffect("Another operation is already running."),
             )
 
         selected = batch.included_items
@@ -381,7 +381,7 @@ class TuiOperations:
     ) -> tuple[OperationEffect, ...]:
         if self.busy:
             return (
-                UpdateStatusEffect("A sequential take operation is already running."),
+                UpdateStatusEffect("Another operation is already running."),
             )
         if session is None:
             return ()
@@ -416,6 +416,10 @@ class TuiOperations:
         navigation_revision: int,
         item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
+        if self.busy:
+            return (
+                UpdateStatusEffect("Another operation is already running."),
+            )
         if session is None:
             return ()
         self.stop_playback()
@@ -438,6 +442,10 @@ class TuiOperations:
         navigation_revision: int,
         item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
+        if self.busy:
+            return (
+                UpdateStatusEffect("Another operation is already running."),
+            )
         if session is None:
             return ()
         try:
@@ -696,6 +704,87 @@ class TuiOperations:
             self.operation_completed,
             self.operation_total,
         )
+
+    @property
+    def active_generation_item_id(self) -> str | None:
+        """Return the stable owner of an active individual Take operation."""
+
+        if (
+            not self.busy
+            or self.worker_operation
+            not in {"initial", "regenerate_one", "regenerate_all"}
+        ):
+            return None
+        return self._worker_item_id
+
+    def generation_conflict_status(
+        self,
+        batch: CaptionBatch,
+        *,
+        requested_item_id: str | None = None,
+        requested_batch: bool = False,
+    ) -> Status | None:
+        """Explain why a new generation request cannot start right now."""
+
+        if not self.busy:
+            return None
+
+        def caption_number(item_id: str | None) -> int | None:
+            if item_id is None:
+                return None
+            try:
+                item = batch.get_item(item_id)
+            except KeyError:
+                return None
+            return batch.items.index(item) + 1
+
+        operation = self.worker_operation
+        active_number = caption_number(self._worker_item_id)
+        requested_number = caption_number(requested_item_id)
+
+        if operation == "batch_generate":
+            if self.operation_total > 0:
+                percent = round(
+                    self.operation_completed * 100 / self.operation_total
+                )
+                active = f"Batch generation is running ({percent}%)."
+            else:
+                active = "Batch generation is running."
+        elif (
+            operation in {"initial", "regenerate_all"}
+            and active_number is not None
+        ):
+            percent = (
+                round(self.operation_completed * 100 / self.operation_total)
+                if self.operation_total > 0
+                else 0
+            )
+            verb = "regenerating" if operation == "regenerate_all" else "generating"
+            active = f"Caption {active_number} is {verb} ({percent}%)."
+        elif operation == "regenerate_one" and active_number is not None:
+            active = f"Caption {active_number} is regenerating a Take."
+        else:
+            active = "Another operation is running."
+
+        if requested_batch:
+            if operation == "batch_generate":
+                return info_status(active)
+            target = "starting batch generation"
+        elif requested_number is not None:
+            if (
+                active_number == requested_number
+                and operation in {"initial", "regenerate_all"}
+            ):
+                return info_status(active)
+            target = f"generating Caption {requested_number}"
+        else:
+            target = "starting generation"
+
+        if self.can_cancel_batch:
+            return info_status(
+                f"{active} Finish or cancel it before {target}."
+            )
+        return info_status(f"{active} Wait for it to finish before {target}.")
 
     @property
     def cancellation_guard_armed(self) -> bool:
