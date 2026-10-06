@@ -823,6 +823,7 @@ class TuiOperationsTests(unittest.TestCase):
     def test_done_statuses_cover_successful_regeneration_empty_and_exit(self):
         self.operations.worker_operation = "initial"
         self.operations.busy = True
+        self.operations.operation_completed = 2
         self.operations.events.put(("done", None))
         self.assertEqual(
             self.consume(FakeSession((candidate(1), candidate(2)))),
