@@ -53,6 +53,7 @@ class TuiBatchControllerTests(unittest.TestCase):
         navigation = SimpleNamespace(
             focus_key=("takes", None),
             revision=7,
+            mark_context_change=Mock(),
             reset_pronunciation_index=Mock(),
         )
         return BatchActionBindings(
