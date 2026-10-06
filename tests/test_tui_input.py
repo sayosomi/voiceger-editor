@@ -124,5 +124,16 @@ class TuiInputReaderTests(unittest.TestCase):
         self.assertEqual(screen.timeouts, [])
 
 
+    def test_keyboard_interrupt_is_normalized_to_ctrl_c_key(self):
+        class InterruptScreen(FakeScreen):
+            def get_wch(self):
+                raise KeyboardInterrupt
+
+        reader = TuiInputReader()
+
+        self.assertEqual(reader.read(InterruptScreen()), "\x03"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
