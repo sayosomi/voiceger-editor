@@ -234,6 +234,14 @@ class TuiOperations:
         self.cancellation_requested = False
         self._worker_item_id: str | None = None
         self._owned_item_ids: frozenset[str] = frozenset()
+        self._operation_serial = 0
+        self._active_operation_id: int | None = None
+        self._batch_progress_item_id: str | None = None
+        self._batch_progress_caption_number: int | None = None
+        self._batch_progress_caption_total: int | None = None
+        self._batch_progress_take_number: int | None = None
+        self._batch_progress_take_completed = 0
+        self._batch_progress_take_total: int | None = None
         self._ctrl_c_cancellation_guard = False
         self.current_take: int | None = None
         self.playback_process: subprocess.Popen[Any] | None = None
