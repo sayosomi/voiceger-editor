@@ -131,8 +131,7 @@ class TuiInputReaderTests(unittest.TestCase):
 
         reader = TuiInputReader()
 
-        self.assertEqual(reader.read(InterruptScreen()), "\x03"
-        )
+        self.assertEqual(reader.read(InterruptScreen()), "\x03")
 
 
 if __name__ == "__main__":
