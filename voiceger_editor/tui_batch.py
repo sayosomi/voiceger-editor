@@ -13,7 +13,7 @@ from .tui_editors import adjustment_feedback_intents
 from .tui_navigation import TuiNavigation
 from .tui_operations import OperationEffect, TuiOperations
 from .tui_selection import move_clamped_selection
-from .tui_status import EMPTY_STATUS, Status
+from .tui_status import EMPTY_STATUS, Status, info_status
 from .tui_shortcuts import (
     resolve_batch_list_caption_shortcut,
     resolve_batch_list_shortcut,
@@ -39,6 +39,16 @@ class AddCaptions:
 
 @dataclass(frozen=True)
 class GenerateSelected:
+    pass
+
+
+@dataclass(frozen=True)
+class OpenBatchRead:
+    pass
+
+
+@dataclass(frozen=True)
+class OpenBatchWrite:
     pass
 
 
@@ -71,6 +81,8 @@ BatchAction = Union[
     OpenBatchItem,
     AddCaptions,
     GenerateSelected,
+    OpenBatchRead,
+    OpenBatchWrite,
     AdjustBatchTakeCount,
     OpenBatchSettings,
     OpenBatchDictionary,
@@ -92,6 +104,8 @@ class BatchActionBindings:
     open_caption_editor: Callable[..., None]
     change_settings: Callable[..., None]
     open_settings_editor: Callable[[str | None], None]
+    open_batch_read: Callable[[], None]
+    open_batch_write: Callable[[], None]
     dispatch_editor_intents: Callable[[Sequence[Any]], None]
     dispatch_operation_effects: Callable[[Sequence[OperationEffect]], None]
     open_help: Callable[[], None]
@@ -231,6 +245,26 @@ class TuiBatchController:
         for session in self.sessions:
             session.close()
 
+    def replace_batch(self, batch: CaptionBatch) -> None:
+        """Install one fully reconstructed batch at the TUI boundary."""
+
+        if not isinstance(batch, CaptionBatch):
+            raise TypeError("batch must be a CaptionBatch")
+        if batch is self.batch:
+            return
+
+        previous = self.batch
+        self.batch = batch
+        self._open_item_id = None
+        self._pending_delete_item_id = None
+        self._pending_delete_from_item = False
+        self._delete_confirmation_selection = "cancel"
+        self.focus_key = (
+            ("caption", 0) if len(batch) else ("add_captions", None)
+        )
+        for item in previous.items:
+            item.session.close()
+
     def dispatch_actions(
         self,
         actions: Sequence[BatchAction],
@@ -264,6 +298,24 @@ class TuiBatchController:
                     navigation_revision=bindings.navigation.revision,
                 )
                 bindings.dispatch_operation_effects(effects)
+            elif isinstance(action, OpenBatchRead):
+                if bindings.operations.busy:
+                    bindings.set_status(
+                        info_status(
+                            "Wait for the current operation to finish before reading a batch."
+                        )
+                    )
+                else:
+                    bindings.open_batch_read()
+            elif isinstance(action, OpenBatchWrite):
+                if bindings.operations.busy:
+                    bindings.set_status(
+                        info_status(
+                            "Wait for the current operation to finish before writing a batch."
+                        )
+                    )
+                else:
+                    bindings.open_batch_write()
             elif isinstance(action, AdjustBatchTakeCount):
                 count = self.batch.default_take_count
                 result = step_bounded(
@@ -305,6 +357,8 @@ class TuiBatchController:
             + (
                 ("add_captions", None),
                 ("generate_selected", None),
+                ("read_batch", None),
+                ("write_batch", None),
                 ("settings", None),
                 ("dictionary", None),
                 ("help", None),
@@ -390,6 +444,10 @@ class TuiBatchController:
             return (AddCaptions(),)
         if name == "generate_selected":
             return (GenerateSelected(),)
+        if name == "read_batch":
+            return (OpenBatchRead(),)
+        if name == "write_batch":
+            return (OpenBatchWrite(),)
         if name == "settings":
             return (OpenBatchSettings(),)
         if name == "dictionary":
