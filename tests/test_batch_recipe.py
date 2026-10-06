@@ -101,14 +101,20 @@ def _english_query(
 
 
 def _mixed_query() -> AudioQuery:
-    phrase = AccentPhrase(
+    first_phrase = AccentPhrase(
         moras=[_mora("ズ"), _mora("ン"), _mora("ダ")],
         accent=2,
         pause_mora=None,
         is_interrogative=False,
     )
+    second_phrase = AccentPhrase(
+        moras=[_mora("ナ"), _mora("ノ"), _mora("ダ")],
+        accent=2,
+        pause_mora=None,
+        is_interrogative=False,
+    )
     return AudioQuery(
-        accent_phrases=[phrase],
+        accent_phrases=[first_phrase, second_phrase],
         speedScale=1,
         pitchScale=0,
         intonationScale=1,
