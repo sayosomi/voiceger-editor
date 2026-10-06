@@ -134,7 +134,7 @@ class TuiOperationsTests(unittest.TestCase):
             self.operations.start_generation(
                 FakeSession(), take_count=4, navigation_revision=0
             ),
-            (UpdateStatusEffect("A sequential take operation is already running."),),
+            (UpdateStatusEffect("Another operation is already running."),),
         )
         self.operations.busy = False
 
