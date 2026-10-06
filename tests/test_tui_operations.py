@@ -161,6 +161,40 @@ class TuiOperationsTests(unittest.TestCase):
             ),
         )
 
+    def test_operation_resource_and_item_ownership_are_reported_separately(self):
+        self.assertFalse(self.operations.operation_resource_busy)
+        self.assertEqual(self.operations.owned_item_ids, frozenset())
+        self.assertFalse(self.operations.owns_item("item-1"))
+
+        self.operations.busy = True
+        self.operations.worker_operation = "initial"
+        self.operations._owned_item_ids = frozenset({"item-1"})
+
+        self.assertTrue(self.operations.operation_resource_busy)
+        self.assertTrue(self.operations.owns_item("item-1"))
+        self.assertFalse(self.operations.owns_item("item-2"))
+        self.assertIsNone(
+            self.operations.item_mutation_conflict_status(
+                CaptionBatch(default_take_count=4),
+                "item-2",
+                action="editing Caption",
+            )
+        )
+
+    def test_settings_conflicts_block_synthesis_but_allow_future_take_count(self):
+        self.operations.busy = True
+        self.operations.worker_operation = "initial"
+
+        self.assertIsNone(
+            self.operations.settings_change_conflict_status(("take_count",))
+        )
+        self.assertIsNone(
+            self.operations.settings_change_conflict_status(("output_dir",))
+        )
+        conflict = self.operations.settings_change_conflict_status(("speed",))
+        self.assertIsNotNone(conflict)
+        self.assertIn("Synthesis settings cannot change", str(conflict))
+
     def test_preview_worker_emits_ready_playback_effect_without_candidate_focus(self):
         session_candidate = candidate(3)
         session = FakeSession((session_candidate,))
@@ -1171,7 +1205,6 @@ class TuiOperationsTests(unittest.TestCase):
             session,
             3,
             item_id="item-1",
-            busy=False,
             pronunciation_index=2,
         )
 
@@ -1214,7 +1247,6 @@ class TuiOperationsTests(unittest.TestCase):
             session,
             3,
             item_id="wav-item",
-            busy=False,
             pronunciation_index=0,
         )
         self.assertEqual(start, (UpdateStatusEffect("Saving Take 3…"),))
@@ -1240,7 +1272,6 @@ class TuiOperationsTests(unittest.TestCase):
             session,
             3,
             item_id="lab-item",
-            busy=False,
             pronunciation_index=0,
         )
         self.operations.start_pending_worker()
@@ -1262,7 +1293,6 @@ class TuiOperationsTests(unittest.TestCase):
             session,
             3,
             item_id="warning-item",
-            busy=False,
             pronunciation_index=0,
         )
         self.operations.start_pending_worker()
@@ -1289,7 +1319,6 @@ class TuiOperationsTests(unittest.TestCase):
             session,
             3,
             item_id="item-1",
-            busy=False,
             pronunciation_index=0,
         )
         self.assertEqual(start, (UpdateStatusEffect("Saving Take 3…"),))
@@ -1313,18 +1342,18 @@ class TuiOperationsTests(unittest.TestCase):
 
         session.accept_calls.clear()
         self.operations.busy = True
-        self.assertEqual(
-            self.operations.accept_take(
-                session,
-                3,
-                item_id="item-1",
-                busy=True,
-                pronunciation_index=0,
-            ),
-            (),
+        self.operations.worker_operation = "initial"
+        blocked = self.operations.accept_take(
+            session,
+            3,
+            item_id="item-1",
+            pronunciation_index=0,
         )
+        self.assertEqual(len(blocked), 1)
+        self.assertIn("Save Take 3 is unavailable", str(blocked[0].status))
         self.assertEqual(session.accept_calls, [])
         self.operations.busy = False
+        self.operations.worker_operation = None
 
 class BatchFakeSession:
     def __init__(
