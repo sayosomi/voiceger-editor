@@ -103,6 +103,12 @@ class EditorRenderState(Protocol):
     error: Status
 
 
+class OutputPathEditRenderState(Protocol):
+    owner: str
+    value: str
+    cursor: int
+
+
 @dataclass(frozen=True)
 class TuiRenderState:
     """Read-only snapshot of the application values needed to render a frame."""
@@ -123,6 +129,7 @@ class TuiRenderState:
     editor: EditorRenderState | None
     accepted_take_number: int | None = None
     batch_item_position: tuple[int, int] | None = None
+    output_path_edit: OutputPathEditRenderState | None = None
 
 
 @dataclass(frozen=True)
@@ -175,11 +182,15 @@ def _active_input_prefix(editor: EditorRenderState) -> str:
     if editor.kind in {
         "dictionary_import_path",
         "batch_recipe_read_path",
-        "batch_recipe_write_path",
     }:
         item = menu_item(editor.kind, "path", editor.payload)
         prefix = f"[{item.shortcut.upper()}] " if item.shortcut is not None else ""
         return f"▶ {prefix}"
+    if (
+        editor.kind == "batch_recipe_write_path"
+        and editor.active_field == "file_name"
+    ):
+        return "▶ File name: "
     return "▶ Input: "
 
 
@@ -691,17 +702,38 @@ class TuiRenderer:
             self._focus_attribute() if state.focus_key == ("output", None) else 0
         )
         safe_add(screen, 1, 0, summary, width, summary_attr)
-        safe_add(
-            screen,
-            2,
-            0,
-            output_marker
-            + main_shortcut("output").display_with_label(
-                f"Output: {settings.output_dir}"
-            ),
-            width,
-            output_attr,
-        )
+        output_edit = state.output_path_edit
+        output_cursor_column: int | None = None
+        if output_edit is not None and output_edit.owner == "batch_item":
+            output_prefix = "▶ " + main_shortcut("output").display_with_label("Output: ")
+            input_width = max(1, width - 1 - _display_width(output_prefix))
+            wrapped, cursor_row, cursor_cells = _wrap_active_input(
+                output_edit.value,
+                output_edit.cursor,
+                input_width,
+            )
+            visible = wrapped[min(cursor_row, len(wrapped) - 1)]
+            safe_add(
+                screen,
+                2,
+                0,
+                output_prefix + visible,
+                width,
+                self._focus_attribute(),
+            )
+            output_cursor_column = _display_width(output_prefix) + cursor_cells
+        else:
+            safe_add(
+                screen,
+                2,
+                0,
+                output_marker
+                + main_shortcut("output").display_with_label(
+                    f"Output: {settings.output_dir}"
+                ),
+                width,
+                output_attr,
+            )
 
         lines = self.navigation_document(state, width)
         footer = self._status_footer_layout(state.status, height, width)
@@ -736,6 +768,11 @@ class TuiRenderer:
                 )
 
         self._render_status_footer(screen, footer, width)
+        if output_cursor_column is not None:
+            try:
+                screen.move(2, min(width - 1, output_cursor_column))
+            except curses.error:
+                pass
 
     def navigation_document(
         self,
@@ -1020,6 +1057,31 @@ class TuiRenderer:
                 shortcut_prefix + (str(editor.payload.get(key, "")) or "(not set)"),
             )
 
+        def shared_output_field(key: str, owner: str) -> None:
+            nonlocal cursor_line, cursor_column
+            item = menu_item(editor.kind, key, editor.payload)
+            output_edit = state.output_path_edit
+            if output_edit is None or output_edit.owner != owner:
+                wrapped_selectable_text(
+                    key,
+                    f"{item.display_label}: {state.settings.output_dir}",
+                )
+                return
+            prefix = f"▶ {item.display_label}: "
+            prefix_width = _display_width(prefix)
+            input_width = max(1, width - 1 - prefix_width)
+            wrapped, cursor_row, cursor_cells = _wrap_active_input(
+                output_edit.value,
+                output_edit.cursor,
+                input_width,
+            )
+            first_line = len(lines)
+            lines.append((prefix + wrapped[0], key))
+            continuation = " " * prefix_width
+            lines.extend((continuation + value, key) for value in wrapped[1:])
+            cursor_line = first_line + cursor_row
+            cursor_column = prefix_width + cursor_cells
+
         entry_position: tuple[int, int] | None = None
         if editor.kind in {
             "dictionary_japanese_entry",
@@ -1204,19 +1266,27 @@ class TuiRenderer:
             selectable("clear")
             selectable("reset")
             selectable("back")
-        elif editor.kind in {
-            "batch_recipe_read_path",
-            "batch_recipe_write_path",
-        }:
+        elif editor.kind == "batch_recipe_read_path":
             plain()
             plain("File path")
             path_input_field()
             plain()
-            selectable(
-                "read"
-                if editor.kind == "batch_recipe_read_path"
-                else "write"
-            )
+            selectable("read")
+            selectable("back")
+        elif editor.kind == "batch_recipe_write_path":
+            plain()
+            shared_output_field("output", "batch_write")
+            plain()
+            plain("File name")
+            if editor.active_field == "file_name":
+                input_field("file_name", "▶ ")
+            else:
+                wrapped_selectable_text(
+                    "file_name",
+                    str(editor.payload.get("file_name", "")) or "(not set)",
+                )
+            plain()
+            selectable("write")
             selectable("back")
         elif editor.kind == "dictionary_menu":
             plain()
@@ -1234,11 +1304,7 @@ class TuiRenderer:
             selectable("back")
         elif editor.kind == "dictionary_export":
             plain()
-            output_item = menu_item(editor.kind, "output", editor.payload)
-            wrapped_selectable_text(
-                "output",
-                f"{output_item.display_label}: {state.settings.output_dir}",
-            )
+            shared_output_field("output", "dictionary_export")
             plain()
             selectable("voiceger")
             plain("  Japanese + English")

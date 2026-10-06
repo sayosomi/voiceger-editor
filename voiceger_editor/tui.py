@@ -19,7 +19,6 @@ from .tui_display import _adjustable_value, format_english_phonemes
 from .tui_dictionary import (
     DictionaryControllerIntent,
     DictionaryOperationIntent,
-    OpenDictionarySettingsIntent,
     TuiDictionaryController,
 )
 from .tui_help import HelpOutcome, TuiHelpController
@@ -49,6 +48,7 @@ from .tui_operations import (
     UpdateStatusEffect,
 )
 from .tui_navigation import NavigationAction, NavigationContext, TuiNavigation
+from .tui_output_path import BeginOutputPathEditIntent, TuiOutputPathController
 from .tui_input import TuiInputReader
 from .voiceger_adapter import VoicegerAdapter
 
@@ -91,6 +91,14 @@ class TuiApp:
             ),
             set_status=lambda status: setattr(self, "_status", status),
             save=lambda value, path: save_settings(value, path),
+        )
+        self._output_path_controller = TuiOutputPathController(
+            get_output_dir=lambda: self.settings.output_dir,
+            save_output_dir=lambda value: self._settings_controller.change(
+                output_dir=value
+            ),
+            busy=lambda: self._operations.busy,
+            set_status=lambda status: setattr(self, "_status", status),
         )
         self._help_controller = TuiHelpController()
         self._editor_controller = TuiEditorController(
@@ -287,6 +295,14 @@ class TuiApp:
                 self._activate_quit()
             elif outcome is HelpOutcome.CLOSED:
                 pass
+            return
+        if self._output_path_controller.active:
+            self._output_path_controller.handle_key(
+                key,
+                screen_width=(
+                    self._screen.getmaxyx()[1] if self._screen is not None else 80
+                ),
+            )
             return
         if self._batch_recipe_controller.active:
             intents = self._batch_recipe_controller.handle_key(
@@ -508,18 +524,8 @@ class TuiApp:
                         surface=intent.surface,
                         phonemes=intent.pronunciation,
                     )
-            elif isinstance(intent, OpenDictionarySettingsIntent):
-                if self._operations.busy:
-                    self._status = info_status(
-                        "Wait for synthesis to finish before changing settings."
-                    )
-                    continue
-                if self._dictionary_controller.suspend_editor():
-                    self._open_settings_editor(
-                        intent.selected_field,
-                        edit=intent.edit,
-                        origin=("dictionary_export", None),
-                    )
+            elif isinstance(intent, BeginOutputPathEditIntent):
+                self._output_path_controller.begin(intent.owner)
             elif isinstance(intent, DictionaryOperationIntent):
                 self._dispatch_operation_effects(
                     self._operations.start_dictionary_operation(intent)
@@ -539,10 +545,6 @@ class TuiApp:
                     self._operations.clear_current_take()
             elif isinstance(intent, CloseEditorIntent):
                 self._pressed_adjustment = None
-                if intent.origin == ("dictionary_export", None):
-                    self._dictionary_controller.restore_suspended_editor()
-                    self._status = intent.status
-                    continue
                 if self._batch.in_item:
                     self._dispatch_navigation_actions(
                         self._navigation.set_focus_key(
@@ -699,6 +701,7 @@ class TuiApp:
             batch_item_position=(
                 self._batch.item_position if self._batch.in_item else None
             ),
+            output_path_edit=self._output_path_controller.state,
         )
 
     def _render(self) -> None:
@@ -719,7 +722,8 @@ class TuiApp:
                 0
                 if self._help_controller.active
                 else 1
-                if editor and editor.active_field
+                if self._output_path_controller.active
+                or (editor and editor.active_field)
                 else 0
             )
         except curses.error:

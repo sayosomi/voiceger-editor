@@ -1,4 +1,5 @@
 import curses
+import os
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -10,6 +11,7 @@ from voiceger_editor.settings import Settings
 from voiceger_editor.tui_batch import TuiBatchController
 from voiceger_editor.tui_batch_recipe import TuiBatchRecipeController
 from voiceger_editor.tui_editors import OpenHelpIntent, QuitIntent, UpdateStatusIntent
+from voiceger_editor.tui_output_path import BeginOutputPathEditIntent
 
 
 class FakeSession:
@@ -55,15 +57,16 @@ class TuiBatchRecipeControllerTests(unittest.TestCase):
                 return str(intent.status)
         return ""
 
-    def test_read_and_write_open_with_output_directory_recipe_path(self):
+    def test_read_defaults_to_output_directory_and_write_uses_shared_output(self):
         owner = self.make_owner()
         controller = self.make_controller(owner)
+        output_dir = Path("/tmp/voiceger-output")
 
         controller.open_read()
         self.assertEqual(controller.editor.kind, "batch_recipe_read_path")
         self.assertEqual(
             controller.editor.input_value,
-            "/tmp/voiceger-output/batch.voiceger.json",
+            str(output_dir) + os.sep,
         )
         self.assertEqual(controller.editor.active_field, "path")
 
@@ -72,9 +75,15 @@ class TuiBatchRecipeControllerTests(unittest.TestCase):
 
         controller.open_write()
         self.assertEqual(controller.editor.kind, "batch_recipe_write_path")
+        self.assertEqual(controller.editor.selection, "file_name")
+        self.assertIsNone(controller.editor.active_field)
         self.assertEqual(
-            controller.editor.input_value,
-            "/tmp/voiceger-output/batch.voiceger.json",
+            controller.editor.payload["file_name"],
+            "batch.voiceger.json",
+        )
+        self.assertEqual(
+            controller.handle_key("f"),
+            (BeginOutputPathEditIntent("batch_write"),),
         )
 
     def test_printable_shortcuts_are_path_text_while_editing(self):
@@ -204,20 +213,24 @@ class TuiBatchRecipeControllerTests(unittest.TestCase):
 
         self.assertIs(owner.batch, replacement)
 
-    def test_write_delegates_to_core_and_reports_target(self):
+    def test_write_delegates_to_core_under_shared_output_directory(self):
         owner = self.make_owner("current")
-        writer = Mock(return_value=Path("/tmp/saved.voiceger.json"))
+        target = Path("/tmp/voiceger-output") / "saved.voiceger.json"
+        writer = Mock(return_value=target)
         controller = self.make_controller(owner, writer=writer)
 
         controller.open_write()
-        self.set_path(controller, "~/saved.voiceger.json")
+        controller.handle_key("\n")
+        controller.editor.input_value = "saved.voiceger.json"
+        controller.editor.input_cursor = len("saved.voiceger.json")
+        controller.handle_key("\n")
         intents = controller.handle_key("w")
 
-        writer.assert_called_once_with("~/saved.voiceger.json", owner.batch)
+        writer.assert_called_once_with(target, owner.batch)
         self.assertFalse(controller.active)
         self.assertEqual(
             self.status_text(intents),
-            "Batch written: /tmp/saved.voiceger.json",
+            f"Batch written: {target}",
         )
 
     def test_write_failure_keeps_editor_open_and_batch_unchanged(self):
@@ -227,13 +240,26 @@ class TuiBatchRecipeControllerTests(unittest.TestCase):
         controller = self.make_controller(owner, writer=writer)
 
         controller.open_write()
-        self.set_path(controller, "/tmp/fail.voiceger.json")
+        controller.editor.payload["file_name"] = "fail.voiceger.json"
         intents = controller.handle_key("w")
 
         self.assertEqual(intents, ())
         self.assertIs(owner.batch, current)
         self.assertEqual(controller.editor.kind, "batch_recipe_write_path")
         self.assertIn("Batch was not written: not prepared", str(controller.editor.error))
+
+    def test_write_rejects_a_file_name_that_escapes_output_directory(self):
+        owner = self.make_owner("current")
+        writer = Mock()
+        controller = self.make_controller(owner, writer=writer)
+
+        controller.open_write()
+        controller.editor.payload["file_name"] = "../outside.voiceger.json"
+        intents = controller.handle_key("w")
+
+        self.assertEqual(intents, ())
+        writer.assert_not_called()
+        self.assertIn("File name must be one file name", str(controller.editor.error))
 
 
 if __name__ == "__main__":

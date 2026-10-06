@@ -398,7 +398,14 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         _escape_action("back", "Back"),
     ),
     "batch_recipe_write_path": (
-        _path_edit_item("path", "Path"),
+        MenuItem("output", "Output", PATH_EDIT_SHORTCUT, "action", "activate"),
+        MenuItem(
+            "file_name",
+            "File name",
+            None,
+            "editable",
+            no_shortcut_reason="Enter edits the batch recipe file name.",
+        ),
         MenuItem("write", "Write file", "w", "action", "activate"),
         _escape_action("back", "Back"),
     ),

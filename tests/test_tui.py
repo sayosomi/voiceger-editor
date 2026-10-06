@@ -411,33 +411,37 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_menu")
         self.assertIsNone(app._editor_controller.editor)
 
-    def test_export_output_settings_return_to_export_on_cancel_and_save(self):
+    def test_export_output_edits_shared_setting_without_leaving_export(self):
         app = self.make_app(query=mixed_query())
 
         app._handle_key("d")
         app._handle_key("x")
-        self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_export")
+        export_editor = app._dictionary_controller.editor
+        self.assertEqual(export_editor.kind, "dictionary_export")
 
         app._handle_key("f")
-        self.assertFalse(app._dictionary_controller.active)
-        self.assertEqual(app._editor_controller.editor.kind, "settings")
-        self.assertEqual(app._editor_controller.editor.selection, "output_dir")
-        self.assertEqual(app._editor_controller.editor.active_field, "output_dir")
+        self.assertIs(app._dictionary_controller.editor, export_editor)
+        self.assertTrue(app._output_path_controller.active)
+        self.assertEqual(
+            app._output_path_controller.state.owner,
+            "dictionary_export",
+        )
+        self.assertIsNone(app._editor_controller.editor)
 
         app._handle_key("\x1b")
-        self.assertIsNone(app._editor_controller.editor)
-        self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_export")
-        self.assertEqual(app._dictionary_controller.editor.selection, "output")
+        self.assertFalse(app._output_path_controller.active)
+        self.assertIs(app._dictionary_controller.editor, export_editor)
 
         app._handle_key("f")
-        self.assertEqual(app._editor_controller.editor.active_field, "output_dir")
-        app._handle_key("\n")
+        app._output_path_controller.state.value = "/tmp/shared-output"
+        app._output_path_controller.state.cursor = len("/tmp/shared-output")
         with patch("voiceger_editor.tui.save_settings") as save:
-            app._handle_key("a")
+            app._handle_key("\n")
         save.assert_called_once()
-        self.assertIsNone(app._editor_controller.editor)
-        self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_export")
-        self.assertEqual(app._dictionary_controller.editor.selection, "output")
+        self.assertFalse(app._output_path_controller.active)
+        self.assertEqual(app.settings.output_dir, Path("/tmp/shared-output"))
+        self.assertIs(app._dictionary_controller.editor, export_editor)
+        self.assertEqual(export_editor.selection, "output")
 
     def test_export_output_settings_busy_guard_keeps_export_visible(self):
         app = self.make_app(query=mixed_query())
@@ -452,7 +456,7 @@ class TuiTests(unittest.TestCase):
         self.assertIsNone(app._editor_controller.editor)
         self.assertEqual(
             app._status,
-            "Wait for synthesis to finish before changing settings.",
+            "Wait for synthesis to finish before changing Output.",
         )
 
     def test_pronunciation_editor_dictionary_actions_preserve_editor_state(self):

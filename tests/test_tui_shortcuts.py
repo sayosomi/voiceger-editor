@@ -76,7 +76,7 @@ class TuiShortcutTests(unittest.TestCase):
                 "j": "japanese", "e": "english", "i": "import", "x": "export",
             },
             "batch_recipe_read_path": {"f": "path", "r": "read"},
-            "batch_recipe_write_path": {"f": "path", "w": "write"},
+            "batch_recipe_write_path": {"f": "output", "w": "write"},
             "batch_recipe_replace_confirmation": {"r": "replace"},
             "dictionary_export": {"f": "output", "e": "voiceger", "v": "voicevox"},
             "dictionary_import_path": {"f": "path", "i": "review"},

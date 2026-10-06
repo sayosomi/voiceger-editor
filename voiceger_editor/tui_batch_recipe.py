@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import curses
+import os
 from pathlib import Path
 from typing import Any, Callable
 
@@ -18,6 +19,7 @@ from .tui_editors import (
     QuitIntent,
     UpdateStatusIntent,
 )
+from .tui_output_path import BeginOutputPathEditIntent
 from .tui_selection import move_clamped_selection
 from .tui_shortcuts import menu_items, resolve_shortcut
 from .tui_status import EMPTY_STATUS, error_status, info_status
@@ -26,6 +28,7 @@ from .tui_text_editing import apply_text_edit_key
 
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
 _ESCAPE = "\x1b"
+_DEFAULT_RECIPE_FILENAME = f"batch{RECOMMENDED_SUFFIX}"
 
 
 class TuiBatchRecipeController:
@@ -58,18 +61,29 @@ class TuiBatchRecipeController:
     def active(self) -> bool:
         return self.editor is not None
 
-    def _default_path(self) -> str:
-        return str(Path(self._output_dir()) / f"batch{RECOMMENDED_SUFFIX}")
+    def _default_input_path(self) -> str:
+        path = str(Path(self._output_dir()))
+        return path if path.endswith(os.sep) else path + os.sep
 
-    def _path_state(self, mode: str, path: str | None = None) -> EditorState:
-        if mode not in {"read", "write"}:
-            raise ValueError(f"unsupported batch recipe mode: {mode}")
+    def _read_state(self, path: str | None = None) -> EditorState:
         return EditorState(
-            kind=f"batch_recipe_{mode}_path",
-            title=f"{mode.upper()} BATCH",
+            kind="batch_recipe_read_path",
+            title="READ BATCH",
             origin=("batch_list", None),
             selection="path",
-            payload={"path": self._default_path() if path is None else path},
+            payload={
+                "path": self._default_input_path() if path is None else path,
+            },
+        )
+
+    @staticmethod
+    def _write_state(file_name: str = _DEFAULT_RECIPE_FILENAME) -> EditorState:
+        return EditorState(
+            kind="batch_recipe_write_path",
+            title="WRITE BATCH",
+            origin=("batch_list", None),
+            selection="file_name",
+            payload={"file_name": file_name},
         )
 
     @staticmethod
@@ -91,13 +105,12 @@ class TuiBatchRecipeController:
 
     def open_read(self) -> None:
         self._discard_pending_batch()
-        self.editor = self._path_state("read")
+        self.editor = self._read_state()
         self._begin_field("path", str(self.editor.payload["path"]))
 
     def open_write(self) -> None:
         self._discard_pending_batch()
-        self.editor = self._path_state("write")
-        self._begin_field("path", str(self.editor.payload["path"]))
+        self.editor = self._write_state()
 
     def _begin_field(self, name: str, value: str) -> None:
         editor = self.editor
@@ -175,7 +188,21 @@ class TuiBatchRecipeController:
         editor = self.editor
         if editor is None:
             return ()
-        path = str(editor.payload.get("path", ""))
+        file_name = str(editor.payload.get("file_name", ""))
+        candidate = Path(file_name)
+        if (
+            not file_name
+            or file_name in {".", ".."}
+            or candidate.is_absolute()
+            or candidate.name != file_name
+            or "/" in file_name
+            or "\\" in file_name
+        ):
+            editor.error = error_status(
+                "Batch was not written: File name must be one file name."
+            )
+            return ()
+        path = Path(self._output_dir()) / file_name
         try:
             target = self._writer(path, self._current_batch())
         except Exception as exc:
@@ -211,10 +238,10 @@ class TuiBatchRecipeController:
         path = (
             str(editor.payload.get("path", ""))
             if editor is not None
-            else self._default_path()
+            else self._default_input_path()
         )
         self._discard_pending_batch()
-        self.editor = self._path_state("read", path)
+        self.editor = self._read_state(path)
         self.editor.selection = "read"
         return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
 
@@ -237,8 +264,13 @@ class TuiBatchRecipeController:
             if selected == "back":
                 return self._close_editor()
         if editor.kind == "batch_recipe_write_path":
-            if selected == "path":
-                self._begin_field("path", str(editor.payload.get("path", "")))
+            if selected == "output":
+                return (BeginOutputPathEditIntent("batch_write"),)
+            if selected == "file_name":
+                self._begin_field(
+                    "file_name",
+                    str(editor.payload.get("file_name", "")),
+                )
                 return ()
             if selected == "write":
                 return self._write()

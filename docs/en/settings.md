@@ -99,7 +99,11 @@ The default output directory is:
 
 Select the Output row and press Enter to edit it, or press `f` to jump directly into Output editing.
 
-Accepted Takes are saved there unless another output directory is configured.
+Output is one shared saved directory across the TUI. Accepted Takes, Batch
+recipe Write, and Dictionary Export all use `Settings.output_dir`. Their
+`[F] Output` rows display the same saved value and can edit it in place.
+Read Batch and Import Dictionary only use Output as the initial directory for
+their temporary input File path; changing an input path does not change Output.
 
 ## TXT sidecar
 

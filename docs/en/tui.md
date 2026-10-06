@@ -47,19 +47,22 @@ Caption into multiple items.
 The Batch List exposes `[R] Read batch` and `[W] Write batch` for logical
 batch recipe files. The recommended suffix is `.voiceger.json`.
 
-Write opens a keyboard-editable filesystem path prefilled with
-`batch.voiceger.json` in the current Output directory. Read and Write path
-screens enter path editing immediately; after finishing an edit, `f` starts
-editing the file path again. The recipe stores the
-logical batch needed to reconstruct prepared Captions, including explicit
-pronunciation/source sections and synthesis settings. A Caption must therefore
-have prepared pronunciation before it can be written.
+Write uses the same saved Output directory used elsewhere in the TUI.
+`[F] Output` edits that shared `Settings.output_dir` in place. The recipe
+file name defaults to `batch.voiceger.json` and is edited separately; Write
+always resolves that file name under the current Output directory.
 
-Read accepts a filesystem path, including paths that begin with `~`. The
+Read accepts a temporary filesystem path, including paths that begin with
+`~`. Its initial File path is the saved Output directory, ready for a file
+name to be entered, but changing the Read path does not change Output. The
 recipe core expands and validates the complete file before the active Batch
 List is changed. If the current batch is non-empty, Voiceger Editor asks for
 explicit replacement confirmation first. Cancelling the confirmation or
 reading an invalid file leaves the current batch unchanged.
+
+The recipe stores the logical batch needed to reconstruct prepared Captions,
+including explicit pronunciation/source sections and synthesis settings. A
+Caption must therefore have prepared pronunciation before it can be written.
 
 Recipe files are intended to be human-readable working files. For example, you
 can Write a `.voiceger.json` file, edit it in VS Code, then Read it back into

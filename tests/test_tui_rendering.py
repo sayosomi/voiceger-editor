@@ -165,6 +165,7 @@ def render_state(
     editor=None,
     accepted_take_number=None,
     batch_item_position=None,
+    output_path_edit=None,
 ):
     return TuiRenderState(
         voiceger_root=Path("/nonexistent/voiceger"),
@@ -186,6 +187,7 @@ def render_state(
         editor=editor,
         accepted_take_number=accepted_take_number,
         batch_item_position=batch_item_position,
+        output_path_edit=output_path_edit,
     )
 
 
@@ -328,6 +330,31 @@ class TuiRenderingTests(unittest.TestCase):
         output_row = next(item for item in screen.drawn if item[0] == 2)
         self.assertIn("▶ [F] Output: /tmp/voiceger-output", output_row[2])
         self.assertTrue(output_row[3] & curses.A_REVERSE)
+
+    def test_batch_item_output_edit_renders_in_place(self):
+        screen = FakeScreen()
+        settings = Settings(output_dir=Path("/tmp/voiceger-output"))
+        edit = SimpleNamespace(
+            owner="batch_item",
+            value="/tmp/new-output",
+            cursor=len("/tmp/new-output"),
+        )
+        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
+            self.renderer.render_navigation(
+                screen,
+                render_state(
+                    settings=settings,
+                    focus_key=("output", None),
+                    batch_item_position=(1, 1),
+                    output_path_edit=edit,
+                ),
+                screen.rows,
+                screen.columns,
+                title="BATCH ITEM",
+            )
+
+        output_row = next(item for item in screen.drawn if item[0] == 2)
+        self.assertIn("▶ [F] Output: /tmp/new-output", output_row[2])
 
     def test_batch_list_header_summarizes_selection_requested_takes_and_actions(self):
         batch = CaptionBatch(default_take_count=4)

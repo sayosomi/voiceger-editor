@@ -8,9 +8,9 @@ from voiceger_editor.dictionary_export import DictionaryExportResult
 from voiceger_editor.settings import Settings
 from voiceger_editor.tui_dictionary import (
     DictionaryOperationIntent,
-    OpenDictionarySettingsIntent,
     TuiDictionaryController,
 )
+from voiceger_editor.tui_output_path import BeginOutputPathEditIntent
 from voiceger_editor.tui_rendering import TuiRenderer, TuiRenderState
 from voiceger_editor.tui_shortcuts import menu_items
 from voiceger_editor.tui_status import EMPTY_STATUS, StatusKind
@@ -75,20 +75,16 @@ class TuiDictionaryExportTests(unittest.TestCase):
         self.controller.handle_key("\x1b")
         self.assertEqual(self.controller.editor.kind, "dictionary_menu")
 
-    def test_output_shortcut_suspends_export_for_direct_settings_edit(self):
+    def test_output_shortcut_requests_inline_shared_output_edit(self):
         self.open_export()
 
         intents = self.controller.handle_key("f")
 
         self.assertEqual(
             intents,
-            (OpenDictionarySettingsIntent("output_dir", edit=True),),
+            (BeginOutputPathEditIntent("dictionary_export"),),
         )
         self.assertTrue(self.controller.active)
-        self.assertEqual(self.controller.editor.selection, "output")
-        self.assertTrue(self.controller.suspend_editor())
-        self.assertFalse(self.controller.active)
-        self.assertTrue(self.controller.restore_suspended_editor())
         self.assertEqual(self.controller.editor.kind, "dictionary_export")
         self.assertEqual(self.controller.editor.selection, "output")
 
