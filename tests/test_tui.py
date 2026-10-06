@@ -1368,7 +1368,10 @@ class TuiTests(unittest.TestCase):
             app._batch.batch.get_item(item_id).session.candidates,
             (generated,),
         )
-        self.assertEqual(app._status, "1 take(s) ready.")
+        self.assertEqual(
+            app._status,
+            "Caption 1 generation finished. 1 take(s) ready.",
+        )
 
     def test_clear_candidates_confirmation_cancel_and_confirmed_clear(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
