@@ -821,23 +821,23 @@ class TuiOperations:
 
         if requested_batch:
             if operation == "batch_generate":
-                return info_status(active)
+                return warning_status(active)
             target = "starting batch generation"
         elif requested_number is not None:
             if (
                 active_number == requested_number
                 and operation in {"initial", "regenerate_all"}
             ):
-                return info_status(active)
+                return warning_status(active)
             target = f"generating Caption {requested_number}"
         else:
             target = "starting generation"
 
         if self.can_cancel_batch:
-            return info_status(
+            return warning_status(
                 f"{active} Finish or cancel it before {target}."
             )
-        return info_status(f"{active} Wait for it to finish before {target}.")
+        return warning_status(f"{active} Wait for it to finish before {target}.")
 
     @property
     def cancellation_guard_armed(self) -> bool:
