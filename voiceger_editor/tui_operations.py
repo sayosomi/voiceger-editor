@@ -40,6 +40,22 @@ class UpdateStatusEffect:
 
 
 @dataclass(frozen=True)
+class BackgroundOperationProgress:
+    """Stable snapshot for cross-screen Take-generation presentation."""
+
+    operation_id: int
+    operation: str
+    item_id: str | None
+    completed: int
+    total: int
+    take_number: int | None = None
+    take_completed: int = 0
+    take_total: int | None = None
+    caption_number: int | None = None
+    caption_total: int | None = None
+
+
+@dataclass(frozen=True)
 class FocusEffect:
     focus_key: tuple[str, int | None]
 
