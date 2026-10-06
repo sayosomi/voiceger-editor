@@ -126,9 +126,20 @@ The shared confirmation shell may own these interaction and presentation mechani
 
 ## Feedback for long-running work
 
-An action that may take perceptible time must provide visible Status feedback promptly enough that the TUI does not appear frozen.
+An action that may take perceptible time must provide visible feedback promptly enough that the TUI does not appear frozen.
 
-Status should communicate the current operation while work is in progress and provide an appropriate completion or failure outcome when the operation finishes.
+Foreground work that blocks the current interaction may use Status for its in-progress feedback.
+
+Background work that remains active while the user can continue other interactions must keep its operation progress separate from ordinary semantic Status. The background indicator and Status may share the footer area, but their lifecycles are independent:
+
+```text
+background operation progress
+Status: result of the user's most recent relevant interaction
+```
+
+Progress updates must not overwrite a Status message that explains why a user action succeeded, failed, or was blocked. Conversely, an unrelated Status update must not hide an active background operation. When no background operation exists, do not reserve a permanent extra row for it.
+
+Completion, failure, and cancellation may replace the transient Status with the operation outcome while clearing the background indicator.
 
 Exact Status wording and feature-specific progress semantics belong with the feature or operation owner rather than in this document.
 
