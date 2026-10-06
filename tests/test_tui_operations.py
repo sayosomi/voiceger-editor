@@ -21,6 +21,7 @@ from voiceger_editor.tui_operations import (
     DictionaryOperationCompletedEvent,
     DiscardInitialBatchEffect,
     FocusEffect,
+    GenerationOutcomeEffect,
     PlayPreviewEffect,
     PlayTakeEffect,
     PreviewFailedEvent,
@@ -1487,6 +1488,10 @@ class TuiBatchGenerationTests(unittest.TestCase):
             ],
         )
         self.assertEqual(session.generate_take_counts, [1])
+        self.assertIn(
+            GenerationOutcomeEffect("only", "completed"),
+            consumed,
+        )
         self.assertIsNone(operations.worker_error)
         self.assertEqual(
             [
@@ -1528,6 +1533,10 @@ class TuiBatchGenerationTests(unittest.TestCase):
             error_status(
                 "Batch generation failed at Caption 1/1, Take 1/2: g2p failed"
             ),
+        )
+        self.assertIn(
+            GenerationOutcomeEffect("only", "failed"),
+            consumed,
         )
 
     def test_selected_items_generate_caption_major_with_effective_counts(self):
@@ -1717,6 +1726,10 @@ class TuiBatchGenerationTests(unittest.TestCase):
             statuses[-1],
             "Batch generation cancelled. 2/3 take(s) ready.",
         )
+        self.assertIn(
+            GenerationOutcomeEffect("only", "cancelled"),
+            consumed,
+        )
         self.assertFalse(operations.busy)
         self.assertEqual(operations.owned_item_ids, frozenset())
 
@@ -1757,6 +1770,18 @@ class TuiBatchGenerationTests(unittest.TestCase):
             "Take 2/2: failing failed at take 2",
         )
         self.assertIs(statuses[-1].kind, StatusKind.ERROR)
+        outcomes = [
+            effect
+            for effect in consumed
+            if isinstance(effect, GenerationOutcomeEffect)
+        ]
+        self.assertEqual(
+            outcomes,
+            [
+                GenerationOutcomeEffect("first", "completed"),
+                GenerationOutcomeEffect("failing", "failed"),
+            ],
+        )
         self.assertEqual(operations.operation_completed, 3)
         self.assertFalse(operations.busy)
         self.assertEqual(operations.owned_item_ids, frozenset())
