@@ -1585,7 +1585,7 @@ class TuiTests(unittest.TestCase):
 
         self.assertIs(app.session, first)
         self.assertEqual(app._batch.item_position, (1, 2))
-        self.assertEqual(app._navigation.focus_key, ("batch_item", None))
+        self.assertEqual(app._navigation.focus_key, ("caption", None))
 
         app._handle_key("[")
         self.assertIs(app.session, first)
@@ -1593,6 +1593,7 @@ class TuiTests(unittest.TestCase):
 
         app._handle_key("]")
         self.assertIs(app.session, second)
+        self.assertEqual(app._navigation.focus_key, ("caption", None))
         app._handle_key("]")
         self.assertIs(app.session, second)
         self.assertEqual(app._status, "Last Caption.")
