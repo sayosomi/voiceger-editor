@@ -205,6 +205,17 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertIsNotNone(conflict)
         self.assertIn("Synthesis settings cannot change", str(conflict))
 
+    def test_filename_template_change_is_blocked_while_accepting(self):
+        self.operations.busy = True
+        self.operations.worker_operation = "accept"
+
+        conflict = self.operations.settings_change_conflict_status(
+            ("filename_template",)
+        )
+
+        self.assertIsNotNone(conflict)
+        self.assertIn("Output settings cannot change", str(conflict))
+
     def test_preview_worker_emits_ready_playback_effect_without_candidate_focus(self):
         session_candidate = candidate(3)
         session = FakeSession((session_candidate,))
