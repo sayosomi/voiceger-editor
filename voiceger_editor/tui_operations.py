@@ -362,14 +362,7 @@ class TuiOperations:
             daemon=True,
         )
         self.worker.start()
-        return (
-            UpdateStatusEffect(
-                f"Generating {len(plan)} selected Caption(s), "
-                f"{overall_total} take(s) total · "
-                f"Caption 1/{len(plan)} · Take 1/{first_take_total} · "
-                f"Overall 0/{overall_total}"
-            ),
-        )
+        return (UpdateStatusEffect(""),)
 
     def start_generation(
         self,
@@ -676,7 +669,7 @@ class TuiOperations:
             daemon=True,
         )
         self.worker.start()
-        return (UpdateStatusEffect(status),)
+        return (UpdateStatusEffect(""),)
 
     @property
     def can_cancel_batch(self) -> bool:
@@ -727,6 +720,45 @@ class TuiOperations:
             "regenerate_all",
             "batch_generate",
         }
+
+    def background_generation_status(self, batch: CaptionBatch) -> str:
+        """Describe active Take synthesis independently from transient Status."""
+
+        if not self.generation_slot_busy:
+            return ""
+
+        def caption_number(item_id: str | None) -> int | None:
+            if item_id is None:
+                return None
+            try:
+                item = batch.get_item(item_id)
+            except KeyError:
+                return None
+            return batch.items.index(item) + 1
+
+        operation = self.worker_operation
+        total = max(0, self.operation_total)
+        completed = max(0, min(self.operation_completed, total)) if total else 0
+        percent = round(completed * 100 / total) if total else 0
+
+        if operation in {"initial", "regenerate_all"}:
+            number = caption_number(self._worker_item_id)
+            owner = f"Caption {number}" if number is not None else "Caption"
+            verb = "Regenerating" if operation == "regenerate_all" else "Generating"
+            return f"{verb}: {owner} · {completed}/{total} ({percent}%)"
+
+        if operation == "regenerate_one":
+            number = caption_number(self._worker_item_id)
+            owner = f"Caption {number}" if number is not None else "Caption"
+            return f"Regenerating: {owner} · Take {self.worker_target}"
+
+        if operation == "batch_generate":
+            return (
+                f"Generating: selected Captions · "
+                f"{completed}/{total} ({percent}%)"
+            )
+
+        return ""
 
     def generation_conflict_status(
         self,
@@ -929,23 +961,10 @@ class TuiOperations:
                     )
                 continue
             if isinstance(event, BatchGenerationProgressEvent):
-                effects.append(
-                    UpdateStatusEffect(
-                        f"Caption {event.caption_number}/{event.caption_total} · "
-                        f"Take {event.take_number}/{event.take_total} · "
-                        f"Overall {event.overall_completed}/{event.overall_total}"
-                    )
-                )
+                self.operation_completed = event.overall_completed
                 continue
             if isinstance(event, BatchCandidateReadyEvent):
                 self.operation_completed = event.overall_completed
-                effects.append(
-                    UpdateStatusEffect(
-                        f"Caption {event.caption_number}/{event.caption_total} · "
-                        f"Take {event.take_number}/{event.take_total} · "
-                        f"Overall {event.overall_completed}/{event.overall_total}"
-                    )
-                )
                 if event.replacing_existing:
                     effects.append(
                         BatchCandidateReplacedEffect(
@@ -972,19 +991,6 @@ class TuiOperations:
             if kind == "candidate":
                 operation = self.worker_operation
                 self.operation_completed += 1
-                if operation == "initial":
-                    status = (
-                        f"Generating {min(self.operation_completed + 1, self.operation_total)}"
-                        f"/{self.operation_total} · {self.operation_completed} ready"
-                    )
-                elif operation == "regenerate_all":
-                    status = (
-                        f"Regenerating {min(self.operation_completed + 1, self.operation_total)}"
-                        f"/{self.operation_total} · {self.operation_completed} ready"
-                    )
-                else:
-                    status = f"Take {value.number} replacement ready."
-                effects.append(UpdateStatusEffect(status))
 
                 if operation == "initial":
                     if (
