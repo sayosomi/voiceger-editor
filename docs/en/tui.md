@@ -206,6 +206,8 @@ During cancellable Take generation, Esc keeps its normal Back meaning. You can r
 
 While an individual Generate or regenerate-all operation remains active, the originating Caption row in BATCH LIST shows live completed-Take progress as a percentage, including `[0%]` before the first Take completes. When that operation ends, the row returns to the normal candidate-state display.
 
+Voiceger Editor keeps a single synthesis slot and does not queue another Generate request behind active work. When another Batch Item is open during generation, its Generate row remains visible but is marked `[busy]` and does not show the other Caption's progress. BATCH LIST similarly marks `Generate selected` as `[busy]`. Activating either action does not start, replace, or queue work; Status identifies the active Caption or batch generation and tells you to finish or cancel it first. Busy Generate rows omit adjustable angle brackets because the Take count is not currently actionable.
+
 Press Ctrl+C to request generation cancellation. Cancellation occurs at a safe Take boundary rather than interrupting synthesis in the middle of one Take, so any completed Takes are preserved and the application remains open. While cancellation is available, the Status area shows `[Ctrl+C] Cancel generation`.
 
 If generation finishes at the same moment you press Ctrl+C, Voiceger Editor keeps a completion guard so that Ctrl+C does not accidentally quit or discard the finished results. Repeated Ctrl+C remains harmless until another non-Ctrl+C interaction restores the normal idle Ctrl+C Quit meaning. The `q` shortcut remains the explicit Quit action at all times.
