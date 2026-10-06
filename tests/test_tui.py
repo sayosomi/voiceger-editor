@@ -3324,6 +3324,7 @@ class TuiTests(unittest.TestCase):
                 json.loads(app.config_path.read_text()),
                 {
                     "output_dir": str(target.output_dir),
+                    "filename_template": target.filename_template,
                     "take_count": 42,
                     "style_id": target.style_id,
                     "speed": target.speed,
