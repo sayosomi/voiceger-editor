@@ -1230,7 +1230,10 @@ class TuiTests(unittest.TestCase):
             item_id=item_id,
         )
 
-        self.assertEqual(str(effects[0].status), "Another operation is already running.")
+        self.assertEqual(
+            str(effects[0].status),
+            "Regenerate all Takes is unavailable while Take generation is active.",
+        )
         self.assertIs(app._operations.worker, original_worker)
         app.session.regenerate_all_takes.assert_not_called()
 
