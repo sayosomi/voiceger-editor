@@ -146,6 +146,8 @@ class TuiRenderState:
     editor: EditorRenderState | None
     accepted_take_number: int | None = None
     batch_item_position: tuple[int, int] | None = None
+    batch_item_id: str | None = None
+    active_generation_item_id: str | None = None
     output_path_edit: OutputPathEditRenderState | None = None
 
 
@@ -518,6 +520,7 @@ class TuiRenderer:
         width: int,
         pressed_adjustment: tuple[str, str, int] | None = None,
         active_generation: tuple[str, int, int] | None = None,
+        generation_busy: bool = False,
     ) -> list[NavigationLine]:
         """Build the top-level Batch List document."""
 
@@ -592,7 +595,10 @@ class TuiRenderer:
             if group_index:
                 plain()
             for name in names:
-                action((name, None), batch_list_shortcut(name).display_label)
+                label = batch_list_shortcut(name).display_label
+                if name == "generate_selected" and generation_busy:
+                    label += " [busy]"
+                action((name, None), label)
         return lines
 
     def render_batch_list(
@@ -608,6 +614,7 @@ class TuiRenderer:
         delete_confirmation_selection: str = "delete",
         pressed_adjustment: tuple[str, str, int] | None = None,
         active_generation: tuple[str, int, int] | None = None,
+        generation_busy: bool = False,
     ) -> None:
         """Render the top-level Batch List screen."""
 
@@ -647,6 +654,7 @@ class TuiRenderer:
             width,
             pressed_adjustment,
             active_generation,
+            generation_busy,
         )
         footer = self._status_footer_layout(status, height, width)
         viewport_height = max(0, footer.start_row - 2)
@@ -934,10 +942,12 @@ class TuiRenderer:
                 main_shortcut("add_section").display_label,
             )
             has_batch = session.has_active_batch
-            if (
+            owns_generation = (
                 state.busy
-                and state.worker_operation not in {"accept", "prepare"}
-            ):
+                and state.batch_item_id is not None
+                and state.batch_item_id == state.active_generation_item_id
+            )
+            if owns_generation:
                 if state.worker_operation == "regenerate_one":
                     generate_label = f"Regenerating take {state.worker_target}"
                 else:
@@ -951,6 +961,12 @@ class TuiRenderer:
                         else "Generating"
                     )
                     generate_label = f"{verb} {current}/{state.operation_total}"
+            elif state.busy:
+                generate_label = (
+                    f"Regenerate all {state.settings.take_count} takes [busy]"
+                    if has_batch
+                    else f"Generate {state.settings.take_count} takes [busy]"
+                )
             else:
                 adjustable_count = _adjustable_value(
                     str(state.settings.take_count),
