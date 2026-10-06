@@ -27,7 +27,7 @@ from .tui_rendering import (
     TuiRenderState,
     _HELP_ITEMS,
     _active_input_prefix,
-    status_with_cancel_generation_hint,
+    background_with_cancel_generation_hint,
 )
 from .tui_editors import (
     AdjustmentPressedIntent, ApplyCaptionIntent, ApplySettingsIntent,
@@ -720,6 +720,10 @@ class TuiApp:
             ),
             batch_item_id=self._batch.open_item_id,
             active_generation_item_id=self._operations.active_generation_item_id,
+            background_status=background_with_cancel_generation_hint(
+                self._operations.background_generation_status(self._batch.batch),
+                self._operations.can_cancel_batch,
+            ),
             output_path_edit=self._output_path_controller.state,
         )
 
@@ -728,8 +732,9 @@ class TuiApp:
             return
         screen = self._screen
         height, width = screen.getmaxyx()
-        render_status = status_with_cancel_generation_hint(
-            self._status,
+        render_status = self._status
+        background_status = background_with_cancel_generation_hint(
+            self._operations.background_generation_status(self._batch.batch),
             self._operations.can_cancel_batch,
         )
         screen.erase()
@@ -753,13 +758,19 @@ class TuiApp:
             pass
         if self._help_controller.active:
             self._help_controller.clamp_scroll(
-                self._renderer.help_max_scroll(height, width, render_status)
+                self._renderer.help_max_scroll(
+                    height,
+                    width,
+                    render_status,
+                    background_status,
+                )
             )
             self._renderer.render_help(
                 screen,
                 width,
                 self._help_controller.scroll,
                 status=render_status,
+                background_status=background_status,
             )
         elif (
             self._batch_recipe_controller.active
@@ -785,6 +796,7 @@ class TuiApp:
                 pressed_adjustment=self._pressed_adjustment,
                 active_generation=self._operations.active_item_generation_progress,
                 generation_busy=self._operations.generation_slot_busy,
+                background_status=background_status,
             )
         else:
             self._dispatch_navigation_actions(
