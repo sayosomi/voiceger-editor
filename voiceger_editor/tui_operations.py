@@ -944,45 +944,6 @@ class TuiOperations:
             )
         return None
 
-    def background_generation_status(self, batch: CaptionBatch) -> str:
-        """Describe active Take synthesis independently from transient Status."""
-
-        if not self.generation_slot_busy:
-            return ""
-
-        def caption_number(item_id: str | None) -> int | None:
-            if item_id is None:
-                return None
-            try:
-                item = batch.get_item(item_id)
-            except KeyError:
-                return None
-            return batch.items.index(item) + 1
-
-        operation = self.worker_operation
-        total = max(0, self.operation_total)
-        completed = max(0, min(self.operation_completed, total)) if total else 0
-        percent = round(completed * 100 / total) if total else 0
-
-        if operation in {"initial", "regenerate_all"}:
-            number = caption_number(self._worker_item_id)
-            owner = f"Caption {number}" if number is not None else "Caption"
-            verb = "Regenerating" if operation == "regenerate_all" else "Generating"
-            return f"{verb}: {owner} · {completed}/{total} ({percent}%)"
-
-        if operation == "regenerate_one":
-            number = caption_number(self._worker_item_id)
-            owner = f"Caption {number}" if number is not None else "Caption"
-            return f"Regenerating: {owner} · Take {self.worker_target}"
-
-        if operation == "batch_generate":
-            return (
-                f"Generating: selected Captions · "
-                f"{completed}/{total} ({percent}%)"
-            )
-
-        return ""
-
     def generation_conflict_status(
         self,
         batch: CaptionBatch,
