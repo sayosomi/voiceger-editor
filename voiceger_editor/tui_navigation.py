@@ -389,12 +389,6 @@ class TuiNavigation:
         self,
         context: NavigationContext,
     ) -> tuple[NavigationAction, ...]:
-        if context.busy:
-            return (
-                UpdateNavigationStatus(
-                    "A sequential take operation is already running."
-                ),
-            )
         if context.has_session and context.has_active_batch:
             return (RegenerateAll(),)
         return (StartGeneration(),)
