@@ -1151,6 +1151,42 @@ class TuiTests(unittest.TestCase):
         )
         self.assertEqual(app._operations._worker_item_id, first_item_id)
 
+    def test_generation_progress_does_not_overwrite_conflict_status(self):
+        app = self.make_app(query=mixed_query())
+        item_id = app._batch.open_item_id
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._worker_item_id = item_id
+        app._operations.operation_completed = 2
+        app._operations.operation_total = 4
+        app._operations._cancellation_event = Event()
+        app._status = info_status(
+            "Caption 1 is generating (50%). "
+            "Finish or cancel it before starting batch generation."
+        )
+
+        app._operations.events.put(("candidate", candidate(3)))
+        app._consume_events()
+
+        self.assertEqual(
+            app._status,
+            "Caption 1 is generating (50%). "
+            "Finish or cancel it before starting batch generation.",
+        )
+
+        app._screen = FakeScreen(rows=24, columns=100)
+        app._render()
+        rendered = self.rendered(app._screen)
+        self.assertIn(
+            "Generating: Caption 1 · 3/4 (75%) · [Ctrl+C] Cancel generation",
+            rendered,
+        )
+        self.assertIn(
+            "Status: Caption 1 is generating (50%). "
+            "Finish or cancel it before starting batch generation.",
+            rendered,
+        )
+
     def test_batch_list_generate_selected_shows_busy_and_explains_owner(self):
         app = self.make_app(query=mixed_query())
         first_item_id = app._batch.open_item_id
