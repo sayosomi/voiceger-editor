@@ -9,7 +9,6 @@ from typing import Any, Protocol, Sequence
 
 from ._version import __version__
 from .caption_batch import CaptionBatch
-from .filename import FilenameTemplateError, render_output_basename
 from .project_info import DOCUMENTATION_URL
 from .pronunciation import parse_pronunciation
 from .session import UtteranceSession
@@ -1438,18 +1437,11 @@ class TuiRenderer:
                 preview_template = str(draft["filename_template"])
             plain()
             plain("Preview")
-            try:
-                preview_name = render_output_basename(
-                    template=preview_template,
-                    text=str(editor.payload.get("preview_text", "Sample text")),
-                    style=str(editor.payload.get("preview_style", "Style")),
-                )
-                wrap(
-                    "  ",
-                    preview_name + str(editor.payload.get("output_extension", ".wav")),
-                )
-            except FilenameTemplateError as exc:
-                wrap("  Invalid: ", str(exc))
+            preview_error = str(editor.payload.get("filename_preview_error", ""))
+            if preview_error:
+                wrap("  Invalid: ", preview_error)
+            else:
+                wrap("  ", str(editor.payload.get("filename_preview", "")))
             plain()
             plain("Sidecars")
             for key in ("save_text", "save_lab"):
