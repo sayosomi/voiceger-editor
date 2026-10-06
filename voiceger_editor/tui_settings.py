@@ -23,6 +23,7 @@ _OPERATION_RELEVANT_SETTING_NAMES = (
     *_SYNTHESIS_SETTING_NAMES,
     "take_count",
     "output_dir",
+    "filename_template",
     "save_text",
     "save_lab",
 )
