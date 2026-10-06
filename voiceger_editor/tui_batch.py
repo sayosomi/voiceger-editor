@@ -96,6 +96,7 @@ class BatchActionBindings:
     dispatch_operation_effects: Callable[[Sequence[OperationEffect]], None]
     open_help: Callable[[], None]
     activate_quit: Callable[[], None]
+    initialize_open_item: Callable[[], None]
 
 
 class TuiBatchController:
@@ -247,6 +248,7 @@ class TuiBatchController:
                 bindings.navigation.focus_key = ("caption", None)
                 bindings.navigation.reset_pronunciation_index()
                 bindings.set_status(EMPTY_STATUS)
+                bindings.initialize_open_item()
                 if not getattr(session, "is_prepared", True):
                     bindings.dispatch_operation_effects(
                         bindings.operations.start_session_preparation(
