@@ -68,6 +68,16 @@ For a row that supports both direct Left / Right adjustment and a detailed choos
 
 Feature-specific multiline input keys or other editing exceptions belong with that feature unless they become a shared convention.
 
+## File and output paths
+
+Editable filesystem path rows use `[F]` as the shared direct shortcut.
+
+Pressing `F` from the containing screen starts editing that path immediately rather than only moving focus to the row. Enter on a focused path row also starts editing.
+
+A dedicated path-entry screen may start with its path field already in editing mode when entering that screen is itself an explicit request to provide a path.
+
+While path text entry is active, `f` is input text rather than a shortcut, consistent with the general editing rule above.
+
 ## Visible shortcuts
 
 Visible shortcuts are accelerators for frequent operations.

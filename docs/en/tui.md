@@ -48,7 +48,9 @@ The Batch List exposes `[R] Read batch` and `[W] Write batch` for logical
 batch recipe files. The recommended suffix is `.voiceger.json`.
 
 Write opens a keyboard-editable filesystem path prefilled with
-`batch.voiceger.json` in the current Output directory. The recipe stores the
+`batch.voiceger.json` in the current Output directory. Read and Write path
+screens enter path editing immediately; after finishing an edit, `f` starts
+editing the file path again. The recipe stores the
 logical batch needed to reconstruct prepared Captions, including explicit
 pronunciation/source sections and synthesis settings. A Caption must therefore
 have prepared pronunciation before it can be written.
@@ -265,6 +267,7 @@ Changing the configured Take count does not change the synthesis parameters of T
 
 | Key | Action |
 | --- | --- |
+| `f` | Edit Output path |
 | `e` | Caption |
 | `p` | Build pronunciation |
 | `a` | Add section |
@@ -276,8 +279,8 @@ Changing the configured Take count does not change the synthesis parameters of T
 | `?` | Help |
 | `q` | Quit |
 
-Settings-local shortcuts such as Speed or Output are available after opening
-Settings; they are not direct Batch Item jumps.
+Press `f` from Batch Item to jump directly into Output path editing.
+Other Settings-local shortcuts are available after opening Settings.
 
 ## Settings and dictionary
 

@@ -97,7 +97,7 @@ The default output directory is:
 ~/.voiceger-editor/output
 ```
 
-Select the Output row and press Enter to edit it.
+Select the Output row and press Enter to edit it, or press `f` to jump directly into Output editing.
 
 Accepted Takes are saved there unless another output directory is configured.
 

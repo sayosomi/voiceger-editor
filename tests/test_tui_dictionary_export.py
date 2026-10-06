@@ -78,7 +78,7 @@ class TuiDictionaryExportTests(unittest.TestCase):
     def test_output_shortcut_suspends_export_for_direct_settings_edit(self):
         self.open_export()
 
-        intents = self.controller.handle_key("o")
+        intents = self.controller.handle_key("f")
 
         self.assertEqual(
             intents,
@@ -188,7 +188,7 @@ class TuiDictionaryExportTests(unittest.TestCase):
             120,
         )
         rendered = "\n".join(text for text, _key in document)
-        self.assertIn("[O] Output: /shown-output", rendered)
+        self.assertIn("[F] Output: /shown-output", rendered)
         self.assertIn("[E] Voiceger Editor", rendered)
         self.assertIn("Japanese + English", rendered)
         self.assertIn("[V] VOICEVOX", rendered)

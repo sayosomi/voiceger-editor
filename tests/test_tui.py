@@ -389,7 +389,7 @@ class TuiTests(unittest.TestCase):
         set_navigation_focus(app, ("output", None))
         app._render()
         output = next(item for item in screen.drawn if item[0] == 2)
-        self.assertTrue(output[2].startswith("▶ [O] Output:"))
+        self.assertTrue(output[2].startswith("▶ [F] Output:"))
         self.assertTrue(output[3] & curses.A_REVERSE)
         self.assertIn(("settings", None), navigation_items(app))
         self.assertEqual(
@@ -418,7 +418,7 @@ class TuiTests(unittest.TestCase):
         app._handle_key("x")
         self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_export")
 
-        app._handle_key("o")
+        app._handle_key("f")
         self.assertFalse(app._dictionary_controller.active)
         self.assertEqual(app._editor_controller.editor.kind, "settings")
         self.assertEqual(app._editor_controller.editor.selection, "output_dir")
@@ -429,7 +429,7 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_export")
         self.assertEqual(app._dictionary_controller.editor.selection, "output")
 
-        app._handle_key("o")
+        app._handle_key("f")
         self.assertEqual(app._editor_controller.editor.active_field, "output_dir")
         app._handle_key("\n")
         with patch("voiceger_editor.tui.save_settings") as save:
@@ -446,7 +446,7 @@ class TuiTests(unittest.TestCase):
         export_editor = app._dictionary_controller.editor
         app._operations.busy = True
 
-        app._handle_key("o")
+        app._handle_key("f")
 
         self.assertIs(app._dictionary_controller.editor, export_editor)
         self.assertIsNone(app._editor_controller.editor)

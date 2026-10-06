@@ -167,7 +167,19 @@ def _active_input_prefix(editor: EditorRenderState) -> str:
             "temperature": "Temperature",
         }
         label = labels.get(editor.active_field or "", "Setting")
+        if editor.active_field == "output_dir":
+            item = menu_item(editor.kind, "output_dir", editor.payload)
+            if item.shortcut is not None:
+                return f"▶ [{item.shortcut.upper()}] {label:<12}"
         return f"▶ {label:<12}"
+    if editor.kind in {
+        "dictionary_import_path",
+        "batch_recipe_read_path",
+        "batch_recipe_write_path",
+    }:
+        item = menu_item(editor.kind, "path", editor.payload)
+        prefix = f"[{item.shortcut.upper()}] " if item.shortcut is not None else ""
+        return f"▶ {prefix}"
     return "▶ Input: "
 
 
@@ -995,6 +1007,19 @@ class TuiRenderer:
                 cursor_line = first_line + cursor_row
                 cursor_column = prefix_width + cursor_cells
 
+        def path_input_field(key: str = "path") -> None:
+            item = menu_item(editor.kind, key, editor.payload)
+            shortcut_prefix = (
+                f"[{item.shortcut.upper()}] " if item.shortcut is not None else ""
+            )
+            if editor.active_field == key:
+                input_field(key, f"▶ {shortcut_prefix}")
+                return
+            wrapped_selectable_text(
+                key,
+                shortcut_prefix + (str(editor.payload.get(key, "")) or "(not set)"),
+            )
+
         entry_position: tuple[int, int] | None = None
         if editor.kind in {
             "dictionary_japanese_entry",
@@ -1133,7 +1158,12 @@ class TuiRenderer:
                 item = menu_item(editor.kind, key, editor.payload)
                 label = item.label + (" *" if key in candidate_clearing else "")
                 if editor.active_field == key:
-                    input_field(key, f"▶ {label:<16}")
+                    input_field(
+                        key,
+                        _active_input_prefix(editor)
+                        if key == "output_dir"
+                        else f"▶ {label:<16}",
+                    )
                 else:
                     if key in {
                         "style_id", "speed", "take_count", "save_text", "save_lab",
@@ -1180,13 +1210,7 @@ class TuiRenderer:
         }:
             plain()
             plain("File path")
-            if editor.active_field == "path":
-                input_field("path", "▶ ")
-            else:
-                wrapped_selectable_text(
-                    "path",
-                    str(editor.payload.get("path", "")) or "(not set)",
-                )
+            path_input_field()
             plain()
             selectable(
                 "read"
@@ -1226,13 +1250,7 @@ class TuiRenderer:
         elif editor.kind == "dictionary_import_path":
             plain()
             plain("File path")
-            if editor.active_field == "path":
-                input_field("path", "▶ ")
-            else:
-                wrapped_selectable_text(
-                    "path",
-                    str(editor.payload.get("path", "")) or "(not set)",
-                )
+            path_input_field()
             plain()
             selectable("review")
             selectable("back")

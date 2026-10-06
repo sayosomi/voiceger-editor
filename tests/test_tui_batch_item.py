@@ -148,10 +148,10 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             (ClearAdjustmentFeedbackIntent(),)
         )
 
-    def test_output_shortcut_opens_output_settings_directly(self):
+    def test_file_shortcut_opens_output_settings_directly(self):
         subject, _batch, bindings, _state = self.make_subject()
 
-        subject.handle_key("o", bindings)
+        subject.handle_key("f", bindings)
 
         bindings.actions.open_settings_editor.assert_called_once_with(
             "output_dir",

@@ -67,7 +67,7 @@ class TuiShortcutTests(unittest.TestCase):
             "add_section": {"a": "add", "c": "clear", "r": "reset"},
             "settings": {
                 "s": "style_id", "v": "speed", "n": "take_count",
-                "o": "output_dir", "x": "save_text", "l": "save_lab",
+                "f": "output_dir", "x": "save_text", "l": "save_lab",
                 "k": "top_k", "p": "top_p", "t": "temperature",
                 "d": "reset_sampling",
                 "a": "apply", "r": "reset",
@@ -75,11 +75,11 @@ class TuiShortcutTests(unittest.TestCase):
             "dictionary_menu": {
                 "j": "japanese", "e": "english", "i": "import", "x": "export",
             },
-            "batch_recipe_read_path": {"r": "read"},
-            "batch_recipe_write_path": {"w": "write"},
+            "batch_recipe_read_path": {"f": "path", "r": "read"},
+            "batch_recipe_write_path": {"f": "path", "w": "write"},
             "batch_recipe_replace_confirmation": {"r": "replace"},
-            "dictionary_export": {"o": "output", "e": "voiceger", "v": "voicevox"},
-            "dictionary_import_path": {"i": "review"},
+            "dictionary_export": {"f": "output", "e": "voiceger", "v": "voicevox"},
+            "dictionary_import_path": {"f": "path", "i": "review"},
             "dictionary_import_review": {
                 "i": "import_selected", "c": "clear_selection",
             },
@@ -128,7 +128,7 @@ class TuiShortcutTests(unittest.TestCase):
 
     def test_main_shortcuts_match_issue_49_contract_and_share_display_metadata(self):
         expected = {
-            "o": "output",
+            "f": "output",
             "e": "caption",
             "p": "build_pronunciation",
             "a": "add_section",
@@ -151,7 +151,7 @@ class TuiShortcutTests(unittest.TestCase):
                     f"[{shortcut.upper()}] "
                 ))
 
-        for removed in (curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "l"):
+        for removed in (curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "l", "o"):
             with self.subTest(removed=removed):
                 self.assertIsNone(resolve_main_shortcut(removed))
 

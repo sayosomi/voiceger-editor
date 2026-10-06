@@ -83,14 +83,17 @@ class TuiBatchRecipeControllerTests(unittest.TestCase):
         controller.open_read()
         opening = controller.editor.input_value
 
-        for key in ("r", "w", "q", "?"):
+        for key in ("f", "r", "w", "q", "?"):
             self.assertEqual(controller.handle_key(key), ())
 
-        self.assertEqual(controller.editor.input_value, opening + "rwq?")
+        self.assertEqual(controller.editor.input_value, opening + "frwq?")
         self.assertEqual(controller.editor.active_field, "path")
 
         controller.handle_key("\n")
         self.assertIsNone(controller.editor.active_field)
+        controller.handle_key("f")
+        self.assertEqual(controller.editor.active_field, "path")
+        controller.handle_key("\n")
         self.assertIsInstance(controller.handle_key("?")[0], OpenHelpIntent)
         self.assertIsInstance(controller.handle_key("q")[0], QuitIntent)
 
