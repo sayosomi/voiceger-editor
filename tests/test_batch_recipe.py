@@ -338,9 +338,9 @@ class BatchRecipeTests(unittest.TestCase):
             "save_text",
             "save_lab",
             "candidate",
-            "accepted",
+            "accepted_take",
             "progress",
-            "wav",
+            "output_path",
         ):
             self.assertNotIn(forbidden, serialized)
 
