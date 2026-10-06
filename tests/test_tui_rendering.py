@@ -14,9 +14,11 @@ from voiceger_editor.tui_editors import (
     PronunciationRow,
 )
 from voiceger_editor.tui_display import _display_width
+from voiceger_editor.tui_operations import BackgroundOperationProgress
 from voiceger_editor.tui_rendering import (
     _HELP_ITEMS,
     _positioned_title,
+    format_background_operation_progress,
     TuiRenderer,
     TuiRenderState,
 )
@@ -781,6 +783,60 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("[UW1]", wrapped)
         self.assertIn("AA0", wrapped)
         self.assertIn("OW2", wrapped)
+
+    def test_background_operation_progress_uses_stable_item_identity(self):
+        batch = CaptionBatch(default_take_count=4)
+        batch.add_captions_from_text(
+            "first caption\nsecond caption",
+            session_factory=lambda caption: SimpleNamespace(
+                caption=caption, candidates=()
+            ),
+        )
+        progress = BackgroundOperationProgress(
+            operation_id=7,
+            operation="batch_generate",
+            item_id=batch.items[1].item_id,
+            completed=3,
+            total=8,
+            take_number=2,
+            take_completed=1,
+            take_total=4,
+            caption_number=1,
+            caption_total=2,
+        )
+
+        self.assertEqual(
+            format_background_operation_progress(progress, batch, True),
+            "Generating selected · Caption 2 · Take 2/4 · Overall 3/8 · "
+            "[Ctrl+C] Cancel generation",
+        )
+        self.assertEqual(
+            format_background_operation_progress(None, batch, True),
+            "",
+        )
+
+    def test_batch_list_marks_current_selected_generation_item(self):
+        batch = CaptionBatch(default_take_count=4)
+        batch.add_captions_from_text(
+            "first caption\nsecond caption",
+            session_factory=lambda caption: SimpleNamespace(
+                caption=caption, candidates=()
+            ),
+        )
+
+        lines = self.renderer.batch_list_document(
+            batch,
+            ("caption", 0),
+            80,
+            active_generation=(batch.items[1].item_id, 1, 4),
+            generation_busy=True,
+        )
+        labels = [line.text for line in lines]
+
+        self.assertIn("  [x] 2  [25%] second caption", labels)
+        self.assertNotIn("[25%]", next(
+            line for line in labels if "first caption" in line
+        ))
 
     def test_help_describes_batch_hierarchy_and_has_no_direct_item_settings_jumps(self):
         screen = FakeScreen(rows=80, columns=120)

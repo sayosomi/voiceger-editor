@@ -1098,6 +1098,7 @@ class TuiTests(unittest.TestCase):
         app = self.make_app(query=mixed_query())
         app._operations.busy = True
         app._operations.worker_operation = "initial"
+        app._operations._active_operation_id = 1
         app._screen = FakeScreen(rows=24, columns=100)
 
         app._render()
@@ -1112,6 +1113,7 @@ class TuiTests(unittest.TestCase):
                 app._operations.busy = True
                 app._operations.worker_operation = "initial"
                 app._operations._worker_item_id = item_id
+                app._operations._active_operation_id = 1
                 app._operations.operation_completed = completed
                 app._operations.operation_total = 4
 
@@ -1158,6 +1160,7 @@ class TuiTests(unittest.TestCase):
         app._operations.busy = True
         app._operations.worker_operation = "initial"
         app._operations._worker_item_id = item_id
+        app._operations._active_operation_id = 1
         app._operations.operation_completed = 2
         app._operations.operation_total = 4
         app._operations._cancellation_event = Event()
@@ -1178,13 +1181,36 @@ class TuiTests(unittest.TestCase):
         app._render()
         rendered = self.rendered(app._screen)
         self.assertIn(
-            "Generating: Caption 1 · 3/4 (75%) · [Ctrl+C] Cancel generation",
+            "Generating · Caption 1 · Take 4/4 · [Ctrl+C] Cancel generation",
             rendered,
         )
         self.assertIn(
             "Warning: Generate selected is unavailable while generation is active.",
             rendered,
         )
+
+    def test_background_generation_stays_visible_in_help_with_unrelated_status(self):
+        app = self.make_app(query=mixed_query())
+        item_id = app._batch.open_item_id
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._worker_item_id = item_id
+        app._operations._active_operation_id = 7
+        app._operations.operation_completed = 1
+        app._operations.operation_total = 4
+        app._operations._cancellation_event = Event()
+        app._status = info_status("Caption 2 was added.")
+
+        app._handle_key("?")
+        app._screen = FakeScreen(rows=24, columns=100)
+        app._render()
+        rendered = self.rendered(app._screen)
+
+        self.assertIn(
+            "Generating · Caption 1 · Take 2/4 · [Ctrl+C] Cancel generation",
+            rendered,
+        )
+        self.assertIn("Status: Caption 2 was added.", rendered)
 
     def test_batch_list_generate_selected_shows_busy_and_explains_owner(self):
         app = self.make_app(query=mixed_query())
