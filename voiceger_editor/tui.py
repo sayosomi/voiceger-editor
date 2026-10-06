@@ -99,6 +99,7 @@ class TuiApp:
             ),
             set_status=lambda status: setattr(self, "_status", status),
             save=lambda value, path: save_settings(value, path),
+            clear_generation_outcomes=self._batch.clear_generation_outcomes,
         )
         self._output_path_controller = TuiOutputPathController(
             get_output_dir=lambda: self.settings.output_dir,
