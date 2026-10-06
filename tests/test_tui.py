@@ -992,6 +992,7 @@ class TuiTests(unittest.TestCase):
             app.session,
             take_count=app.settings.take_count,
             navigation_revision=navigation_revision,
+            item_id=app._batch.open_item_id,
         )
 
     def test_help_and_quit_actions_activate_from_the_continuous_list(self):
@@ -1065,6 +1066,43 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(cancellation_event.is_set())
         self.assertEqual(app._status, "Cancelling…")
 
+    def test_ctrl_c_completion_guard_survives_repeats_until_other_input(self):
+        app = self.make_app(query=mixed_query())
+        app._operations._ctrl_c_cancellation_guard = True
+
+        app._handle_key("\x03")
+        app._handle_key("\x03")
+
+        self.assertFalse(app._exit_requested)
+        self.assertTrue(app._operations.cancellation_guard_armed)
+        self.assertEqual(
+            app._status,
+            "Generation already finished; nothing to cancel.",
+        )
+
+        app._handle_key(curses.KEY_DOWN)
+        self.assertFalse(app._operations.cancellation_guard_armed)
+
+        app._handle_key("\x03")
+        self.assertTrue(app._exit_requested)
+
+    def test_plain_idle_ctrl_c_quits(self):
+        app = self.make_app(query=mixed_query())
+
+        app._handle_key("\x03")
+
+        self.assertTrue(app._exit_requested)
+
+    def test_active_generation_renders_ctrl_c_cancel_hint(self):
+        app = self.make_app(query=mixed_query())
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._screen = FakeScreen(rows=24, columns=100)
+
+        app._render()
+
+        self.assertIn("[Ctrl+C] Cancel generation", self.rendered(app._screen))
+
     def test_help_scroll_clamp_accounts_for_status_footer_height(self):
         app = self.make_app(query=mixed_query())
         app._screen = FakeScreen(rows=8, columns=32)
@@ -1131,6 +1169,46 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(app._operations.busy)
         self.assertFalse(cancellation_event.is_set())
         self.assertGreater(app._navigation.revision, revision)
+
+    def test_generation_finishes_on_originating_caption_after_leaving_item(self):
+        app = self.make_app(query=mixed_query())
+        session = app.session
+        item_id = app._batch.open_item_id
+        started = Event()
+        release = Event()
+        generated = candidate(1)
+
+        def generate_takes():
+            def values():
+                started.set()
+                release.wait(timeout=5)
+                session.candidates = (generated,)
+                yield generated
+            return values()
+
+        session.generate_takes = generate_takes
+        app._dispatch_operation_effects(
+            app._operations.start_generation(
+                session,
+                take_count=1,
+                navigation_revision=app._navigation.revision,
+                item_id=item_id,
+            )
+        )
+        self.assertTrue(started.wait(timeout=5))
+
+        app._handle_key("\x1b")
+        release.set()
+        app._operations.join_worker()
+        app._consume_events()
+
+        self.assertFalse(app._batch.in_item)
+        self.assertIsNone(app.session)
+        self.assertEqual(
+            app._batch.batch.get_item(item_id).session.candidates,
+            (generated,),
+        )
+        self.assertEqual(app._status, "1 take(s) ready.")
 
     def test_clear_candidates_confirmation_cancel_and_confirmed_clear(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
@@ -3301,6 +3379,7 @@ class TuiTests(unittest.TestCase):
             2,
             take_count=app.settings.take_count,
             navigation_revision=navigation_revision,
+            item_id=app._batch.open_item_id,
         )
 
     def test_busy_candidate_remains_playable_without_inline_unavailable_cues(self):
@@ -3585,6 +3664,7 @@ class TuiTests(unittest.TestCase):
             generate.session,
             take_count=generate.settings.take_count,
             navigation_revision=generate._navigation.revision,
+            item_id=generate._batch.open_item_id,
         )
 
         regenerate = self.make_app(
@@ -3596,6 +3676,7 @@ class TuiTests(unittest.TestCase):
             regenerate.session,
             take_count=regenerate.settings.take_count,
             navigation_revision=regenerate._navigation.revision,
+            item_id=regenerate._batch.open_item_id,
         )
 
         output = self.make_app(query=mixed_query())
@@ -3635,6 +3716,7 @@ class TuiTests(unittest.TestCase):
             1,
             take_count=app.settings.take_count,
             navigation_revision=navigation_revision,
+            item_id=app._batch.open_item_id,
         )
 
         help_shortcut = self.make_app(query=mixed_query())
