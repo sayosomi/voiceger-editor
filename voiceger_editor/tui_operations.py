@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stderr, redirect_stdout
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import os
 import queue
@@ -28,13 +28,15 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class UpdateStatusEffect:
     status: Status
+    channel: str = field(default="status", compare=False)
 
-    def __init__(self, status: Status | str) -> None:
+    def __init__(self, status: Status | str, *, channel: str = "status") -> None:
         object.__setattr__(
             self,
             "status",
             status if isinstance(status, Status) else info_status(status),
         )
+        object.__setattr__(self, "channel", channel)
 
 
 @dataclass(frozen=True)
@@ -362,7 +364,15 @@ class TuiOperations:
             daemon=True,
         )
         self.worker.start()
-        return (UpdateStatusEffect(""),)
+        return (
+            UpdateStatusEffect(
+                f"Generating {len(plan)} selected Caption(s), "
+                f"{overall_total} take(s) total · "
+                f"Caption 1/{len(plan)} · Take 1/{first_take_total} · "
+                f"Overall 0/{overall_total}",
+                channel="background",
+            ),
+        )
 
     def start_generation(
         self,
@@ -669,7 +679,7 @@ class TuiOperations:
             daemon=True,
         )
         self.worker.start()
-        return (UpdateStatusEffect(""),)
+        return (UpdateStatusEffect(status, channel="background"),)
 
     @property
     def can_cancel_batch(self) -> bool:
@@ -962,9 +972,25 @@ class TuiOperations:
                 continue
             if isinstance(event, BatchGenerationProgressEvent):
                 self.operation_completed = event.overall_completed
+                effects.append(
+                    UpdateStatusEffect(
+                        f"Caption {event.caption_number}/{event.caption_total} · "
+                        f"Take {event.take_number}/{event.take_total} · "
+                        f"Overall {event.overall_completed}/{event.overall_total}",
+                        channel="background",
+                    )
+                )
                 continue
             if isinstance(event, BatchCandidateReadyEvent):
                 self.operation_completed = event.overall_completed
+                effects.append(
+                    UpdateStatusEffect(
+                        f"Caption {event.caption_number}/{event.caption_total} · "
+                        f"Take {event.take_number}/{event.take_total} · "
+                        f"Overall {event.overall_completed}/{event.overall_total}",
+                        channel="background",
+                    )
+                )
                 if event.replacing_existing:
                     effects.append(
                         BatchCandidateReplacedEffect(
@@ -991,6 +1017,19 @@ class TuiOperations:
             if kind == "candidate":
                 operation = self.worker_operation
                 self.operation_completed += 1
+                if operation == "initial":
+                    status = (
+                        f"Generating {min(self.operation_completed + 1, self.operation_total)}"
+                        f"/{self.operation_total} · {self.operation_completed} ready"
+                    )
+                elif operation == "regenerate_all":
+                    status = (
+                        f"Regenerating {min(self.operation_completed + 1, self.operation_total)}"
+                        f"/{self.operation_total} · {self.operation_completed} ready"
+                    )
+                else:
+                    status = f"Take {value.number} replacement ready."
+                effects.append(UpdateStatusEffect(status, channel="background"))
 
                 if operation == "initial":
                     if (
