@@ -19,6 +19,7 @@ from voiceger_editor.tui_rendering import (
     _positioned_title,
     TuiRenderer,
     TuiRenderState,
+    status_with_cancel_generation_hint,
 )
 from voiceger_editor.tui_status import (
     EMPTY_STATUS,
@@ -2366,6 +2367,16 @@ class TuiRenderingTests(unittest.TestCase):
 
         self.assertEqual(labels[("candidate", 9)], "  [9] Take 9  0.01s")
         self.assertEqual(labels[("candidate", 10)], "  Take 10  0.01s")
+
+    def test_cancel_generation_hint_is_dynamic_and_preserves_status_kind(self):
+        status = warning_status("Generating 2/4")
+
+        shown = status_with_cancel_generation_hint(status, True)
+        hidden = status_with_cancel_generation_hint(status, False)
+
+        self.assertEqual(shown, "Generating 2/4 · [Ctrl+C] Cancel generation")
+        self.assertIs(shown.kind, status.kind)
+        self.assertIs(hidden, status)
 
     def test_unavailable_status_and_terminal_write_safety_remain(self):
         screen = FakeScreen()
