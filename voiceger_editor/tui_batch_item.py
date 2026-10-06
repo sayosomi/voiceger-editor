@@ -337,12 +337,13 @@ class TuiBatchItemController:
         actions.operations.stop_playback()
         actions.editor_controller.clear_groupings()
         actions.operations.clear_current_take()
-        self.dispatch_navigation_actions(
-            actions.navigation.reset_after_rebuild(
-                self.navigation_context(bindings)
-            ),
-            bindings,
-        )
+        if rebuild:
+            self.dispatch_navigation_actions(
+                actions.navigation.reset_after_rebuild(
+                    self.navigation_context(bindings)
+                ),
+                bindings,
+            )
         actions.set_status(
             info_status(
                 "Pronunciation rebuilt from Caption."
