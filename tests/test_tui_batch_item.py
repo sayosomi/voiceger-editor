@@ -85,6 +85,7 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             dispatch_operation_effects=Mock(),
             open_help=Mock(),
             activate_quit=Mock(),
+            initialize_open_item=Mock(),
         )
         bindings = BatchItemBindings(
             actions=actions,
