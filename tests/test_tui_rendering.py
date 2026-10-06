@@ -815,6 +815,25 @@ class TuiRenderingTests(unittest.TestCase):
             "",
         )
 
+    def test_footer_wrap_keeps_cancel_generation_hint_together(self):
+        layout = self.renderer._status_footer_layout(
+            EMPTY_STATUS,
+            height=24,
+            width=80,
+            background_status=(
+                "Generating selected · Caption 2 · Take 6/10 · Overall 15/20 · "
+                "[Ctrl+C] Cancel generation"
+            ),
+        )
+
+        self.assertEqual(
+            layout.lines,
+            (
+                "Generating selected · Caption 2 · Take 6/10 · Overall 15/20",
+                "[Ctrl+C] Cancel generation",
+            ),
+        )
+
     def test_batch_list_marks_current_selected_generation_item(self):
         batch = CaptionBatch(default_take_count=4)
         batch.add_captions_from_text(
