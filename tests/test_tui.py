@@ -992,6 +992,7 @@ class TuiTests(unittest.TestCase):
             app.session,
             take_count=app.settings.take_count,
             navigation_revision=navigation_revision,
+            item_id=app._batch.open_item_id,
         )
 
     def test_help_and_quit_actions_activate_from_the_continuous_list(self):
@@ -3301,6 +3302,7 @@ class TuiTests(unittest.TestCase):
             2,
             take_count=app.settings.take_count,
             navigation_revision=navigation_revision,
+            item_id=app._batch.open_item_id,
         )
 
     def test_busy_candidate_remains_playable_without_inline_unavailable_cues(self):
@@ -3585,6 +3587,7 @@ class TuiTests(unittest.TestCase):
             generate.session,
             take_count=generate.settings.take_count,
             navigation_revision=generate._navigation.revision,
+            item_id=generate._batch.open_item_id,
         )
 
         regenerate = self.make_app(
@@ -3596,6 +3599,7 @@ class TuiTests(unittest.TestCase):
             regenerate.session,
             take_count=regenerate.settings.take_count,
             navigation_revision=regenerate._navigation.revision,
+            item_id=regenerate._batch.open_item_id,
         )
 
         output = self.make_app(query=mixed_query())
@@ -3635,6 +3639,7 @@ class TuiTests(unittest.TestCase):
             1,
             take_count=app.settings.take_count,
             navigation_revision=navigation_revision,
+            item_id=app._batch.open_item_id,
         )
 
         help_shortcut = self.make_app(query=mixed_query())
