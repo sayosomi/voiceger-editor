@@ -72,6 +72,11 @@ class OpenSettingsEditor:
 
 
 @dataclass(frozen=True)
+class EditOutputPath:
+    pass
+
+
+@dataclass(frozen=True)
 class OpenCaptionEditor:
     pass
 
@@ -145,6 +150,7 @@ NavigationAction = Union[
     ClearAdjustmentFeedback,
     UpdateNavigationStatus,
     OpenSettingsEditor,
+    EditOutputPath,
     OpenCaptionEditor,
     EditPronunciationItem,
     AddSectionEditor,
@@ -320,7 +326,7 @@ class TuiNavigation:
         if name == "settings_summary":
             return (OpenSettingsEditor("style_id"),)
         if name == "output":
-            return (OpenSettingsEditor("output_dir", edit=True),)
+            return (EditOutputPath(),)
         if name == "caption":
             if context.busy:
                 return (

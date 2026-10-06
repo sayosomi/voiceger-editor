@@ -66,7 +66,7 @@ class TuiSettingsControllerTests(unittest.TestCase):
             )
         )
 
-        controller.change(save_text=True)
+        self.assertTrue(controller.change(save_text=True))
 
         expected_runtime = Settings(take_count=8, save_text=True)
         expected_persisted = Settings(save_text=True)

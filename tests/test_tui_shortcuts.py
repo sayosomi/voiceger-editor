@@ -67,7 +67,7 @@ class TuiShortcutTests(unittest.TestCase):
             "add_section": {"a": "add", "c": "clear", "r": "reset"},
             "settings": {
                 "s": "style_id", "v": "speed", "n": "take_count",
-                "o": "output_dir", "x": "save_text", "l": "save_lab",
+                "f": "output_dir", "x": "save_text", "l": "save_lab",
                 "k": "top_k", "p": "top_p", "t": "temperature",
                 "d": "reset_sampling",
                 "a": "apply", "r": "reset",
@@ -75,8 +75,11 @@ class TuiShortcutTests(unittest.TestCase):
             "dictionary_menu": {
                 "j": "japanese", "e": "english", "i": "import", "x": "export",
             },
-            "dictionary_export": {"o": "output", "e": "voiceger", "v": "voicevox"},
-            "dictionary_import_path": {"i": "review"},
+            "batch_recipe_read_path": {"f": "path", "r": "read"},
+            "batch_recipe_write_path": {"f": "output", "w": "write"},
+            "batch_recipe_replace_confirmation": {"r": "replace"},
+            "dictionary_export": {"f": "output", "e": "voiceger", "v": "voicevox"},
+            "dictionary_import_path": {"f": "path", "i": "review"},
             "dictionary_import_review": {
                 "i": "import_selected", "c": "clear_selection",
             },
@@ -125,7 +128,7 @@ class TuiShortcutTests(unittest.TestCase):
 
     def test_main_shortcuts_match_issue_49_contract_and_share_display_metadata(self):
         expected = {
-            "o": "output",
+            "f": "output",
             "e": "caption",
             "p": "build_pronunciation",
             "a": "add_section",
@@ -148,7 +151,7 @@ class TuiShortcutTests(unittest.TestCase):
                     f"[{shortcut.upper()}] "
                 ))
 
-        for removed in (curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "l"):
+        for removed in (curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "l", "o"):
             with self.subTest(removed=removed):
                 self.assertIsNone(resolve_main_shortcut(removed))
 
@@ -156,6 +159,8 @@ class TuiShortcutTests(unittest.TestCase):
         expected = {
             "a": "add_captions",
             "g": "generate_selected",
+            "r": "read_batch",
+            "w": "write_batch",
             "s": "settings",
             "d": "dictionary",
             "?": "help",
@@ -245,7 +250,11 @@ class TuiShortcutTests(unittest.TestCase):
         controller = self.make_controller()
         settings = Settings()
         for screen_kind, definitions in menu_definitions().items():
-            if screen_kind == "help" or screen_kind.startswith("dictionary_"):
+            if (
+                screen_kind == "help"
+                or screen_kind.startswith("dictionary_")
+                or screen_kind.startswith("batch_recipe_")
+            ):
                 continue
             payload = {
                 item.condition_key: True
@@ -322,6 +331,24 @@ class TuiShortcutTests(unittest.TestCase):
             "delete_confirmation": (
                 "delete",
                 {"warning": "warning"},
+                "",
+            ),
+            "batch_recipe_read_path": (
+                "path",
+                {"path": "/tmp/batch.voiceger.json"},
+                "/tmp/batch.voiceger.json",
+            ),
+            "batch_recipe_write_path": (
+                "write",
+                {"path": "/tmp/batch.voiceger.json"},
+                "",
+            ),
+            "batch_recipe_replace_confirmation": (
+                "cancel",
+                {
+                    "path": "/tmp/batch.voiceger.json",
+                    "warning": "Current batch will be replaced.",
+                },
                 "",
             ),
             "dictionary_export": (
@@ -429,7 +456,7 @@ class TuiShortcutTests(unittest.TestCase):
         self.assertEqual(editor.selection, "clear")
         self.assertEqual(editor.payload["draft"], "")
 
-    def test_settings_focus_shortcuts_only_move_focus(self):
+    def test_settings_shortcuts_focus_values_and_f_starts_output_editing(self):
         controller = self.make_controller()
         controller.open_settings(
             Settings(),
@@ -443,7 +470,6 @@ class TuiShortcutTests(unittest.TestCase):
             ("s", "style_id"),
             ("v", "speed"),
             ("n", "take_count"),
-            ("o", "output_dir"),
             ("x", "save_text"),
             ("l", "save_lab"),
         ):
@@ -453,6 +479,17 @@ class TuiShortcutTests(unittest.TestCase):
                 self.assertIsNone(editor.active_field)
                 self.assertEqual(editor.payload["draft_settings"], opening)
                 self.assertTrue(intents)
+
+        intents = self.handle(controller, "f")
+        self.assertTrue(intents)
+        self.assertEqual(editor.selection, "output_dir")
+        self.assertEqual(editor.active_field, "output_dir")
+        self.assertEqual(editor.payload["draft_settings"], opening)
+
+        self.handle(controller, "\n")
+        self.assertIsNone(editor.active_field)
+        self.assertEqual(self.handle(controller, "o"), ())
+        self.assertEqual(editor.selection, "output_dir")
 
     def test_editor_menu_global_help_and_quit_keys_emit_typed_intents(self):
         controller = self.make_controller()

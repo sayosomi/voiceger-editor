@@ -1,4 +1,5 @@
 import curses
+import os
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -219,12 +220,17 @@ class TuiDictionaryControllerTests(unittest.TestCase):
         self.assertEqual(self.controller.editor.kind, "dictionary_import_path")
         self.assertEqual(self.controller.editor.selection, "path")
         self.assertEqual(self.controller.editor.active_field, "path")
+        self.assertEqual(self.controller.editor.input_value, "." + os.sep)
 
         self.key("\x1b")
         self.assertEqual(self.controller.editor.kind, "dictionary_menu")
 
         self.key("i")
         self.assertEqual(self.controller.editor.kind, "dictionary_import_path")
+        self.assertEqual(self.controller.editor.active_field, "path")
+        self.key("\n")
+        self.assertIsNone(self.controller.editor.active_field)
+        self.key("f")
         self.assertEqual(self.controller.editor.active_field, "path")
 
     def test_import_review_uses_one_vertical_list_toggle_clear_and_back(self):

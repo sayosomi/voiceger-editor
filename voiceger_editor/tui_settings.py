@@ -51,8 +51,8 @@ class TuiSettingsController:
         *,
         report_success: bool = True,
         **changes: Any,
-    ) -> None:
-        """Apply a partial interactive change and persist only those fields."""
+    ) -> bool:
+        """Apply a partial interactive change and report whether persistence succeeded."""
 
         try:
             updated = replace(self.settings, **changes)
@@ -66,7 +66,7 @@ class TuiSettingsController:
                 session.replace_settings(updated)
         except (SettingsError, ValueError) as exc:
             self._set_status(error_status(f"Settings were not changed: {exc}"))
-            return
+            return False
 
         self.settings = updated
         self._set_batch_take_count(updated.take_count)
@@ -80,7 +80,7 @@ class TuiSettingsController:
                     f"{exc}"
                 )
             )
-            return
+            return False
 
         self.persisted_settings = persisted
         if synthesis_changed:
@@ -95,6 +95,7 @@ class TuiSettingsController:
                     f"{exc}"
                 )
             )
+            return False
         else:
             if report_success:
                 self._set_status(
@@ -104,6 +105,7 @@ class TuiSettingsController:
                         else "Settings saved. Existing temporary takes were preserved."
                     )
                 )
+        return True
 
     def apply_target(self, target: Settings) -> SettingsApplicationResult:
         """Apply and persist the complete Settings target from the editor."""

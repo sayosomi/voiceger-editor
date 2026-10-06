@@ -17,6 +17,7 @@ from .tui_navigation import (
     BuildPronunciation,
     ClearAdjustmentFeedback,
     DeleteCaption,
+    EditOutputPath,
     EditPronunciationItem,
     NavigationAction,
     NavigationContext,
@@ -32,6 +33,7 @@ from .tui_navigation import (
     StartGeneration,
     UpdateNavigationStatus,
 )
+from .tui_output_path import BeginOutputPathEditIntent
 from .tui_shortcuts import resolve_main_shortcut
 from .tui_status import EMPTY_STATUS, Status, error_status, info_status
 
@@ -294,6 +296,10 @@ class TuiBatchItemController:
                 actions.open_settings_editor(
                     action.selected_field,
                     edit=action.edit,
+                )
+            elif isinstance(action, EditOutputPath):
+                actions.dispatch_editor_intents(
+                    (BeginOutputPathEditIntent("batch_item"),)
                 )
             elif isinstance(action, OpenCaptionEditor):
                 actions.open_caption_editor()

@@ -9,6 +9,8 @@ from typing import Any, Literal, Mapping
 MenuItemKind = Literal["editable", "adjustable", "action"]
 ShortcutMode = Literal["activate", "focus"]
 
+PATH_EDIT_SHORTCUT = "f"
+
 
 @dataclass(frozen=True)
 class MenuItem:
@@ -46,7 +48,7 @@ class MainShortcut:
 
 
 _MAIN_SHORTCUTS: tuple[MainShortcut, ...] = (
-    MainShortcut("output", "Output", "o"),
+    MainShortcut("output", "Output", PATH_EDIT_SHORTCUT),
     MainShortcut("caption", "Caption", "e"),
     MainShortcut("build_pronunciation", "Build pronunciation", "p"),
     MainShortcut("add_section", "Add section", "a"),
@@ -62,6 +64,8 @@ _MAIN_SHORTCUTS: tuple[MainShortcut, ...] = (
 _BATCH_LIST_SHORTCUTS: tuple[MainShortcut, ...] = (
     MainShortcut("add_captions", "Add captions", "a"),
     MainShortcut("generate_selected", "Generate selected", "g"),
+    MainShortcut("read_batch", "Read batch", "r"),
+    MainShortcut("write_batch", "Write batch", "w"),
     MainShortcut("settings", "Settings", "s"),
     MainShortcut("dictionary", "Dictionary", "d"),
     MainShortcut("help", "Help", "?"),
@@ -81,6 +85,12 @@ def _escape_action(key: str, label: str) -> MenuItem:
         "action",
         no_shortcut_reason="Esc is the common one-level-back key.",
     )
+
+
+def _path_edit_item(key: str, label: str) -> MenuItem:
+    """Declare the shared direct shortcut for editable filesystem paths."""
+
+    return MenuItem(key, label, PATH_EDIT_SHORTCUT, "editable", "activate")
 
 
 _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
@@ -180,7 +190,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("style_id", "Style", "s", "adjustable", "focus"),
         MenuItem("speed", "Speed", "v", "adjustable", "focus"),
         MenuItem("take_count", "Takes", "n", "adjustable", "focus"),
-        MenuItem("output_dir", "Output", "o", "editable", "focus"),
+        _path_edit_item("output_dir", "Output"),
         MenuItem("save_text", "TXT", "x", "adjustable", "focus"),
         MenuItem("save_lab", "LAB", "l", "adjustable", "focus"),
         MenuItem("top_k", "Top K", "k", "adjustable", "focus"),
@@ -205,19 +215,13 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         _escape_action("back", "Back"),
     ),
     "dictionary_export": (
-        MenuItem("output", "Output", "o", "action", "activate"),
+        MenuItem("output", "Output", PATH_EDIT_SHORTCUT, "action", "activate"),
         MenuItem("voiceger", "Voiceger Editor", "e", "action", "activate"),
         MenuItem("voicevox", "VOICEVOX", "v", "action", "activate"),
         _escape_action("back", "Back"),
     ),
     "dictionary_import_path": (
-        MenuItem(
-            "path",
-            "Path",
-            None,
-            "editable",
-            no_shortcut_reason="Enter edits the dictionary import path.",
-        ),
+        _path_edit_item("path", "Path"),
         MenuItem("review", "Review file", "i", "action", "activate"),
         _escape_action("back", "Back"),
     ),
@@ -387,6 +391,27 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         ),
         MenuItem("dictionary", "Dictionary menu", "d", "action", "activate"),
         _escape_action("back", "Back"),
+    ),
+    "batch_recipe_read_path": (
+        _path_edit_item("path", "Path"),
+        MenuItem("read", "Read file", "r", "action", "activate"),
+        _escape_action("back", "Back"),
+    ),
+    "batch_recipe_write_path": (
+        MenuItem("output", "Output", PATH_EDIT_SHORTCUT, "action", "activate"),
+        MenuItem(
+            "file_name",
+            "File name",
+            None,
+            "editable",
+            no_shortcut_reason="Enter edits the batch recipe file name.",
+        ),
+        MenuItem("write", "Write file", "w", "action", "activate"),
+        _escape_action("back", "Back"),
+    ),
+    "batch_recipe_replace_confirmation": (
+        MenuItem("replace", "Replace batch", "r", "action", "activate"),
+        _escape_action("cancel", "Cancel"),
     ),
     "batch_delete_confirmation": (
         MenuItem("delete", "Delete caption", "d", "action", "activate"),

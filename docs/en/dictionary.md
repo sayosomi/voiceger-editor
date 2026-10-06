@@ -161,6 +161,9 @@ existing UUID and its canonical position are preserved. Newly imported entries
 are appended in input-file order. The import is committed as one logical
 operation and reports imported, replaced, and skipped counts when complete.
 
+The Import File path starts at the saved Output directory for convenience.
+It is an input-only path: changing it does not change `Settings.output_dir`.
+
 Invalid or unsupported input is rejected before the active dictionary is
 changed. Back exits the import workflow without committing the review.
 
@@ -168,9 +171,9 @@ changed. Back exits the import workflow without committing the review.
 
 Choose **Export dictionary** from the top-level Dictionary screen.
 
-The Export screen shows the current output directory as **[O] Output**. Select
-that row, press Enter, or press **O** to edit Output in Settings; saving or
-cancelling Settings returns to the Export screen.
+The Export screen shows the shared saved output directory as **[F] Output**.
+Select that row and press Enter, or press **F**, to edit
+`Settings.output_dir` in place without leaving Export.
 
 **Voiceger Editor** export writes the current dictionaries as two separate
 native JSON files:

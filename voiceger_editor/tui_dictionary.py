@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import curses
+import os
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,6 +51,7 @@ from .tui_editors import (
     QuitIntent,
     UpdateStatusIntent,
 )
+from .tui_output_path import BeginOutputPathEditIntent
 from .tui_selection import move_clamped_selection
 from .tui_shortcuts import menu_items, resolve_shortcut
 from .tui_status import EMPTY_STATUS, Status, error_status, info_status
@@ -106,16 +108,10 @@ class DictionaryOperationIntent:
     work: Callable[[], Any]
 
 
-@dataclass(frozen=True)
-class OpenDictionarySettingsIntent:
-    selected_field: str
-    edit: bool = False
-
-
 DictionaryControllerIntent = Union[
     EditorIntent,
     DictionaryOperationIntent,
-    OpenDictionarySettingsIntent,
+    BeginOutputPathEditIntent,
 ]
 
 
@@ -188,7 +184,6 @@ class TuiDictionaryController:
         self._list_state = DictionaryListStateOwner(core)
         self._import_review: DictionaryImportReview | None = None
         self._import_source_path = ""
-        self._suspended_editor: EditorState | None = None
 
     @staticmethod
     def _operation_request(
@@ -278,43 +273,23 @@ class TuiDictionaryController:
             ),
         )
 
-    def suspend_editor(self) -> bool:
-        """Suspend the active Dictionary screen for a temporary external editor."""
-
-        if self.editor is None:
-            return False
-        self._suspended_editor = self.editor
-        self.editor = None
-        return True
-
-    def restore_suspended_editor(self) -> bool:
-        """Restore a Dictionary screen after a temporary external editor."""
-
-        if self._suspended_editor is None:
-            return False
-        self.editor = self._suspended_editor
-        self._suspended_editor = None
-        return True
-
-    def _open_export_output_settings(
-        self,
-    ) -> tuple[DictionaryControllerIntent, ...]:
-        editor = self.editor
-        if editor is None or editor.kind != "dictionary_export":
-            return ()
-        return (OpenDictionarySettingsIntent("output_dir", edit=True),)
-
     def _clear_import_state(self) -> None:
         self._import_review = None
         self._import_source_path = ""
 
-    def _import_path_state(self, path: str = "") -> EditorState:
+    def _default_input_path(self) -> str:
+        path = str(Path(self._output_dir()))
+        return path if path.endswith(os.sep) else path + os.sep
+
+    def _import_path_state(self, path: str | None = None) -> EditorState:
         return EditorState(
             kind="dictionary_import_path",
             title="IMPORT DICTIONARY",
             origin=("dictionary", None),
             selection="path",
-            payload={"path": path},
+            payload={
+                "path": self._default_input_path() if path is None else path,
+            },
         )
 
     @staticmethod
@@ -1973,7 +1948,10 @@ class TuiDictionaryController:
                 self._stack.append(deepcopy(editor))
                 self._clear_import_state()
                 self.editor = self._import_path_state()
-                return self._begin_field("path", "")
+                return self._begin_field(
+                    "path",
+                    str(self.editor.payload["path"]),
+                )
             elif selected == "export":
                 self._stack.append(deepcopy(editor))
                 self.editor = self._export_state()
@@ -1982,7 +1960,7 @@ class TuiDictionaryController:
             return (UpdateStatusIntent(""),)
         if editor.kind == "dictionary_export":
             if selected == "output":
-                return self._open_export_output_settings()
+                return (BeginOutputPathEditIntent("dictionary_export"),)
             if selected == "voiceger":
                 return self._export_dictionary("voiceger")
             if selected == "voicevox":

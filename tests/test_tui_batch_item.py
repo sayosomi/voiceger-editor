@@ -15,6 +15,7 @@ from voiceger_editor.tui_batch_item import (
 )
 from voiceger_editor.tui_navigation import AcceptCandidate, TuiNavigation
 from voiceger_editor.tui_operations import UpdateStatusEffect
+from voiceger_editor.tui_output_path import BeginOutputPathEditIntent
 from voiceger_editor.tui_status import error_status
 
 
@@ -81,6 +82,8 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             open_caption_editor=Mock(),
             change_settings=Mock(),
             open_settings_editor=Mock(),
+            open_batch_read=Mock(),
+            open_batch_write=Mock(),
             dispatch_editor_intents=Mock(),
             dispatch_operation_effects=Mock(),
             open_help=Mock(),
@@ -146,15 +149,15 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             (ClearAdjustmentFeedbackIntent(),)
         )
 
-    def test_output_shortcut_opens_output_settings_directly(self):
+    def test_file_shortcut_starts_inline_shared_output_edit(self):
         subject, _batch, bindings, _state = self.make_subject()
 
-        subject.handle_key("o", bindings)
+        subject.handle_key("f", bindings)
 
-        bindings.actions.open_settings_editor.assert_called_once_with(
-            "output_dir",
-            edit=True,
+        bindings.actions.dispatch_editor_intents.assert_called_once_with(
+            (BeginOutputPathEditIntent("batch_item"),)
         )
+        bindings.actions.open_settings_editor.assert_not_called()
 
     def test_open_item_focus_prefers_accepted_then_first_candidate(self):
         subject, batch, bindings, state = self.make_subject()

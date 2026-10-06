@@ -389,7 +389,7 @@ class TuiTests(unittest.TestCase):
         set_navigation_focus(app, ("output", None))
         app._render()
         output = next(item for item in screen.drawn if item[0] == 2)
-        self.assertTrue(output[2].startswith("▶ [O] Output:"))
+        self.assertTrue(output[2].startswith("▶ [F] Output:"))
         self.assertTrue(output[3] & curses.A_REVERSE)
         self.assertIn(("settings", None), navigation_items(app))
         self.assertEqual(
@@ -411,33 +411,37 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_menu")
         self.assertIsNone(app._editor_controller.editor)
 
-    def test_export_output_settings_return_to_export_on_cancel_and_save(self):
+    def test_export_output_edits_shared_setting_without_leaving_export(self):
         app = self.make_app(query=mixed_query())
 
         app._handle_key("d")
         app._handle_key("x")
-        self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_export")
+        export_editor = app._dictionary_controller.editor
+        self.assertEqual(export_editor.kind, "dictionary_export")
 
-        app._handle_key("o")
-        self.assertFalse(app._dictionary_controller.active)
-        self.assertEqual(app._editor_controller.editor.kind, "settings")
-        self.assertEqual(app._editor_controller.editor.selection, "output_dir")
-        self.assertEqual(app._editor_controller.editor.active_field, "output_dir")
+        app._handle_key("f")
+        self.assertIs(app._dictionary_controller.editor, export_editor)
+        self.assertTrue(app._output_path_controller.active)
+        self.assertEqual(
+            app._output_path_controller.state.owner,
+            "dictionary_export",
+        )
+        self.assertIsNone(app._editor_controller.editor)
 
         app._handle_key("\x1b")
-        self.assertIsNone(app._editor_controller.editor)
-        self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_export")
-        self.assertEqual(app._dictionary_controller.editor.selection, "output")
+        self.assertFalse(app._output_path_controller.active)
+        self.assertIs(app._dictionary_controller.editor, export_editor)
 
-        app._handle_key("o")
-        self.assertEqual(app._editor_controller.editor.active_field, "output_dir")
-        app._handle_key("\n")
+        app._handle_key("f")
+        app._output_path_controller.state.value = "/tmp/shared-output"
+        app._output_path_controller.state.cursor = len("/tmp/shared-output")
         with patch("voiceger_editor.tui.save_settings") as save:
-            app._handle_key("a")
+            app._handle_key("\n")
         save.assert_called_once()
-        self.assertIsNone(app._editor_controller.editor)
-        self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_export")
-        self.assertEqual(app._dictionary_controller.editor.selection, "output")
+        self.assertFalse(app._output_path_controller.active)
+        self.assertEqual(app.settings.output_dir, Path("/tmp/shared-output"))
+        self.assertIs(app._dictionary_controller.editor, export_editor)
+        self.assertEqual(export_editor.selection, "output")
 
     def test_export_output_settings_busy_guard_keeps_export_visible(self):
         app = self.make_app(query=mixed_query())
@@ -446,13 +450,13 @@ class TuiTests(unittest.TestCase):
         export_editor = app._dictionary_controller.editor
         app._operations.busy = True
 
-        app._handle_key("o")
+        app._handle_key("f")
 
         self.assertIs(app._dictionary_controller.editor, export_editor)
         self.assertIsNone(app._editor_controller.editor)
         self.assertEqual(
             app._status,
-            "Wait for synthesis to finish before changing settings.",
+            "Wait for synthesis to finish before changing Output.",
         )
 
     def test_pronunciation_editor_dictionary_actions_preserve_editor_state(self):
@@ -912,7 +916,7 @@ class TuiTests(unittest.TestCase):
                 self.assertEqual(confirmation.kind, "dictionary_delete_confirmation")
                 method.assert_called_once()
 
-    def test_settings_summary_opens_style_and_output_opens_path_input(self):
+    def test_settings_summary_opens_style_and_output_edits_inline(self):
         app = self.make_app(query=mixed_query())
         set_navigation_focus(app, ("settings_summary", None))
         app._handle_key("\n")
@@ -922,8 +926,9 @@ class TuiTests(unittest.TestCase):
         app._handle_key("\x1b")
         set_navigation_focus(app, ("output", None))
         app._handle_key("\n")
-        self.assertEqual(app._editor_controller.editor.selection, "output_dir")
-        self.assertEqual(app._editor_controller.editor.active_field, "output_dir")
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertTrue(app._output_path_controller.active)
+        self.assertEqual(app._output_path_controller.state.owner, "batch_item")
 
         app._handle_key("\x1b")
         set_navigation_focus(app, ("settings", None))
@@ -2772,7 +2777,7 @@ class TuiTests(unittest.TestCase):
             rendered = self.rendered(screen)
             for label in (
                 "[S] Style *", "[V] Speed *", "[N] Takes",
-                "[O] Output", "[X] TXT", "[L] LAB",
+                "[F] Output", "[X] TXT", "[L] LAB",
             ):
                 self.assertIn(label, rendered)
             for heading in ("Voice", "Generation", "Output", "Sampling", "Actions"):
@@ -3551,10 +3556,10 @@ class TuiTests(unittest.TestCase):
         )
 
         output = self.make_app(query=mixed_query())
-        output._handle_key("o")
-        self.assertEqual(output._editor_controller.editor.kind, "settings")
-        self.assertEqual(output._editor_controller.editor.selection, "output_dir")
-        self.assertEqual(output._editor_controller.editor.active_field, "output_dir")
+        output._handle_key("f")
+        self.assertIsNone(output._editor_controller.editor)
+        self.assertTrue(output._output_path_controller.active)
+        self.assertEqual(output._output_path_controller.state.owner, "batch_item")
 
         for removed in (
             curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "x", "l"

@@ -42,6 +42,37 @@ the same order, while blank-only lines are ignored. The normal editor for an
 existing Caption still uses Enter to finish editing and never splits that
 Caption into multiple items.
 
+## Read and Write batch recipes
+
+The Batch List exposes `[R] Read batch` and `[W] Write batch` for logical
+batch recipe files. The recommended suffix is `.voiceger.json`.
+
+Write uses the same saved Output directory used elsewhere in the TUI.
+`[F] Output` edits that shared `Settings.output_dir` in place. The recipe
+file name defaults to `batch.voiceger.json` and is edited separately; Write
+always resolves that file name under the current Output directory.
+
+Read accepts a temporary filesystem path, including paths that begin with
+`~`. Its initial File path is the saved Output directory, ready for a file
+name to be entered, but changing the Read path does not change Output. The
+recipe core expands and validates the complete file before the active Batch
+List is changed. If the current batch is non-empty, Voiceger Editor asks for
+explicit replacement confirmation first. Cancelling the confirmation or
+reading an invalid file leaves the current batch unchanged.
+
+The recipe stores the logical batch needed to reconstruct prepared Captions,
+including explicit pronunciation/source sections and synthesis settings. A
+Caption must therefore have prepared pronunciation before it can be written.
+
+Recipe files are intended to be human-readable working files. For example, you
+can Write a `.voiceger.json` file, edit it in VS Code, then Read it back into
+the Batch List.
+
+Recipes are not runtime-resume snapshots. Generated candidate Takes, accepted
+Take state, playback state, and generation progress are not written and are not
+resumed by Read. After Read, the reconstructed Captions are immediately
+editable and can generate new Takes.
+
 ## Main controls
 
 - Up / Down: move through selectable rows.
@@ -228,6 +259,8 @@ Changing the configured Take count does not change the synthesis parameters of T
 | Left / Right | Change batch default Takes when `Takes` is focused |
 | `a` | Add captions |
 | `g` | Generate selected |
+| `r` | Read batch recipe |
+| `w` | Write batch recipe |
 | `s` | Settings |
 | `d` | Dictionary |
 | `?` | Help |
@@ -237,6 +270,7 @@ Changing the configured Take count does not change the synthesis parameters of T
 
 | Key | Action |
 | --- | --- |
+| `f` | Edit Output path |
 | `e` | Caption |
 | `p` | Build pronunciation |
 | `a` | Add section |
@@ -248,8 +282,8 @@ Changing the configured Take count does not change the synthesis parameters of T
 | `?` | Help |
 | `q` | Quit |
 
-Settings-local shortcuts such as Speed or Output are available after opening
-Settings; they are not direct Batch Item jumps.
+Press `f` from Batch Item to jump directly into Output path editing.
+Other Settings-local shortcuts are available after opening Settings.
 
 ## Settings and dictionary
 

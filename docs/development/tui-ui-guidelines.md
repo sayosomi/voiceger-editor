@@ -68,6 +68,20 @@ For a row that supports both direct Left / Right adjustment and a detailed choos
 
 Feature-specific multiline input keys or other editing exceptions belong with that feature unless they become a shared convention.
 
+## File and output paths
+
+Editable filesystem path rows use `[F]` as the shared direct shortcut.
+
+`Output` always means the shared `Settings.output_dir`. Screens that expose Output display that same current directory. Outside the Settings screen, `F` edits and saves that shared setting in place without navigating to Settings. Inside Settings, `F` starts editing the same field, while the normal Apply action remains the persistence boundary for the Settings draft.
+
+Input-only `File path` fields, such as Read Batch and Import Dictionary, are temporary operation values rather than settings. They may initialize from the saved Output directory, but editing them must not change `Settings.output_dir`.
+
+Pressing `F` from the containing screen starts editing the relevant path immediately rather than only moving focus to the row. Enter on a focused path row also starts editing.
+
+A dedicated input-path screen may start with its File path already in editing mode when entering that screen is itself an explicit request to provide a path.
+
+While path text entry is active, `f` is input text rather than a shortcut, consistent with the general editing rule above.
+
 ## Visible shortcuts
 
 Visible shortcuts are accelerators for frequent operations.
