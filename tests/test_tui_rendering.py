@@ -371,6 +371,24 @@ class TuiRenderingTests(unittest.TestCase):
         ):
             self.assertTrue(any(action in label for label in labels))
 
+        action_start = labels.index("  [A] Add captions")
+        self.assertEqual(
+            labels[action_start : action_start + 11],
+            [
+                "  [A] Add captions",
+                "  [G] Generate selected",
+                "",
+                "  [R] Read batch",
+                "  [W] Write batch",
+                "",
+                "  [S] Settings",
+                "  [D] Dictionary",
+                "",
+                "  [?] Help",
+                "  [Q] Quit",
+            ],
+        )
+
         screen = FakeScreen()
         self.renderer.render_batch_list(
             screen, batch, ("caption", 0), EMPTY_STATUS, screen.rows, screen.columns
