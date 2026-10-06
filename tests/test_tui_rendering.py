@@ -362,6 +362,8 @@ class TuiRenderingTests(unittest.TestCase):
         for action in (
             "[A] Add captions",
             "[G] Generate selected",
+            "[R] Read batch",
+            "[W] Write batch",
             "[S] Settings",
             "[D] Dictionary",
             "[?] Help",
