@@ -1019,16 +1019,6 @@ class TuiRenderer:
                         else "Generating"
                     )
                     generate_label = f"{verb} {current}/{state.operation_total}"
-            elif (
-                state.busy
-                and state.worker_operation
-                in {"initial", "regenerate_one", "regenerate_all", "batch_generate"}
-            ):
-                generate_label = (
-                    f"Regenerate all {state.settings.take_count} takes [busy]"
-                    if has_batch
-                    else f"Generate {state.settings.take_count} takes [busy]"
-                )
             else:
                 adjustable_count = _adjustable_value(
                     str(state.settings.take_count),
@@ -1039,6 +1029,12 @@ class TuiRenderer:
                     if has_batch
                     else f"Generate {adjustable_count} takes"
                 )
+                if (
+                    state.busy
+                    and state.worker_operation
+                    in {"initial", "regenerate_one", "regenerate_all", "batch_generate"}
+                ):
+                    generate_label += " [busy]"
             plain()
             if not session.candidates:
                 plain("Candidates   No candidates yet.")
