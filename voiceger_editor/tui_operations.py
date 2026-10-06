@@ -78,6 +78,12 @@ class TakeAcceptedEffect:
 
 
 @dataclass(frozen=True)
+class GenerationOutcomeEffect:
+    item_id: str
+    outcome: str
+
+
+@dataclass(frozen=True)
 class DictionaryOperationCompletedEffect:
     request: DictionaryOperationRequest
     value: Any = None
@@ -163,6 +169,11 @@ class BatchGenerationFailedEvent:
     error: BaseException
 
 
+@dataclass(frozen=True)
+class BatchGenerationCancelledEvent:
+    item_id: str
+
+
 OperationEffect = Union[
     UpdateStatusEffect,
     FocusEffect,
@@ -173,6 +184,7 @@ OperationEffect = Union[
     BatchCandidateReplacedEffect,
     CandidateReplacedEffect,
     TakeAcceptedEffect,
+    GenerationOutcomeEffect,
     DictionaryOperationCompletedEffect,
     SessionPreparationCompletedEffect,
 ]
@@ -297,6 +309,11 @@ class TuiOperations:
 
                                 for take_number in range(1, take_total + 1):
                                     if cancellation_event.is_set():
+                                        self.events.put(
+                                            BatchGenerationCancelledEvent(
+                                                item_id=item.item_id
+                                            )
+                                        )
                                         return
                                     self.events.put(
                                         BatchGenerationProgressEvent(
@@ -1115,6 +1132,15 @@ class TuiOperations:
                             number=event.take_number,
                         )
                     )
+                if event.take_number == event.take_total:
+                    effects.append(
+                        GenerationOutcomeEffect(event.item_id, "completed")
+                    )
+                continue
+            if isinstance(event, BatchGenerationCancelledEvent):
+                effects.append(
+                    GenerationOutcomeEffect(event.item_id, "cancelled")
+                )
                 continue
             if isinstance(event, BatchGenerationFailedEvent):
                 self.worker_error = event.error
@@ -1126,6 +1152,9 @@ class TuiOperations:
                             f"Take {event.take_number}/{event.take_total}: {event.error}"
                         )
                     )
+                )
+                effects.append(
+                    GenerationOutcomeEffect(event.item_id, "failed")
                 )
                 continue
 
@@ -1196,10 +1225,23 @@ class TuiOperations:
                     effects.append(DiscardInitialBatchEffect(self._worker_item_id))
                     self.current_take = None
                     effects.append(FocusEffect(("pronunciation", pronunciation_index)))
+                if (
+                    self.worker_operation in {"initial", "regenerate_all"}
+                    and self._worker_item_id is not None
+                ):
+                    effects.append(
+                        GenerationOutcomeEffect(self._worker_item_id, "failed")
+                    )
 
             elif kind == "done":
                 operation = self.worker_operation
-                cancelled = self.cancellation_requested
+                finished_full_count = (
+                    operation in {"initial", "regenerate_all"}
+                    and self.operation_total > 0
+                    and self.operation_completed >= self.operation_total
+                    and self.worker_error is None
+                )
+                cancelled = self.cancellation_requested and not finished_full_count
                 self.busy = False
                 if operation == "preview":
                     status = None
@@ -1245,6 +1287,32 @@ class TuiOperations:
                     status = None
                 if status is not None:
                     effects.append(UpdateStatusEffect(status))
+                if (
+                    operation in {"initial", "regenerate_all"}
+                    and self._worker_item_id is not None
+                    and self.worker_error is None
+                ):
+                    if cancelled:
+                        effects.append(
+                            GenerationOutcomeEffect(
+                                self._worker_item_id,
+                                "cancelled",
+                            )
+                        )
+                    elif finished_full_count:
+                        effects.append(
+                            GenerationOutcomeEffect(
+                                self._worker_item_id,
+                                "completed",
+                            )
+                        )
+                    elif self.operation_total > 0:
+                        effects.append(
+                            GenerationOutcomeEffect(
+                                self._worker_item_id,
+                                "failed",
+                            )
+                        )
                 self.worker_operation = None
                 self.worker_target = None
                 self._worker_item_id = None
