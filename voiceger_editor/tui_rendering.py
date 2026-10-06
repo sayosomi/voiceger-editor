@@ -1428,13 +1428,11 @@ class TuiRenderer:
             plain()
             if editor.active_field == "filename_template":
                 input_field("filename_template")
-                preview_template = editor.input_value
             else:
                 wrapped_selectable_text(
                     "filename_template",
                     "Filename template  " + str(draft["filename_template"]),
                 )
-                preview_template = str(draft["filename_template"])
             plain()
             plain("Preview")
             preview_error = str(editor.payload.get("filename_preview_error", ""))
