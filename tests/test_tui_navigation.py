@@ -29,7 +29,6 @@ def context(
     has_session=True,
     pronunciation_count=4,
     candidate_numbers=(),
-    busy=False,
     has_active_batch=False,
     has_item_navigator=False,
 ):
@@ -37,7 +36,6 @@ def context(
         has_session=has_session,
         pronunciation_count=pronunciation_count,
         candidate_numbers=tuple(candidate_numbers),
-        busy=busy,
         has_active_batch=has_active_batch,
         has_item_navigator=has_item_navigator,
     )
@@ -268,7 +266,7 @@ class TuiNavigationTests(unittest.TestCase):
         self.assertEqual(self.navigation.pronunciation_index, 2)
         self.assertEqual(self.navigation.revision, 0)
 
-    def test_focus_actions_and_busy_guards(self):
+    def test_focus_actions_are_routed_without_global_busy_policy(self):
         state = context(candidate_numbers=(1,))
         mappings = (
             (("settings_summary", None), OpenSettingsEditor("style_id")),
@@ -292,16 +290,6 @@ class TuiNavigationTests(unittest.TestCase):
                 self.assertEqual(
                     self.navigation.activate_focused_item(state), (expected,)
                 )
-        self.navigation.focus_key = ("pronunciation", 1)
-        self.assertEqual(
-            self.navigation.activate_focused_item(context(busy=True)),
-            (UpdateNavigationStatus("Wait for synthesis to finish before editing pronunciation."),),
-        )
-        self.navigation.focus_key = ("add_section", None)
-        self.assertEqual(
-            self.navigation.activate_focused_item(context(busy=True)),
-            (UpdateNavigationStatus("Wait for synthesis to finish before adding a section."),),
-        )
 
     def test_direct_main_actions_share_focused_activation_semantics(self):
         for focus_key in (
@@ -326,19 +314,12 @@ class TuiNavigationTests(unittest.TestCase):
             ),
             (),
         )
-        busy = context(busy=True)
-        self.assertEqual(
-            self.navigation.activate_item(busy, ("build_pronunciation", None)),
-            (
-                UpdateNavigationStatus(
-                    "Wait for the current synthesis operation to finish."
-                ),
-            ),
-        )
         self.navigation.focus_key = ("clear_candidates", None)
         self.assertEqual(
-            self.navigation.activate_focused_item(context(candidate_numbers=(1,), busy=True)),
-            (UpdateNavigationStatus("Finish or cancel synthesis before clearing candidates."),),
+            self.navigation.activate_focused_item(
+                context(candidate_numbers=(1,))
+            ),
+            (OpenClearCandidatesConfirmation(),),
         )
         self.assertEqual(
             self.navigation.activate_item(context(), ("clear_candidates", None)),
@@ -346,26 +327,10 @@ class TuiNavigationTests(unittest.TestCase):
         )
         self.assertEqual(
             self.navigation.activate_item(
-                context(candidate_numbers=(), busy=True),
+                context(candidate_numbers=()),
                 ("clear_candidates", None),
             ),
-            (UpdateNavigationStatus("Finish or cancel synthesis before clearing candidates."),),
-        )
-        self.assertEqual(
-            self.navigation.activate_item(busy, ("add_section", None)),
-            (
-                UpdateNavigationStatus(
-                    "Wait for synthesis to finish before adding a section."
-                ),
-            ),
-        )
-        self.assertEqual(
-            self.navigation.activate_item(busy, ("delete_caption", None)),
-            (UpdateNavigationStatus("Finish or cancel synthesis before deleting Caption."),),
-        )
-        self.assertEqual(
-            self.navigation.activate_item(busy, ("generate", None)),
-            (StartGeneration(),),
+            (),
         )
 
     def test_generate_regenerate_and_candidate_regeneration_behavior(self):
@@ -383,10 +348,6 @@ class TuiNavigationTests(unittest.TestCase):
                 context(candidate_numbers=(2, 6))
             ),
             (RegenerateCandidate(6),),
-        )
-        self.assertEqual(
-            self.navigation.activate_regenerate_focused(context(busy=True)),
-            (UpdateNavigationStatus("Wait for the current synthesis operation to finish."),),
         )
 
     def test_rebuild_resets_to_first_pronunciation_child(self):
