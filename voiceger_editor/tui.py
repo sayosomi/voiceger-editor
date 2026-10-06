@@ -12,7 +12,7 @@ from .tui_batch_item import BatchItemBindings, TuiBatchItemController
 from .tui_batch_recipe import TuiBatchRecipeController
 from .settings import Settings, save_settings
 from .tui_settings import TuiSettingsController
-from .tui_status import EMPTY_STATUS, error_status, info_status
+from .tui_status import EMPTY_STATUS, Status, error_status, info_status
 from .styles import available_styles
 from .tui_cli import build_argument_parser, settings_for_invocation
 from .tui_display import _adjustable_value, format_english_phonemes
@@ -22,7 +22,13 @@ from .tui_dictionary import (
     TuiDictionaryController,
 )
 from .tui_help import HelpOutcome, TuiHelpController
-from .tui_rendering import TuiRenderer, TuiRenderState, _HELP_ITEMS, _active_input_prefix
+from .tui_rendering import (
+    TuiRenderer,
+    TuiRenderState,
+    _HELP_ITEMS,
+    _active_input_prefix,
+    background_with_cancel_generation_hint,
+)
 from .tui_editors import (
     AdjustmentPressedIntent, ApplyCaptionIntent, ApplySettingsIntent,
     BuildPronunciationIntent, BuildPronunciationResult, CaptionApplicationResult,
@@ -50,6 +56,7 @@ from .tui_operations import (
 from .tui_navigation import NavigationAction, NavigationContext, TuiNavigation
 from .tui_output_path import BeginOutputPathEditIntent, TuiOutputPathController
 from .tui_input import TuiInputReader
+from .tui_interrupts import TuiInterruptController
 from .voiceger_adapter import VoicegerAdapter
 
 
@@ -124,6 +131,7 @@ class TuiApp:
         self._pressed_adjustment: tuple[str, str, int] | None = None
         self._renderer = TuiRenderer()
         self._input = TuiInputReader()
+        self._interrupt_controller = TuiInterruptController()
         self._batch_item_controller = TuiBatchItemController(self._batch)
         self._batch_action_bindings = tui_batch.BatchActionBindings(
             operations=self._operations,
@@ -243,19 +251,15 @@ class TuiApp:
 
     def _read_key(self) -> Any:
         editor = self._editor_controller.editor
-        try:
-            key = self._input.read(
-                self._screen,
-                infer_paste_newlines=bool(
-                    editor is not None
-                    and editor.kind == "caption"
-                    and editor.active_field is not None
-                    and editor.payload.get("multiline", False)
-                ),
-            )
-        except KeyboardInterrupt:
-            self._activate_quit()
-            return None
+        key = self._input.read(
+            self._screen,
+            infer_paste_newlines=bool(
+                editor is not None
+                and editor.kind == "caption"
+                and editor.active_field is not None
+                and editor.payload.get("multiline", False)
+            ),
+        )
         if key == -1:
             return None
         if key == _ESCAPE:
@@ -273,8 +277,11 @@ class TuiApp:
         )
 
     def _handle_key(self, key: Any) -> None:
-        if key == _ESCAPE and self._operations.can_cancel_batch:
-            self._dispatch_operation_effects(self._operations.request_batch_cancellation())
+        interrupt = self._interrupt_controller.handle_key(key, self._operations)
+        if interrupt.handled:
+            self._dispatch_operation_effects(interrupt.effects)
+            if interrupt.quit_requested:
+                self._activate_quit()
             return
         if self._help_controller.active:
             height, width = (
@@ -385,6 +392,7 @@ class TuiApp:
         )
 
     def _activate_quit(self) -> None:
+        self._help_controller.close()
         self._exit_requested = True
         self._dispatch_operation_effects(self._operations.request_shutdown())
 
@@ -618,7 +626,8 @@ class TuiApp:
     ) -> None:
         for effect in effects:
             if isinstance(effect, UpdateStatusEffect):
-                self._status = effect.status
+                if effect.channel != "background":
+                    self._status = effect.status
             elif isinstance(effect, FocusEffect):
                 self._dispatch_navigation_actions(
                     self._navigation.set_focus_key(
@@ -639,9 +648,12 @@ class TuiApp:
             elif isinstance(effect, StopPlaybackEffect):
                 self._operations.stop_playback()
             elif isinstance(effect, DiscardInitialBatchEffect):
-                if self.session is not None:
-                    self.session.discard_takes()
-                self._batch.clear_open_item_acceptance()
+                if effect.item_id is not None:
+                    self._batch.discard_item_candidates(effect.item_id)
+                else:
+                    if self.session is not None:
+                        self.session.discard_takes()
+                    self._batch.clear_open_item_acceptance()
             elif isinstance(effect, TakeAcceptedEffect):
                 self._batch.complete_acceptance(effect.item_id, effect.number)
             elif isinstance(effect, DictionaryOperationCompletedEffect):
@@ -665,13 +677,19 @@ class TuiApp:
                     effect.number,
                 )
             elif isinstance(effect, CandidateReplacedEffect):
-                if self._batch.open_item_accepted_take_number == effect.number:
+                if effect.item_id is not None:
+                    self._batch.invalidate_acceptance_for_replacement(
+                        effect.item_id,
+                        effect.number,
+                    )
+                elif self._batch.open_item_accepted_take_number == effect.number:
                     self._batch.clear_open_item_acceptance()
 
     def _render_state(
         self,
         *,
         segments: Sequence[tuple[str, str, int | None]] | None = None,
+        status: Status | None = None,
     ) -> TuiRenderState:
         if segments is None:
             segments = self._segments() if self.session is not None else ()
@@ -681,7 +699,7 @@ class TuiApp:
             settings=self.settings,
             session=self.session,
             focus_key=self._navigation.focus_key,
-            status=self._status,
+            status=self._status if status is None else status,
             segments=segments,
             pronunciation_rows=pronunciation_rows,
             busy=self._operations.busy,
@@ -701,6 +719,12 @@ class TuiApp:
             batch_item_position=(
                 self._batch.item_position if self._batch.in_item else None
             ),
+            batch_item_id=self._batch.open_item_id,
+            active_generation_item_id=self._operations.active_generation_item_id,
+            background_status=background_with_cancel_generation_hint(
+                self._operations.background_generation_status(self._batch.batch),
+                self._operations.can_cancel_batch,
+            ),
             output_path_edit=self._output_path_controller.state,
         )
 
@@ -709,6 +733,11 @@ class TuiApp:
             return
         screen = self._screen
         height, width = screen.getmaxyx()
+        render_status = self._status
+        background_status = background_with_cancel_generation_hint(
+            self._operations.background_generation_status(self._batch.batch),
+            self._operations.can_cancel_batch,
+        )
         screen.erase()
         try:
             editor = (
@@ -730,13 +759,19 @@ class TuiApp:
             pass
         if self._help_controller.active:
             self._help_controller.clamp_scroll(
-                self._renderer.help_max_scroll(height, width, self._status)
+                self._renderer.help_max_scroll(
+                    height,
+                    width,
+                    render_status,
+                    background_status,
+                )
             )
             self._renderer.render_help(
                 screen,
                 width,
                 self._help_controller.scroll,
-                status=self._status,
+                status=render_status,
+                background_status=background_status,
             )
         elif (
             self._batch_recipe_controller.active
@@ -744,19 +779,25 @@ class TuiApp:
             or self._editor_controller.editor is not None
         ):
             self._renderer.render_editor(
-                screen, self._render_state(segments=()), height, width
+                screen,
+                self._render_state(segments=(), status=render_status),
+                height,
+                width,
             )
         elif self._batch.delete_confirmation_active or not self._batch.in_item:
             self._renderer.render_batch_list(
                 screen,
                 self._batch.batch,
                 self._batch.focus_key,
-                self._status,
+                render_status,
                 height,
                 width,
                 delete_confirmation_caption=self._batch.delete_confirmation_caption,
                 delete_confirmation_selection=self._batch.delete_confirmation_selection,
                 pressed_adjustment=self._pressed_adjustment,
+                active_generation=self._operations.active_item_generation_progress,
+                generation_busy=self._operations.generation_slot_busy,
+                background_status=background_status,
             )
         else:
             self._dispatch_navigation_actions(
@@ -765,7 +806,11 @@ class TuiApp:
                 )
             )
             self._renderer.render_navigation(
-                screen, self._render_state(), height, width, title=self._batch.item_title
+                screen,
+                self._render_state(status=render_status),
+                height,
+                width,
+                title=self._batch.item_title,
             )
         screen.refresh()
         self._pressed_adjustment = None

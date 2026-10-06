@@ -42,6 +42,11 @@ the same order, while blank-only lines are ignored. The normal editor for an
 existing Caption still uses Enter to finish editing and never splits that
 Caption into multiple items.
 
+When an individual Caption is still generating in the background, `Add captions`
+remains available from BATCH LIST and does not cancel or retarget that generation.
+Editing an existing Caption remains unavailable until its synthesis-affecting work
+is finished.
+
 ## Read and Write batch recipes
 
 The Batch List exposes `[R] Read batch` and `[W] Write batch` for logical
@@ -80,9 +85,10 @@ editable and can generate new Takes.
 - Left / Right: adjust Batch List Takes or a supported Batch Item value.
 - Tab / Shift+Tab: move between major areas inside a Batch Item.
 - Space: toggle Batch List inclusion, or replay the selected Take inside a Batch Item.
-- Esc: go back one level; active synthesis cancellation takes precedence when available.
+- Esc: go back one level. Active Take generation continues in the background.
+- Ctrl+C: cancel active cancellable Take generation; otherwise quit.
 - `?`: Help.
-- `q`: Quit.
+- `q`: Quit explicitly, including while generation is active.
 
 The TUI uses one vertical navigation flow. Editing opens a focused editor instead of changing values accidentally during normal navigation.
 
@@ -196,7 +202,24 @@ The Generate row can adjust the Take count with Left / Right.
 
 If Takes already exist, Generate replaces the complete candidate set.
 
-During a multi-Take generation batch, Esc requests cancellation. Cancellation occurs at a safe Take boundary rather than interrupting synthesis in the middle of one Take.
+During cancellable Take generation, Esc keeps its normal Back meaning. You can return from a generating Batch Item to BATCH LIST and generation continues for that Caption in the background.
+
+While an individual Generate or regenerate-all operation remains active, the originating Caption row in BATCH LIST shows live completed-Take progress as a percentage, including `[0%]` before the first Take completes. When that operation ends, the row returns to the normal candidate-state display.
+
+Voiceger Editor keeps a single synthesis slot and does not queue another Generate request behind active work. When another Batch Item is open during generation, its Generate row remains visible but is marked `[busy]` and does not show the other Caption's progress. BATCH LIST similarly marks `Generate selected` as `[busy]`. Activating either action does not start, replace, or queue work; Status identifies the active Caption or batch generation and tells you to finish or cancel it first. Busy Generate rows omit adjustable angle brackets because the Take count is not currently actionable.
+
+Active Take generation has its own persistent footer line, separate from ordinary Status. For example:
+
+```text
+Generating: Caption 1 · 2/4 (50%) · [Ctrl+C] Cancel generation
+Warning: Generate Caption 2 is unavailable while generation is active.
+```
+
+Generation progress continues to update without erasing the Warning response to a blocked Generate action. Unrelated Status messages likewise do not hide the active generation indicator. The extra progress row disappears when generation ends.
+
+Press Ctrl+C to request generation cancellation. Cancellation occurs at a safe Take boundary rather than interrupting synthesis in the middle of one Take, so any completed Takes are preserved and the application remains open. While cancellation is available, the generation progress line shows `[Ctrl+C] Cancel generation`.
+
+If generation finishes at the same moment you press Ctrl+C, Voiceger Editor keeps a completion guard so that Ctrl+C does not accidentally quit or discard the finished results. Repeated Ctrl+C remains harmless until another non-Ctrl+C interaction restores the normal idle Ctrl+C Quit meaning. The `q` shortcut remains the explicit Quit action at all times.
 
 ## Listen to Takes
 

@@ -197,6 +197,37 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(controller.move_selection(1), ())
         self.assertEqual(editor.selection, keys[-1])
 
+    def test_add_captions_editor_remains_available_while_synthesis_is_busy(self):
+        controller, _provider = self.make_controller()
+
+        intents = controller.open_caption(
+            "",
+            current_caption=None,
+            origin=("add_captions", None),
+            busy=True,
+            multiline=True,
+        )
+
+        self.assertEqual(controller.editor.title, "ADD CAPTIONS")
+        self.assertEqual(controller.editor.active_field, "draft")
+        self.assertEqual(intents[0], UpdateStatusIntent(""))
+
+    def test_existing_caption_editor_stays_blocked_while_synthesis_is_busy(self):
+        controller, _provider = self.make_controller()
+
+        intents = controller.open_caption(
+            "existing",
+            current_caption="existing",
+            origin=("caption", None),
+            busy=True,
+        )
+
+        self.assertIsNone(controller.editor)
+        self.assertEqual(
+            intents,
+            (UpdateStatusIntent("Wait for synthesis to finish before editing Caption."),),
+        )
+
     def test_add_captions_editor_accepts_paste_and_ctrl_n_newlines(self):
         controller, _provider = self.make_controller()
         controller.open_caption(

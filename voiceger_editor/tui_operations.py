@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stderr, redirect_stdout
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import os
 import queue
@@ -28,13 +28,15 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class UpdateStatusEffect:
     status: Status
+    channel: str = field(default="status", compare=False)
 
-    def __init__(self, status: Status | str) -> None:
+    def __init__(self, status: Status | str, *, channel: str = "status") -> None:
         object.__setattr__(
             self,
             "status",
             status if isinstance(status, Status) else info_status(status),
         )
+        object.__setattr__(self, "channel", channel)
 
 
 @dataclass(frozen=True)
@@ -54,7 +56,7 @@ class StopPlaybackEffect:
 
 @dataclass(frozen=True)
 class DiscardInitialBatchEffect:
-    pass
+    item_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,7 @@ class BatchCandidateReplacedEffect:
 @dataclass(frozen=True)
 class CandidateReplacedEffect:
     number: int
+    item_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -201,6 +204,8 @@ class TuiOperations:
         self.operation_focus_revision = 0
         self._cancellation_event: Event | None = None
         self.cancellation_requested = False
+        self._worker_item_id: str | None = None
+        self._ctrl_c_cancellation_guard = False
         self.current_take: int | None = None
         self.playback_process: subprocess.Popen[Any] | None = None
         self._preview_temporary_directory: (
@@ -218,7 +223,7 @@ class TuiOperations:
 
         if self.busy:
             return (
-                UpdateStatusEffect("A sequential take operation is already running."),
+                UpdateStatusEffect("Another operation is already running."),
             )
 
         selected = batch.included_items
@@ -241,6 +246,7 @@ class TuiOperations:
         self.busy = True
         self.worker_operation = "batch_generate"
         self.worker_target = None
+        self._worker_item_id = None
         self.worker_error = None
         self.operation_focus_revision = navigation_revision
         self.operation_completed = 0
@@ -248,6 +254,7 @@ class TuiOperations:
         cancellation_event = Event()
         self._cancellation_event = cancellation_event
         self.cancellation_requested = False
+        self._ctrl_c_cancellation_guard = True
 
         def work() -> None:
             overall_completed = 0
@@ -362,7 +369,8 @@ class TuiOperations:
                 f"Generating {len(plan)} selected Caption(s), "
                 f"{overall_total} take(s) total · "
                 f"Caption 1/{len(plan)} · Take 1/{first_take_total} · "
-                f"Overall 0/{overall_total}"
+                f"Overall 0/{overall_total}",
+                channel="background",
             ),
         )
 
@@ -372,10 +380,11 @@ class TuiOperations:
         *,
         take_count: int,
         navigation_revision: int,
+        item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
         if self.busy:
             return (
-                UpdateStatusEffect("A sequential take operation is already running."),
+                UpdateStatusEffect("Another operation is already running."),
             )
         if session is None:
             return ()
@@ -398,6 +407,7 @@ class TuiOperations:
             operation="initial",
             take_count=take_count,
             navigation_revision=navigation_revision,
+            item_id=item_id,
         )
 
     def start_regeneration(
@@ -407,7 +417,12 @@ class TuiOperations:
         *,
         take_count: int,
         navigation_revision: int,
+        item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
+        if self.busy:
+            return (
+                UpdateStatusEffect("Another operation is already running."),
+            )
         if session is None:
             return ()
         self.stop_playback()
@@ -419,6 +434,7 @@ class TuiOperations:
             target=number,
             take_count=take_count,
             navigation_revision=navigation_revision,
+            item_id=item_id,
         )
 
     def start_regenerate_all(
@@ -427,7 +443,12 @@ class TuiOperations:
         *,
         take_count: int,
         navigation_revision: int,
+        item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
+        if self.busy:
+            return (
+                UpdateStatusEffect("Another operation is already running."),
+            )
         if session is None:
             return ()
         try:
@@ -442,6 +463,7 @@ class TuiOperations:
             operation="regenerate_all",
             take_count=take_count,
             navigation_revision=navigation_revision,
+            item_id=item_id,
         )
 
     def start_preview(
@@ -619,10 +641,12 @@ class TuiOperations:
         take_count: int,
         navigation_revision: int,
         target: int | None = None,
+        item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
         self.busy = True
         self.worker_operation = operation
         self.worker_target = target
+        self._worker_item_id = item_id
         self.worker_error = None
         self.operation_focus_revision = navigation_revision
         self.operation_completed = 0
@@ -630,6 +654,8 @@ class TuiOperations:
         cancellation_event = Event()
         self._cancellation_event = cancellation_event
         self.cancellation_requested = False
+        if operation in {"initial", "regenerate_all"}:
+            self._ctrl_c_cancellation_guard = True
 
         def work() -> None:
             try:
@@ -653,7 +679,7 @@ class TuiOperations:
             daemon=True,
         )
         self.worker.start()
-        return (UpdateStatusEffect(status),)
+        return (UpdateStatusEffect(status, channel="background"),)
 
     @property
     def can_cancel_batch(self) -> bool:
@@ -664,6 +690,171 @@ class TuiOperations:
             "regenerate_all",
             "batch_generate",
         }
+
+    @property
+    def active_item_generation_progress(self) -> tuple[str, int, int] | None:
+        """Return progress for the currently generating individual Batch Item."""
+
+        if (
+            not self.busy
+            or self.worker_operation not in {"initial", "regenerate_all"}
+            or self._worker_item_id is None
+            or self.operation_total <= 0
+        ):
+            return None
+        return (
+            self._worker_item_id,
+            self.operation_completed,
+            self.operation_total,
+        )
+
+    @property
+    def active_generation_item_id(self) -> str | None:
+        """Return the stable owner of an active individual Take operation."""
+
+        if (
+            not self.busy
+            or self.worker_operation
+            not in {"initial", "regenerate_one", "regenerate_all"}
+        ):
+            return None
+        return self._worker_item_id
+
+    @property
+    def generation_slot_busy(self) -> bool:
+        """Whether a Take synthesis operation currently owns the single slot."""
+
+        return self.busy and self.worker_operation in {
+            "initial",
+            "regenerate_one",
+            "regenerate_all",
+            "batch_generate",
+        }
+
+    def background_generation_status(self, batch: CaptionBatch) -> str:
+        """Describe active Take synthesis independently from transient Status."""
+
+        if not self.generation_slot_busy:
+            return ""
+
+        def caption_number(item_id: str | None) -> int | None:
+            if item_id is None:
+                return None
+            try:
+                item = batch.get_item(item_id)
+            except KeyError:
+                return None
+            return batch.items.index(item) + 1
+
+        operation = self.worker_operation
+        total = max(0, self.operation_total)
+        completed = max(0, min(self.operation_completed, total)) if total else 0
+        percent = round(completed * 100 / total) if total else 0
+
+        if operation in {"initial", "regenerate_all"}:
+            number = caption_number(self._worker_item_id)
+            owner = f"Caption {number}" if number is not None else "Caption"
+            verb = "Regenerating" if operation == "regenerate_all" else "Generating"
+            return f"{verb}: {owner} · {completed}/{total} ({percent}%)"
+
+        if operation == "regenerate_one":
+            number = caption_number(self._worker_item_id)
+            owner = f"Caption {number}" if number is not None else "Caption"
+            return f"Regenerating: {owner} · Take {self.worker_target}"
+
+        if operation == "batch_generate":
+            return (
+                f"Generating: selected Captions · "
+                f"{completed}/{total} ({percent}%)"
+            )
+
+        return ""
+
+    def generation_conflict_status(
+        self,
+        batch: CaptionBatch,
+        *,
+        requested_item_id: str | None = None,
+        requested_batch: bool = False,
+    ) -> Status | None:
+        """Explain why a new generation request cannot start right now."""
+
+        if not self.busy:
+            return None
+
+        def caption_number(item_id: str | None) -> int | None:
+            if item_id is None:
+                return None
+            try:
+                item = batch.get_item(item_id)
+            except KeyError:
+                return None
+            return batch.items.index(item) + 1
+
+        operation = self.worker_operation
+        active_number = caption_number(self._worker_item_id)
+        requested_number = caption_number(requested_item_id)
+        individual_generation = operation in {
+            "initial",
+            "regenerate_one",
+            "regenerate_all",
+        }
+        batch_generation = operation == "batch_generate"
+
+        if requested_batch:
+            if batch_generation:
+                return warning_status("Generate selected is already running.")
+            if individual_generation:
+                return warning_status(
+                    "Generate selected is unavailable while generation is active."
+                )
+            return warning_status(
+                "Generate selected is unavailable while another operation is active."
+            )
+
+        if requested_number is not None:
+            if individual_generation and active_number == requested_number:
+                return warning_status(
+                    f"Caption {requested_number} is already generating."
+                )
+            if batch_generation:
+                return warning_status(
+                    f"Generate Caption {requested_number} is unavailable "
+                    "while batch generation is active."
+                )
+            if individual_generation:
+                return warning_status(
+                    f"Generate Caption {requested_number} is unavailable "
+                    "while generation is active."
+                )
+            return warning_status(
+                f"Generate Caption {requested_number} is unavailable "
+                "while another operation is active."
+            )
+
+        if batch_generation:
+            return warning_status(
+                "Generate is unavailable while batch generation is active."
+            )
+        if individual_generation:
+            return warning_status(
+                "Generate is unavailable while generation is active."
+            )
+        return warning_status(
+            "Generate is unavailable while another operation is active."
+        )
+
+    @property
+    def cancellation_guard_armed(self) -> bool:
+        """Whether Ctrl+C still belongs to the most recent cancellable generation."""
+
+        return self._ctrl_c_cancellation_guard
+
+    def clear_completed_cancellation_guard(self) -> None:
+        """Release Ctrl+C back to quit after post-generation user interaction."""
+
+        if not self.can_cancel_batch:
+            self._ctrl_c_cancellation_guard = False
 
     def request_batch_cancellation(self) -> tuple[OperationEffect, ...]:
         """Request cancellation at the next take boundary."""
@@ -785,11 +976,13 @@ class TuiOperations:
                     )
                 continue
             if isinstance(event, BatchGenerationProgressEvent):
+                self.operation_completed = event.overall_completed
                 effects.append(
                     UpdateStatusEffect(
                         f"Caption {event.caption_number}/{event.caption_total} · "
                         f"Take {event.take_number}/{event.take_total} · "
-                        f"Overall {event.overall_completed}/{event.overall_total}"
+                        f"Overall {event.overall_completed}/{event.overall_total}",
+                        channel="background",
                     )
                 )
                 continue
@@ -799,7 +992,8 @@ class TuiOperations:
                     UpdateStatusEffect(
                         f"Caption {event.caption_number}/{event.caption_total} · "
                         f"Take {event.take_number}/{event.take_total} · "
-                        f"Overall {event.overall_completed}/{event.overall_total}"
+                        f"Overall {event.overall_completed}/{event.overall_total}",
+                        channel="background",
                     )
                 )
                 if event.replacing_existing:
@@ -840,7 +1034,7 @@ class TuiOperations:
                     )
                 else:
                     status = f"Take {value.number} replacement ready."
-                effects.append(UpdateStatusEffect(status))
+                effects.append(UpdateStatusEffect(status, channel="background"))
 
                 if operation == "initial":
                     if (
@@ -851,14 +1045,24 @@ class TuiOperations:
                         effects.append(FocusEffect(("candidate", value.number)))
                         effects.append(PlayTakeEffect(value.number))
                 elif operation == "regenerate_one":
-                    effects.append(CandidateReplacedEffect(value.number))
+                    effects.append(
+                        CandidateReplacedEffect(
+                            value.number,
+                            item_id=self._worker_item_id,
+                        )
+                    )
                     if (
                         value.number == self.worker_target
                         and self.current_take == value.number
                     ):
                         effects.append(PlayTakeEffect(value.number))
                 elif operation == "regenerate_all":
-                    effects.append(CandidateReplacedEffect(value.number))
+                    effects.append(
+                        CandidateReplacedEffect(
+                            value.number,
+                            item_id=self._worker_item_id,
+                        )
+                    )
                     if value.number == self.current_take:
                         effects.append(PlayTakeEffect(value.number))
 
@@ -877,7 +1081,7 @@ class TuiOperations:
                     and not self.cancellation_requested
                 ):
                     effects.append(StopPlaybackEffect())
-                    effects.append(DiscardInitialBatchEffect())
+                    effects.append(DiscardInitialBatchEffect(self._worker_item_id))
                     self.current_take = None
                     effects.append(FocusEffect(("pronunciation", pronunciation_index)))
 
@@ -903,11 +1107,11 @@ class TuiOperations:
                             "take(s) ready."
                         )
                 elif cancelled and operation == "initial":
-                    ready = len(session.candidates) if session is not None else 0
+                    ready = self.operation_completed
                     status = f"Generation cancelled. {ready} take(s) ready."
                     if ready == 0:
                         effects.append(StopPlaybackEffect())
-                        effects.append(DiscardInitialBatchEffect())
+                        effects.append(DiscardInitialBatchEffect(self._worker_item_id))
                         self.current_take = None
                         effects.append(
                             FocusEffect(("pronunciation", pronunciation_index))
@@ -919,12 +1123,8 @@ class TuiOperations:
                     )
                 elif self.worker_error is not None:
                     status = error_status(f"Generation failed: {self.worker_error}")
-                elif (
-                    operation == "initial"
-                    and session is not None
-                    and session.candidates
-                ):
-                    status = f"{len(session.candidates)} take(s) ready."
+                elif operation == "initial" and self.operation_completed:
+                    status = f"{self.operation_completed} take(s) ready."
                 elif operation in {"regenerate_one", "regenerate_all"}:
                     status = "Take regeneration finished."
                 elif not exit_requested:
@@ -935,6 +1135,7 @@ class TuiOperations:
                     effects.append(UpdateStatusEffect(status))
                 self.worker_operation = None
                 self.worker_target = None
+                self._worker_item_id = None
                 self._cancellation_event = None
                 self.cancellation_requested = False
 

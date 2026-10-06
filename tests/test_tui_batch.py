@@ -50,9 +50,11 @@ class TuiBatchControllerTests(unittest.TestCase):
         operations.worker_operation = None
         operations.start_batch_generation.return_value = ()
         operations.start_session_preparation.return_value = ()
+        operations.generation_conflict_status.return_value = None
         navigation = SimpleNamespace(
             focus_key=("takes", None),
             revision=7,
+            mark_context_change=Mock(),
             reset_pronunciation_index=Mock(),
         )
         return BatchActionBindings(
@@ -317,6 +319,7 @@ class TuiBatchControllerTests(unittest.TestCase):
 
         bindings.operations.stop_playback.assert_called_once_with()
         bindings.operations.clear_current_take.assert_called_once_with()
+        bindings.navigation.mark_context_change.assert_called_once_with()
         bindings.editor_controller.clear_groupings.assert_called_once_with()
         bindings.set_session.assert_called_once_with(
             controller.batch.items[1].session

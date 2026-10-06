@@ -39,6 +39,38 @@ from .tui_shortcuts import (
 from .tui_status import EMPTY_STATUS, Status, StatusKind, format_status
 
 
+_CANCEL_GENERATION_HINT = "[Ctrl+C] Cancel generation"
+
+
+def status_with_cancel_generation_hint(
+    status: Status,
+    cancel_generation_available: bool,
+) -> Status:
+    """Add the generation-cancellation affordance without mutating Status."""
+
+    if not cancel_generation_available:
+        return status
+    message = (
+        f"{status} · {_CANCEL_GENERATION_HINT}"
+        if status
+        else _CANCEL_GENERATION_HINT
+    )
+    return Status(status.kind, message)
+
+
+def background_with_cancel_generation_hint(
+    message: str,
+    cancel_generation_available: bool,
+) -> str:
+    """Add the cancellation affordance to background progress presentation."""
+
+    if not message:
+        return ""
+    if not cancel_generation_available:
+        return message
+    return f"{message} · {_CANCEL_GENERATION_HINT}"
+
+
 _DICTIONARY_SORT_LABELS = {
     "surface_asc": "Surface ↑",
     "surface_desc": "Surface ↓",
@@ -65,10 +97,8 @@ _HELP_ITEMS = (
         main_shortcut("delete_caption").shortcut.upper(),
         ": delete current Batch Item Caption through confirmation",
     ),
-    (
-        "Esc",
-        ": one level back; active synthesis cancellation takes precedence",
-    ),
+    ("Esc", ": one level back"),
+    ("Ctrl+C", ": cancel active Take generation; otherwise quit"),
     ("Tab / Shift+Tab", ": next / previous major Batch Item section"),
     (
         " / ".join(
@@ -129,6 +159,9 @@ class TuiRenderState:
     editor: EditorRenderState | None
     accepted_take_number: int | None = None
     batch_item_position: tuple[int, int] | None = None
+    batch_item_id: str | None = None
+    active_generation_item_id: str | None = None
+    background_status: str = ""
     output_path_edit: OutputPathEditRenderState | None = None
 
 
@@ -147,6 +180,7 @@ class StatusFooterLayout:
     start_row: int
     lines: tuple[str, ...]
     status: Status | None
+    background_line_count: int = 0
 
 
 def _active_input_prefix(editor: EditorRenderState) -> str:
@@ -277,21 +311,34 @@ class TuiRenderer:
         width: int,
         *,
         fallback_hint: str | None = None,
+        background_status: str = "",
     ) -> StatusFooterLayout:
+        available = max(1, width - 1)
+        background_lines = (
+            tuple(_wrap_text(background_status, available))
+            if background_status
+            else ()
+        )
         visible_status = status if status else None
         text = (
             format_status(visible_status)
             if visible_status is not None
             else (fallback_hint or "")
         )
-        lines = tuple(_wrap_text(text, max(1, width - 1))) if text else ()
+        status_lines = tuple(_wrap_text(text, available)) if text else ()
+        lines = background_lines + status_lines
         reserved_height = max(1, len(lines))
         start_row = max(0, height - reserved_height)
         if height <= 0:
             visible_lines: tuple[str, ...] = ()
         else:
             visible_lines = lines[: max(0, height - start_row)]
-        return StatusFooterLayout(start_row, visible_lines, visible_status)
+        return StatusFooterLayout(
+            start_row,
+            visible_lines,
+            visible_status,
+            min(len(background_lines), len(visible_lines)),
+        )
 
     def _render_status_footer(
         self,
@@ -301,12 +348,12 @@ class TuiRenderer:
     ) -> None:
         if not layout.lines:
             return
-        attr = (
-            self._status_attribute(layout.status)
-            if layout.status is not None
-            else self._attribute("A_BOLD")
-        )
         for offset, line in enumerate(layout.lines):
+            attr = (
+                self._attribute("A_BOLD")
+                if offset < layout.background_line_count or layout.status is None
+                else self._status_attribute(layout.status)
+            )
             self._safe_add(
                 screen,
                 layout.start_row + offset,
@@ -395,10 +442,16 @@ class TuiRenderer:
         height: int,
         width: int,
         status: Status = EMPTY_STATUS,
+        background_status: str = "",
     ) -> int:
         """Return the largest valid Help body scroll offset."""
 
-        footer = self._status_footer_layout(status, height, width)
+        footer = self._status_footer_layout(
+            status,
+            height,
+            width,
+            background_status=background_status,
+        )
         back_row = max(0, footer.start_row - 1)
         body_rows = max(0, back_row - 1)
         return max(0, len(self.help_document(width)) - body_rows)
@@ -410,12 +463,18 @@ class TuiRenderer:
         scroll: int = 0,
         *,
         status: Status = EMPTY_STATUS,
+        background_status: str = "",
     ) -> int:
         """Render one Help viewport and return its clamped scroll offset."""
 
         safe_add = self._safe_add
         height = screen.getmaxyx()[0]
-        footer = self._status_footer_layout(status, height, width)
+        footer = self._status_footer_layout(
+            status,
+            height,
+            width,
+            background_status=background_status,
+        )
         back_row = max(0, footer.start_row - 1)
         if back_row > 0:
             safe_add(screen, 0, 0, "HELP", width, self._attribute("A_BOLD"))
@@ -453,6 +512,7 @@ class TuiRenderer:
         status: Status,
         height: int,
         width: int,
+        background_status: str = "",
     ) -> None:
         """Render Caption deletion with the standard modal layout."""
 
@@ -475,7 +535,12 @@ class TuiRenderer:
                 wrap_text=_wrap_text,
             )
         )
-        footer = self._status_footer_layout(status, height, width)
+        footer = self._status_footer_layout(
+            status,
+            height,
+            width,
+            background_status=background_status,
+        )
         viewport_height = max(0, footer.start_row - 1)
         focused_index = next(
             index for index, (_line, key) in enumerate(document) if key == "delete"
@@ -500,6 +565,8 @@ class TuiRenderer:
         focus_key: tuple[str, int | None],
         width: int,
         pressed_adjustment: tuple[str, str, int] | None = None,
+        active_generation: tuple[str, int, int] | None = None,
+        generation_busy: bool = False,
     ) -> list[NavigationLine]:
         """Build the top-level Batch List document."""
 
@@ -531,7 +598,17 @@ class TuiRenderer:
             marker = "▶ " if key == focus_key else "  "
             selected = "x" if item.included_for_generation else " "
             candidate_count = len(item.session.candidates)
-            if item.is_accepted:
+            active_progress = (
+                active_generation
+                if active_generation is not None
+                and active_generation[0] == item.item_id
+                else None
+            )
+            if active_progress is not None:
+                _item_id, completed, total = active_progress
+                percent = round(completed * 100 / total)
+                review_state = f"[{percent}%] "
+            elif item.is_accepted:
                 review_state = "[✓] "
             elif candidate_count:
                 target_count = batch.effective_take_count(item)
@@ -564,7 +641,10 @@ class TuiRenderer:
             if group_index:
                 plain()
             for name in names:
-                action((name, None), batch_list_shortcut(name).display_label)
+                label = batch_list_shortcut(name).display_label
+                if name == "generate_selected" and generation_busy:
+                    label += " [busy]"
+                action((name, None), label)
         return lines
 
     def render_batch_list(
@@ -579,6 +659,9 @@ class TuiRenderer:
         delete_confirmation_caption: str | None = None,
         delete_confirmation_selection: str = "delete",
         pressed_adjustment: tuple[str, str, int] | None = None,
+        active_generation: tuple[str, int, int] | None = None,
+        generation_busy: bool = False,
+        background_status: str = "",
     ) -> None:
         """Render the top-level Batch List screen."""
 
@@ -590,6 +673,7 @@ class TuiRenderer:
                 status,
                 height,
                 width,
+                background_status,
             )
             return
 
@@ -617,8 +701,15 @@ class TuiRenderer:
             focus_key,
             width,
             pressed_adjustment,
+            active_generation,
+            generation_busy,
         )
-        footer = self._status_footer_layout(status, height, width)
+        footer = self._status_footer_layout(
+            status,
+            height,
+            width,
+            background_status=background_status,
+        )
         viewport_height = max(0, footer.start_row - 2)
         focused_index = next(
             (
@@ -736,7 +827,12 @@ class TuiRenderer:
             )
 
         lines = self.navigation_document(state, width)
-        footer = self._status_footer_layout(state.status, height, width)
+        footer = self._status_footer_layout(
+            state.status,
+            height,
+            width,
+            background_status=state.background_status,
+        )
         viewport_height = max(0, footer.start_row - 4)
         focused_index = next(
             (
@@ -904,10 +1000,12 @@ class TuiRenderer:
                 main_shortcut("add_section").display_label,
             )
             has_batch = session.has_active_batch
-            if (
+            owns_generation = (
                 state.busy
-                and state.worker_operation not in {"accept", "prepare"}
-            ):
+                and state.batch_item_id is not None
+                and state.batch_item_id == state.active_generation_item_id
+            )
+            if owns_generation:
                 if state.worker_operation == "regenerate_one":
                     generate_label = f"Regenerating take {state.worker_target}"
                 else:
@@ -921,6 +1019,16 @@ class TuiRenderer:
                         else "Generating"
                     )
                     generate_label = f"{verb} {current}/{state.operation_total}"
+            elif (
+                state.busy
+                and state.worker_operation
+                in {"initial", "regenerate_one", "regenerate_all", "batch_generate"}
+            ):
+                generate_label = (
+                    f"Regenerate all {state.settings.take_count} takes [busy]"
+                    if has_batch
+                    else f"Generate {state.settings.take_count} takes [busy]"
+                )
             else:
                 adjustable_count = _adjustable_value(
                     str(state.settings.take_count),
@@ -1739,6 +1847,7 @@ class TuiRenderer:
             status,
             height,
             width,
+            background_status=state.background_status,
             fallback_hint=(
                 (
                     "Ctrl+N: New line   Enter: Finish editing   Esc: Back"

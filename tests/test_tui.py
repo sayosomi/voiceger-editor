@@ -28,9 +28,10 @@ from voiceger_editor.tui_input import PasteText
 from voiceger_editor.tui_operations import (
     BatchCandidateReplacedEffect,
     CandidateReplacedEffect,
+    DiscardInitialBatchEffect,
     PlayPreviewEffect,
 )
-from voiceger_editor.tui_status import EMPTY_STATUS, StatusKind, error_status, info_status
+from voiceger_editor.tui_status import EMPTY_STATUS, StatusKind, error_status, info_status, warning_status
 from voiceger_editor.tui import (
     TuiApp,
     build_argument_parser,
@@ -991,6 +992,7 @@ class TuiTests(unittest.TestCase):
             app.session,
             take_count=app.settings.take_count,
             navigation_revision=navigation_revision,
+            item_id=app._batch.open_item_id,
         )
 
     def test_help_and_quit_actions_activate_from_the_continuous_list(self):
@@ -1051,7 +1053,7 @@ class TuiTests(unittest.TestCase):
                 self.assertFalse(shortcut._help_open)
                 self.assertTrue(shortcut._exit_requested)
 
-    def test_ctrl_c_requests_batch_cancellation_and_exit(self):
+    def test_ctrl_c_cancels_active_generation_without_exiting(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
         app._operations.busy = True
         app._operations.worker_operation = "initial"
@@ -1060,9 +1062,176 @@ class TuiTests(unittest.TestCase):
 
         app._handle_key("\x03")
 
-        self.assertTrue(app._exit_requested)
+        self.assertFalse(app._exit_requested)
         self.assertTrue(cancellation_event.is_set())
-        self.assertEqual(app._status, "Cancelling current batch before cleanup…")
+        self.assertEqual(app._status, "Cancelling…")
+
+    def test_ctrl_c_completion_guard_survives_repeats_until_other_input(self):
+        app = self.make_app(query=mixed_query())
+        app._operations._ctrl_c_cancellation_guard = True
+
+        app._handle_key("\x03")
+        app._handle_key("\x03")
+
+        self.assertFalse(app._exit_requested)
+        self.assertTrue(app._operations.cancellation_guard_armed)
+        self.assertEqual(
+            app._status,
+            "Generation already finished; nothing to cancel.",
+        )
+
+        app._handle_key(curses.KEY_DOWN)
+        self.assertFalse(app._operations.cancellation_guard_armed)
+
+        app._handle_key("\x03")
+        self.assertTrue(app._exit_requested)
+
+    def test_plain_idle_ctrl_c_quits(self):
+        app = self.make_app(query=mixed_query())
+
+        app._handle_key("\x03")
+
+        self.assertTrue(app._exit_requested)
+
+    def test_active_generation_renders_ctrl_c_cancel_hint(self):
+        app = self.make_app(query=mixed_query())
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._screen = FakeScreen(rows=24, columns=100)
+
+        app._render()
+
+        self.assertIn("[Ctrl+C] Cancel generation", self.rendered(app._screen))
+
+    def test_batch_list_shows_active_item_generation_percentage(self):
+        for completed, expected in ((0, "[0%]"), (2, "[50%]")):
+            with self.subTest(completed=completed):
+                app = self.make_app(query=mixed_query())
+                item_id = app._batch.open_item_id
+                app._operations.busy = True
+                app._operations.worker_operation = "initial"
+                app._operations._worker_item_id = item_id
+                app._operations.operation_completed = completed
+                app._operations.operation_total = 4
+
+                app._handle_key("\x1b")
+                app._screen = FakeScreen(rows=24, columns=100)
+                app._render()
+
+                self.assertIn(expected, self.rendered(app._screen))
+
+    def test_other_batch_item_shows_busy_generate_and_explains_owner(self):
+        app = self.make_app(query=mixed_query())
+        first_item_id = app._batch.open_item_id
+        second = FakeSession(query=mixed_query())
+        second.caption = "second caption"
+        app._batch.batch.add_item(CaptionBatchItem(second))
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._worker_item_id = first_item_id
+        app._operations.operation_completed = 2
+        app._operations.operation_total = 4
+        app._operations._cancellation_event = Event()
+
+        app._handle_key("\x1b")
+        app._batch.focus_key = ("caption", 1)
+        app._handle_key("\n")
+        app._screen = FakeScreen(rows=24, columns=100)
+        app._render()
+
+        rendered = self.rendered(app._screen)
+        self.assertIn("Generate 4 takes [busy]", rendered)
+        self.assertNotIn("Generating 3/4", rendered)
+
+        app._handle_key("g")
+        self.assertEqual(
+            app._status,
+            "Generate Caption 2 is unavailable while generation is active.",
+        )
+        self.assertIs(app._status.kind, StatusKind.WARNING)
+        self.assertEqual(app._operations._worker_item_id, first_item_id)
+
+    def test_generation_progress_does_not_overwrite_conflict_status(self):
+        app = self.make_app(query=mixed_query())
+        item_id = app._batch.open_item_id
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._worker_item_id = item_id
+        app._operations.operation_completed = 2
+        app._operations.operation_total = 4
+        app._operations._cancellation_event = Event()
+        app._status = warning_status(
+            "Generate selected is unavailable while generation is active."
+        )
+
+        app._operations.events.put(("candidate", candidate(3)))
+        app._consume_events()
+
+        self.assertEqual(
+            app._status,
+            "Generate selected is unavailable while generation is active.",
+        )
+        self.assertIs(app._status.kind, StatusKind.WARNING)
+
+        app._screen = FakeScreen(rows=24, columns=100)
+        app._render()
+        rendered = self.rendered(app._screen)
+        self.assertIn(
+            "Generating: Caption 1 · 3/4 (75%) · [Ctrl+C] Cancel generation",
+            rendered,
+        )
+        self.assertIn(
+            "Warning: Generate selected is unavailable while generation is active.",
+            rendered,
+        )
+
+    def test_batch_list_generate_selected_shows_busy_and_explains_owner(self):
+        app = self.make_app(query=mixed_query())
+        first_item_id = app._batch.open_item_id
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._worker_item_id = first_item_id
+        app._operations.operation_completed = 2
+        app._operations.operation_total = 4
+        app._operations._cancellation_event = Event()
+
+        app._handle_key("\x1b")
+        app._screen = FakeScreen(rows=24, columns=100)
+        app._render()
+
+        self.assertIn("[G] Generate selected [busy]", self.rendered(app._screen))
+
+        app._handle_key("g")
+        self.assertEqual(
+            app._status,
+            "Generate selected is unavailable while generation is active.",
+        )
+        self.assertIs(app._status.kind, StatusKind.WARNING)
+        self.assertEqual(app._operations._worker_item_id, first_item_id)
+
+    def test_regenerate_all_cannot_replace_an_active_generation_worker(self):
+        app = self.make_app(query=mixed_query())
+        item_id = app._batch.open_item_id
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._worker_item_id = item_id
+        app._operations.operation_completed = 1
+        app._operations.operation_total = 4
+        original_worker = app._operations.worker
+        app.session.regenerate_all_takes = Mock(
+            side_effect=AssertionError("must not start a second synthesis")
+        )
+
+        effects = app._operations.start_regenerate_all(
+            app.session,
+            take_count=4,
+            navigation_revision=app._navigation.revision,
+            item_id=item_id,
+        )
+
+        self.assertEqual(str(effects[0].status), "Another operation is already running.")
+        self.assertIs(app._operations.worker, original_worker)
+        app.session.regenerate_all_takes.assert_not_called()
 
     def test_help_scroll_clamp_accounts_for_status_footer_height(self):
         app = self.make_app(query=mixed_query())
@@ -1099,7 +1268,7 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app.session.candidates, candidates_before)
         self.assertEqual(app.session.discard_calls, 0)
 
-    def test_escape_requests_batch_cancellation_before_help_and_repeats_safely(self):
+    def test_escape_keeps_local_back_behavior_during_generation(self):
         for operation in ("initial", "regenerate_all"):
             with self.subTest(operation=operation):
                 app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
@@ -1110,18 +1279,66 @@ class TuiTests(unittest.TestCase):
                 app._operations._cancellation_event = cancellation_event
 
                 app._handle_key("\x1b")
-                self.assertTrue(cancellation_event.is_set())
-                self.assertTrue(app._help_open)
-                self.assertEqual(app._status, "Cancelling…")
 
-                app._handle_key("\x1b")
-                self.assertTrue(app._help_open)
-                self.assertEqual(app._status, "Cancelling…")
-
-                app._operations.busy = False
-                app._operations.worker_operation = None
-                app._handle_key("\x1b")
                 self.assertFalse(app._help_open)
+                self.assertFalse(cancellation_event.is_set())
+                self.assertTrue(app._operations.busy)
+
+    def test_escape_returns_to_batch_list_without_cancelling_generation(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        cancellation_event = Event()
+        app._operations._cancellation_event = cancellation_event
+        revision = app._navigation.revision
+
+        app._handle_key("\x1b")
+
+        self.assertFalse(app._batch.in_item)
+        self.assertIsNone(app.session)
+        self.assertTrue(app._operations.busy)
+        self.assertFalse(cancellation_event.is_set())
+        self.assertGreater(app._navigation.revision, revision)
+
+    def test_generation_finishes_on_originating_caption_after_leaving_item(self):
+        app = self.make_app(query=mixed_query())
+        session = app.session
+        item_id = app._batch.open_item_id
+        started = Event()
+        release = Event()
+        generated = candidate(1)
+
+        def generate_takes():
+            def values():
+                started.set()
+                release.wait(timeout=5)
+                session.candidates = (generated,)
+                yield generated
+            return values()
+
+        session.generate_takes = generate_takes
+        app._dispatch_operation_effects(
+            app._operations.start_generation(
+                session,
+                take_count=1,
+                navigation_revision=app._navigation.revision,
+                item_id=item_id,
+            )
+        )
+        self.assertTrue(started.wait(timeout=5))
+
+        app._handle_key("\x1b")
+        release.set()
+        app._operations.join_worker()
+        app._consume_events()
+
+        self.assertFalse(app._batch.in_item)
+        self.assertIsNone(app.session)
+        self.assertEqual(
+            app._batch.batch.get_item(item_id).session.candidates,
+            (generated,),
+        )
+        self.assertEqual(app._status, "1 take(s) ready.")
 
     def test_clear_candidates_confirmation_cancel_and_confirmed_clear(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
@@ -1769,6 +1986,40 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(second.is_accepted)
         self.assertIs(app.session, second_session)
 
+    def test_single_item_generation_effects_keep_stable_caption_ownership(self):
+        app = self.make_app(
+            query=mixed_query(),
+            candidates=(candidate(1), candidate(2)),
+        )
+        first = app._batch.batch.items[0]
+        first_session = first.session
+        second_session = FakeSession(
+            query=mixed_query(),
+            candidates=(candidate(1), candidate(2)),
+        )
+        second_session.caption = "second"
+        second = CaptionBatchItem(second_session)
+        app._batch.batch.add_item(second)
+        app._batch.batch.mark_accepted(first.item_id, 1)
+        app._batch.batch.mark_accepted(second.item_id, 1)
+        app._batch.open_item(1)
+        app.session = second_session
+
+        app._dispatch_operation_effects(
+            (CandidateReplacedEffect(1, item_id=first.item_id),)
+        )
+
+        self.assertFalse(first.is_accepted)
+        self.assertTrue(second.is_accepted)
+
+        app._dispatch_operation_effects(
+            (DiscardInitialBatchEffect(item_id=first.item_id),)
+        )
+
+        self.assertEqual(first_session.discard_calls, 1)
+        self.assertEqual(second_session.discard_calls, 0)
+        self.assertTrue(second.is_accepted)
+
     def test_failed_generation_start_preserves_existing_acceptance(self):
         app = self.make_app(query=mixed_query(), candidates=())
         item = app._batch.batch.items[0]
@@ -2182,6 +2433,43 @@ class TuiTests(unittest.TestCase):
             list(captions),
         )
         self.assertEqual(app._status, "3 Captions added.")
+
+    def test_add_captions_remains_available_during_background_generation(self):
+        app = self.make_app(query=mixed_query(), batch_item=True)
+        generating_item_id = app._batch.open_item_id
+        cancellation_event = Event()
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._worker_item_id = generating_item_id
+        app._operations._cancellation_event = cancellation_event
+        app._operations.operation_total = 4
+
+        app._handle_key("\x1b")
+        app._handle_key("a")
+
+        editor = app._editor_controller.editor
+        self.assertIsNotNone(editor)
+        self.assertEqual(editor.title, "ADD CAPTIONS")
+        self.assertEqual(editor.active_field, "draft")
+
+        added = FakeSession(query=mixed_query())
+        added.caption = "background-added caption"
+        with patch(
+            "voiceger_editor.tui.UtteranceSession.from_caption",
+            return_value=added,
+        ):
+            app._handle_key(PasteText("background-added caption"))
+            app._handle_key("\n")
+            app._handle_key(curses.KEY_DOWN)
+            app._handle_key("\n")
+
+        self.assertTrue(app._operations.busy)
+        self.assertEqual(app._operations._worker_item_id, generating_item_id)
+        self.assertFalse(cancellation_event.is_set())
+        self.assertEqual(
+            [item.caption for item in app._batch.batch.items],
+            [app._batch.batch.items[0].caption, "background-added caption"],
+        )
 
     def test_batch_list_apply_adds_multiple_lightweight_caption_sessions(self):
         adapter = Mock()
@@ -3258,6 +3546,7 @@ class TuiTests(unittest.TestCase):
             2,
             take_count=app.settings.take_count,
             navigation_revision=navigation_revision,
+            item_id=app._batch.open_item_id,
         )
 
     def test_busy_candidate_remains_playable_without_inline_unavailable_cues(self):
@@ -3542,6 +3831,7 @@ class TuiTests(unittest.TestCase):
             generate.session,
             take_count=generate.settings.take_count,
             navigation_revision=generate._navigation.revision,
+            item_id=generate._batch.open_item_id,
         )
 
         regenerate = self.make_app(
@@ -3553,6 +3843,7 @@ class TuiTests(unittest.TestCase):
             regenerate.session,
             take_count=regenerate.settings.take_count,
             navigation_revision=regenerate._navigation.revision,
+            item_id=regenerate._batch.open_item_id,
         )
 
         output = self.make_app(query=mixed_query())
@@ -3592,6 +3883,7 @@ class TuiTests(unittest.TestCase):
             1,
             take_count=app.settings.take_count,
             navigation_revision=navigation_revision,
+            item_id=app._batch.open_item_id,
         )
 
         help_shortcut = self.make_app(query=mixed_query())
@@ -3697,51 +3989,25 @@ class TuiTests(unittest.TestCase):
         self.assertIs(app.session, session)
         self.assertIn(1, app._editor_controller.grouping_cache)
 
-    def test_keyboard_interrupt_enters_visible_shutdown_drain_then_cleans_session(self):
+    def test_keyboard_interrupt_is_routed_as_generation_cancel(self):
         app = self.make_app(batch_item=False)
-        owned_session = app.session
-        app._initial_caption = "example"
         app._operations.busy = True
         app._operations.worker_operation = "initial"
         cancellation_event = Event()
         app._operations._cancellation_event = cancellation_event
-        app._operations.join_worker = Mock()
-        app._operations.stop_playback = Mock()
 
         class InterruptScreen(FakeScreen):
-            reads = 0
-
             def get_wch(self):
-                self.reads += 1
-                if self.reads == 1:
-                    raise KeyboardInterrupt
-                app._operations.events.put(("done", None))
-                raise curses.error("input timed out")
+                raise KeyboardInterrupt
 
-        screen = InterruptScreen()
-        rendered_statuses = []
-        original_render = app._render
+        app._screen = InterruptScreen()
+        key = app._read_key()
+        app._handle_key(key)
 
-        def record_render():
-            rendered_statuses.append(app._status)
-            original_render()
-
-        app._render = Mock(side_effect=record_render)
-        with patch(
-            "voiceger_editor.tui.UtteranceSession.from_caption",
-            return_value=owned_session,
-        ), patch("voiceger_editor.tui.curses.set_escdelay"):
-            app.run(screen)
-
-        self.assertTrue(app._exit_requested)
+        self.assertEqual(key, "\x03")
+        self.assertFalse(app._exit_requested)
         self.assertTrue(cancellation_event.is_set())
-        self.assertGreaterEqual(screen.refresh_count, 2)
-        self.assertIn("Cancelling current batch before cleanup…", rendered_statuses)
-        self.assertEqual(app._status, "Generation cancelled. 0 take(s) ready.")
-        app._operations.join_worker.assert_called_once_with()
-        self.assertEqual(app._operations.stop_playback.call_count, 2)
-        app._operations.stop_playback.assert_has_calls([call(), call()])
-        self.assertEqual(owned_session.close_calls, 1)
+        self.assertEqual(app._status, "Cancelling…")
 
     def test_main_sweeps_stale_take_directories_before_starting_tui(self):
         environment = SimpleNamespace(
