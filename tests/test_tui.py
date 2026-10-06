@@ -31,7 +31,7 @@ from voiceger_editor.tui_operations import (
     DiscardInitialBatchEffect,
     PlayPreviewEffect,
 )
-from voiceger_editor.tui_status import EMPTY_STATUS, StatusKind, error_status, info_status
+from voiceger_editor.tui_status import EMPTY_STATUS, StatusKind, error_status, info_status, warning_status
 from voiceger_editor.tui import (
     TuiApp,
     build_argument_parser,
@@ -1146,9 +1146,9 @@ class TuiTests(unittest.TestCase):
         app._handle_key("g")
         self.assertEqual(
             app._status,
-            "Caption 1 is generating (50%). "
-            "Finish or cancel it before generating Caption 2.",
+            "Generate Caption 2 is unavailable while generation is active.",
         )
+        self.assertIs(app._status.kind, StatusKind.WARNING)
         self.assertEqual(app._operations._worker_item_id, first_item_id)
 
     def test_generation_progress_does_not_overwrite_conflict_status(self):
@@ -1160,9 +1160,8 @@ class TuiTests(unittest.TestCase):
         app._operations.operation_completed = 2
         app._operations.operation_total = 4
         app._operations._cancellation_event = Event()
-        app._status = info_status(
-            "Caption 1 is generating (50%). "
-            "Finish or cancel it before starting batch generation."
+        app._status = warning_status(
+            "Generate selected is unavailable while generation is active."
         )
 
         app._operations.events.put(("candidate", candidate(3)))
@@ -1170,9 +1169,9 @@ class TuiTests(unittest.TestCase):
 
         self.assertEqual(
             app._status,
-            "Caption 1 is generating (50%). "
-            "Finish or cancel it before starting batch generation.",
+            "Generate selected is unavailable while generation is active.",
         )
+        self.assertIs(app._status.kind, StatusKind.WARNING)
 
         app._screen = FakeScreen(rows=24, columns=100)
         app._render()
@@ -1182,8 +1181,7 @@ class TuiTests(unittest.TestCase):
             rendered,
         )
         self.assertIn(
-            "Status: Caption 1 is generating (50%). "
-            "Finish or cancel it before starting batch generation.",
+            "Warning: Generate selected is unavailable while generation is active.",
             rendered,
         )
 
@@ -1206,9 +1204,9 @@ class TuiTests(unittest.TestCase):
         app._handle_key("g")
         self.assertEqual(
             app._status,
-            "Caption 1 is generating (50%). "
-            "Finish or cancel it before starting batch generation.",
+            "Generate selected is unavailable while generation is active.",
         )
+        self.assertIs(app._status.kind, StatusKind.WARNING)
         self.assertEqual(app._operations._worker_item_id, first_item_id)
 
     def test_regenerate_all_cannot_replace_an_active_generation_worker(self):
