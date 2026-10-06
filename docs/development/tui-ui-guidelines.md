@@ -109,7 +109,9 @@ Rows whose direct key is Esc must show that key explicitly:
 
 Do not render a selectable Back or Cancel row without the `[Esc]` hint.
 
-If an active operation intentionally gives Esc a higher-priority cancellation meaning, that behavior must be explicit and tested rather than silently changing the normal navigation contract.
+Background work must not steal Esc from the current screen's normal one-level-back or local cancel behavior. In particular, leaving a Batch Item while Take generation is active returns to the Batch List and leaves that generation running.
+
+During cancellable Take generation, Ctrl+C requests cooperative cancellation at a safe Take boundary. Ctrl+C does not quit while that generation is active. After the generation completes, the cancellation guard remains armed until the next non-Ctrl+C user interaction so a completion race cannot turn an intended cancellation into a quit. Repeated Ctrl+C while that guard is armed is harmless. The explicit `q` action remains Quit.
 
 ## Confirmation screens
 
