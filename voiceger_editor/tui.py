@@ -9,6 +9,7 @@ from typing import Any, Sequence
 from .session import UtteranceSession
 from . import tui_batch
 from .tui_batch_item import BatchItemBindings, TuiBatchItemController
+from .tui_batch_recipe import TuiBatchRecipeController
 from .settings import Settings, save_settings
 from .tui_settings import TuiSettingsController
 from .tui_status import EMPTY_STATUS, error_status, info_status
@@ -104,6 +105,14 @@ class TuiApp:
             english_word_groups=self.adapter.english_word_phoneme_groups,
             output_dir=lambda: self.settings.output_dir,
         )
+        self._batch_recipe_controller = TuiBatchRecipeController(
+            adapter=self.adapter,
+            runtime_settings=lambda: self.settings,
+            current_batch=lambda: self._batch.batch,
+            replace_batch=self._batch.replace_batch,
+            output_dir=lambda: self.settings.output_dir,
+            input_prefix=_active_input_prefix,
+        )
         self._pressed_adjustment: tuple[str, str, int] | None = None
         self._renderer = TuiRenderer()
         self._input = TuiInputReader()
@@ -118,6 +127,8 @@ class TuiApp:
             open_caption_editor=self._open_caption_editor,
             change_settings=self._change_settings,
             open_settings_editor=self._open_settings_editor,
+            open_batch_read=self._batch_recipe_controller.open_read,
+            open_batch_write=self._batch_recipe_controller.open_write,
             dispatch_editor_intents=self._dispatch_editor_intents,
             dispatch_operation_effects=self._dispatch_operation_effects,
             open_help=self._open_help,
@@ -218,6 +229,7 @@ class TuiApp:
                 try:
                     self._operations.stop_playback()
                 finally:
+                    self._batch_recipe_controller.close()
                     if not self._operations.worker_is_alive():
                         self._batch.close_sessions()
 
@@ -275,6 +287,15 @@ class TuiApp:
                 self._activate_quit()
             elif outcome is HelpOutcome.CLOSED:
                 pass
+            return
+        if self._batch_recipe_controller.active:
+            intents = self._batch_recipe_controller.handle_key(
+                key,
+                screen_width=(
+                    self._screen.getmaxyx()[1] if self._screen is not None else 80
+                ),
+            )
+            self._dispatch_editor_intents(intents)
             return
         if self._dictionary_controller.active:
             intents = self._dictionary_controller.handle_key(
@@ -668,7 +689,9 @@ class TuiApp:
             operation_total=self._operations.operation_total,
             pressed_adjustment=self._pressed_adjustment,
             editor=(
-                self._dictionary_controller.editor
+                self._batch_recipe_controller.editor
+                if self._batch_recipe_controller.active
+                else self._dictionary_controller.editor
                 if self._dictionary_controller.active
                 else self._editor_controller.editor
             ),
@@ -686,7 +709,9 @@ class TuiApp:
         screen.erase()
         try:
             editor = (
-                self._dictionary_controller.editor
+                self._batch_recipe_controller.editor
+                if self._batch_recipe_controller.active
+                else self._dictionary_controller.editor
                 if self._dictionary_controller.active
                 else self._editor_controller.editor
             )
@@ -709,7 +734,11 @@ class TuiApp:
                 self._help_controller.scroll,
                 status=self._status,
             )
-        elif self._dictionary_controller.active or self._editor_controller.editor is not None:
+        elif (
+            self._batch_recipe_controller.active
+            or self._dictionary_controller.active
+            or self._editor_controller.editor is not None
+        ):
             self._renderer.render_editor(
                 screen, self._render_state(segments=()), height, width
             )
