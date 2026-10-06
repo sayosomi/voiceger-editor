@@ -2450,6 +2450,7 @@ class TuiTests(unittest.TestCase):
         app._operations.busy = True
         app._operations.worker_operation = "initial"
         app._operations._worker_item_id = generating_item_id
+        app._operations._owned_item_ids = frozenset({generating_item_id})
         app._operations._cancellation_event = cancellation_event
         app._operations.operation_total = 4
 
@@ -2478,6 +2479,25 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(
             [item.caption for item in app._batch.batch.items],
             [app._batch.batch.items[0].caption, "background-added caption"],
+        )
+
+        app._batch.focus_key = ("caption", 1)
+        app._handle_key("\n")
+        self.assertIs(app.session, added)
+        set_navigation_focus(app, ("caption", None))
+        app._handle_key("\n")
+        self.assertEqual(app._editor_controller.editor.title, "EDIT CAPTION TEXT")
+        app._editor_controller.editor.input_value = "edited while first generates"
+        app._handle_key("\n")
+        app._handle_key(curses.KEY_DOWN)
+        app._handle_key("\n")
+
+        self.assertEqual(added.caption, "edited while first generates")
+        self.assertTrue(app._operations.busy)
+        self.assertEqual(app._operations._worker_item_id, generating_item_id)
+        self.assertEqual(
+            app._operations.owned_item_ids,
+            frozenset({generating_item_id}),
         )
 
     def test_batch_list_apply_adds_multiple_lightweight_caption_sessions(self):
