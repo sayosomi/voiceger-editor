@@ -885,7 +885,8 @@ class TuiOperations:
                         )
                     )
                     if (
-                        value.number == self.worker_target
+                        navigation_revision == self.operation_focus_revision
+                        and value.number == self.worker_target
                         and self.current_take == value.number
                     ):
                         effects.append(PlayTakeEffect(value.number))
@@ -896,7 +897,10 @@ class TuiOperations:
                             item_id=self._worker_item_id,
                         )
                     )
-                    if value.number == self.current_take:
+                    if (
+                        navigation_revision == self.operation_focus_revision
+                        and value.number == self.current_take
+                    ):
                         effects.append(PlayTakeEffect(value.number))
 
             elif kind == "error":
@@ -913,10 +917,13 @@ class TuiOperations:
                     self.worker_operation == "initial"
                     and not self.cancellation_requested
                 ):
-                    effects.append(StopPlaybackEffect())
                     effects.append(DiscardInitialBatchEffect(self._worker_item_id))
-                    self.current_take = None
-                    effects.append(FocusEffect(("pronunciation", pronunciation_index)))
+                    if navigation_revision == self.operation_focus_revision:
+                        effects.append(StopPlaybackEffect())
+                        self.current_take = None
+                        effects.append(
+                            FocusEffect(("pronunciation", pronunciation_index))
+                        )
 
             elif kind == "done":
                 operation = self.worker_operation
@@ -943,12 +950,13 @@ class TuiOperations:
                     ready = len(session.candidates) if session is not None else 0
                     status = f"Generation cancelled. {ready} take(s) ready."
                     if ready == 0:
-                        effects.append(StopPlaybackEffect())
                         effects.append(DiscardInitialBatchEffect(self._worker_item_id))
-                        self.current_take = None
-                        effects.append(
-                            FocusEffect(("pronunciation", pronunciation_index))
-                        )
+                        if navigation_revision == self.operation_focus_revision:
+                            effects.append(StopPlaybackEffect())
+                            self.current_take = None
+                            effects.append(
+                                FocusEffect(("pronunciation", pronunciation_index))
+                            )
                 elif cancelled and operation == "regenerate_all":
                     status = (
                         "Regeneration cancelled after "
