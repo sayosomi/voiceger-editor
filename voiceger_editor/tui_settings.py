@@ -19,6 +19,14 @@ _SYNTHESIS_SETTING_NAMES = (
     "temperature",
 )
 
+_OPERATION_RELEVANT_SETTING_NAMES = (
+    *_SYNTHESIS_SETTING_NAMES,
+    "take_count",
+    "output_dir",
+    "save_text",
+    "save_lab",
+)
+
 
 class TuiSettingsController:
     """Own runtime settings reconciliation and persistence semantics."""
@@ -60,6 +68,17 @@ class TuiSettingsController:
                 updated,
                 self.settings,
             )
+            changed_names = tuple(
+                name
+                for name in changes
+                if getattr(updated, name) != getattr(self.settings, name)
+            )
+            conflict = self._operations.settings_change_conflict_status(
+                changed_names
+            )
+            if conflict is not None:
+                self._set_status(conflict)
+                return False
             if synthesis_changed:
                 self._operations.stop_playback()
             for session in self._sessions():
@@ -114,6 +133,17 @@ class TuiSettingsController:
         baseline = session.settings if session is not None else self.settings
         runtime_changed = target != self.settings or target != baseline
         synthesis_changed = self._synthesis_changed(target, baseline)
+        changed_names = tuple(
+            name
+            for name in _OPERATION_RELEVANT_SETTING_NAMES
+            if getattr(target, name) != getattr(self.settings, name)
+        )
+        conflict = self._operations.settings_change_conflict_status(
+            changed_names
+        )
+        if conflict is not None:
+            self._set_status(conflict)
+            return SettingsApplicationResult(error_status=conflict)
 
         if runtime_changed:
             try:
