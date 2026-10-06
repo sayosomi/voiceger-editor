@@ -80,9 +80,10 @@ editable and can generate new Takes.
 - Left / Right: adjust Batch List Takes or a supported Batch Item value.
 - Tab / Shift+Tab: move between major areas inside a Batch Item.
 - Space: toggle Batch List inclusion, or replay the selected Take inside a Batch Item.
-- Esc: go back one level; active synthesis cancellation takes precedence when available.
+- Esc: go back one level. Active Take generation continues in the background.
+- Ctrl+C: cancel active cancellable Take generation; otherwise quit.
 - `?`: Help.
-- `q`: Quit.
+- `q`: Quit explicitly, including while generation is active.
 
 The TUI uses one vertical navigation flow. Editing opens a focused editor instead of changing values accidentally during normal navigation.
 
@@ -196,7 +197,11 @@ The Generate row can adjust the Take count with Left / Right.
 
 If Takes already exist, Generate replaces the complete candidate set.
 
-During a multi-Take generation batch, Esc requests cancellation. Cancellation occurs at a safe Take boundary rather than interrupting synthesis in the middle of one Take.
+During cancellable Take generation, Esc keeps its normal Back meaning. You can return from a generating Batch Item to BATCH LIST and generation continues for that Caption in the background.
+
+Press Ctrl+C to request generation cancellation. Cancellation occurs at a safe Take boundary rather than interrupting synthesis in the middle of one Take, so any completed Takes are preserved and the application remains open. While cancellation is available, the Status area shows `[Ctrl+C] Cancel generation`.
+
+If generation finishes at the same moment you press Ctrl+C, Voiceger Editor keeps a completion guard so that Ctrl+C does not accidentally quit or discard the finished results. Repeated Ctrl+C remains harmless until another non-Ctrl+C interaction restores the normal idle Ctrl+C Quit meaning. The `q` shortcut remains the explicit Quit action at all times.
 
 ## Listen to Takes
 
