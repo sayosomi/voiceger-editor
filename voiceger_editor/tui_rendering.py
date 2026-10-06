@@ -961,7 +961,11 @@ class TuiRenderer:
                         else "Generating"
                     )
                     generate_label = f"{verb} {current}/{state.operation_total}"
-            elif state.busy:
+            elif (
+                state.busy
+                and state.worker_operation
+                in {"initial", "regenerate_one", "regenerate_all", "batch_generate"}
+            ):
                 generate_label = (
                     f"Regenerate all {state.settings.take_count} takes [busy]"
                     if has_batch
