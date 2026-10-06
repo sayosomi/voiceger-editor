@@ -66,6 +66,7 @@ class TuiBatchControllerTests(unittest.TestCase):
             dispatch_operation_effects=Mock(),
             open_help=Mock(),
             activate_quit=Mock(),
+            initialize_open_item=Mock(),
         )
 
     def test_batch_list_initial_focus_matches_available_primary_work(self):
