@@ -28,6 +28,7 @@ from voiceger_editor.tui_input import PasteText
 from voiceger_editor.tui_operations import (
     BatchCandidateReplacedEffect,
     CandidateReplacedEffect,
+    DiscardInitialBatchEffect,
     PlayPreviewEffect,
 )
 from voiceger_editor.tui_status import EMPTY_STATUS, StatusKind, error_status, info_status
@@ -1051,7 +1052,7 @@ class TuiTests(unittest.TestCase):
                 self.assertFalse(shortcut._help_open)
                 self.assertTrue(shortcut._exit_requested)
 
-    def test_ctrl_c_requests_batch_cancellation_and_exit(self):
+    def test_ctrl_c_cancels_active_generation_without_exiting(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
         app._operations.busy = True
         app._operations.worker_operation = "initial"
@@ -1060,9 +1061,9 @@ class TuiTests(unittest.TestCase):
 
         app._handle_key("\x03")
 
-        self.assertTrue(app._exit_requested)
+        self.assertFalse(app._exit_requested)
         self.assertTrue(cancellation_event.is_set())
-        self.assertEqual(app._status, "Cancelling current batch before cleanup…")
+        self.assertEqual(app._status, "Cancelling…")
 
     def test_help_scroll_clamp_accounts_for_status_footer_height(self):
         app = self.make_app(query=mixed_query())
@@ -1099,7 +1100,7 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(app.session.candidates, candidates_before)
         self.assertEqual(app.session.discard_calls, 0)
 
-    def test_escape_requests_batch_cancellation_before_help_and_repeats_safely(self):
+    def test_escape_keeps_local_back_behavior_during_generation(self):
         for operation in ("initial", "regenerate_all"):
             with self.subTest(operation=operation):
                 app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
@@ -1110,18 +1111,26 @@ class TuiTests(unittest.TestCase):
                 app._operations._cancellation_event = cancellation_event
 
                 app._handle_key("\x1b")
-                self.assertTrue(cancellation_event.is_set())
-                self.assertTrue(app._help_open)
-                self.assertEqual(app._status, "Cancelling…")
 
-                app._handle_key("\x1b")
-                self.assertTrue(app._help_open)
-                self.assertEqual(app._status, "Cancelling…")
-
-                app._operations.busy = False
-                app._operations.worker_operation = None
-                app._handle_key("\x1b")
                 self.assertFalse(app._help_open)
+                self.assertFalse(cancellation_event.is_set())
+                self.assertTrue(app._operations.busy)
+
+    def test_escape_returns_to_batch_list_without_cancelling_generation(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        cancellation_event = Event()
+        app._operations._cancellation_event = cancellation_event
+        revision = app._navigation.revision
+
+        app._handle_key("\x1b")
+
+        self.assertFalse(app._batch.in_item)
+        self.assertIsNone(app.session)
+        self.assertTrue(app._operations.busy)
+        self.assertFalse(cancellation_event.is_set())
+        self.assertGreater(app._navigation.revision, revision)
 
     def test_clear_candidates_confirmation_cancel_and_confirmed_clear(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
@@ -1768,6 +1777,40 @@ class TuiTests(unittest.TestCase):
         self.assertFalse(first.is_accepted)
         self.assertTrue(second.is_accepted)
         self.assertIs(app.session, second_session)
+
+    def test_single_item_generation_effects_keep_stable_caption_ownership(self):
+        app = self.make_app(
+            query=mixed_query(),
+            candidates=(candidate(1), candidate(2)),
+        )
+        first = app._batch.batch.items[0]
+        first_session = first.session
+        second_session = FakeSession(
+            query=mixed_query(),
+            candidates=(candidate(1), candidate(2)),
+        )
+        second_session.caption = "second"
+        second = CaptionBatchItem(second_session)
+        app._batch.batch.add_item(second)
+        app._batch.batch.mark_accepted(first.item_id, 1)
+        app._batch.batch.mark_accepted(second.item_id, 1)
+        app._batch.open_item(1)
+        app.session = second_session
+
+        app._dispatch_operation_effects(
+            (CandidateReplacedEffect(1, item_id=first.item_id),)
+        )
+
+        self.assertFalse(first.is_accepted)
+        self.assertTrue(second.is_accepted)
+
+        app._dispatch_operation_effects(
+            (DiscardInitialBatchEffect(item_id=first.item_id),)
+        )
+
+        self.assertEqual(first_session.discard_calls, 1)
+        self.assertEqual(second_session.discard_calls, 0)
+        self.assertTrue(second.is_accepted)
 
     def test_failed_generation_start_preserves_existing_acceptance(self):
         app = self.make_app(query=mixed_query(), candidates=())
@@ -3697,12 +3740,13 @@ class TuiTests(unittest.TestCase):
         self.assertIs(app.session, session)
         self.assertIn(1, app._editor_controller.grouping_cache)
 
-    def test_keyboard_interrupt_enters_visible_shutdown_drain_then_cleans_session(self):
+    def test_keyboard_interrupt_cancels_generation_then_q_quits_cleanly(self):
         app = self.make_app(batch_item=False)
         owned_session = app.session
         app._initial_caption = "example"
         app._operations.busy = True
         app._operations.worker_operation = "initial"
+        app._operations._ctrl_c_cancellation_guard = True
         cancellation_event = Event()
         app._operations._cancellation_event = cancellation_event
         app._operations.join_worker = Mock()
@@ -3715,8 +3759,10 @@ class TuiTests(unittest.TestCase):
                 self.reads += 1
                 if self.reads == 1:
                     raise KeyboardInterrupt
-                app._operations.events.put(("done", None))
-                raise curses.error("input timed out")
+                if self.reads == 2:
+                    app._operations.events.put(("done", None))
+                    raise curses.error("input timed out")
+                return "q"
 
         screen = InterruptScreen()
         rendered_statuses = []
@@ -3735,12 +3781,10 @@ class TuiTests(unittest.TestCase):
 
         self.assertTrue(app._exit_requested)
         self.assertTrue(cancellation_event.is_set())
-        self.assertGreaterEqual(screen.refresh_count, 2)
-        self.assertIn("Cancelling current batch before cleanup…", rendered_statuses)
+        self.assertGreaterEqual(screen.refresh_count, 3)
+        self.assertIn("Cancelling…", rendered_statuses)
         self.assertEqual(app._status, "Generation cancelled. 0 take(s) ready.")
         app._operations.join_worker.assert_called_once_with()
-        self.assertEqual(app._operations.stop_playback.call_count, 2)
-        app._operations.stop_playback.assert_has_calls([call(), call()])
         self.assertEqual(owned_session.close_calls, 1)
 
     def test_main_sweeps_stale_take_directories_before_starting_tui(self):
