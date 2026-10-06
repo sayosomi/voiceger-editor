@@ -3458,7 +3458,7 @@ class TuiTests(unittest.TestCase):
             self.assertIsNone(app._editor_controller.editor)
             self.assertEqual(app._status, "Settings saved.")
 
-    def test_generate_arrows_persist_count_preserve_batch_and_respect_bounds_and_busy(self):
+    def test_generate_arrows_persist_count_preserve_batch_and_work_during_generation(self):
         with tempfile.TemporaryDirectory() as directory:
             app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
             app.config_path = Path(directory) / "settings.json"
@@ -3484,9 +3484,10 @@ class TuiTests(unittest.TestCase):
             self.assertEqual(app.settings.take_count, 100)
 
             app._operations.busy = True
+            app._operations.worker_operation = "initial"
             app._handle_key(curses.KEY_LEFT)
-            self.assertEqual(app.settings.take_count, 100)
-            self.assertIn("Wait for the current synthesis operation to finish", app._status)
+            self.assertEqual(app.settings.take_count, 99)
+            self.assertEqual(app.session.replace_settings_calls[-1].take_count, 99)
 
     def test_settings_escape_from_active_field_discards_the_entire_modal_draft(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -3526,33 +3527,54 @@ class TuiTests(unittest.TestCase):
         self.assertIsNone(app._operations.current_take)
         self.assertEqual(app._batch.focus_key, ("caption", 0))
 
-    def test_acceptance_and_regeneration_are_unavailable_while_busy_but_replay_works(self):
+    def test_owned_caption_mutations_and_second_generation_are_blocked_but_light_work_remains(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        item_id = app._batch.open_item_id
         app._operations.play_take = Mock(return_value=())
         app._operations.start_generation = Mock(return_value=())
         app._operations.start_regenerate_all = Mock(return_value=())
         app._operations.start_regeneration = Mock(return_value=())
         app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._worker_item_id = item_id
+        app._operations._owned_item_ids = frozenset({item_id})
 
         for key in (
             ("caption", None),
             ("pronunciation", 0),
-            ("generate", None),
-            ("settings_summary", None),
-            ("output", None),
             ("build_pronunciation", None),
         ):
             set_navigation_focus(app, key)
             app._handle_key("\n")
             self.assertIsNone(app._editor_controller.editor)
+            self.assertIn("currently generating", app._status)
+
+        set_navigation_focus(app, ("generate", None))
+        app._handle_key("\n")
+        self.assertIn("already generating", app._status)
+        app._operations.start_generation.assert_not_called()
+        app._operations.start_regenerate_all.assert_not_called()
+
+        set_navigation_focus(app, ("settings_summary", None))
+        app._handle_key("\n")
+        self.assertIsNotNone(app._editor_controller.editor)
+        self.assertEqual(app._editor_controller.editor.kind, "settings")
+        app._handle_key("\x1b")
+
+        set_navigation_focus(app, ("output", None))
+        app._handle_key("\n")
+        self.assertTrue(app._output_path_controller.active)
+        app._handle_key("\x1b")
 
         focus_candidate(app, 1)
         app._handle_key("\n")
         self.assertEqual(app.session.accept_calls, [])
-        app._operations.start_generation.assert_not_called()
-        app._operations.start_regenerate_all.assert_not_called()
-        app._operations.start_regeneration.assert_not_called()
+        self.assertIn("Save Take 1 is unavailable", app._status)
+
         set_navigation_focus(app, ("candidate", 1))
+        app._handle_key("r")
+        app._operations.start_regeneration.assert_not_called()
+
         app._handle_key(" ")
         app._operations.play_take.assert_called_with(app.session, 1)
 
