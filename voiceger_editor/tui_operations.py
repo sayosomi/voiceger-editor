@@ -596,15 +596,6 @@ class TuiOperations:
         self._owned_item_ids = (
             frozenset({item_id}) if item_id is not None else frozenset()
         )
-        if operation in {"initial", "regenerate_one", "regenerate_all"}:
-            self._operation_serial += 1
-            self._active_operation_id = self._operation_serial
-            self._batch_progress_item_id = None
-            self._batch_progress_caption_number = None
-            self._batch_progress_caption_total = None
-            self._batch_progress_take_number = None
-            self._batch_progress_take_completed = 0
-            self._batch_progress_take_total = None
         self.worker_error = None
         self.operation_completed = 0
         self.operation_total = 1
@@ -713,6 +704,14 @@ class TuiOperations:
         self._owned_item_ids = (
             frozenset({item_id}) if item_id is not None else frozenset()
         )
+        self._operation_serial += 1
+        self._active_operation_id = self._operation_serial
+        self._batch_progress_item_id = None
+        self._batch_progress_caption_number = None
+        self._batch_progress_caption_total = None
+        self._batch_progress_take_number = None
+        self._batch_progress_take_completed = 0
+        self._batch_progress_take_total = None
         self.worker_error = None
         self.operation_focus_revision = navigation_revision
         self.operation_completed = 0
