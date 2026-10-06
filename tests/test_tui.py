@@ -1103,6 +1103,23 @@ class TuiTests(unittest.TestCase):
 
         self.assertIn("[Ctrl+C] Cancel generation", self.rendered(app._screen))
 
+    def test_batch_list_shows_active_item_generation_percentage(self):
+        for completed, expected in ((0, "[0%]"), (2, "[50%]")):
+            with self.subTest(completed=completed):
+                app = self.make_app(query=mixed_query())
+                item_id = app._batch.open_item_id
+                app._operations.busy = True
+                app._operations.worker_operation = "initial"
+                app._operations._worker_item_id = item_id
+                app._operations.operation_completed = completed
+                app._operations.operation_total = 4
+
+                app._handle_key("\x1b")
+                app._screen = FakeScreen(rows=24, columns=100)
+                app._render()
+
+                self.assertIn(expected, self.rendered(app._screen))
+
     def test_help_scroll_clamp_accounts_for_status_footer_height(self):
         app = self.make_app(query=mixed_query())
         app._screen = FakeScreen(rows=8, columns=32)
