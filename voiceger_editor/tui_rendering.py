@@ -72,6 +72,35 @@ def background_with_cancel_generation_hint(
     return f"{message} · {_CANCEL_GENERATION_HINT}"
 
 
+def _wrap_footer_text(value: str, width: int) -> tuple[str, ...]:
+    """Wrap footer text without splitting the cancel-generation affordance."""
+
+    if not value:
+        return ()
+
+    width = max(1, width)
+    suffix = f" · {_CANCEL_GENERATION_HINT}"
+    if not value.endswith(suffix):
+        return tuple(_wrap_text(value, width))
+
+    if (
+        _display_width(value) <= width
+        or _display_width(_CANCEL_GENERATION_HINT) > width
+    ):
+        return tuple(_wrap_text(value, width))
+
+    prefix = value[: -len(suffix)]
+    lines = _wrap_text(prefix, width)
+    if not lines:
+        return (_CANCEL_GENERATION_HINT,)
+
+    if _display_width(lines[-1]) + _display_width(suffix) <= width:
+        lines[-1] += suffix
+    else:
+        lines.append(_CANCEL_GENERATION_HINT)
+    return tuple(lines)
+
+
 def format_background_operation_progress(
     progress: BackgroundOperationProgress | None,
     batch: CaptionBatch,
@@ -360,18 +389,14 @@ class TuiRenderer:
         background_status: str = "",
     ) -> StatusFooterLayout:
         available = max(1, width - 1)
-        background_lines = (
-            tuple(_wrap_text(background_status, available))
-            if background_status
-            else ()
-        )
+        background_lines = _wrap_footer_text(background_status, available)
         visible_status = status if status else None
         text = (
             format_status(visible_status)
             if visible_status is not None
             else (fallback_hint or "")
         )
-        status_lines = tuple(_wrap_text(text, available)) if text else ()
+        status_lines = _wrap_footer_text(text, available)
         lines = background_lines + status_lines
         reserved_height = max(1, len(lines))
         start_row = max(0, height - reserved_height)
