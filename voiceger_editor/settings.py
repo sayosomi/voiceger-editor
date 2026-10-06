@@ -10,6 +10,12 @@ from pathlib import Path
 import sys
 from typing import Any
 
+from .filename import (
+    DEFAULT_FILENAME_TEMPLATE,
+    FilenameTemplateError,
+    validate_filename_template,
+)
+
 
 _APP_DIRECTORY = "voiceger-editor"
 _CONFIG_FILENAME = "config.json"
@@ -18,6 +24,7 @@ VOICEGER_DEFAULT_TOP_P = 1.0
 VOICEGER_DEFAULT_TEMPERATURE = 1.0
 _SETTING_NAMES = {
     "output_dir",
+    "filename_template",
     "take_count",
     "style_id",
     "speed",
@@ -43,6 +50,7 @@ class Settings:
     """UI-neutral settings shared by future command-line and TUI entry points."""
 
     output_dir: Path = field(default_factory=_default_output_dir)
+    filename_template: str = DEFAULT_FILENAME_TEMPLATE
     take_count: int = 4
     style_id: int = 3
     speed: float = 1.0
@@ -68,6 +76,11 @@ class Settings:
         except (RuntimeError, ValueError) as exc:
             raise SettingsError(f"invalid output_dir: {exc}") from exc
         object.__setattr__(self, "output_dir", output_dir)
+
+        try:
+            validate_filename_template(self.filename_template)
+        except FilenameTemplateError as exc:
+            raise SettingsError(f"invalid filename_template: {exc}") from exc
 
         if (
             isinstance(self.take_count, bool)
@@ -222,6 +235,7 @@ def save_settings(
     path = _resolve_config_path(config_path)
     payload = {
         "output_dir": str(settings.output_dir),
+        "filename_template": settings.filename_template,
         "take_count": settings.take_count,
         "style_id": settings.style_id,
         "speed": settings.speed,
