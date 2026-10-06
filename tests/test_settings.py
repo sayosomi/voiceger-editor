@@ -26,6 +26,7 @@ class SettingsTests(unittest.TestCase):
             settings.output_dir,
             Path.home() / ".voiceger-editor" / "output",
         )
+        self.assertEqual(settings.filename_template, "{YYYYMMDDHHmm}_{text}")
         self.assertEqual(settings.take_count, 4)
         self.assertEqual(settings.style_id, 3)
         self.assertEqual(settings.speed, 1.0)
@@ -40,6 +41,7 @@ class SettingsTests(unittest.TestCase):
             config_path = Path(directory) / "deep" / "nested" / "config.json"
             settings = Settings(
                 output_dir=Path(directory) / "生成音声",
+                filename_template="{YYYY-MM-DD}_{HHmmss}_{style}_{text}",
                 take_count=8,
                 style_id=38,
                 speed=1.25,
@@ -61,6 +63,7 @@ class SettingsTests(unittest.TestCase):
                 json.loads(first_contents.decode("utf-8")),
                 {
                     "output_dir": str(settings.output_dir),
+                    "filename_template": "{YYYY-MM-DD}_{HHmmss}_{style}_{text}",
                     "take_count": 8,
                     "style_id": 38,
                     "speed": 1.25,
@@ -89,6 +92,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.top_k, 20)
         self.assertEqual(settings.top_p, 1.0)
         self.assertEqual(settings.temperature, 1.0)
+        self.assertEqual(settings.filename_template, "{YYYYMMDDHHmm}_{text}")
 
     def test_custom_config_path_can_be_loaded_and_saved(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -129,6 +133,9 @@ class SettingsTests(unittest.TestCase):
             {"temperature": True},
             {"save_text": 1},
             {"save_lab": 1},
+            {"filename_template": ""},
+            {"filename_template": "{take}_{text}"},
+            {"filename_template": "{YYYYQQ}_{text}"},
             {"output_dir": ""},
             {"output_dir": "invalid\x00path"},
         ]
@@ -153,6 +160,7 @@ class SettingsTests(unittest.TestCase):
             '{"temperature": -0.01}',
             '{"save_text": "yes"}',
             '{"save_lab": "yes"}',
+            '{"filename_template": "{datetime}_{text}"}',
             '{"future_setting": true}',
         ]
         with tempfile.TemporaryDirectory() as directory:
