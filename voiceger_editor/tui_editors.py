@@ -32,6 +32,7 @@ from .query_editing import (
     replace_japanese_section_text,
     japanese_section_text_preview_query,
 )
+from .filename import FilenameTemplateError, validate_filename_template
 from .pronunciation import (
     AccentPhrase as CoreAccentPhrase,
     PronunciationPunctuation as CorePronunciationPunctuation,
@@ -62,7 +63,7 @@ _ESCAPE = "\x1b"
 _SETTINGS_SECTIONS = (
     ("style_id", "speed"),
     ("take_count",),
-    ("output_dir", "save_text", "save_lab"),
+    ("output_dir", "audio_output"),
     ("top_k", "top_p", "temperature", "reset_sampling"),
     ("apply", "reset", "back"),
 )
@@ -410,12 +411,49 @@ class TuiEditorController:
             "speed": str(settings.speed),
             "take_count": str(settings.take_count),
             "output_dir": str(settings.output_dir),
+            "filename_template": settings.filename_template,
             "save_text": settings.save_text,
             "save_lab": settings.save_lab,
             "top_k": str(settings.top_k),
             "top_p": f"{settings.top_p:.2f}",
             "temperature": f"{settings.temperature:.2f}",
         }
+
+    def open_audio_output_settings(
+        self,
+        current_caption: str | None,
+    ) -> tuple[EditorIntent, ...]:
+        parent = self.editor
+        if parent is None or parent.kind != "settings":
+            return ()
+        draft = parent.payload["draft_settings"]
+        style_name = f"Style {draft['style_id']}"
+        try:
+            style_id = int(draft["style_id"])
+            style_name = next(
+                (
+                    str(style.name)
+                    for style in self._available_styles()
+                    if style.id == style_id
+                ),
+                style_name,
+            )
+        except (TypeError, ValueError):
+            pass
+        self.editor = EditorState(
+            kind="audio_output_settings",
+            title="AUDIO OUTPUT",
+            origin=parent.origin,
+            selection="filename_template",
+            payload={
+                "parent_editor": parent,
+                "draft_settings": draft,
+                "preview_text": current_caption or "Sample text",
+                "preview_style": style_name,
+                "output_extension": ".wav",
+            },
+        )
+        return (ClearAdjustmentFeedbackIntent(), UpdateStatusIntent(""))
 
     def open_add_section(
         self,
@@ -1073,7 +1111,10 @@ class TuiEditorController:
                 return (ClearAdjustmentFeedbackIntent(),)
             return self._activate_selection(settings, query, current_caption)
 
-        if editor.kind == "settings" and key in (curses.KEY_LEFT, curses.KEY_RIGHT):
+        if editor.kind in {"settings", "audio_output_settings"} and key in (
+            curses.KEY_LEFT,
+            curses.KEY_RIGHT,
+        ):
             return self.adjust_settings(-1 if key == curses.KEY_LEFT else 1)
         if (
             editor.kind == "add_section"
@@ -1184,13 +1225,15 @@ class TuiEditorController:
             if selected == "back":
                 return self.cancel()
         elif editor.kind == "settings":
-            if selected in {"style_id", "speed", "save_text", "save_lab", "apply"}:
+            if selected in {"style_id", "speed", "apply"}:
                 return self.apply(settings, query, current_caption)
             if selected in {
                 "take_count", "output_dir", "top_k", "top_p", "temperature"
             }:
                 value = editor.payload["draft_settings"][selected]
                 return self.begin_field(selected, str(value))
+            if selected == "audio_output":
+                return self.open_audio_output_settings(current_caption)
             if selected == "reset_sampling":
                 draft = editor.payload["draft_settings"]
                 draft["top_k"] = str(VOICEGER_DEFAULT_TOP_K)
@@ -1212,6 +1255,14 @@ class TuiEditorController:
                 )
             if selected == "back":
                 return self.cancel()
+        elif editor.kind == "audio_output_settings":
+            if selected == "filename_template":
+                value = editor.payload["draft_settings"]["filename_template"]
+                return self.begin_field("filename_template", str(value))
+            if selected in {"save_text", "save_lab"}:
+                return self.adjust_settings(1)
+            if selected == "back":
+                return self._restore_parent_editor("")
         elif editor.kind == "english_word":
             if selected == "phonemes":
                 return self.begin_field("phonemes", editor.input_value)
@@ -1602,7 +1653,13 @@ class TuiEditorController:
             return ()
         name = editor.active_field
         value = editor.input_value
-        if editor.kind == "settings" and name == "take_count":
+        if editor.kind == "audio_output_settings" and name == "filename_template":
+            try:
+                validate_filename_template(value)
+            except FilenameTemplateError as exc:
+                editor.error = error_status(f"Filename template is invalid: {exc}")
+                return ()
+        elif editor.kind == "settings" and name == "take_count":
             try:
                 take_count = int(value)
             except (TypeError, ValueError):
@@ -1650,7 +1707,7 @@ class TuiEditorController:
                 for character in value
             )
             editor.input_value = value
-        if editor.kind == "settings":
+        if editor.kind in {"settings", "audio_output_settings"}:
             editor.payload["draft_settings"][name] = value
         else:
             editor.payload[name] = value
@@ -1658,11 +1715,7 @@ class TuiEditorController:
         editor.input_original = value
         editor.input_cursor = len(value)
         editor.error = EMPTY_STATUS
-        if editor.kind == "settings":
-            status = ""
-        else:
-            status = ""
-        return (UpdateStatusIntent(status),)
+        return (UpdateStatusIntent(""),)
 
     def apply(
         self,
@@ -1760,6 +1813,7 @@ class TuiEditorController:
                 speed=float(draft["speed"]),
                 take_count=int(draft["take_count"]),
                 output_dir=Path(draft["output_dir"]),
+                filename_template=draft["filename_template"],
                 save_text=draft["save_text"],
                 save_lab=draft["save_lab"],
                 top_k=int(draft["top_k"]),
@@ -1864,6 +1918,8 @@ class TuiEditorController:
         editor = self.editor
         if editor is None:
             return ()
+        if editor.kind == "audio_output_settings":
+            return self._restore_parent_editor("")
         if editor.kind in {"section_text", "delete_confirmation"}:
             status = (
                 "Section text draft discarded."
@@ -1902,14 +1958,23 @@ class TuiEditorController:
 
     def adjust_settings(self, direction: int) -> tuple[EditorIntent, ...]:
         editor = self.editor
-        if editor is None or editor.kind != "settings" or editor.active_field is not None:
+        if (
+            editor is None
+            or editor.kind not in {"settings", "audio_output_settings"}
+            or editor.active_field is not None
+        ):
             return ()
         draft = editor.payload["draft_settings"]
         selected = editor.selection
-        if selected not in {
-            "style_id", "speed", "take_count", "save_text", "save_lab",
-            "top_k", "top_p", "temperature",
-        }:
+        allowed = (
+            {"save_text", "save_lab"}
+            if editor.kind == "audio_output_settings"
+            else {
+                "style_id", "speed", "take_count",
+                "top_k", "top_p", "temperature",
+            }
+        )
+        if selected not in allowed:
             return ()
         clear_feedback = adjustment_feedback_intents(
             changed=False,
