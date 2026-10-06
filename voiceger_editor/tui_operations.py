@@ -917,9 +917,13 @@ class TuiOperations:
                     self.worker_operation == "initial"
                     and not self.cancellation_requested
                 ):
-                    effects.append(DiscardInitialBatchEffect(self._worker_item_id))
-                    if navigation_revision == self.operation_focus_revision:
+                    same_context = (
+                        navigation_revision == self.operation_focus_revision
+                    )
+                    if same_context:
                         effects.append(StopPlaybackEffect())
+                    effects.append(DiscardInitialBatchEffect(self._worker_item_id))
+                    if same_context:
                         self.current_take = None
                         effects.append(
                             FocusEffect(("pronunciation", pronunciation_index))
@@ -950,9 +954,13 @@ class TuiOperations:
                     ready = len(session.candidates) if session is not None else 0
                     status = f"Generation cancelled. {ready} take(s) ready."
                     if ready == 0:
-                        effects.append(DiscardInitialBatchEffect(self._worker_item_id))
-                        if navigation_revision == self.operation_focus_revision:
+                        same_context = (
+                            navigation_revision == self.operation_focus_revision
+                        )
+                        if same_context:
                             effects.append(StopPlaybackEffect())
+                        effects.append(DiscardInitialBatchEffect(self._worker_item_id))
+                        if same_context:
                             self.current_take = None
                             effects.append(
                                 FocusEffect(("pronunciation", pronunciation_index))
