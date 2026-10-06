@@ -107,6 +107,7 @@ class TuiApp:
         self._pressed_adjustment: tuple[str, str, int] | None = None
         self._renderer = TuiRenderer()
         self._input = TuiInputReader()
+        self._batch_item_controller = TuiBatchItemController(self._batch)
         self._batch_action_bindings = tui_batch.BatchActionBindings(
             operations=self._operations,
             navigation=self._navigation,
@@ -121,8 +122,10 @@ class TuiApp:
             dispatch_operation_effects=self._dispatch_operation_effects,
             open_help=self._open_help,
             activate_quit=self._activate_quit,
+            initialize_open_item=lambda: self._batch_item_controller.initialize_open_item_focus(
+                self._batch_item_bindings
+            ),
         )
-        self._batch_item_controller = TuiBatchItemController(self._batch)
         self._batch_item_bindings = BatchItemBindings(
             actions=self._batch_action_bindings,
             get_session=lambda: self.session,
