@@ -286,6 +286,12 @@ class TuiOperations:
         self._owned_item_ids = frozenset(item.item_id for item, _take_total in plan)
         self._operation_serial += 1
         self._active_operation_id = self._operation_serial
+        self._batch_progress_item_id = plan[0][0].item_id
+        self._batch_progress_caption_number = 1
+        self._batch_progress_caption_total = len(plan)
+        self._batch_progress_take_number = 1
+        self._batch_progress_take_completed = 0
+        self._batch_progress_take_total = first_take_total
         self.worker_error = None
         self.operation_focus_revision = navigation_revision
         self.operation_completed = 0
@@ -590,6 +596,15 @@ class TuiOperations:
         self._owned_item_ids = (
             frozenset({item_id}) if item_id is not None else frozenset()
         )
+        if operation in {"initial", "regenerate_one", "regenerate_all"}:
+            self._operation_serial += 1
+            self._active_operation_id = self._operation_serial
+            self._batch_progress_item_id = None
+            self._batch_progress_caption_number = None
+            self._batch_progress_caption_total = None
+            self._batch_progress_take_number = None
+            self._batch_progress_take_completed = 0
+            self._batch_progress_take_total = None
         self.worker_error = None
         self.operation_completed = 0
         self.operation_total = 1
@@ -743,20 +758,66 @@ class TuiOperations:
         }
 
     @property
-    def active_item_generation_progress(self) -> tuple[str, int, int] | None:
-        """Return progress for the currently generating individual Batch Item."""
+    def background_operation_progress(self) -> BackgroundOperationProgress | None:
+        """Return stable cross-screen progress for the active Take operation."""
 
+        operation_id = self._active_operation_id
+        operation = self.worker_operation
         if (
-            not self.busy
-            or self.worker_operation not in {"initial", "regenerate_all"}
-            or self._worker_item_id is None
-            or self.operation_total <= 0
+            not self.generation_slot_busy
+            or operation_id is None
+            or operation is None
+        ):
+            return None
+
+        if operation == "batch_generate":
+            return BackgroundOperationProgress(
+                operation_id=operation_id,
+                operation=operation,
+                item_id=self._batch_progress_item_id,
+                completed=self.operation_completed,
+                total=self.operation_total,
+                take_number=self._batch_progress_take_number,
+                take_completed=self._batch_progress_take_completed,
+                take_total=self._batch_progress_take_total,
+                caption_number=self._batch_progress_caption_number,
+                caption_total=self._batch_progress_caption_total,
+            )
+
+        take_total = self.operation_total if self.operation_total > 0 else None
+        if operation == "regenerate_one":
+            take_number = self.worker_target
+        elif take_total is not None:
+            take_number = min(self.operation_completed + 1, take_total)
+        else:
+            take_number = None
+        return BackgroundOperationProgress(
+            operation_id=operation_id,
+            operation=operation,
+            item_id=self._worker_item_id,
+            completed=self.operation_completed,
+            total=self.operation_total,
+            take_number=take_number,
+            take_completed=self.operation_completed,
+            take_total=take_total,
+        )
+
+    @property
+    def active_item_generation_progress(self) -> tuple[str, int, int] | None:
+        """Return item-local progress for the Caption currently being synthesized."""
+
+        progress = self.background_operation_progress
+        if (
+            progress is None
+            or progress.item_id is None
+            or progress.take_total is None
+            or progress.take_total <= 0
         ):
             return None
         return (
-            self._worker_item_id,
-            self.operation_completed,
-            self.operation_total,
+            progress.item_id,
+            progress.take_completed,
+            progress.take_total,
         )
 
     @property
