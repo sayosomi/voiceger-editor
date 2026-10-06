@@ -1543,10 +1543,22 @@ class TuiBatchGenerationTests(unittest.TestCase):
             batch, navigation_revision=0
         )
         self.assertEqual(operations.operation_total, 5)
+        self.assertEqual(
+            operations.owned_item_ids,
+            frozenset({"first", "second"}),
+        )
         self.assertIn("2 selected Caption(s), 5 take(s) total", effects[0].status)
+
+        batch.items[0].included_for_generation = False
+        batch.items[2].included_for_generation = True
+        self.assertEqual(
+            operations.owned_item_ids,
+            frozenset({"first", "second"}),
+        )
 
         operations.join_worker()
         consumed = self.consume(operations)
+        self.assertEqual(operations.owned_item_ids, frozenset())
         starts = [
             (name, mode, number)
             for name, mode, phase, number in log
@@ -1692,6 +1704,7 @@ class TuiBatchGenerationTests(unittest.TestCase):
             "Batch generation cancelled. 2/3 take(s) ready.",
         )
         self.assertFalse(operations.busy)
+        self.assertEqual(operations.owned_item_ids, frozenset())
 
     def test_failure_preserves_item_specific_candidate_ownership_and_stops_later_items(self):
         log = []
@@ -1732,6 +1745,7 @@ class TuiBatchGenerationTests(unittest.TestCase):
         self.assertIs(statuses[-1].kind, StatusKind.ERROR)
         self.assertEqual(operations.operation_completed, 3)
         self.assertFalse(operations.busy)
+        self.assertEqual(operations.owned_item_ids, frozenset())
 
 
 if __name__ == "__main__":
