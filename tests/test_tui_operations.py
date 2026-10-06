@@ -549,6 +549,7 @@ class TuiOperationsTests(unittest.TestCase):
             session,
             take_count=100,
             navigation_revision=0,
+            item_id="origin",
         )
         self.assertTrue(synthesis_started.wait(timeout=5))
 
@@ -566,6 +567,10 @@ class TuiOperationsTests(unittest.TestCase):
         effects = self.consume(session)
         self.assertIn(
             UpdateStatusEffect("Generation cancelled. 1 take(s) ready."),
+            effects,
+        )
+        self.assertIn(
+            GenerationOutcomeEffect("origin", "cancelled"),
             effects,
         )
         self.assertFalse(any(isinstance(effect, DiscardInitialBatchEffect) for effect in effects))
@@ -588,8 +593,12 @@ class TuiOperationsTests(unittest.TestCase):
             item_id="origin",
         )
         self.operations.join_worker()
-        self.consume(session)
+        effects = self.consume(session)
 
+        self.assertIn(
+            GenerationOutcomeEffect("origin", "completed"),
+            effects,
+        )
         self.assertTrue(self.operations.cancellation_guard_armed)
 
     def test_shutdown_request_cancels_batch_and_join_retries_ctrl_c(self):
