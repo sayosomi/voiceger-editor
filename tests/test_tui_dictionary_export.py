@@ -154,7 +154,7 @@ class TuiDictionaryExportTests(unittest.TestCase):
         )
         self.assertIs(completion[0].status.kind, StatusKind.ERROR)
 
-    def test_renderer_explicitly_excludes_english_from_voicevox(self):
+    def test_renderer_labels_voicevox_as_japanese_dictionary_only(self):
         self.open_export()
         editor = SimpleNamespace(
             kind="dictionary_export",
@@ -192,8 +192,8 @@ class TuiDictionaryExportTests(unittest.TestCase):
         self.assertIn("[E] Voiceger Editor", rendered)
         self.assertIn("Japanese + English", rendered)
         self.assertIn("[V] VOICEVOX", rendered)
-        self.assertIn("Japanese only", rendered)
-        self.assertIn("English dictionary is not included", rendered)
+        self.assertIn("Japanese dictionary only", rendered)
+        self.assertNotIn("English dictionary is not included", rendered)
         self.assertEqual(
             [key for _text, key in document if key is not None],
             ["output", "voiceger", "voicevox", "back"],
