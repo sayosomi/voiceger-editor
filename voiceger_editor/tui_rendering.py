@@ -31,6 +31,7 @@ from .tui_display import (
     _wrap_text,
 )
 from .tui_editors import PronunciationRow
+from .tui_operations import BackgroundOperationProgress
 from .tui_shortcuts import (
     batch_list_shortcut,
     main_shortcut,
@@ -69,6 +70,51 @@ def background_with_cancel_generation_hint(
     if not cancel_generation_available:
         return message
     return f"{message} · {_CANCEL_GENERATION_HINT}"
+
+
+def format_background_operation_progress(
+    progress: BackgroundOperationProgress | None,
+    batch: CaptionBatch,
+    cancel_generation_available: bool,
+) -> str:
+    """Format one operation-owned progress snapshot for the shared footer."""
+
+    if progress is None:
+        return ""
+
+    owner = "Caption"
+    if progress.item_id is not None:
+        try:
+            item = batch.get_item(progress.item_id)
+        except KeyError:
+            pass
+        else:
+            owner = f"Caption {batch.items.index(item) + 1}"
+
+    if progress.operation == "initial":
+        verb = "Generating"
+    elif progress.operation in {"regenerate_one", "regenerate_all"}:
+        verb = "Regenerating"
+    elif progress.operation == "batch_generate":
+        verb = "Generating selected"
+    else:
+        verb = "Working"
+
+    parts = [verb]
+    if progress.item_id is not None:
+        parts.append(owner)
+    if progress.take_number is not None:
+        if progress.take_total is not None and progress.operation != "regenerate_one":
+            parts.append(f"Take {progress.take_number}/{progress.take_total}")
+        else:
+            parts.append(f"Take {progress.take_number}")
+    if progress.operation == "batch_generate" and progress.total > 0:
+        parts.append(f"Overall {progress.completed}/{progress.total}")
+
+    return background_with_cancel_generation_hint(
+        " · ".join(parts),
+        cancel_generation_available,
+    )
 
 
 _DICTIONARY_SORT_LABELS = {
