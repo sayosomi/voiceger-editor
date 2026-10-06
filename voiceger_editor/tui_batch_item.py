@@ -340,6 +340,13 @@ class TuiBatchItemController:
                     )
                 )
             elif isinstance(action, StartGeneration):
+                conflict = actions.operations.generation_conflict_status(
+                    self.batch.batch,
+                    requested_item_id=self.batch.open_item_id,
+                )
+                if conflict is not None:
+                    actions.set_status(conflict)
+                    continue
                 if session is not None and not getattr(session, "is_prepared", True):
                     actions.set_status(
                         info_status(
@@ -360,6 +367,13 @@ class TuiBatchItemController:
                     self.batch.clear_open_item_acceptance()
                 actions.dispatch_operation_effects(effects)
             elif isinstance(action, RegenerateAll):
+                conflict = actions.operations.generation_conflict_status(
+                    self.batch.batch,
+                    requested_item_id=self.batch.open_item_id,
+                )
+                if conflict is not None:
+                    actions.set_status(conflict)
+                    continue
                 actions.dispatch_operation_effects(
                     actions.operations.start_regenerate_all(
                         session,
@@ -377,6 +391,13 @@ class TuiBatchItemController:
                     bindings=bindings,
                 )
             elif isinstance(action, RegenerateCandidate):
+                conflict = actions.operations.generation_conflict_status(
+                    self.batch.batch,
+                    requested_item_id=self.batch.open_item_id,
+                )
+                if conflict is not None:
+                    actions.set_status(conflict)
+                    continue
                 actions.dispatch_operation_effects(
                     actions.operations.start_regeneration(
                         session,
