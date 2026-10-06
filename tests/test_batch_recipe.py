@@ -171,6 +171,7 @@ class BatchRecipeTests(unittest.TestCase):
         self.adapter = FakeAdapter(self.root)
         self.runtime_settings = Settings(
             output_dir=self.root / "runtime-output",
+            filename_template="{style}_{text}",
             take_count=4,
             style_id=3,
             speed=1.0,
@@ -320,6 +321,10 @@ class BatchRecipeTests(unittest.TestCase):
                 item.session.settings.output_dir,
                 self.runtime_settings.output_dir,
             )
+            self.assertEqual(
+                item.session.settings.filename_template,
+                self.runtime_settings.filename_template,
+            )
             self.assertTrue(item.session.settings.save_text)
             self.assertTrue(item.session.settings.save_lab)
 
@@ -337,6 +342,7 @@ class BatchRecipeTests(unittest.TestCase):
         self.assertNotIn("\\u305a", serialized)
         for forbidden in (
             "output_dir",
+            "filename_template",
             "save_text",
             "save_lab",
             "candidate",
