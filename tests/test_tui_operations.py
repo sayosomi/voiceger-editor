@@ -134,7 +134,14 @@ class TuiOperationsTests(unittest.TestCase):
             self.operations.start_generation(
                 FakeSession(), take_count=4, navigation_revision=0
             ),
-            (UpdateStatusEffect("Another operation is already running."),),
+            (
+                UpdateStatusEffect(
+                    warning_status(
+                        "Generate Caption is unavailable while "
+                        "another background operation is active."
+                    )
+                ),
+            ),
         )
         self.operations.busy = False
 
