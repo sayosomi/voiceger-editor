@@ -80,9 +80,10 @@ editable and can generate new Takes.
 - Left / Right: adjust Batch List Takes or a supported Batch Item value.
 - Tab / Shift+Tab: move between major areas inside a Batch Item.
 - Space: toggle Batch List inclusion, or replay the selected Take inside a Batch Item.
-- Esc: go back one level; active synthesis cancellation takes precedence when available.
+- Esc: go back one level. Active Take generation continues in the background.
+- Ctrl+C: cancel active cancellable Take generation at the next safe Take boundary; otherwise keep the existing Quit behavior.
 - `?`: Help.
-- `q`: Quit.
+- `q`: explicit Quit.
 
 The TUI uses one vertical navigation flow. Editing opens a focused editor instead of changing values accidentally during normal navigation.
 
@@ -196,7 +197,11 @@ The Generate row can adjust the Take count with Left / Right.
 
 If Takes already exist, Generate replaces the complete candidate set.
 
-During a multi-Take generation batch, Esc requests cancellation. Cancellation occurs at a safe Take boundary rather than interrupting synthesis in the middle of one Take.
+During multi-Take generation, Esc keeps its normal Back behavior. You can return from a Batch Item to the Batch List while generation continues, and the generated Takes remain owned by the Caption that started the operation.
+
+While cancellation is available, the Status footer shows `[Ctrl+C] Cancel generation`. Ctrl+C requests cooperative cancellation at a safe Take boundary: the in-flight Take may finish, completed Takes are preserved, and no next Take starts. The TUI stays open.
+
+If generation finishes at the same moment you press Ctrl+C, Voiceger Editor keeps a cancellation guard armed so that Ctrl+C reports that generation already finished instead of quitting. Repeated Ctrl+C remains safe; the guard is released by the next non-Ctrl+C interaction.
 
 ## Listen to Takes
 
@@ -297,6 +302,6 @@ See [User Dictionary](dictionary.md).
 
 ## Quit
 
-Press `q` from Batch List or Batch Item to quit.
+Press `q` from Batch List or Batch Item to quit explicitly. Ctrl+C keeps its existing Quit behavior when no cancellable generation is active and no post-completion cancellation guard is armed.
 
-If synthesis is running, Voiceger Editor performs safe cleanup. A cancellable batch stops at a supported boundary rather than leaving partial application state.
+If synthesis is running when you explicitly quit, Voiceger Editor performs safe cleanup. A cancellable batch stops at a supported boundary rather than leaving partial application state.
