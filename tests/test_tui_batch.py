@@ -314,6 +314,7 @@ class TuiBatchControllerTests(unittest.TestCase):
         )
         self.assertEqual(bindings.navigation.focus_key, ("caption", None))
         bindings.navigation.reset_pronunciation_index.assert_called_once_with()
+        bindings.initialize_open_item.assert_called_once_with()
         bindings.set_status.assert_called_once_with("")
         self.assertEqual(controller.item_title, "BATCH ITEM")
         self.assertEqual(controller.item_position, (2, 2))
