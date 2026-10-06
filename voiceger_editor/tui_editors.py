@@ -32,7 +32,11 @@ from .query_editing import (
     replace_japanese_section_text,
     japanese_section_text_preview_query,
 )
-from .filename import FilenameTemplateError, validate_filename_template
+from .filename import (
+    FilenameTemplateError,
+    render_output_basename,
+    validate_filename_template,
+)
 from .pronunciation import (
     AccentPhrase as CoreAccentPhrase,
     PronunciationPunctuation as CorePronunciationPunctuation,
@@ -453,7 +457,35 @@ class TuiEditorController:
                 "output_extension": ".wav",
             },
         )
+        self._refresh_filename_preview(self.editor)
         return (ClearAdjustmentFeedbackIntent(), UpdateStatusIntent(""))
+
+    @staticmethod
+    def _refresh_filename_preview(
+        editor: EditorState,
+        template: str | None = None,
+    ) -> None:
+        if editor.kind != "audio_output_settings":
+            return
+        candidate = (
+            str(template)
+            if template is not None
+            else str(editor.payload["draft_settings"]["filename_template"])
+        )
+        try:
+            basename = render_output_basename(
+                template=candidate,
+                text=str(editor.payload.get("preview_text", "Sample text")),
+                style=str(editor.payload.get("preview_style", "Style")),
+            )
+        except FilenameTemplateError as exc:
+            editor.payload["filename_preview"] = ""
+            editor.payload["filename_preview_error"] = str(exc)
+            return
+        editor.payload["filename_preview"] = (
+            basename + str(editor.payload.get("output_extension", ".wav"))
+        )
+        editor.payload["filename_preview_error"] = ""
 
     def open_add_section(
         self,
@@ -1042,6 +1074,8 @@ class TuiEditorController:
                 editor.input_cursor = len(editor.input_original)
                 editor.active_field = None
                 editor.error = EMPTY_STATUS
+                if editor.kind == "audio_output_settings":
+                    self._refresh_filename_preview(editor, editor.input_original)
                 return (UpdateStatusIntent(""),)
             if editor.kind == "japanese" and isinstance(key, str) and "/" in key:
                 editor.error = (
@@ -1064,7 +1098,14 @@ class TuiEditorController:
             if edit.handled:
                 editor.input_value = edit.value
                 editor.input_cursor = edit.cursor
-                if edit.text_changed and editor.kind in {
+                if (
+                    edit.text_changed
+                    and editor.kind == "audio_output_settings"
+                    and editor.active_field == "filename_template"
+                ):
+                    self._refresh_filename_preview(editor, edit.value)
+                    editor.error = EMPTY_STATUS
+                elif edit.text_changed and editor.kind in {
                     "japanese", "english_word", "section_text", "add_section"
                 }:
                     editor.error = EMPTY_STATUS
@@ -1656,7 +1697,9 @@ class TuiEditorController:
         if editor.kind == "audio_output_settings" and name == "filename_template":
             try:
                 validate_filename_template(value)
+                self._refresh_filename_preview(editor, value)
             except FilenameTemplateError as exc:
+                self._refresh_filename_preview(editor, value)
                 editor.error = error_status(f"Filename template is invalid: {exc}")
                 return ()
         elif editor.kind == "settings" and name == "take_count":
