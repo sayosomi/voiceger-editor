@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
+from voiceger_editor.caption_batch import CaptionBatch
 from voiceger_editor.tui_editors import (
     AdjustmentPressedIntent,
     ClearAdjustmentFeedbackIntent,
@@ -15,7 +16,9 @@ from voiceger_editor.tui_batch import (
     OpenBatchDictionary,
     OpenBatchHelp,
     OpenBatchItem,
+    OpenBatchRead,
     OpenBatchSettings,
+    OpenBatchWrite,
     QuitBatch,
     TuiBatchController,
 )
@@ -62,6 +65,8 @@ class TuiBatchControllerTests(unittest.TestCase):
             open_caption_editor=Mock(),
             change_settings=Mock(),
             open_settings_editor=Mock(),
+            open_batch_read=Mock(),
+            open_batch_write=Mock(),
             dispatch_editor_intents=Mock(),
             dispatch_operation_effects=Mock(),
             open_help=Mock(),
@@ -86,6 +91,8 @@ class TuiBatchControllerTests(unittest.TestCase):
                 ("caption", 1),
                 ("add_captions", None),
                 ("generate_selected", None),
+                ("read_batch", None),
+                ("write_batch", None),
                 ("settings", None),
                 ("dictionary", None),
                 ("help", None),
@@ -290,6 +297,8 @@ class TuiBatchControllerTests(unittest.TestCase):
         expected = {
             "a": AddCaptions(),
             "g": GenerateSelected(),
+            "r": OpenBatchRead(),
+            "w": OpenBatchWrite(),
             "s": OpenBatchSettings(),
             "d": OpenBatchDictionary(),
             "?": OpenBatchHelp(),
@@ -344,6 +353,56 @@ class TuiBatchControllerTests(unittest.TestCase):
             rebuild=False,
         )
         bindings.dispatch_operation_effects.assert_called_once_with(effects)
+
+    def test_dispatch_read_write_open_recipe_flow_only_when_idle(self):
+        controller = self.make_controller("first")
+        bindings = self.make_bindings()
+
+        controller.dispatch_actions((OpenBatchRead(), OpenBatchWrite()), bindings)
+
+        bindings.open_batch_read.assert_called_once_with()
+        bindings.open_batch_write.assert_called_once_with()
+
+        bindings.open_batch_read.reset_mock()
+        bindings.open_batch_write.reset_mock()
+        bindings.operations.busy = True
+
+        controller.dispatch_actions((OpenBatchRead(),), bindings)
+        self.assertIn("before reading a batch", str(bindings.set_status.call_args.args[0]))
+        bindings.open_batch_read.assert_not_called()
+
+        controller.dispatch_actions((OpenBatchWrite(),), bindings)
+        self.assertIn("before writing a batch", str(bindings.set_status.call_args.args[0]))
+        bindings.open_batch_write.assert_not_called()
+
+    def test_replace_batch_closes_old_sessions_and_resets_list_focus(self):
+        controller = self.make_controller("old first\nold second")
+        previous_sessions = controller.sessions
+        controller.open_item(1)
+        controller.request_delete_open_item()
+
+        replacement = CaptionBatch(default_take_count=7)
+        replacement.add_captions_from_text(
+            "new first\nnew second",
+            session_factory=FakeSession,
+        )
+
+        controller.replace_batch(replacement)
+
+        self.assertIs(controller.batch, replacement)
+        self.assertFalse(controller.in_item)
+        self.assertFalse(controller.delete_confirmation_active)
+        self.assertEqual(controller.focus_key, ("caption", 0))
+        self.assertTrue(all(session.closed for session in previous_sessions))
+        self.assertTrue(
+            all(not item.session.closed for item in replacement.items)
+        )
+
+        empty = CaptionBatch(default_take_count=3)
+        replacement_sessions = tuple(item.session for item in replacement.items)
+        controller.replace_batch(empty)
+        self.assertEqual(controller.focus_key, ("add_captions", None))
+        self.assertTrue(all(session.closed for session in replacement_sessions))
 
     def test_dispatch_generate_selected_uses_owned_batch_and_navigation_revision(self):
         controller = self.make_controller("first\nsecond")
