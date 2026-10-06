@@ -335,7 +335,7 @@ class TuiEditorController:
         busy: bool,
         multiline: bool = False,
     ) -> tuple[EditorIntent, ...]:
-        if busy:
+        if busy and not multiline:
             return (UpdateStatusIntent("Wait for synthesis to finish before editing Caption."),)
         current = initial if initial is not None else current_caption or ""
         self.editor = EditorState(
