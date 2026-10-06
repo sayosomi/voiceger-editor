@@ -842,6 +842,7 @@ class TuiOperationsTests(unittest.TestCase):
 
         self.operations.worker_operation = "initial"
         self.operations.busy = True
+        self.operations.operation_completed = 0
         self.operations.events.put(("done", None))
         self.assertEqual(
             self.consume(FakeSession()),
@@ -850,6 +851,7 @@ class TuiOperationsTests(unittest.TestCase):
 
         self.operations.worker_operation = "initial"
         self.operations.busy = True
+        self.operations.operation_completed = 0
         self.operations.events.put(("done", None))
         self.assertEqual(self.consume(FakeSession(), exiting=True), ())
 
