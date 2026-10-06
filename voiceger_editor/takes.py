@@ -11,6 +11,7 @@ import tempfile
 import time
 from typing import Any, Callable, Iterator, Mapping
 
+from .filename import DEFAULT_FILENAME_TEMPLATE
 from .lab import LabSidecarResult, save_lab_sidecar
 from .output import SavedOutput, save_output_wav
 from .voicevox_api_models import AudioQuery
@@ -264,6 +265,7 @@ class TakeBatch:
         output_dir: Path,
         save_text: bool,
         save_lab: bool = False,
+        filename_template: str = DEFAULT_FILENAME_TEMPLATE,
     ) -> SavedOutput:
         """Save the selected candidate while keeping the review batch open."""
 
@@ -279,6 +281,7 @@ class TakeBatch:
             "style_name": candidate.style_name,
             "output_dir": output_dir,
             "save_text": save_text,
+            "filename_template": filename_template,
         }
         if save_lab:
             save_kwargs["avoid_lab_collision"] = True
