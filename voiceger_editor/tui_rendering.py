@@ -1193,8 +1193,7 @@ class TuiRenderer:
             plain("  Japanese + English")
             plain()
             selectable("voicevox")
-            plain("  Japanese only")
-            plain("  English dictionary is not included")
+            plain("  Japanese dictionary only")
             plain()
             selectable("back")
         elif editor.kind == "dictionary_import_path":
