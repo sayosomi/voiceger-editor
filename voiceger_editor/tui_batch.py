@@ -237,6 +237,10 @@ class TuiBatchController:
         if item_id is not None:
             self.batch.clear_generation_outcome(item_id)
 
+    def clear_generation_outcomes(self) -> None:
+        for item in self.batch.items:
+            item.clear_generation_outcome()
+
     def set_item_generation_outcome(self, item_id: str, outcome: str) -> None:
         try:
             self.batch.set_generation_outcome(item_id, outcome)
