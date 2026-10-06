@@ -534,6 +534,8 @@ class TuiRenderer:
         for name in (
             "add_captions",
             "generate_selected",
+            "read_batch",
+            "write_batch",
             "settings",
             "dictionary",
             "help",
@@ -1025,13 +1027,18 @@ class TuiRenderer:
         )
         if editor.kind in {
             "build_confirmation",
+            "batch_recipe_replace_confirmation",
             "dictionary_delete_confirmation",
             "dictionary_discard_confirmation",
             "delete_confirmation",
             "clear_candidates_confirmation",
         }:
             details: tuple[ConfirmationDetail, ...] = ()
-            if editor.kind == "dictionary_delete_confirmation":
+            if editor.kind == "batch_recipe_replace_confirmation":
+                details = (
+                    ConfirmationDetail("Path", str(editor.payload["path"])),
+                )
+            elif editor.kind == "dictionary_delete_confirmation":
                 if editor.payload["language"] == "ja":
                     pronunciation = " ".join(
                         _japanese_mora_tokens(
@@ -1166,6 +1173,26 @@ class TuiRenderer:
             selectable("edit_text")
             selectable("clear")
             selectable("reset")
+            selectable("back")
+        elif editor.kind in {
+            "batch_recipe_read_path",
+            "batch_recipe_write_path",
+        }:
+            plain()
+            plain("File path")
+            if editor.active_field == "path":
+                input_field("path", "▶ ")
+            else:
+                wrapped_selectable_text(
+                    "path",
+                    str(editor.payload.get("path", "")) or "(not set)",
+                )
+            plain()
+            selectable(
+                "read"
+                if editor.kind == "batch_recipe_read_path"
+                else "write"
+            )
             selectable("back")
         elif editor.kind == "dictionary_menu":
             plain()
