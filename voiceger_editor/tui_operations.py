@@ -222,10 +222,9 @@ class TuiOperations:
     ) -> tuple[OperationEffect, ...]:
         """Generate selected Caption items sequentially on one worker."""
 
-        if self.busy:
-            return (
-                UpdateStatusEffect("Another operation is already running."),
-            )
+        conflict = self.resource_conflict_status("Generate selected")
+        if conflict is not None:
+            return (UpdateStatusEffect(conflict),)
 
         selected = batch.included_items
         if not selected:
@@ -384,10 +383,9 @@ class TuiOperations:
         navigation_revision: int,
         item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
-        if self.busy:
-            return (
-                UpdateStatusEffect("Another operation is already running."),
-            )
+        conflict = self.resource_conflict_status("Generate Caption")
+        if conflict is not None:
+            return (UpdateStatusEffect(conflict),)
         if session is None:
             return ()
         if session.has_active_batch:
@@ -421,10 +419,9 @@ class TuiOperations:
         navigation_revision: int,
         item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
-        if self.busy:
-            return (
-                UpdateStatusEffect("Another operation is already running."),
-            )
+        conflict = self.resource_conflict_status(f"Regenerate Take {number}")
+        if conflict is not None:
+            return (UpdateStatusEffect(conflict),)
         if session is None:
             return ()
         self.stop_playback()
@@ -447,10 +444,9 @@ class TuiOperations:
         navigation_revision: int,
         item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
-        if self.busy:
-            return (
-                UpdateStatusEffect("Another operation is already running."),
-            )
+        conflict = self.resource_conflict_status("Regenerate all Takes")
+        if conflict is not None:
+            return (UpdateStatusEffect(conflict),)
         if session is None:
             return ()
         try:
