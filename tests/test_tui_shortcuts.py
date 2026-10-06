@@ -75,6 +75,9 @@ class TuiShortcutTests(unittest.TestCase):
             "dictionary_menu": {
                 "j": "japanese", "e": "english", "i": "import", "x": "export",
             },
+            "batch_recipe_read_path": {"r": "read"},
+            "batch_recipe_write_path": {"w": "write"},
+            "batch_recipe_replace_confirmation": {"r": "replace"},
             "dictionary_export": {"o": "output", "e": "voiceger", "v": "voicevox"},
             "dictionary_import_path": {"i": "review"},
             "dictionary_import_review": {
@@ -156,6 +159,8 @@ class TuiShortcutTests(unittest.TestCase):
         expected = {
             "a": "add_captions",
             "g": "generate_selected",
+            "r": "read_batch",
+            "w": "write_batch",
             "s": "settings",
             "d": "dictionary",
             "?": "help",
@@ -245,7 +250,11 @@ class TuiShortcutTests(unittest.TestCase):
         controller = self.make_controller()
         settings = Settings()
         for screen_kind, definitions in menu_definitions().items():
-            if screen_kind == "help" or screen_kind.startswith("dictionary_"):
+            if (
+                screen_kind == "help"
+                or screen_kind.startswith("dictionary_")
+                or screen_kind.startswith("batch_recipe_")
+            ):
                 continue
             payload = {
                 item.condition_key: True
@@ -322,6 +331,24 @@ class TuiShortcutTests(unittest.TestCase):
             "delete_confirmation": (
                 "delete",
                 {"warning": "warning"},
+                "",
+            ),
+            "batch_recipe_read_path": (
+                "path",
+                {"path": "/tmp/batch.voiceger.json"},
+                "/tmp/batch.voiceger.json",
+            ),
+            "batch_recipe_write_path": (
+                "write",
+                {"path": "/tmp/batch.voiceger.json"},
+                "",
+            ),
+            "batch_recipe_replace_confirmation": (
+                "cancel",
+                {
+                    "path": "/tmp/batch.voiceger.json",
+                    "warning": "Current batch will be replaced.",
+                },
                 "",
             ),
             "dictionary_export": (
