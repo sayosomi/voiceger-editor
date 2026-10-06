@@ -351,6 +351,7 @@ class TuiBatchItemController:
                     session,
                     take_count=settings.take_count,
                     navigation_revision=actions.navigation.revision,
+                    item_id=self.batch.open_item_id,
                 )
                 if (
                     actions.operations.busy
@@ -364,6 +365,7 @@ class TuiBatchItemController:
                         session,
                         take_count=settings.take_count,
                         navigation_revision=actions.navigation.revision,
+                        item_id=self.batch.open_item_id,
                     )
                 )
             elif isinstance(action, BuildPronunciation):
@@ -381,6 +383,7 @@ class TuiBatchItemController:
                         action.number,
                         take_count=settings.take_count,
                         navigation_revision=actions.navigation.revision,
+                        item_id=self.batch.open_item_id,
                     )
                 )
             elif isinstance(action, PlayCandidate):
@@ -697,6 +700,7 @@ class TuiBatchItemController:
             actions.operations.stop_playback()
             actions.operations.clear_current_take()
             actions.editor_controller.clear_groupings()
+            actions.navigation.mark_context_change()
             self.batch.close_item()
             actions.set_session(None)
             actions.set_status(EMPTY_STATUS)
