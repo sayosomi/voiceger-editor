@@ -55,6 +55,53 @@ class TuiBatchItemController:
     def __init__(self, batch: TuiBatchController) -> None:
         self.batch = batch
 
+    def initialize_open_item_focus(self, bindings: BatchItemBindings) -> None:
+        """Choose the most useful initial focus for the currently open item."""
+
+        session = bindings.get_session()
+        actions = bindings.actions
+        if session is None:
+            actions.navigation.focus_key = ("caption", None)
+            return
+
+        item_id = self.batch.open_item_id
+        item = (
+            self.batch.batch.get_item(item_id)
+            if item_id is not None
+            else None
+        )
+        candidate_numbers = tuple(
+            candidate.number for candidate in getattr(session, "candidates", ())
+        )
+        preferred_take = (
+            item.accepted_take_number
+            if item is not None
+            and item.accepted_take_number in candidate_numbers
+            else candidate_numbers[0]
+            if candidate_numbers
+            else None
+        )
+
+        context = self.navigation_context(bindings)
+        if preferred_take is not None:
+            self.dispatch_navigation_actions(
+                actions.navigation.focus_candidate(context, preferred_take),
+                bindings,
+            )
+            return
+
+        if getattr(session, "is_prepared", True) and context.pronunciation_count:
+            self.dispatch_navigation_actions(
+                actions.navigation.set_focus_key(
+                    context,
+                    ("pronunciation", 0),
+                ),
+                bindings,
+            )
+            return
+
+        actions.navigation.focus_key = ("caption", None)
+
     def handle_key(self, key: Any, bindings: BatchItemBindings) -> None:
         actions = bindings.actions
         if self._handle_item_navigation_key(key, bindings):
@@ -528,9 +575,10 @@ class TuiBatchItemController:
         actions.editor_controller.clear_groupings()
         session = self.batch.open_item(target)
         actions.set_session(session)
-        actions.navigation.focus_key = ("batch_item", None)
+        actions.navigation.focus_key = ("caption", None)
         actions.navigation.reset_pronunciation_index()
         actions.set_status(EMPTY_STATUS)
+        self.initialize_open_item_focus(bindings)
         if not getattr(session, "is_prepared", True):
             actions.dispatch_operation_effects(
                 actions.operations.start_session_preparation(
