@@ -718,6 +718,8 @@ class TuiApp:
             batch_item_position=(
                 self._batch.item_position if self._batch.in_item else None
             ),
+            batch_item_id=self._batch.open_item_id,
+            active_generation_item_id=self._operations.active_generation_item_id,
             output_path_edit=self._output_path_controller.state,
         )
 
@@ -782,6 +784,7 @@ class TuiApp:
                 delete_confirmation_selection=self._batch.delete_confirmation_selection,
                 pressed_adjustment=self._pressed_adjustment,
                 active_generation=self._operations.active_item_generation_progress,
+                generation_busy=self._operations.busy,
             )
         else:
             self._dispatch_navigation_actions(
