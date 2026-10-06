@@ -519,6 +519,7 @@ class TuiBatchItemController:
         actions.operations.stop_playback()
         actions.editor_controller.clear_groupings()
         actions.operations.clear_current_take()
+        self.batch.clear_open_item_generation_outcome()
         if rebuild:
             self._pending_prepare_focus = None
             self.dispatch_navigation_actions(
