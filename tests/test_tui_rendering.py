@@ -366,17 +366,46 @@ class TuiRenderingTests(unittest.TestCase):
         )
         batch.toggle_included(batch.items[1].item_id)
         batch.items[0].session.candidates = (SimpleNamespace(number=1),)
+        batch.set_generation_outcome(batch.items[0].item_id, "completed")
         batch.mark_accepted(batch.items[1].item_id, 2)
 
         lines = self.renderer.batch_list_document(batch, ("caption", 0), 80)
         labels = [line.text for line in lines]
         self.assertIn("  Takes < 4 >", labels)
-        self.assertIn("▶ [x] 1  [25%] first caption", labels)
+        self.assertIn("▶ [x] 1  [!] first caption", labels)
         self.assertIn("  [ ] 2  [✓] second caption", labels)
+        self.assertFalse(any("[25%]" in label for label in labels))
 
-        batch.items[0].session.candidates = tuple(
-            SimpleNamespace(number=number) for number in range(1, 5)
-        )
+        batch.default_take_count = 9
+        labels = [
+            line.text
+            for line in self.renderer.batch_list_document(
+                batch, ("caption", 0), 80
+            )
+        ]
+        self.assertIn("  Takes < 9 >", labels)
+        self.assertIn("▶ [x] 1  [!] first caption", labels)
+
+        batch.set_generation_outcome(batch.items[0].item_id, "cancelled")
+        labels = [
+            line.text
+            for line in self.renderer.batch_list_document(
+                batch, ("caption", 0), 80
+            )
+        ]
+        self.assertIn("▶ [x] 1  [⚠] first caption", labels)
+
+        batch.set_generation_outcome(batch.items[0].item_id, "failed")
+        labels = [
+            line.text
+            for line in self.renderer.batch_list_document(
+                batch, ("caption", 0), 80
+            )
+        ]
+        self.assertIn("▶ [x] 1  [⚠] first caption", labels)
+
+        batch.set_generation_outcome(batch.items[0].item_id, "completed")
+        batch.default_take_count = 4
         labels = [
             line.text
             for line in self.renderer.batch_list_document(
