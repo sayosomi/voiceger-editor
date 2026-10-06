@@ -50,6 +50,7 @@ class TuiBatchControllerTests(unittest.TestCase):
         operations.worker_operation = None
         operations.start_batch_generation.return_value = ()
         operations.start_session_preparation.return_value = ()
+        operations.generation_conflict_status.return_value = None
         navigation = SimpleNamespace(
             focus_key=("takes", None),
             revision=7,
