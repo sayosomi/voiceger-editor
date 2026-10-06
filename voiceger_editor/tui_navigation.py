@@ -443,6 +443,11 @@ class TuiNavigation:
     def reset_pronunciation_index(self) -> None:
         self.pronunciation_index = 0
 
+    def mark_context_change(self) -> None:
+        """Advance the revision when navigation leaves the current screen context."""
+
+        self.revision += 1
+
     @staticmethod
     def _candidate_playback_action(key: FocusKey) -> tuple[NavigationAction, ...]:
         name, number = key
