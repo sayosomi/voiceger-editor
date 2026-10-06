@@ -206,6 +206,113 @@ class TuiBatchItemControllerTests(unittest.TestCase):
 
         self.assertEqual(bindings.actions.navigation.focus_key, ("caption", None))
 
+    def test_caption_and_fixed_action_focus_survive_item_switches(self):
+        subject, batch, bindings, _state = self.make_subject()
+
+        bindings.actions.navigation.focus_key = ("caption", None)
+        subject.move_open_item(1, bindings)
+        self.assertEqual(batch.item_position, (2, 2))
+        self.assertEqual(bindings.actions.navigation.focus_key, ("caption", None))
+
+        bindings.actions.navigation.focus_key = ("output", None)
+        subject.move_open_item(-1, bindings)
+        self.assertEqual(batch.item_position, (1, 2))
+        self.assertEqual(bindings.actions.navigation.focus_key, ("output", None))
+
+    def test_candidate_focus_keeps_same_take_or_falls_back_to_target_priority(self):
+        subject, batch, bindings, state = self.make_subject()
+        first, second = batch.batch.items
+        first.session.candidates = [
+            SimpleNamespace(number=1),
+            SimpleNamespace(number=2),
+        ]
+        second.session.candidates = [
+            SimpleNamespace(number=1),
+            SimpleNamespace(number=2),
+        ]
+        bindings.actions.operations.play_take.return_value = ()
+        bindings.actions.navigation.focus_key = ("candidate", 2)
+
+        subject.move_open_item(1, bindings)
+
+        self.assertIs(state["session"], second.session)
+        self.assertEqual(bindings.actions.navigation.focus_key, ("candidate", 2))
+        self.assertEqual(bindings.actions.operations.current_take, 2)
+        bindings.actions.operations.play_take.assert_called_with(second.session, 2)
+
+        bindings.actions.operations.play_take.reset_mock()
+        second.session.candidates = [SimpleNamespace(number=1)]
+        batch.batch.mark_accepted(first.item_id, 2)
+        bindings.actions.navigation.focus_key = ("candidate", 1)
+        subject.move_open_item(-1, bindings)
+        self.assertEqual(bindings.actions.navigation.focus_key, ("candidate", 1))
+
+        first.session.candidates = [
+            SimpleNamespace(number=2),
+            SimpleNamespace(number=3),
+        ]
+        bindings.actions.navigation.focus_key = ("candidate", 1)
+        subject.move_open_item(1, bindings)
+        second.session.candidates = [SimpleNamespace(number=1)]
+        subject.move_open_item(-1, bindings)
+
+        self.assertEqual(bindings.actions.navigation.focus_key, ("candidate", 2))
+        self.assertEqual(bindings.actions.operations.current_take, 2)
+        bindings.actions.operations.play_take.assert_called_with(first.session, 2)
+
+    def test_pronunciation_focus_keeps_index_or_falls_back_to_first_row(self):
+        subject, batch, bindings, state = self.make_subject()
+        first, second = batch.batch.items
+        bindings.actions.editor_controller.pronunciation_rows.side_effect = (
+            lambda _query, _segments: (
+                (SimpleNamespace(), SimpleNamespace(), SimpleNamespace())
+                if state["session"] is first.session
+                else (SimpleNamespace(), SimpleNamespace())
+            )
+        )
+        bindings.actions.navigation.focus_key = ("pronunciation", 1)
+
+        subject.move_open_item(1, bindings)
+        self.assertEqual(
+            bindings.actions.navigation.focus_key,
+            ("pronunciation", 1),
+        )
+
+        bindings.actions.navigation.focus_key = ("pronunciation", 2)
+        subject.move_open_item(-1, bindings)
+        subject.move_open_item(1, bindings)
+        self.assertEqual(
+            bindings.actions.navigation.focus_key,
+            ("pronunciation", 0),
+        )
+
+    def test_unprepared_item_restores_preserved_focus_after_prepare(self):
+        subject, batch, bindings, state = self.make_subject()
+        target = batch.batch.items[1].session
+        target.is_prepared = False
+        bindings.actions.navigation.focus_key = ("caption", None)
+
+        subject.move_open_item(1, bindings)
+
+        self.assertEqual(bindings.actions.navigation.focus_key, ("caption", None))
+        bindings.actions.operations.start_session_preparation.assert_called_once_with(
+            target,
+            rebuild=False,
+        )
+
+        target.is_prepared = True
+        bindings.actions.editor_controller.pronunciation_rows.return_value = (
+            SimpleNamespace(),
+        )
+        subject.complete_preparation(
+            target,
+            rebuild=False,
+            error=None,
+            bindings=bindings,
+        )
+
+        self.assertEqual(bindings.actions.navigation.focus_key, ("caption", None))
+
     def test_caption_movement_is_blocked_while_synthesis_is_busy(self):
         subject, batch, bindings, state = self.make_subject()
         bindings.actions.operations.busy = True
