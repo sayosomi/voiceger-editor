@@ -9,7 +9,7 @@ from pathlib import Path
 import shutil
 from typing import Any, Optional
 
-from .filename import build_output_filename
+from .filename import DEFAULT_FILENAME_TEMPLATE, build_output_filename
 
 
 @dataclass(frozen=True)
@@ -97,6 +97,7 @@ def save_output(
     save_text: bool = False,
     timestamp: Optional[datetime] = None,
     filename_text: Optional[str] = None,
+    filename_template: str = DEFAULT_FILENAME_TEMPLATE,
 ) -> SavedOutput:
     """Write a WAV and optionally its exact source text using a free basename.
 
@@ -104,8 +105,6 @@ def save_output(
     never replaced. Paired WAV/TXT output reserves both paths before either is
     written. ``filename_text`` can preserve an adapter's established naming
     text while ``source_text`` remains byte-for-byte the text saved to TXT.
-    ``style_name`` is retained for caller compatibility but does not affect
-    the output basename.
     """
 
     import soundfile as sf
@@ -114,7 +113,9 @@ def save_output(
     output_dir.mkdir(parents=True, exist_ok=True)
     initial_name = build_output_filename(
         text=filename_text if filename_text is not None else source_text,
+        style=style_name,
         timestamp=timestamp,
+        filename_template=filename_template,
     )
     wav_path, text_path, reserved = _reserve_output_paths(
         output_dir=output_dir,
@@ -143,6 +144,7 @@ def save_output_wav(
     save_text: bool = False,
     timestamp: Optional[datetime] = None,
     avoid_lab_collision: bool = False,
+    filename_template: str = DEFAULT_FILENAME_TEMPLATE,
 ) -> SavedOutput:
     """Copy an existing WAV to a reserved output path without decoding it.
 
@@ -154,7 +156,9 @@ def save_output_wav(
     output_dir.mkdir(parents=True, exist_ok=True)
     initial_name = build_output_filename(
         text=source_text,
+        style=style_name,
         timestamp=timestamp,
+        filename_template=filename_template,
     )
     wav_path, text_path, reserved = _reserve_output_paths(
         output_dir=output_dir,
