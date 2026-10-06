@@ -794,50 +794,55 @@ class TuiOperations:
         operation = self.worker_operation
         active_number = caption_number(self._worker_item_id)
         requested_number = caption_number(requested_item_id)
-
-        if operation == "batch_generate":
-            if self.operation_total > 0:
-                percent = round(
-                    self.operation_completed * 100 / self.operation_total
-                )
-                active = f"Batch generation is running ({percent}%)."
-            else:
-                active = "Batch generation is running."
-        elif (
-            operation in {"initial", "regenerate_all"}
-            and active_number is not None
-        ):
-            percent = (
-                round(self.operation_completed * 100 / self.operation_total)
-                if self.operation_total > 0
-                else 0
-            )
-            verb = "regenerating" if operation == "regenerate_all" else "generating"
-            active = f"Caption {active_number} is {verb} ({percent}%)."
-        elif operation == "regenerate_one" and active_number is not None:
-            active = f"Caption {active_number} is regenerating a Take."
-        else:
-            active = "Another operation is running."
+        individual_generation = operation in {
+            "initial",
+            "regenerate_one",
+            "regenerate_all",
+        }
+        batch_generation = operation == "batch_generate"
 
         if requested_batch:
-            if operation == "batch_generate":
-                return warning_status(active)
-            target = "starting batch generation"
-        elif requested_number is not None:
-            if (
-                active_number == requested_number
-                and operation in {"initial", "regenerate_all"}
-            ):
-                return warning_status(active)
-            target = f"generating Caption {requested_number}"
-        else:
-            target = "starting generation"
-
-        if self.can_cancel_batch:
+            if batch_generation:
+                return warning_status("Generate selected is already running.")
+            if individual_generation:
+                return warning_status(
+                    "Generate selected is unavailable while generation is active."
+                )
             return warning_status(
-                f"{active} Finish or cancel it before {target}."
+                "Generate selected is unavailable while another operation is active."
             )
-        return warning_status(f"{active} Wait for it to finish before {target}.")
+
+        if requested_number is not None:
+            if individual_generation and active_number == requested_number:
+                return warning_status(
+                    f"Caption {requested_number} is already generating."
+                )
+            if batch_generation:
+                return warning_status(
+                    f"Generate Caption {requested_number} is unavailable "
+                    "while batch generation is active."
+                )
+            if individual_generation:
+                return warning_status(
+                    f"Generate Caption {requested_number} is unavailable "
+                    "while generation is active."
+                )
+            return warning_status(
+                f"Generate Caption {requested_number} is unavailable "
+                "while another operation is active."
+            )
+
+        if batch_generation:
+            return warning_status(
+                "Generate is unavailable while batch generation is active."
+            )
+        if individual_generation:
+            return warning_status(
+                "Generate is unavailable while generation is active."
+            )
+        return warning_status(
+            "Generate is unavailable while another operation is active."
+        )
 
     @property
     def cancellation_guard_armed(self) -> bool:
