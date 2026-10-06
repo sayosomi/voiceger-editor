@@ -58,6 +58,19 @@ def status_with_cancel_generation_hint(
     return Status(status.kind, message)
 
 
+def background_with_cancel_generation_hint(
+    message: str,
+    cancel_generation_available: bool,
+) -> str:
+    """Add the cancellation affordance to background progress presentation."""
+
+    if not message:
+        return ""
+    if not cancel_generation_available:
+        return message
+    return f"{message} · {_CANCEL_GENERATION_HINT}"
+
+
 _DICTIONARY_SORT_LABELS = {
     "surface_asc": "Surface ↑",
     "surface_desc": "Surface ↓",
@@ -148,6 +161,7 @@ class TuiRenderState:
     batch_item_position: tuple[int, int] | None = None
     batch_item_id: str | None = None
     active_generation_item_id: str | None = None
+    background_status: str = ""
     output_path_edit: OutputPathEditRenderState | None = None
 
 
@@ -166,6 +180,7 @@ class StatusFooterLayout:
     start_row: int
     lines: tuple[str, ...]
     status: Status | None
+    background_line_count: int = 0
 
 
 def _active_input_prefix(editor: EditorRenderState) -> str:
@@ -296,21 +311,34 @@ class TuiRenderer:
         width: int,
         *,
         fallback_hint: str | None = None,
+        background_status: str = "",
     ) -> StatusFooterLayout:
+        available = max(1, width - 1)
+        background_lines = (
+            tuple(_wrap_text(background_status, available))
+            if background_status
+            else ()
+        )
         visible_status = status if status else None
         text = (
             format_status(visible_status)
             if visible_status is not None
             else (fallback_hint or "")
         )
-        lines = tuple(_wrap_text(text, max(1, width - 1))) if text else ()
+        status_lines = tuple(_wrap_text(text, available)) if text else ()
+        lines = background_lines + status_lines
         reserved_height = max(1, len(lines))
         start_row = max(0, height - reserved_height)
         if height <= 0:
             visible_lines: tuple[str, ...] = ()
         else:
             visible_lines = lines[: max(0, height - start_row)]
-        return StatusFooterLayout(start_row, visible_lines, visible_status)
+        return StatusFooterLayout(
+            start_row,
+            visible_lines,
+            visible_status,
+            min(len(background_lines), len(visible_lines)),
+        )
 
     def _render_status_footer(
         self,
@@ -320,12 +348,12 @@ class TuiRenderer:
     ) -> None:
         if not layout.lines:
             return
-        attr = (
-            self._status_attribute(layout.status)
-            if layout.status is not None
-            else self._attribute("A_BOLD")
-        )
         for offset, line in enumerate(layout.lines):
+            attr = (
+                self._attribute("A_BOLD")
+                if offset < layout.background_line_count or layout.status is None
+                else self._status_attribute(layout.status)
+            )
             self._safe_add(
                 screen,
                 layout.start_row + offset,
@@ -414,10 +442,16 @@ class TuiRenderer:
         height: int,
         width: int,
         status: Status = EMPTY_STATUS,
+        background_status: str = "",
     ) -> int:
         """Return the largest valid Help body scroll offset."""
 
-        footer = self._status_footer_layout(status, height, width)
+        footer = self._status_footer_layout(
+            status,
+            height,
+            width,
+            background_status=background_status,
+        )
         back_row = max(0, footer.start_row - 1)
         body_rows = max(0, back_row - 1)
         return max(0, len(self.help_document(width)) - body_rows)
@@ -429,12 +463,18 @@ class TuiRenderer:
         scroll: int = 0,
         *,
         status: Status = EMPTY_STATUS,
+        background_status: str = "",
     ) -> int:
         """Render one Help viewport and return its clamped scroll offset."""
 
         safe_add = self._safe_add
         height = screen.getmaxyx()[0]
-        footer = self._status_footer_layout(status, height, width)
+        footer = self._status_footer_layout(
+            status,
+            height,
+            width,
+            background_status=background_status,
+        )
         back_row = max(0, footer.start_row - 1)
         if back_row > 0:
             safe_add(screen, 0, 0, "HELP", width, self._attribute("A_BOLD"))
@@ -472,6 +512,7 @@ class TuiRenderer:
         status: Status,
         height: int,
         width: int,
+        background_status: str = "",
     ) -> None:
         """Render Caption deletion with the standard modal layout."""
 
@@ -494,7 +535,12 @@ class TuiRenderer:
                 wrap_text=_wrap_text,
             )
         )
-        footer = self._status_footer_layout(status, height, width)
+        footer = self._status_footer_layout(
+            status,
+            height,
+            width,
+            background_status=background_status,
+        )
         viewport_height = max(0, footer.start_row - 1)
         focused_index = next(
             index for index, (_line, key) in enumerate(document) if key == "delete"
@@ -615,6 +661,7 @@ class TuiRenderer:
         pressed_adjustment: tuple[str, str, int] | None = None,
         active_generation: tuple[str, int, int] | None = None,
         generation_busy: bool = False,
+        background_status: str = "",
     ) -> None:
         """Render the top-level Batch List screen."""
 
@@ -626,6 +673,7 @@ class TuiRenderer:
                 status,
                 height,
                 width,
+                background_status,
             )
             return
 
@@ -656,7 +704,12 @@ class TuiRenderer:
             active_generation,
             generation_busy,
         )
-        footer = self._status_footer_layout(status, height, width)
+        footer = self._status_footer_layout(
+            status,
+            height,
+            width,
+            background_status=background_status,
+        )
         viewport_height = max(0, footer.start_row - 2)
         focused_index = next(
             (
@@ -774,7 +827,12 @@ class TuiRenderer:
             )
 
         lines = self.navigation_document(state, width)
-        footer = self._status_footer_layout(state.status, height, width)
+        footer = self._status_footer_layout(
+            state.status,
+            height,
+            width,
+            background_status=state.background_status,
+        )
         viewport_height = max(0, footer.start_row - 4)
         focused_index = next(
             (
@@ -1789,6 +1847,7 @@ class TuiRenderer:
             status,
             height,
             width,
+            background_status=state.background_status,
             fallback_hint=(
                 (
                     "Ctrl+N: New line   Enter: Finish editing   Esc: Back"
