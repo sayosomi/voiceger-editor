@@ -444,20 +444,21 @@ class TuiTests(unittest.TestCase):
         self.assertIs(app._dictionary_controller.editor, export_editor)
         self.assertEqual(export_editor.selection, "output")
 
-    def test_export_output_settings_busy_guard_keeps_export_visible(self):
+    def test_export_output_edit_remains_available_during_generation(self):
         app = self.make_app(query=mixed_query())
         app._handle_key("d")
         app._handle_key("x")
         export_editor = app._dictionary_controller.editor
         app._operations.busy = True
+        app._operations.worker_operation = "initial"
 
         app._handle_key("f")
 
         self.assertIs(app._dictionary_controller.editor, export_editor)
-        self.assertIsNone(app._editor_controller.editor)
+        self.assertTrue(app._output_path_controller.active)
         self.assertEqual(
-            app._status,
-            "Wait for synthesis to finish before changing Output.",
+            app._output_path_controller.state.owner,
+            "dictionary_export",
         )
 
     def test_pronunciation_editor_dictionary_actions_preserve_editor_state(self):
@@ -1140,7 +1141,7 @@ class TuiTests(unittest.TestCase):
         app._render()
 
         rendered = self.rendered(app._screen)
-        self.assertIn("Generate 4 takes [busy]", rendered)
+        self.assertIn("Generate < 4 > takes [busy]", rendered)
         self.assertNotIn("Generating 3/4", rendered)
 
         app._handle_key("g")
@@ -1378,16 +1379,20 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(stop_playback.call_count, 1)
         self.assertEqual(app._status, "Candidates cleared.")
 
-    def test_clear_candidates_shortcut_is_blocked_while_synthesis_is_busy(self):
+    def test_clear_candidates_is_blocked_for_operation_owned_caption(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        item_id = app._batch.open_item_id
         app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._owned_item_ids = frozenset({item_id})
 
         app._handle_key("c")
 
         self.assertIsNone(app._editor_controller.editor)
         self.assertEqual(app.session.candidates, (candidate(1),))
         self.assertEqual(app.session.discard_calls, 0)
-        self.assertIn("Finish or cancel synthesis before clearing", app._status)
+        self.assertIn("currently generating", app._status)
+        self.assertIn("clearing candidates", app._status)
 
     def test_candidate_direct_jumps_cover_one_through_nine_and_arrows_reach_ten(self):
         app = self.make_app(
@@ -1890,15 +1895,19 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(session.close_calls, 1)
         self.assertEqual(stop_playback.call_count, 2)
 
-    def test_batch_item_delete_shortcut_is_blocked_while_synthesis_is_busy(self):
+    def test_batch_item_delete_is_blocked_for_operation_owned_caption(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        item_id = app._batch.open_item_id
         app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._owned_item_ids = frozenset({item_id})
 
         app._handle_key("x")
 
         self.assertFalse(app._batch.delete_confirmation_active)
         self.assertTrue(app._batch.in_item)
-        self.assertIn("Finish or cancel synthesis before deleting Caption.", app._status)
+        self.assertIn("currently generating", app._status)
+        self.assertIn("deleting Caption", app._status)
 
     def test_accepting_batch_item_stays_on_same_item_until_explicit_navigation(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
