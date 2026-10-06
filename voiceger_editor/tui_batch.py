@@ -304,6 +304,13 @@ class TuiBatchController:
             elif isinstance(action, AddCaptions):
                 bindings.open_caption_editor("", multiline=True)
             elif isinstance(action, GenerateSelected):
+                conflict = bindings.operations.generation_conflict_status(
+                    self.batch,
+                    requested_batch=True,
+                )
+                if conflict is not None:
+                    bindings.set_status(conflict)
+                    continue
                 effects = bindings.operations.start_batch_generation(
                     self.batch,
                     navigation_revision=bindings.navigation.revision,
