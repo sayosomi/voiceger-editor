@@ -324,6 +324,7 @@ class TuiTests(unittest.TestCase):
             app.session._pure_japanese_utterance_text = app.session.caption
         if batch_item:
             app._batch.batch.add_item(CaptionBatchItem(app.session))
+            app._batch.focus_key = ("caption", 0)
             app._batch.open_item(0)
         return app
 
@@ -388,7 +389,7 @@ class TuiTests(unittest.TestCase):
         set_navigation_focus(app, ("output", None))
         app._render()
         output = next(item for item in screen.drawn if item[0] == 2)
-        self.assertTrue(output[2].startswith("▶ Output:"))
+        self.assertTrue(output[2].startswith("▶ [O] Output:"))
         self.assertTrue(output[3] & curses.A_REVERSE)
         self.assertIn(("settings", None), navigation_items(app))
         self.assertEqual(
@@ -409,6 +410,50 @@ class TuiTests(unittest.TestCase):
         self.assertTrue(app._dictionary_controller.active)
         self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_menu")
         self.assertIsNone(app._editor_controller.editor)
+
+    def test_export_output_settings_return_to_export_on_cancel_and_save(self):
+        app = self.make_app(query=mixed_query())
+
+        app._handle_key("d")
+        app._handle_key("x")
+        self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_export")
+
+        app._handle_key("o")
+        self.assertFalse(app._dictionary_controller.active)
+        self.assertEqual(app._editor_controller.editor.kind, "settings")
+        self.assertEqual(app._editor_controller.editor.selection, "output_dir")
+        self.assertEqual(app._editor_controller.editor.active_field, "output_dir")
+
+        app._handle_key("\x1b")
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_export")
+        self.assertEqual(app._dictionary_controller.editor.selection, "output")
+
+        app._handle_key("o")
+        self.assertEqual(app._editor_controller.editor.active_field, "output_dir")
+        app._handle_key("\n")
+        with patch("voiceger_editor.tui.save_settings") as save:
+            app._handle_key("a")
+        save.assert_called_once()
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app._dictionary_controller.editor.kind, "dictionary_export")
+        self.assertEqual(app._dictionary_controller.editor.selection, "output")
+
+    def test_export_output_settings_busy_guard_keeps_export_visible(self):
+        app = self.make_app(query=mixed_query())
+        app._handle_key("d")
+        app._handle_key("x")
+        export_editor = app._dictionary_controller.editor
+        app._operations.busy = True
+
+        app._handle_key("o")
+
+        self.assertIs(app._dictionary_controller.editor, export_editor)
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(
+            app._status,
+            "Wait for synthesis to finish before changing settings.",
+        )
 
     def test_pronunciation_editor_dictionary_actions_preserve_editor_state(self):
         app = self.make_app(query=mixed_query())
@@ -1505,7 +1550,7 @@ class TuiTests(unittest.TestCase):
         self.assertIs(app.session, session)
         self.assertEqual(app._batch.item_title, "BATCH ITEM")
         self.assertEqual(app._batch.item_position, (1, 1))
-        self.assertEqual(app._navigation.focus_key, ("batch_item", None))
+        self.assertEqual(app._navigation.focus_key, ("candidate", 1))
 
         screen = FakeScreen()
         app._screen = screen
@@ -1540,7 +1585,7 @@ class TuiTests(unittest.TestCase):
 
         self.assertIs(app.session, first)
         self.assertEqual(app._batch.item_position, (1, 2))
-        self.assertEqual(app._navigation.focus_key, ("batch_item", None))
+        self.assertEqual(app._navigation.focus_key, ("caption", None))
 
         app._handle_key("[")
         self.assertIs(app.session, first)
@@ -1548,6 +1593,7 @@ class TuiTests(unittest.TestCase):
 
         app._handle_key("]")
         self.assertIs(app.session, second)
+        self.assertEqual(app._navigation.focus_key, ("caption", None))
         app._handle_key("]")
         self.assertIs(app.session, second)
         self.assertEqual(app._status, "Last Caption.")
@@ -1578,7 +1624,7 @@ class TuiTests(unittest.TestCase):
         app._handle_key("x")
         app._handle_key("d")
         self.assertEqual(app._batch.batch.items, ())
-        self.assertEqual(app._batch.focus_key, ("takes", None))
+        self.assertEqual(app._batch.focus_key, ("add_captions", None))
         self.assertEqual(session.close_calls, 1)
         self.assertIsNone(app.session)
 
@@ -1618,7 +1664,7 @@ class TuiTests(unittest.TestCase):
         self.assertFalse(app._batch.in_item)
         self.assertIsNone(app.session)
         self.assertEqual(app._batch.batch.items, ())
-        self.assertEqual(app._batch.focus_key, ("takes", None))
+        self.assertEqual(app._batch.focus_key, ("add_captions", None))
         self.assertEqual(session.close_calls, 1)
         self.assertEqual(stop_playback.call_count, 2)
 
@@ -1792,7 +1838,7 @@ class TuiTests(unittest.TestCase):
         editor = app._editor_controller.editor
         self.assertEqual(editor.kind, "caption")
         self.assertEqual(editor.title, "ADD CAPTIONS")
-        self.assertEqual(editor.origin, ("takes", None))
+        self.assertEqual(editor.origin, ("add_captions", None))
         self.assertTrue(editor.payload["multiline"])
         self.assertEqual(editor.active_field, "draft")
         editor.input_value = "new caption"
@@ -1821,7 +1867,7 @@ class TuiTests(unittest.TestCase):
 
                 self.assertIsNone(app.session)
                 self.assertIsNone(app._editor_controller.editor)
-                self.assertEqual(app._batch.focus_key, ("takes", None))
+                self.assertEqual(app._batch.focus_key, ("add_captions", None))
                 rendered = self.rendered(screen)
                 self.assertIn("BATCH LIST", rendered)
                 self.assertIn("Takes < 4 >", rendered)
@@ -2265,7 +2311,7 @@ class TuiTests(unittest.TestCase):
         app._handle_key("\n")
         self.assertEqual(app.session.build_calls, 0)
 
-        app._handle_key("\n")
+        app._handle_key("r")
 
         self.assertEqual(app.session.build_calls, 0)
         self.assertIsNone(app._editor_controller.editor)
@@ -2291,7 +2337,7 @@ class TuiTests(unittest.TestCase):
         candidates = app.session.candidates
         set_navigation_focus(app, ("build_pronunciation", None))
         app._handle_key("\n")
-        app._handle_key("\n")
+        app._handle_key("r")
 
         app._operations.start_pending_worker()
         app._operations.join_worker()
@@ -2649,6 +2695,11 @@ class TuiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             app = self.make_app(query=mixed_query())
             app.config_path = Path(directory) / "config.json"
+            for _ in range(len(navigation_items(app))):
+                if app._navigation.focus_key == ("settings", None):
+                    break
+                app._handle_key(curses.KEY_DOWN)
+            self.assertEqual(app._navigation.focus_key, ("settings", None))
             app._handle_key("\n")
             self.assertEqual(app._editor_controller.editor.kind, "settings")
             editor = app._editor_controller.editor
@@ -3151,7 +3202,7 @@ class TuiTests(unittest.TestCase):
         self.assertIs(app._batch.batch.items[0].session, session)
         self.assertEqual(session.candidates, (candidate(1), candidate(2)))
         self.assertIsNone(app._operations.current_take)
-        self.assertEqual(app._batch.focus_key, ("takes", None))
+        self.assertEqual(app._batch.focus_key, ("caption", 0))
 
     def test_acceptance_and_regeneration_are_unavailable_while_busy_but_replay_works(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
@@ -3499,8 +3550,14 @@ class TuiTests(unittest.TestCase):
             navigation_revision=regenerate._navigation.revision,
         )
 
+        output = self.make_app(query=mixed_query())
+        output._handle_key("o")
+        self.assertEqual(output._editor_controller.editor.kind, "settings")
+        self.assertEqual(output._editor_controller.editor.selection, "output_dir")
+        self.assertEqual(output._editor_controller.editor.active_field, "output_dir")
+
         for removed in (
-            curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "o", "x", "l"
+            curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "x", "l"
         ):
             with self.subTest(removed=removed):
                 legacy = self.make_app(query=mixed_query())

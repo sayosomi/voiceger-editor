@@ -46,6 +46,7 @@ class MainShortcut:
 
 
 _MAIN_SHORTCUTS: tuple[MainShortcut, ...] = (
+    MainShortcut("output", "Output", "o"),
     MainShortcut("caption", "Caption", "e"),
     MainShortcut("build_pronunciation", "Build pronunciation", "p"),
     MainShortcut("add_section", "Add section", "a"),
@@ -200,6 +201,13 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("japanese", "Japanese", "j", "action", "activate"),
         MenuItem("english", "English", "e", "action", "activate"),
         MenuItem("import", "Import dictionary", "i", "action", "activate"),
+        MenuItem("export", "Export dictionary", "x", "action", "activate"),
+        _escape_action("back", "Back"),
+    ),
+    "dictionary_export": (
+        MenuItem("output", "Output", "o", "action", "activate"),
+        MenuItem("voiceger", "Voiceger Editor", "e", "action", "activate"),
+        MenuItem("voicevox", "VOICEVOX", "v", "action", "activate"),
         _escape_action("back", "Back"),
     ),
     "dictionary_import_path": (

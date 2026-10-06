@@ -265,6 +265,46 @@ def _atomic_write(path: Path, payload: bytes) -> None:
         raise
 
 
+def serialize_japanese_dictionary(
+    entries: Mapping[str, UserDictWord],
+) -> bytes:
+    """Serialize Japanese entries in canonical insertion order."""
+
+    payload = {
+        word_uuid: word.model_dump(mode="json")
+        for word_uuid, word in entries.items()
+    }
+    return (
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def serialize_english_dictionary(
+    entries: Mapping[str, EnglishUserDictionaryEntry],
+) -> bytes:
+    """Serialize English entries in canonical insertion order."""
+
+    payload = {
+        surface: entry.phonemes
+        for surface, entry in entries.items()
+    }
+    return (
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            indent=2,
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
 class UserDictionaryCore:
     """Persistent, frontend-independent Japanese and English dictionaries."""
 
@@ -360,37 +400,13 @@ class UserDictionaryCore:
 
     @staticmethod
     def _serialize_japanese(entries: Mapping[str, UserDictWord]) -> bytes:
-        payload = {
-            word_uuid: word.model_dump(mode="json")
-            for word_uuid, word in entries.items()
-        }
-        return (
-            json.dumps(
-                payload,
-                ensure_ascii=False,
-                indent=2,
-                allow_nan=False,
-            )
-            + "\n"
-        ).encode("utf-8")
+        return serialize_japanese_dictionary(entries)
 
     @staticmethod
     def _serialize_english(
         entries: Mapping[str, EnglishUserDictionaryEntry],
     ) -> bytes:
-        payload = {
-            surface: entry.phonemes
-            for surface, entry in entries.items()
-        }
-        return (
-            json.dumps(
-                payload,
-                ensure_ascii=False,
-                indent=2,
-                allow_nan=False,
-            )
-            + "\n"
-        ).encode("utf-8")
+        return serialize_english_dictionary(entries)
 
     def list_japanese_entries(self) -> dict[str, UserDictWord]:
         with self._lock:

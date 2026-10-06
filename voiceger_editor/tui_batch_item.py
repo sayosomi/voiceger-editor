@@ -12,6 +12,7 @@ from .tui_batch import BatchActionBindings, TuiBatchController
 from .tui_editors import PronunciationRow, adjustment_feedback_intents
 from .tui_navigation import (
     AcceptCandidate,
+    FocusKey,
     AddSectionEditor,
     BuildPronunciation,
     ClearAdjustmentFeedback,
@@ -54,6 +55,122 @@ class TuiBatchItemController:
 
     def __init__(self, batch: TuiBatchController) -> None:
         self.batch = batch
+        self._pending_prepare_focus: tuple[FocusKey, FocusKey] | None = None
+
+    def initialize_open_item_focus(self, bindings: BatchItemBindings) -> None:
+        """Choose the most useful initial focus for the currently open item."""
+
+        self._pending_prepare_focus = None
+        session = bindings.get_session()
+        actions = bindings.actions
+        if session is None:
+            actions.navigation.focus_key = ("caption", None)
+            return
+
+        item_id = self.batch.open_item_id
+        item = (
+            self.batch.batch.get_item(item_id)
+            if item_id is not None
+            else None
+        )
+        candidate_numbers = tuple(
+            candidate.number for candidate in getattr(session, "candidates", ())
+        )
+        preferred_take = (
+            item.accepted_take_number
+            if item is not None
+            and item.accepted_take_number in candidate_numbers
+            else candidate_numbers[0]
+            if candidate_numbers
+            else None
+        )
+
+        context = self.navigation_context(bindings)
+        if preferred_take is not None:
+            self.dispatch_navigation_actions(
+                actions.navigation.focus_candidate(context, preferred_take),
+                bindings,
+            )
+            return
+
+        if getattr(session, "is_prepared", True) and context.pronunciation_count:
+            self.dispatch_navigation_actions(
+                actions.navigation.set_focus_key(
+                    context,
+                    ("pronunciation", 0),
+                ),
+                bindings,
+            )
+            return
+
+        actions.navigation.focus_key = ("caption", None)
+        if not getattr(session, "is_prepared", True):
+            self._pending_prepare_focus = (
+                ("caption", None),
+                ("pronunciation", 0),
+            )
+
+    def restore_open_item_focus(
+        self,
+        previous_focus: FocusKey,
+        bindings: BatchItemBindings,
+    ) -> None:
+        """Preserve the current work focus when switching Batch Items."""
+
+        self._pending_prepare_focus = None
+        session = bindings.get_session()
+        actions = bindings.actions
+        if session is None:
+            actions.navigation.focus_key = ("caption", None)
+            return
+
+        context = self.navigation_context(bindings)
+        name, number = previous_focus
+
+        if name == "pronunciation":
+            if not getattr(session, "is_prepared", True):
+                actions.navigation.focus_key = ("caption", None)
+                self._pending_prepare_focus = (
+                    ("caption", None),
+                    previous_focus,
+                )
+                return
+            target = (
+                ("pronunciation", number)
+                if number is not None and 0 <= number < context.pronunciation_count
+                else ("pronunciation", 0)
+                if context.pronunciation_count
+                else ("caption", None)
+            )
+            self.dispatch_navigation_actions(
+                actions.navigation.set_focus_key(context, target),
+                bindings,
+            )
+            return
+
+        if name == "candidate":
+            if number is not None and number in context.candidate_numbers:
+                self.dispatch_navigation_actions(
+                    actions.navigation.focus_candidate(context, number),
+                    bindings,
+                )
+                return
+            self.initialize_open_item_focus(bindings)
+            return
+
+        if previous_focus in actions.navigation.navigation_items(context):
+            self.dispatch_navigation_actions(
+                actions.navigation.set_focus_key(context, previous_focus),
+                bindings,
+            )
+            if not getattr(session, "is_prepared", True):
+                self._pending_prepare_focus = (
+                    previous_focus,
+                    previous_focus,
+                )
+            return
+
+        self.initialize_open_item_focus(bindings)
 
     def handle_key(self, key: Any, bindings: BatchItemBindings) -> None:
         actions = bindings.actions
@@ -328,6 +445,7 @@ class TuiBatchItemController:
             return
         actions = bindings.actions
         if error is not None:
+            self._pending_prepare_focus = None
             label = "rebuilt" if rebuild else "prepared"
             actions.set_status(
                 error_status(f"Pronunciation was not {label}: {error}")
@@ -337,12 +455,29 @@ class TuiBatchItemController:
         actions.operations.stop_playback()
         actions.editor_controller.clear_groupings()
         actions.operations.clear_current_take()
-        self.dispatch_navigation_actions(
-            actions.navigation.reset_after_rebuild(
-                self.navigation_context(bindings)
-            ),
-            bindings,
-        )
+        if rebuild:
+            self._pending_prepare_focus = None
+            self.dispatch_navigation_actions(
+                actions.navigation.reset_after_rebuild(
+                    self.navigation_context(bindings)
+                ),
+                bindings,
+            )
+        else:
+            pending_focus = self._pending_prepare_focus
+            self._pending_prepare_focus = None
+            if pending_focus is None:
+                self.dispatch_navigation_actions(
+                    actions.navigation.reset_after_rebuild(
+                        self.navigation_context(bindings)
+                    ),
+                    bindings,
+                )
+            elif actions.navigation.focus_key == pending_focus[0]:
+                self.restore_open_item_focus(
+                    pending_focus[1],
+                    bindings,
+                )
         actions.set_status(
             info_status(
                 "Pronunciation rebuilt from Caption."
@@ -523,14 +658,15 @@ class TuiBatchItemController:
                 direction=direction,
             )
         )
+        previous_focus = actions.navigation.focus_key
         actions.operations.stop_playback()
         actions.operations.clear_current_take()
         actions.editor_controller.clear_groupings()
         session = self.batch.open_item(target)
         actions.set_session(session)
-        actions.navigation.focus_key = ("batch_item", None)
         actions.navigation.reset_pronunciation_index()
         actions.set_status(EMPTY_STATUS)
+        self.restore_open_item_focus(previous_focus, bindings)
         if not getattr(session, "is_prepared", True):
             actions.dispatch_operation_effects(
                 actions.operations.start_session_preparation(
@@ -551,6 +687,7 @@ class TuiBatchItemController:
                 and actions.operations.worker_operation in {"accept", "prepare"}
             ):
                 return True
+            self._pending_prepare_focus = None
             actions.operations.stop_playback()
             actions.operations.clear_current_take()
             actions.editor_controller.clear_groupings()

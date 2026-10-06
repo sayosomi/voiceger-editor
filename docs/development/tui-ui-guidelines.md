@@ -10,6 +10,10 @@ Up / Down moves focus to the previous / next selectable item.
 
 Screens that present entries followed by actions should use one vertical Up / Down navigation list unless a stronger interaction requirement justifies another structure. Selectable order should follow the visible order.
 
+Initial focus should normally represent the screen's primary purpose and Enter on that initial row should perform a meaningful action rather than a no-op. Do not move initial focus to a secondary status or navigation control merely because it is visually first.
+
+Destructive or replacement confirmation screens should initially focus Cancel. The explicit destructive shortcut remains available for users who intend to confirm immediately.
+
 An adjustment or action that does not leave the current screen should normally keep focus on the row that was operated.
 
 ## Adjustable values

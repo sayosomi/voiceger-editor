@@ -18,6 +18,7 @@ from .tui_display import _adjustable_value, format_english_phonemes
 from .tui_dictionary import (
     DictionaryControllerIntent,
     DictionaryOperationIntent,
+    OpenDictionarySettingsIntent,
     TuiDictionaryController,
 )
 from .tui_help import HelpOutcome, TuiHelpController
@@ -101,10 +102,12 @@ class TuiApp:
             input_prefix=_active_input_prefix,
             japanese_pronunciation=self.adapter.japanese_dictionary_pronunciation,
             english_word_groups=self.adapter.english_word_phoneme_groups,
+            output_dir=lambda: self.settings.output_dir,
         )
         self._pressed_adjustment: tuple[str, str, int] | None = None
         self._renderer = TuiRenderer()
         self._input = TuiInputReader()
+        self._batch_item_controller = TuiBatchItemController(self._batch)
         self._batch_action_bindings = tui_batch.BatchActionBindings(
             operations=self._operations,
             navigation=self._navigation,
@@ -119,8 +122,10 @@ class TuiApp:
             dispatch_operation_effects=self._dispatch_operation_effects,
             open_help=self._open_help,
             activate_quit=self._activate_quit,
+            initialize_open_item=lambda: self._batch_item_controller.initialize_open_item_focus(
+                self._batch_item_bindings
+            ),
         )
-        self._batch_item_controller = TuiBatchItemController(self._batch)
         self._batch_item_bindings = BatchItemBindings(
             actions=self._batch_action_bindings,
             get_session=lambda: self.session,
@@ -381,10 +386,17 @@ class TuiApp:
         selected_field: str | None = None,
         *,
         edit: bool = False,
+        origin: tuple[str, int | None] | None = None,
     ) -> None:
         intents = self._editor_controller.open_settings(
             self.settings,
-            origin=self._navigation.focus_key if self._batch.in_item else self._batch.focus_key,
+            origin=(
+                origin
+                if origin is not None
+                else self._navigation.focus_key
+                if self._batch.in_item
+                else self._batch.focus_key
+            ),
             busy=self._operations.busy,
             selected_field=selected_field,
             edit=edit,
@@ -475,6 +487,18 @@ class TuiApp:
                         surface=intent.surface,
                         phonemes=intent.pronunciation,
                     )
+            elif isinstance(intent, OpenDictionarySettingsIntent):
+                if self._operations.busy:
+                    self._status = info_status(
+                        "Wait for synthesis to finish before changing settings."
+                    )
+                    continue
+                if self._dictionary_controller.suspend_editor():
+                    self._open_settings_editor(
+                        intent.selected_field,
+                        edit=intent.edit,
+                        origin=("dictionary_export", None),
+                    )
             elif isinstance(intent, DictionaryOperationIntent):
                 self._dispatch_operation_effects(
                     self._operations.start_dictionary_operation(intent)
@@ -494,6 +518,10 @@ class TuiApp:
                     self._operations.clear_current_take()
             elif isinstance(intent, CloseEditorIntent):
                 self._pressed_adjustment = None
+                if intent.origin == ("dictionary_export", None):
+                    self._dictionary_controller.restore_suspended_editor()
+                    self._status = intent.status
+                    continue
                 if self._batch.in_item:
                     self._dispatch_navigation_actions(
                         self._navigation.set_focus_key(

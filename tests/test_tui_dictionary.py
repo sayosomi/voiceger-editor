@@ -1033,6 +1033,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
             self.controller.editor.kind,
             "dictionary_discard_confirmation",
         )
+        self.assertEqual(self.controller.editor.selection, "cancel")
         self.key(curses.KEY_DOWN)
         self.assertEqual(self.controller.editor.selection, "cancel")
         self.key(curses.KEY_UP)
@@ -1334,7 +1335,7 @@ class TuiDictionaryControllerTests(unittest.TestCase):
             self.controller.editor.kind,
             "dictionary_delete_confirmation",
         )
-        self.assertEqual(self.controller.editor.selection, "delete")
+        self.assertEqual(self.controller.editor.selection, "cancel")
         self.key(curses.KEY_DOWN)
         self.assertEqual(self.controller.editor.selection, "cancel")
         self.key(curses.KEY_DOWN)
