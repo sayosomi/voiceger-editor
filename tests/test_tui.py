@@ -2321,6 +2321,43 @@ class TuiTests(unittest.TestCase):
         )
         self.assertEqual(app._status, "3 Captions added.")
 
+    def test_add_captions_remains_available_during_background_generation(self):
+        app = self.make_app(query=mixed_query(), batch_item=True)
+        generating_item_id = app._batch.open_item_id
+        cancellation_event = Event()
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._worker_item_id = generating_item_id
+        app._operations._cancellation_event = cancellation_event
+        app._operations.operation_total = 4
+
+        app._handle_key("\x1b")
+        app._handle_key("a")
+
+        editor = app._editor_controller.editor
+        self.assertIsNotNone(editor)
+        self.assertEqual(editor.title, "ADD CAPTIONS")
+        self.assertEqual(editor.active_field, "draft")
+
+        added = FakeSession(query=mixed_query())
+        added.caption = "background-added caption"
+        with patch(
+            "voiceger_editor.tui.UtteranceSession.from_caption",
+            return_value=added,
+        ):
+            app._handle_key(PasteText("background-added caption"))
+            app._handle_key("\n")
+            app._handle_key(curses.KEY_DOWN)
+            app._handle_key("\n")
+
+        self.assertTrue(app._operations.busy)
+        self.assertEqual(app._operations._worker_item_id, generating_item_id)
+        self.assertFalse(cancellation_event.is_set())
+        self.assertEqual(
+            [item.caption for item in app._batch.batch.items],
+            [app._batch.batch.items[0].caption, "background-added caption"],
+        )
+
     def test_batch_list_apply_adds_multiple_lightweight_caption_sessions(self):
         adapter = Mock()
         adapter.voiceger_root = Path("/nonexistent/voiceger")
