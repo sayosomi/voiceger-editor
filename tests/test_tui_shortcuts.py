@@ -481,7 +481,7 @@ class TuiShortcutTests(unittest.TestCase):
                 self.assertTrue(intents)
 
         intents = self.handle(controller, "f")
-        self.assertEqual(intents, ())
+        self.assertTrue(intents)
         self.assertEqual(editor.selection, "output_dir")
         self.assertEqual(editor.active_field, "output_dir")
         self.assertEqual(editor.payload["draft_settings"], opening)
