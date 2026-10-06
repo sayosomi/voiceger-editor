@@ -46,6 +46,9 @@ class TuiInputReader:
                 if self._pending
                 else screen.get_wch()
             )
+        except KeyboardInterrupt:
+            self._paste_burst_active = False
+            return "\x03"
         except curses.error:
             self._paste_burst_active = False
             return None
@@ -69,6 +72,8 @@ class TuiInputReader:
         try:
             try:
                 return screen.get_wch()
+            except KeyboardInterrupt:
+                return "\x03"
             except curses.error:
                 return None
         finally:
