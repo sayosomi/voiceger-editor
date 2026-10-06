@@ -404,7 +404,14 @@ class TuiOperationsTests(unittest.TestCase):
                 FakeSession(),
                 AudioQuery(accent_phrases=[]),
             ),
-            (UpdateStatusEffect("Wait for the current operation to finish."),),
+            (
+                UpdateStatusEffect(
+                    warning_status(
+                        "Pronunciation Preview is unavailable while "
+                        "a Dictionary operation is active."
+                    )
+                ),
+            ),
         )
         self.assertEqual(
             self.operations.request_shutdown(),
