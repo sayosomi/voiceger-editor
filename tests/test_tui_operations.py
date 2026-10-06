@@ -21,6 +21,7 @@ from voiceger_editor.tui_operations import (
     DictionaryOperationCompletedEvent,
     DiscardInitialBatchEffect,
     FocusEffect,
+    GenerationOutcomeEffect,
     PlayPreviewEffect,
     PlayTakeEffect,
     PreviewFailedEvent,
@@ -134,7 +135,14 @@ class TuiOperationsTests(unittest.TestCase):
             self.operations.start_generation(
                 FakeSession(), take_count=4, navigation_revision=0
             ),
-            (UpdateStatusEffect("Another operation is already running."),),
+            (
+                UpdateStatusEffect(
+                    warning_status(
+                        "Generate Caption is unavailable while "
+                        "another background operation is active."
+                    )
+                ),
+            ),
         )
         self.operations.busy = False
 
@@ -160,6 +168,40 @@ class TuiOperationsTests(unittest.TestCase):
                 ),
             ),
         )
+
+    def test_operation_resource_and_item_ownership_are_reported_separately(self):
+        self.assertFalse(self.operations.operation_resource_busy)
+        self.assertEqual(self.operations.owned_item_ids, frozenset())
+        self.assertFalse(self.operations.owns_item("item-1"))
+
+        self.operations.busy = True
+        self.operations.worker_operation = "initial"
+        self.operations._owned_item_ids = frozenset({"item-1"})
+
+        self.assertTrue(self.operations.operation_resource_busy)
+        self.assertTrue(self.operations.owns_item("item-1"))
+        self.assertFalse(self.operations.owns_item("item-2"))
+        self.assertIsNone(
+            self.operations.item_mutation_conflict_status(
+                CaptionBatch(default_take_count=4),
+                "item-2",
+                action="editing Caption",
+            )
+        )
+
+    def test_settings_conflicts_block_synthesis_but_allow_future_take_count(self):
+        self.operations.busy = True
+        self.operations.worker_operation = "initial"
+
+        self.assertIsNone(
+            self.operations.settings_change_conflict_status(("take_count",))
+        )
+        self.assertIsNone(
+            self.operations.settings_change_conflict_status(("output_dir",))
+        )
+        conflict = self.operations.settings_change_conflict_status(("speed",))
+        self.assertIsNotNone(conflict)
+        self.assertIn("Synthesis settings cannot change", str(conflict))
 
     def test_preview_worker_emits_ready_playback_effect_without_candidate_focus(self):
         session_candidate = candidate(3)
@@ -370,7 +412,14 @@ class TuiOperationsTests(unittest.TestCase):
                 FakeSession(),
                 AudioQuery(accent_phrases=[]),
             ),
-            (UpdateStatusEffect("Wait for the current operation to finish."),),
+            (
+                UpdateStatusEffect(
+                    warning_status(
+                        "Pronunciation Preview is unavailable while "
+                        "a Dictionary operation is active."
+                    )
+                ),
+            ),
         )
         self.assertEqual(
             self.operations.request_shutdown(),
@@ -500,6 +549,7 @@ class TuiOperationsTests(unittest.TestCase):
             session,
             take_count=100,
             navigation_revision=0,
+            item_id="origin",
         )
         self.assertTrue(synthesis_started.wait(timeout=5))
 
@@ -517,6 +567,10 @@ class TuiOperationsTests(unittest.TestCase):
         effects = self.consume(session)
         self.assertIn(
             UpdateStatusEffect("Generation cancelled. 1 take(s) ready."),
+            effects,
+        )
+        self.assertIn(
+            GenerationOutcomeEffect("origin", "cancelled"),
             effects,
         )
         self.assertFalse(any(isinstance(effect, DiscardInitialBatchEffect) for effect in effects))
@@ -539,8 +593,12 @@ class TuiOperationsTests(unittest.TestCase):
             item_id="origin",
         )
         self.operations.join_worker()
-        self.consume(session)
+        effects = self.consume(session)
 
+        self.assertIn(
+            GenerationOutcomeEffect("origin", "completed"),
+            effects,
+        )
         self.assertTrue(self.operations.cancellation_guard_armed)
 
     def test_shutdown_request_cancels_batch_and_join_retries_ctrl_c(self):
@@ -1171,7 +1229,6 @@ class TuiOperationsTests(unittest.TestCase):
             session,
             3,
             item_id="item-1",
-            busy=False,
             pronunciation_index=2,
         )
 
@@ -1214,7 +1271,6 @@ class TuiOperationsTests(unittest.TestCase):
             session,
             3,
             item_id="wav-item",
-            busy=False,
             pronunciation_index=0,
         )
         self.assertEqual(start, (UpdateStatusEffect("Saving Take 3…"),))
@@ -1240,7 +1296,6 @@ class TuiOperationsTests(unittest.TestCase):
             session,
             3,
             item_id="lab-item",
-            busy=False,
             pronunciation_index=0,
         )
         self.operations.start_pending_worker()
@@ -1262,7 +1317,6 @@ class TuiOperationsTests(unittest.TestCase):
             session,
             3,
             item_id="warning-item",
-            busy=False,
             pronunciation_index=0,
         )
         self.operations.start_pending_worker()
@@ -1289,7 +1343,6 @@ class TuiOperationsTests(unittest.TestCase):
             session,
             3,
             item_id="item-1",
-            busy=False,
             pronunciation_index=0,
         )
         self.assertEqual(start, (UpdateStatusEffect("Saving Take 3…"),))
@@ -1313,18 +1366,18 @@ class TuiOperationsTests(unittest.TestCase):
 
         session.accept_calls.clear()
         self.operations.busy = True
-        self.assertEqual(
-            self.operations.accept_take(
-                session,
-                3,
-                item_id="item-1",
-                busy=True,
-                pronunciation_index=0,
-            ),
-            (),
+        self.operations.worker_operation = "initial"
+        blocked = self.operations.accept_take(
+            session,
+            3,
+            item_id="item-1",
+            pronunciation_index=0,
         )
+        self.assertEqual(len(blocked), 1)
+        self.assertIn("Save Take 3 is unavailable", str(blocked[0].status))
         self.assertEqual(session.accept_calls, [])
         self.operations.busy = False
+        self.operations.worker_operation = None
 
 class BatchFakeSession:
     def __init__(
@@ -1444,6 +1497,10 @@ class TuiBatchGenerationTests(unittest.TestCase):
             ],
         )
         self.assertEqual(session.generate_take_counts, [1])
+        self.assertIn(
+            GenerationOutcomeEffect("only", "completed"),
+            consumed,
+        )
         self.assertIsNone(operations.worker_error)
         self.assertEqual(
             [
@@ -1486,6 +1543,10 @@ class TuiBatchGenerationTests(unittest.TestCase):
                 "Batch generation failed at Caption 1/1, Take 1/2: g2p failed"
             ),
         )
+        self.assertIn(
+            GenerationOutcomeEffect("only", "failed"),
+            consumed,
+        )
 
     def test_selected_items_generate_caption_major_with_effective_counts(self):
         log = []
@@ -1514,10 +1575,22 @@ class TuiBatchGenerationTests(unittest.TestCase):
             batch, navigation_revision=0
         )
         self.assertEqual(operations.operation_total, 5)
+        self.assertEqual(
+            operations.owned_item_ids,
+            frozenset({"first", "second"}),
+        )
         self.assertIn("2 selected Caption(s), 5 take(s) total", effects[0].status)
+
+        batch.items[0].included_for_generation = False
+        batch.items[2].included_for_generation = True
+        self.assertEqual(
+            operations.owned_item_ids,
+            frozenset({"first", "second"}),
+        )
 
         operations.join_worker()
         consumed = self.consume(operations)
+        self.assertEqual(operations.owned_item_ids, frozenset())
         starts = [
             (name, mode, number)
             for name, mode, phase, number in log
@@ -1662,7 +1735,12 @@ class TuiBatchGenerationTests(unittest.TestCase):
             statuses[-1],
             "Batch generation cancelled. 2/3 take(s) ready.",
         )
+        self.assertIn(
+            GenerationOutcomeEffect("only", "cancelled"),
+            consumed,
+        )
         self.assertFalse(operations.busy)
+        self.assertEqual(operations.owned_item_ids, frozenset())
 
     def test_failure_preserves_item_specific_candidate_ownership_and_stops_later_items(self):
         log = []
@@ -1701,8 +1779,21 @@ class TuiBatchGenerationTests(unittest.TestCase):
             "Take 2/2: failing failed at take 2",
         )
         self.assertIs(statuses[-1].kind, StatusKind.ERROR)
+        outcomes = [
+            effect
+            for effect in consumed
+            if isinstance(effect, GenerationOutcomeEffect)
+        ]
+        self.assertEqual(
+            outcomes,
+            [
+                GenerationOutcomeEffect("first", "completed"),
+                GenerationOutcomeEffect("failing", "failed"),
+            ],
+        )
         self.assertEqual(operations.operation_completed, 3)
         self.assertFalse(operations.busy)
+        self.assertEqual(operations.owned_item_ids, frozenset())
 
 
 if __name__ == "__main__":

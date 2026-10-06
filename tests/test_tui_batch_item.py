@@ -13,10 +13,16 @@ from voiceger_editor.tui_batch_item import (
     BatchItemBindings,
     TuiBatchItemController,
 )
-from voiceger_editor.tui_navigation import AcceptCandidate, TuiNavigation
+from voiceger_editor.tui_navigation import (
+    AcceptCandidate,
+    DeleteCaption,
+    OpenCaptionEditor,
+    OpenClearCandidatesConfirmation,
+    TuiNavigation,
+)
 from voiceger_editor.tui_operations import UpdateStatusEffect
 from voiceger_editor.tui_output_path import BeginOutputPathEditIntent
-from voiceger_editor.tui_status import error_status
+from voiceger_editor.tui_status import error_status, warning_status
 
 
 class FakeSession:
@@ -50,6 +56,8 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         operations.worker_operation = None
         operations.current_take = None
         operations.start_session_preparation.return_value = ()
+        operations.item_mutation_conflict_status.return_value = None
+        operations.owns_item.return_value = False
         editor = SimpleNamespace(
             clear_groupings=Mock(),
             grouping_error="",
@@ -301,6 +309,7 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         bindings.actions.operations.start_session_preparation.assert_called_once_with(
             target,
             rebuild=False,
+            item_id=batch.batch.items[1].item_id,
         )
 
         target.is_prepared = True
@@ -316,17 +325,14 @@ class TuiBatchItemControllerTests(unittest.TestCase):
 
         self.assertEqual(bindings.actions.navigation.focus_key, ("caption", None))
 
-    def test_caption_movement_is_blocked_while_synthesis_is_busy(self):
+    def test_caption_movement_remains_available_while_another_item_generates(self):
         subject, batch, bindings, state = self.make_subject()
         bindings.actions.operations.busy = True
 
         subject.move_open_item(1, bindings)
 
-        self.assertEqual(batch.item_position, (1, 2))
-        self.assertIs(state["session"], batch.batch.items[0].session)
-        bindings.actions.set_status.assert_called_once_with(
-            "Wait for the current synthesis operation to finish."
-        )
+        self.assertEqual(batch.item_position, (2, 2))
+        self.assertIs(state["session"], batch.batch.items[1].session)
 
     def test_acceptance_starts_operation_for_stable_item_without_marking_early(self):
         subject, batch, bindings, _state = self.make_subject()
@@ -343,7 +349,6 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             target.session,
             2,
             item_id=target.item_id,
-            busy=False,
             pronunciation_index=0,
         )
         bindings.actions.dispatch_operation_effects.assert_called_once_with(effects)
@@ -382,6 +387,7 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         bindings.actions.operations.start_session_preparation.assert_called_once_with(
             state["session"],
             rebuild=True,
+            item_id=subject.batch.open_item_id,
         )
         bindings.actions.dispatch_operation_effects.assert_called_once_with(effects)
 
@@ -414,10 +420,53 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         bindings.actions.operations.start_session_preparation.assert_called_once_with(
             state["session"],
             rebuild=True,
+            item_id=subject.batch.open_item_id,
         )
+
+    def test_owned_caption_mutations_report_operation_conflict(self):
+        subject, _batch, bindings, _state = self.make_subject()
+        conflict = warning_status(
+            "Caption 1 is currently generating; editing Caption is unavailable "
+            "until generation finishes."
+        )
+        bindings.actions.operations.item_mutation_conflict_status.return_value = conflict
+
+        subject.dispatch_navigation_actions((OpenCaptionEditor(),), bindings)
+
+        bindings.actions.open_caption_editor.assert_not_called()
+        bindings.actions.set_status.assert_called_once_with(conflict)
+
+    def test_owned_caption_delete_and_clear_report_operation_conflict(self):
+        subject, batch, bindings, state = self.make_subject()
+        state["session"].candidates = [SimpleNamespace(number=1)]
+        conflict = warning_status(
+            "Caption 1 is currently generating; deleting Caption is unavailable "
+            "until generation finishes."
+        )
+        bindings.actions.operations.item_mutation_conflict_status.return_value = conflict
+
+        subject.dispatch_navigation_actions((DeleteCaption(),), bindings)
+
+        self.assertFalse(batch.delete_confirmation_active)
+        bindings.actions.set_status.assert_called_once_with(conflict)
+
+        bindings.actions.set_status.reset_mock()
+        bindings.actions.operations.item_mutation_conflict_status.return_value = (
+            warning_status(
+                "Caption 1 is currently generating; clearing candidates is unavailable "
+                "until generation finishes."
+            )
+        )
+        subject.dispatch_navigation_actions(
+            (OpenClearCandidatesConfirmation(),),
+            bindings,
+        )
+        bindings.actions.editor_controller.open_clear_candidates_confirmation.assert_not_called()
+        bindings.actions.set_status.assert_called_once()
 
     def test_generate_take_count_adjustment_uses_existing_settings_owner(self):
         subject, _batch, bindings, _state = self.make_subject()
+        bindings.actions.operations.busy = True
         bindings.actions.navigation.focus_key = ("generate", None)
 
         subject.handle_key(curses.KEY_RIGHT, bindings)

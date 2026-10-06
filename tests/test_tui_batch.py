@@ -47,7 +47,9 @@ class TuiBatchControllerTests(unittest.TestCase):
     def make_bindings(self):
         operations = Mock()
         operations.busy = False
+        operations.operation_resource_busy = False
         operations.worker_operation = None
+        operations.item_mutation_conflict_status.return_value = None
         operations.start_batch_generation.return_value = ()
         operations.start_session_preparation.return_value = ()
         operations.generation_conflict_status.return_value = None
@@ -138,6 +140,36 @@ class TuiBatchControllerTests(unittest.TestCase):
             ["first", "second"],
         )
         self.assertEqual(target.session.close_calls, 0)
+
+    def test_operation_owned_caption_cannot_open_or_confirm_delete(self):
+        controller = self.make_controller("first\nsecond")
+        target = controller.batch.items[1]
+        controller.focus_key = ("caption", 1)
+        operations = Mock()
+        conflict = SimpleNamespace(message="Caption 2 is currently generating")
+        operations.item_mutation_conflict_status.return_value = conflict
+
+        actions = controller.handle_key("x", operations=operations)
+
+        self.assertFalse(controller.delete_confirmation_active)
+        self.assertEqual(len(actions), 1)
+        self.assertIs(actions[0].status, conflict)
+        operations.item_mutation_conflict_status.assert_called_once_with(
+            controller.batch,
+            target.item_id,
+            action="deleting Caption",
+        )
+
+        operations.item_mutation_conflict_status.return_value = None
+        controller.handle_key("x", operations=operations)
+        self.assertTrue(controller.delete_confirmation_active)
+        operations.item_mutation_conflict_status.return_value = conflict
+
+        actions = controller.handle_key("d", operations=operations)
+
+        self.assertTrue(controller.delete_confirmation_active)
+        self.assertEqual([item.caption for item in controller.batch.items], ["first", "second"])
+        self.assertIs(actions[0].status, conflict)
 
     def test_open_item_delete_cancel_keeps_item_and_confirm_returns_to_list(self):
         controller = self.make_controller("first\nsecond")
@@ -354,6 +386,7 @@ class TuiBatchControllerTests(unittest.TestCase):
         bindings.operations.start_session_preparation.assert_called_once_with(
             session,
             rebuild=False,
+            item_id=controller.batch.items[0].item_id,
         )
         bindings.dispatch_operation_effects.assert_called_once_with(effects)
 
@@ -368,7 +401,7 @@ class TuiBatchControllerTests(unittest.TestCase):
 
         bindings.open_batch_read.reset_mock()
         bindings.open_batch_write.reset_mock()
-        bindings.operations.busy = True
+        bindings.operations.operation_resource_busy = True
 
         controller.dispatch_actions((OpenBatchRead(),), bindings)
         self.assertIn("before reading a batch", str(bindings.set_status.call_args.args[0]))

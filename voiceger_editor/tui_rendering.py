@@ -597,7 +597,6 @@ class TuiRenderer:
             key = ("caption", index)
             marker = "▶ " if key == focus_key else "  "
             selected = "x" if item.included_for_generation else " "
-            candidate_count = len(item.session.candidates)
             active_progress = (
                 active_generation
                 if active_generation is not None
@@ -610,13 +609,10 @@ class TuiRenderer:
                 review_state = f"[{percent}%] "
             elif item.is_accepted:
                 review_state = "[✓] "
-            elif candidate_count:
-                target_count = batch.effective_take_count(item)
-                if candidate_count >= target_count:
-                    review_state = "[!] "
-                else:
-                    percent = round(candidate_count * 100 / target_count)
-                    review_state = f"[{percent}%] "
+            elif item.generation_outcome in {"cancelled", "failed"}:
+                review_state = "[⚠] "
+            elif item.generation_outcome == "completed":
+                review_state = "[!] "
             else:
                 review_state = ""
             prefix = f"{marker}[{selected}] {index + 1}  {review_state}"
@@ -1019,16 +1015,6 @@ class TuiRenderer:
                         else "Generating"
                     )
                     generate_label = f"{verb} {current}/{state.operation_total}"
-            elif (
-                state.busy
-                and state.worker_operation
-                in {"initial", "regenerate_one", "regenerate_all", "batch_generate"}
-            ):
-                generate_label = (
-                    f"Regenerate all {state.settings.take_count} takes [busy]"
-                    if has_batch
-                    else f"Generate {state.settings.take_count} takes [busy]"
-                )
             else:
                 adjustable_count = _adjustable_value(
                     str(state.settings.take_count),
@@ -1039,6 +1025,12 @@ class TuiRenderer:
                     if has_batch
                     else f"Generate {adjustable_count} takes"
                 )
+                if (
+                    state.busy
+                    and state.worker_operation
+                    in {"initial", "regenerate_one", "regenerate_all", "batch_generate"}
+                ):
+                    generate_label += " [busy]"
             plain()
             if not session.candidates:
                 plain("Candidates   No candidates yet.")

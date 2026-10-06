@@ -444,20 +444,21 @@ class TuiTests(unittest.TestCase):
         self.assertIs(app._dictionary_controller.editor, export_editor)
         self.assertEqual(export_editor.selection, "output")
 
-    def test_export_output_settings_busy_guard_keeps_export_visible(self):
+    def test_export_output_edit_remains_available_during_generation(self):
         app = self.make_app(query=mixed_query())
         app._handle_key("d")
         app._handle_key("x")
         export_editor = app._dictionary_controller.editor
         app._operations.busy = True
+        app._operations.worker_operation = "initial"
 
         app._handle_key("f")
 
         self.assertIs(app._dictionary_controller.editor, export_editor)
-        self.assertIsNone(app._editor_controller.editor)
+        self.assertTrue(app._output_path_controller.active)
         self.assertEqual(
-            app._status,
-            "Wait for synthesis to finish before changing Output.",
+            app._output_path_controller.state.owner,
+            "dictionary_export",
         )
 
     def test_pronunciation_editor_dictionary_actions_preserve_editor_state(self):
@@ -1140,7 +1141,7 @@ class TuiTests(unittest.TestCase):
         app._render()
 
         rendered = self.rendered(app._screen)
-        self.assertIn("Generate 4 takes [busy]", rendered)
+        self.assertIn("Generate < 4 > takes [busy]", rendered)
         self.assertNotIn("Generating 3/4", rendered)
 
         app._handle_key("g")
@@ -1229,7 +1230,10 @@ class TuiTests(unittest.TestCase):
             item_id=item_id,
         )
 
-        self.assertEqual(str(effects[0].status), "Another operation is already running.")
+        self.assertEqual(
+            str(effects[0].status),
+            "Regenerate all Takes is unavailable while Take generation is active.",
+        )
         self.assertIs(app._operations.worker, original_worker)
         app.session.regenerate_all_takes.assert_not_called()
 
@@ -1378,16 +1382,20 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(stop_playback.call_count, 1)
         self.assertEqual(app._status, "Candidates cleared.")
 
-    def test_clear_candidates_shortcut_is_blocked_while_synthesis_is_busy(self):
+    def test_clear_candidates_is_blocked_for_operation_owned_caption(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        item_id = app._batch.open_item_id
         app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._owned_item_ids = frozenset({item_id})
 
         app._handle_key("c")
 
         self.assertIsNone(app._editor_controller.editor)
         self.assertEqual(app.session.candidates, (candidate(1),))
         self.assertEqual(app.session.discard_calls, 0)
-        self.assertIn("Finish or cancel synthesis before clearing", app._status)
+        self.assertIn("currently generating", app._status)
+        self.assertIn("clearing candidates", app._status)
 
     def test_candidate_direct_jumps_cover_one_through_nine_and_arrows_reach_ten(self):
         app = self.make_app(
@@ -1890,15 +1898,19 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(session.close_calls, 1)
         self.assertEqual(stop_playback.call_count, 2)
 
-    def test_batch_item_delete_shortcut_is_blocked_while_synthesis_is_busy(self):
+    def test_batch_item_delete_is_blocked_for_operation_owned_caption(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        item_id = app._batch.open_item_id
         app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._owned_item_ids = frozenset({item_id})
 
         app._handle_key("x")
 
         self.assertFalse(app._batch.delete_confirmation_active)
         self.assertTrue(app._batch.in_item)
-        self.assertIn("Finish or cancel synthesis before deleting Caption.", app._status)
+        self.assertIn("currently generating", app._status)
+        self.assertIn("deleting Caption", app._status)
 
     def test_accepting_batch_item_stays_on_same_item_until_explicit_navigation(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
@@ -2441,6 +2453,7 @@ class TuiTests(unittest.TestCase):
         app._operations.busy = True
         app._operations.worker_operation = "initial"
         app._operations._worker_item_id = generating_item_id
+        app._operations._owned_item_ids = frozenset({generating_item_id})
         app._operations._cancellation_event = cancellation_event
         app._operations.operation_total = 4
 
@@ -2469,6 +2482,25 @@ class TuiTests(unittest.TestCase):
         self.assertEqual(
             [item.caption for item in app._batch.batch.items],
             [app._batch.batch.items[0].caption, "background-added caption"],
+        )
+
+        app._batch.focus_key = ("caption", 1)
+        app._handle_key("\n")
+        self.assertIs(app.session, added)
+        set_navigation_focus(app, ("caption", None))
+        app._handle_key("\n")
+        self.assertEqual(app._editor_controller.editor.title, "EDIT CAPTION TEXT")
+        app._editor_controller.editor.input_value = "edited while first generates"
+        app._handle_key("\n")
+        app._handle_key(curses.KEY_DOWN)
+        app._handle_key("\n")
+
+        self.assertEqual(added.caption, "edited while first generates")
+        self.assertTrue(app._operations.busy)
+        self.assertEqual(app._operations._worker_item_id, generating_item_id)
+        self.assertEqual(
+            app._operations.owned_item_ids,
+            frozenset({generating_item_id}),
         )
 
     def test_batch_list_apply_adds_multiple_lightweight_caption_sessions(self):
@@ -3429,7 +3461,7 @@ class TuiTests(unittest.TestCase):
             self.assertIsNone(app._editor_controller.editor)
             self.assertEqual(app._status, "Settings saved.")
 
-    def test_generate_arrows_persist_count_preserve_batch_and_respect_bounds_and_busy(self):
+    def test_generate_arrows_persist_count_preserve_batch_and_work_during_generation(self):
         with tempfile.TemporaryDirectory() as directory:
             app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
             app.config_path = Path(directory) / "settings.json"
@@ -3455,9 +3487,10 @@ class TuiTests(unittest.TestCase):
             self.assertEqual(app.settings.take_count, 100)
 
             app._operations.busy = True
+            app._operations.worker_operation = "initial"
             app._handle_key(curses.KEY_LEFT)
-            self.assertEqual(app.settings.take_count, 100)
-            self.assertIn("Wait for the current synthesis operation to finish", app._status)
+            self.assertEqual(app.settings.take_count, 99)
+            self.assertEqual(app.session.replace_settings_calls[-1].take_count, 99)
 
     def test_settings_escape_from_active_field_discards_the_entire_modal_draft(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -3497,33 +3530,54 @@ class TuiTests(unittest.TestCase):
         self.assertIsNone(app._operations.current_take)
         self.assertEqual(app._batch.focus_key, ("caption", 0))
 
-    def test_acceptance_and_regeneration_are_unavailable_while_busy_but_replay_works(self):
+    def test_owned_caption_mutations_and_second_generation_are_blocked_but_light_work_remains(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+        item_id = app._batch.open_item_id
         app._operations.play_take = Mock(return_value=())
         app._operations.start_generation = Mock(return_value=())
         app._operations.start_regenerate_all = Mock(return_value=())
         app._operations.start_regeneration = Mock(return_value=())
         app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._worker_item_id = item_id
+        app._operations._owned_item_ids = frozenset({item_id})
 
         for key in (
             ("caption", None),
             ("pronunciation", 0),
-            ("generate", None),
-            ("settings_summary", None),
-            ("output", None),
             ("build_pronunciation", None),
         ):
             set_navigation_focus(app, key)
             app._handle_key("\n")
             self.assertIsNone(app._editor_controller.editor)
+            self.assertIn("currently generating", app._status)
+
+        set_navigation_focus(app, ("generate", None))
+        app._handle_key("\n")
+        self.assertIn("already generating", app._status)
+        app._operations.start_generation.assert_not_called()
+        app._operations.start_regenerate_all.assert_not_called()
+
+        set_navigation_focus(app, ("settings_summary", None))
+        app._handle_key("\n")
+        self.assertIsNotNone(app._editor_controller.editor)
+        self.assertEqual(app._editor_controller.editor.kind, "settings")
+        app._handle_key("\x1b")
+
+        set_navigation_focus(app, ("output", None))
+        app._handle_key("\n")
+        self.assertTrue(app._output_path_controller.active)
+        app._handle_key("\x1b")
 
         focus_candidate(app, 1)
         app._handle_key("\n")
         self.assertEqual(app.session.accept_calls, [])
-        app._operations.start_generation.assert_not_called()
-        app._operations.start_regenerate_all.assert_not_called()
-        app._operations.start_regeneration.assert_not_called()
+        self.assertIn("Save Take 1 is unavailable", app._status)
+
         set_navigation_focus(app, ("candidate", 1))
+        app._handle_key("r")
+        app._operations.start_regeneration.assert_not_called()
+
         app._handle_key(" ")
         app._operations.play_take.assert_called_with(app.session, 1)
 

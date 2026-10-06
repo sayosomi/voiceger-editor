@@ -77,6 +77,11 @@ class QuitBatch:
     pass
 
 
+@dataclass(frozen=True)
+class ReportBatchStatus:
+    status: Status
+
+
 BatchAction = Union[
     OpenBatchItem,
     AddCaptions,
@@ -88,6 +93,7 @@ BatchAction = Union[
     OpenBatchDictionary,
     OpenBatchHelp,
     QuitBatch,
+    ReportBatchStatus,
 ]
 
 
@@ -226,6 +232,21 @@ class TuiBatchController:
         if item_id is not None:
             self.batch.clear_acceptance(item_id)
 
+    def clear_open_item_generation_outcome(self) -> None:
+        item_id = self.open_item_id
+        if item_id is not None:
+            self.batch.clear_generation_outcome(item_id)
+
+    def clear_generation_outcomes(self) -> None:
+        for item in self.batch.items:
+            item.clear_generation_outcome()
+
+    def set_item_generation_outcome(self, item_id: str, outcome: str) -> None:
+        try:
+            self.batch.set_generation_outcome(item_id, outcome)
+        except KeyError:
+            return
+
     def invalidate_acceptance_for_replacement(
         self,
         item_id: str,
@@ -250,6 +271,7 @@ class TuiBatchController:
             return
         item.session.discard_takes()
         self.batch.clear_acceptance(item_id)
+        self.batch.clear_generation_outcome(item_id)
 
     def close_sessions(self) -> None:
         for session in self.sessions:
@@ -299,6 +321,7 @@ class TuiBatchController:
                         bindings.operations.start_session_preparation(
                             session,
                             rebuild=False,
+                            item_id=self.open_item_id,
                         )
                     )
             elif isinstance(action, AddCaptions):
@@ -317,7 +340,7 @@ class TuiBatchController:
                 )
                 bindings.dispatch_operation_effects(effects)
             elif isinstance(action, OpenBatchRead):
-                if bindings.operations.busy:
+                if bindings.operations.operation_resource_busy:
                     bindings.set_status(
                         info_status(
                             "Wait for the current operation to finish before reading a batch."
@@ -326,7 +349,7 @@ class TuiBatchController:
                 else:
                     bindings.open_batch_read()
             elif isinstance(action, OpenBatchWrite):
-                if bindings.operations.busy:
+                if bindings.operations.operation_resource_busy:
                     bindings.set_status(
                         info_status(
                             "Wait for the current operation to finish before writing a batch."
@@ -367,6 +390,8 @@ class TuiBatchController:
                 bindings.open_help()
             elif isinstance(action, QuitBatch):
                 bindings.activate_quit()
+            elif isinstance(action, ReportBatchStatus):
+                bindings.set_status(action.status)
 
     def navigation_items(self) -> tuple[BatchFocusKey, ...]:
         return (
@@ -393,7 +418,12 @@ class TuiBatchController:
         if result is not None:
             self.focus_key = result.selection
 
-    def handle_key(self, key: Any) -> tuple[BatchAction, ...]:
+    def handle_key(
+        self,
+        key: Any,
+        *,
+        operations: TuiOperations | None = None,
+    ) -> tuple[BatchAction, ...]:
         if key in ("Q", "\x03"):
             return (QuitBatch(),)
 
@@ -409,6 +439,9 @@ class TuiBatchController:
                 return ()
             self._delete_confirmation_selection = interaction.selection
             if interaction.activation == "delete":
+                conflict = self._delete_conflict_status(operations)
+                if conflict is not None:
+                    return (ReportBatchStatus(conflict),)
                 self._confirm_delete()
             elif interaction.activation == "cancel":
                 self._cancel_delete()
@@ -427,7 +460,14 @@ class TuiBatchController:
             ):
                 index = self.focus_key[1]
                 if 0 <= index < len(self.batch):
-                    self._pending_delete_item_id = self.batch.items[index].item_id
+                    item_id = self.batch.items[index].item_id
+                    conflict = self._item_delete_conflict_status(
+                        operations,
+                        item_id,
+                    )
+                    if conflict is not None:
+                        return (ReportBatchStatus(conflict),)
+                    self._pending_delete_item_id = item_id
                     self._pending_delete_from_item = False
                     self._delete_confirmation_selection = "cancel"
             return ()
@@ -475,6 +515,28 @@ class TuiBatchController:
         if name == "quit":
             return (QuitBatch(),)
         return ()
+
+    def _item_delete_conflict_status(
+        self,
+        operations: TuiOperations | None,
+        item_id: str | None,
+    ) -> Status | None:
+        if operations is None:
+            return None
+        return operations.item_mutation_conflict_status(
+            self.batch,
+            item_id,
+            action="deleting Caption",
+        )
+
+    def _delete_conflict_status(
+        self,
+        operations: TuiOperations | None,
+    ) -> Status | None:
+        return self._item_delete_conflict_status(
+            operations,
+            self._pending_delete_item_id,
+        )
 
     def _cancel_delete(self) -> None:
         self._pending_delete_item_id = None

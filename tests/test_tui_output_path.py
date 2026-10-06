@@ -6,7 +6,7 @@ from voiceger_editor.tui_output_path import TuiOutputPathController
 
 
 class TuiOutputPathControllerTests(unittest.TestCase):
-    def make_controller(self, *, busy=False, save_result=True):
+    def make_controller(self, *, save_result=True):
         state = {
             "path": Path("/saved/output"),
             "status": None,
@@ -22,7 +22,6 @@ class TuiOutputPathControllerTests(unittest.TestCase):
         controller = TuiOutputPathController(
             get_output_dir=lambda: state["path"],
             save_output_dir=save,
-            busy=lambda: busy,
             set_status=lambda value: state.__setitem__("status", value),
         )
         return controller, state
@@ -60,13 +59,12 @@ class TuiOutputPathControllerTests(unittest.TestCase):
         self.assertTrue(controller.active)
         self.assertEqual(state["saved"], ["/saved/output"])
 
-    def test_busy_guard_does_not_start_editing(self):
-        controller, state = self.make_controller(busy=True)
+    def test_begin_is_not_globally_blocked_by_background_work(self):
+        controller, _state = self.make_controller()
 
-        self.assertFalse(controller.begin("batch_item"))
+        self.assertTrue(controller.begin("batch_item"))
 
-        self.assertFalse(controller.active)
-        self.assertIn("Wait for synthesis", str(state["status"]))
+        self.assertTrue(controller.active)
 
 
 if __name__ == "__main__":

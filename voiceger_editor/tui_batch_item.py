@@ -214,8 +214,14 @@ class TuiBatchItemController:
                 actions.navigation.focus_key[0] == "pronunciation"
                 and actions.navigation.focus_key[1] is not None
                 and bindings.get_session() is not None
-                and not actions.operations.busy
             ):
+                conflict = self._item_mutation_conflict(
+                    bindings,
+                    action="editing pronunciation",
+                )
+                if conflict is not None:
+                    actions.set_status(conflict)
+                    return
                 rows = self.pronunciation_rows(bindings)
                 index = actions.navigation.focus_key[1]
                 if 0 <= index < len(rows):
@@ -273,7 +279,6 @@ class TuiBatchItemController:
                 if session is not None
                 else 0
             ),
-            busy=bindings.actions.operations.busy,
             has_item_navigator=self.batch.in_item,
         )
 
@@ -302,17 +307,31 @@ class TuiBatchItemController:
                     (BeginOutputPathEditIntent("batch_item"),)
                 )
             elif isinstance(action, OpenCaptionEditor):
+                conflict = self._item_mutation_conflict(
+                    bindings,
+                    action="editing Caption",
+                )
+                if conflict is not None:
+                    actions.set_status(conflict)
+                    continue
                 actions.open_caption_editor()
             elif isinstance(action, DeleteCaption):
+                conflict = self._item_mutation_conflict(
+                    bindings,
+                    action="deleting Caption",
+                )
+                if conflict is not None:
+                    actions.set_status(conflict)
+                    continue
                 actions.operations.stop_playback()
                 self.batch.request_delete_open_item()
             elif isinstance(action, OpenClearCandidatesConfirmation):
-                if actions.operations.busy:
-                    actions.set_status(
-                        info_status(
-                            "Finish or cancel synthesis before clearing candidates."
-                        )
-                    )
+                conflict = self._item_mutation_conflict(
+                    bindings,
+                    action="clearing candidates",
+                )
+                if conflict is not None:
+                    actions.set_status(conflict)
                 elif session is not None and session.candidates:
                     actions.dispatch_editor_intents(
                         actions.editor_controller.open_clear_candidates_confirmation(
@@ -322,6 +341,13 @@ class TuiBatchItemController:
             elif isinstance(action, EditPronunciationItem):
                 self.edit_selected_pronunciation(action.index, bindings)
             elif isinstance(action, AddSectionEditor):
+                conflict = self._item_mutation_conflict(
+                    bindings,
+                    action="adding a section",
+                )
+                if conflict is not None:
+                    actions.set_status(conflict)
+                    continue
                 if session is None or not getattr(session, "is_prepared", True):
                     actions.set_status(
                         info_status(
@@ -336,7 +362,7 @@ class TuiBatchItemController:
                             session.pure_japanese_utterance_text
                         ),
                         origin=actions.navigation.focus_key,
-                        busy=actions.operations.busy,
+                        busy=False,
                     )
                 )
             elif isinstance(action, StartGeneration):
@@ -426,6 +452,13 @@ class TuiBatchItemController:
         if session is None:
             return
         actions = bindings.actions
+        conflict = self._item_mutation_conflict(
+            bindings,
+            action="rebuilding pronunciation",
+        )
+        if conflict is not None:
+            actions.set_status(conflict)
+            return
         if session.utterance_manually_edited:
             actions.dispatch_editor_intents(
                 actions.editor_controller.open_build_confirmation(
@@ -457,6 +490,7 @@ class TuiBatchItemController:
             actions.operations.start_session_preparation(
                 session,
                 rebuild=rebuild,
+                item_id=self.batch.open_item_id,
             )
         )
         return None
@@ -485,6 +519,7 @@ class TuiBatchItemController:
         actions.operations.stop_playback()
         actions.editor_controller.clear_groupings()
         actions.operations.clear_current_take()
+        self.batch.clear_open_item_generation_outcome()
         if rebuild:
             self._pending_prepare_focus = None
             self.dispatch_navigation_actions(
@@ -522,14 +557,6 @@ class TuiBatchItemController:
         bindings: BatchItemBindings,
     ) -> None:
         actions = bindings.actions
-        if actions.operations.busy:
-            actions.dispatch_editor_intents(
-                adjustment_feedback_intents(changed=False)
-            )
-            actions.set_status(
-                info_status("Wait for the current synthesis operation to finish.")
-            )
-            return
         count = bindings.get_settings().take_count
         result = step_bounded(
             count,
@@ -603,11 +630,14 @@ class TuiBatchItemController:
     ) -> None:
         session = bindings.get_session()
         actions = bindings.actions
-        if (
-            session is None
-            or not getattr(session, "is_prepared", True)
-            or actions.operations.busy
-        ):
+        if session is None or not getattr(session, "is_prepared", True):
+            return
+        conflict = self._item_mutation_conflict(
+            bindings,
+            action="editing pronunciation",
+        )
+        if conflict is not None:
+            actions.set_status(conflict)
             return
         rows = self.pronunciation_rows(bindings)
         if not 0 <= pronunciation_index < len(rows):
@@ -618,7 +648,7 @@ class TuiBatchItemController:
                 rows,
                 pronunciation_index,
                 origin=("pronunciation", pronunciation_index),
-                busy=actions.operations.busy,
+                busy=False,
             )
         )
 
@@ -639,7 +669,6 @@ class TuiBatchItemController:
             session,
             number,
             item_id=item_id,
-            busy=actions.operations.busy,
             pronunciation_index=pronunciation_index,
         )
         actions.dispatch_operation_effects(effects)
@@ -656,14 +685,6 @@ class TuiBatchItemController:
         if index is None or direction == 0:
             actions.dispatch_editor_intents(
                 adjustment_feedback_intents(changed=False)
-            )
-            return
-        if actions.operations.busy:
-            actions.dispatch_editor_intents(
-                adjustment_feedback_intents(changed=False)
-            )
-            actions.set_status(
-                info_status("Wait for the current synthesis operation to finish.")
             )
             return
         target = index + (-1 if direction < 0 else 1)
@@ -702,8 +723,21 @@ class TuiBatchItemController:
                 actions.operations.start_session_preparation(
                     session,
                     rebuild=False,
+                    item_id=self.batch.open_item_id,
                 )
             )
+
+    def _item_mutation_conflict(
+        self,
+        bindings: BatchItemBindings,
+        *,
+        action: str,
+    ) -> Status | None:
+        return bindings.actions.operations.item_mutation_conflict_status(
+            self.batch.batch,
+            self.batch.open_item_id,
+            action=action,
+        )
 
     def _handle_item_navigation_key(
         self,

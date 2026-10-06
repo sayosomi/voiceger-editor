@@ -45,6 +45,7 @@ from .tui_operations import (
     DiscardInitialBatchEffect,
     SessionPreparationCompletedEffect,
     FocusEffect,
+    GenerationOutcomeEffect,
     OperationEffect,
     PlayPreviewEffect,
     PlayTakeEffect,
@@ -98,13 +99,13 @@ class TuiApp:
             ),
             set_status=lambda status: setattr(self, "_status", status),
             save=lambda value, path: save_settings(value, path),
+            clear_generation_outcomes=self._batch.clear_generation_outcomes,
         )
         self._output_path_controller = TuiOutputPathController(
             get_output_dir=lambda: self.settings.output_dir,
             save_output_dir=lambda value: self._settings_controller.change(
                 output_dir=value
             ),
-            busy=lambda: self._operations.busy,
             set_status=lambda status: setattr(self, "_status", status),
         )
         self._help_controller = TuiHelpController()
@@ -362,7 +363,10 @@ class TuiApp:
 
         if self._batch.delete_confirmation_active or not self._batch.in_item:
             self._batch.dispatch_actions(
-                self._batch.handle_key(key),
+                self._batch.handle_key(
+                    key,
+                    operations=self._operations,
+                ),
                 self._batch_action_bindings,
             )
             self.session = self.session if self._batch.in_item else None
@@ -421,7 +425,7 @@ class TuiApp:
                 self.session.caption if self.session is not None else None
             ),
             origin=self._navigation.focus_key if self._batch.in_item else self._batch.focus_key,
-            busy=self._operations.busy,
+            busy=self._operations.owns_item(self._batch.open_item_id),
             multiline=multiline,
         )
         self._dispatch_editor_intents(intents)
@@ -442,7 +446,7 @@ class TuiApp:
                 if self._batch.in_item
                 else self._batch.focus_key
             ),
-            busy=self._operations.busy,
+            busy=False,
             selected_field=selected_field,
             edit=edit,
         )
@@ -471,6 +475,7 @@ class TuiApp:
                 pure_japanese_utterance_text=pure_japanese_utterance_text,
             )
         self._operations.clear_current_take()
+        self._batch.clear_open_item_generation_outcome()
 
     def _apply_caption(self, caption: str) -> CaptionApplicationResult:
         if not self._batch.in_item:
@@ -541,15 +546,19 @@ class TuiApp:
             elif isinstance(intent, QuitIntent):
                 self._activate_quit()
             elif isinstance(intent, ClearCandidatesIntent):
-                if self._operations.busy:
-                    self._status = info_status(
-                        "Finish or cancel synthesis before clearing candidates."
-                    )
+                conflict = self._operations.item_mutation_conflict_status(
+                    self._batch.batch,
+                    self._batch.open_item_id,
+                    action="clearing candidates",
+                )
+                if conflict is not None:
+                    self._status = conflict
                 else:
                     self._operations.stop_playback()
                     if self.session is not None:
                         self.session.discard_takes()
                     self._batch.clear_open_item_acceptance()
+                    self._batch.clear_open_item_generation_outcome()
                     self._operations.clear_current_take()
             elif isinstance(intent, CloseEditorIntent):
                 self._pressed_adjustment = None
@@ -654,8 +663,14 @@ class TuiApp:
                     if self.session is not None:
                         self.session.discard_takes()
                     self._batch.clear_open_item_acceptance()
+                    self._batch.clear_open_item_generation_outcome()
             elif isinstance(effect, TakeAcceptedEffect):
                 self._batch.complete_acceptance(effect.item_id, effect.number)
+            elif isinstance(effect, GenerationOutcomeEffect):
+                self._batch.set_item_generation_outcome(
+                    effect.item_id,
+                    effect.outcome,
+                )
             elif isinstance(effect, DictionaryOperationCompletedEffect):
                 self._dispatch_editor_intents(
                     self._dictionary_controller.complete_operation(

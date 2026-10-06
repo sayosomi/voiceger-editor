@@ -78,6 +78,12 @@ class TakeAcceptedEffect:
 
 
 @dataclass(frozen=True)
+class GenerationOutcomeEffect:
+    item_id: str
+    outcome: str
+
+
+@dataclass(frozen=True)
 class DictionaryOperationCompletedEffect:
     request: DictionaryOperationRequest
     value: Any = None
@@ -163,6 +169,11 @@ class BatchGenerationFailedEvent:
     error: BaseException
 
 
+@dataclass(frozen=True)
+class BatchGenerationCancelledEvent:
+    item_id: str
+
+
 OperationEffect = Union[
     UpdateStatusEffect,
     FocusEffect,
@@ -173,6 +184,7 @@ OperationEffect = Union[
     BatchCandidateReplacedEffect,
     CandidateReplacedEffect,
     TakeAcceptedEffect,
+    GenerationOutcomeEffect,
     DictionaryOperationCompletedEffect,
     SessionPreparationCompletedEffect,
 ]
@@ -205,6 +217,7 @@ class TuiOperations:
         self._cancellation_event: Event | None = None
         self.cancellation_requested = False
         self._worker_item_id: str | None = None
+        self._owned_item_ids: frozenset[str] = frozenset()
         self._ctrl_c_cancellation_guard = False
         self.current_take: int | None = None
         self.playback_process: subprocess.Popen[Any] | None = None
@@ -221,10 +234,9 @@ class TuiOperations:
     ) -> tuple[OperationEffect, ...]:
         """Generate selected Caption items sequentially on one worker."""
 
-        if self.busy:
-            return (
-                UpdateStatusEffect("Another operation is already running."),
-            )
+        conflict = self.resource_conflict_status("Generate selected")
+        if conflict is not None:
+            return (UpdateStatusEffect(conflict),)
 
         selected = batch.included_items
         if not selected:
@@ -247,6 +259,7 @@ class TuiOperations:
         self.worker_operation = "batch_generate"
         self.worker_target = None
         self._worker_item_id = None
+        self._owned_item_ids = frozenset(item.item_id for item, _take_total in plan)
         self.worker_error = None
         self.operation_focus_revision = navigation_revision
         self.operation_completed = 0
@@ -296,6 +309,11 @@ class TuiOperations:
 
                                 for take_number in range(1, take_total + 1):
                                     if cancellation_event.is_set():
+                                        self.events.put(
+                                            BatchGenerationCancelledEvent(
+                                                item_id=item.item_id
+                                            )
+                                        )
                                         return
                                     self.events.put(
                                         BatchGenerationProgressEvent(
@@ -382,10 +400,9 @@ class TuiOperations:
         navigation_revision: int,
         item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
-        if self.busy:
-            return (
-                UpdateStatusEffect("Another operation is already running."),
-            )
+        conflict = self.resource_conflict_status("Generate Caption")
+        if conflict is not None:
+            return (UpdateStatusEffect(conflict),)
         if session is None:
             return ()
         if session.has_active_batch:
@@ -419,10 +436,9 @@ class TuiOperations:
         navigation_revision: int,
         item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
-        if self.busy:
-            return (
-                UpdateStatusEffect("Another operation is already running."),
-            )
+        conflict = self.resource_conflict_status(f"Regenerate Take {number}")
+        if conflict is not None:
+            return (UpdateStatusEffect(conflict),)
         if session is None:
             return ()
         self.stop_playback()
@@ -445,10 +461,9 @@ class TuiOperations:
         navigation_revision: int,
         item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
-        if self.busy:
-            return (
-                UpdateStatusEffect("Another operation is already running."),
-            )
+        conflict = self.resource_conflict_status("Regenerate all Takes")
+        if conflict is not None:
+            return (UpdateStatusEffect(conflict),)
         if session is None:
             return ()
         try:
@@ -476,10 +491,9 @@ class TuiOperations:
     ) -> tuple[OperationEffect, ...]:
         """Synthesize one fixed transient query on the background worker."""
 
-        if self.busy:
-            return (
-                UpdateStatusEffect("Wait for the current operation to finish."),
-            )
+        conflict = self.resource_conflict_status("Pronunciation Preview")
+        if conflict is not None:
+            return (UpdateStatusEffect(conflict),)
         try:
             query_snapshot = query.model_copy(deep=True)
             if session is None:
@@ -500,6 +514,7 @@ class TuiOperations:
         self.busy = True
         self.worker_operation = "preview"
         self.worker_target = None
+        self._owned_item_ids = frozenset()
         self.worker_error = None
         self.operation_completed = 0
         self.operation_total = 1
@@ -533,17 +548,22 @@ class TuiOperations:
         session: UtteranceSession,
         *,
         rebuild: bool,
+        item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
         """Prepare one session after an in-progress Status has rendered."""
 
-        if self.busy:
-            return (UpdateStatusEffect("Wait for the current operation to finish."),)
+        conflict = self.resource_conflict_status("Pronunciation preparation")
+        if conflict is not None:
+            return (UpdateStatusEffect(conflict),)
         if not rebuild and session.is_prepared:
             return ()
 
         self.busy = True
         self.worker_operation = "prepare"
         self.worker_target = None
+        self._owned_item_ids = (
+            frozenset({item_id}) if item_id is not None else frozenset()
+        )
         self.worker_error = None
         self.operation_completed = 0
         self.operation_total = 1
@@ -586,12 +606,14 @@ class TuiOperations:
     ) -> tuple[OperationEffect, ...]:
         """Defer Dictionary analysis or persistence until its Status can render."""
 
-        if self.busy:
-            return (UpdateStatusEffect("Wait for the current operation to finish."),)
+        conflict = self.resource_conflict_status("Dictionary operation")
+        if conflict is not None:
+            return (UpdateStatusEffect(conflict),)
 
         self.busy = True
         self.worker_operation = "dictionary"
         self.worker_target = None
+        self._owned_item_ids = frozenset()
         self.worker_error = None
         self.operation_completed = 0
         self.operation_total = 1
@@ -647,6 +669,9 @@ class TuiOperations:
         self.worker_operation = operation
         self.worker_target = target
         self._worker_item_id = item_id
+        self._owned_item_ids = (
+            frozenset({item_id}) if item_id is not None else frozenset()
+        )
         self.worker_error = None
         self.operation_focus_revision = navigation_revision
         self.operation_completed = 0
@@ -730,6 +755,107 @@ class TuiOperations:
             "regenerate_all",
             "batch_generate",
         }
+
+    @property
+    def operation_resource_busy(self) -> bool:
+        """Whether the shared single-worker operation resource is occupied."""
+
+        return self.busy
+
+    @property
+    def owned_item_ids(self) -> frozenset[str]:
+        """Stable Caption item IDs owned by the active operation plan."""
+
+        if not self.busy:
+            return frozenset()
+        return self._owned_item_ids
+
+    def owns_item(self, item_id: str | None) -> bool:
+        """Whether the active operation owns one stable Caption item."""
+
+        return item_id is not None and item_id in self.owned_item_ids
+
+    def resource_conflict_status(self, action: str) -> Status | None:
+        """Explain why an action needing the shared worker cannot start."""
+
+        if not self.busy:
+            return None
+        operation = self.worker_operation
+        if operation in {"initial", "regenerate_one", "regenerate_all", "batch_generate"}:
+            detail = "Take generation is active"
+        elif operation == "preview":
+            detail = "pronunciation Preview synthesis is active"
+        elif operation == "prepare":
+            detail = "pronunciation preparation is active"
+        elif operation == "accept":
+            detail = "a Take is being saved"
+        elif operation == "dictionary":
+            detail = "a Dictionary operation is active"
+        else:
+            detail = "another background operation is active"
+        return warning_status(f"{action} is unavailable while {detail}.")
+
+    def item_mutation_conflict_status(
+        self,
+        batch: CaptionBatch,
+        item_id: str | None,
+        *,
+        action: str,
+    ) -> Status | None:
+        """Explain a mutation conflict for one operation-owned Caption item."""
+
+        if not self.owns_item(item_id):
+            return None
+
+        number: int | None = None
+        if item_id is not None:
+            try:
+                item = batch.get_item(item_id)
+            except KeyError:
+                pass
+            else:
+                number = batch.items.index(item) + 1
+        owner = f"Caption {number}" if number is not None else "This Caption"
+        operation = self.worker_operation
+        if operation in {"initial", "regenerate_one", "regenerate_all", "batch_generate"}:
+            return warning_status(
+                f"{owner} is currently generating; {action} is unavailable "
+                "until generation finishes."
+            )
+        if operation == "prepare":
+            return warning_status(
+                f"{owner} pronunciation is being prepared; {action} is unavailable "
+                "until preparation finishes."
+            )
+        if operation == "accept":
+            return warning_status(
+                f"{owner} is saving a Take; {action} is unavailable until the save finishes."
+            )
+        return warning_status(
+            f"{owner} is owned by the active operation; {action} is unavailable "
+            "until it finishes."
+        )
+
+    def settings_change_conflict_status(
+        self,
+        changed_names: Iterable[str],
+    ) -> Status | None:
+        """Block only settings mutations that conflict with the active operation."""
+
+        if not self.busy:
+            return None
+        changed = set(changed_names)
+        synthesis_names = {"style_id", "speed", "top_k", "top_p", "temperature"}
+        if changed & synthesis_names:
+            return warning_status(
+                "Synthesis settings cannot change while the current operation is active."
+            )
+        output_names = {"output_dir", "save_text", "save_lab"}
+        if self.worker_operation == "accept" and changed & output_names:
+            return warning_status(
+                "Output settings cannot change while a Take is being saved."
+            )
+        return None
 
     def background_generation_status(self, batch: CaptionBatch) -> str:
         """Describe active Take synthesis independently from transient Status."""
@@ -925,6 +1051,7 @@ class TuiOperations:
                 self.worker_error = event.error
                 self.worker_operation = None
                 self.worker_target = None
+                self._owned_item_ids = frozenset()
                 self._cancellation_event = None
                 self.cancellation_requested = False
                 effects.append(
@@ -942,6 +1069,7 @@ class TuiOperations:
                 self.worker_error = event.error
                 self.worker_operation = None
                 self.worker_target = None
+                self._owned_item_ids = frozenset()
                 self._cancellation_event = None
                 self.cancellation_requested = False
                 effects.append(
@@ -958,6 +1086,7 @@ class TuiOperations:
                 self.worker_error = event.error
                 self.worker_operation = None
                 self.worker_target = None
+                self._owned_item_ids = frozenset()
                 self._cancellation_event = None
                 self.cancellation_requested = False
                 if event.error is not None:
@@ -1003,6 +1132,15 @@ class TuiOperations:
                             number=event.take_number,
                         )
                     )
+                if event.take_number == event.take_total:
+                    effects.append(
+                        GenerationOutcomeEffect(event.item_id, "completed")
+                    )
+                continue
+            if isinstance(event, BatchGenerationCancelledEvent):
+                effects.append(
+                    GenerationOutcomeEffect(event.item_id, "cancelled")
+                )
                 continue
             if isinstance(event, BatchGenerationFailedEvent):
                 self.worker_error = event.error
@@ -1014,6 +1152,9 @@ class TuiOperations:
                             f"Take {event.take_number}/{event.take_total}: {event.error}"
                         )
                     )
+                )
+                effects.append(
+                    GenerationOutcomeEffect(event.item_id, "failed")
                 )
                 continue
 
@@ -1084,10 +1225,23 @@ class TuiOperations:
                     effects.append(DiscardInitialBatchEffect(self._worker_item_id))
                     self.current_take = None
                     effects.append(FocusEffect(("pronunciation", pronunciation_index)))
+                if (
+                    self.worker_operation in {"initial", "regenerate_all"}
+                    and self._worker_item_id is not None
+                ):
+                    effects.append(
+                        GenerationOutcomeEffect(self._worker_item_id, "failed")
+                    )
 
             elif kind == "done":
                 operation = self.worker_operation
-                cancelled = self.cancellation_requested
+                finished_full_count = (
+                    operation in {"initial", "regenerate_all"}
+                    and self.operation_total > 0
+                    and self.operation_completed >= self.operation_total
+                    and self.worker_error is None
+                )
+                cancelled = self.cancellation_requested and not finished_full_count
                 self.busy = False
                 if operation == "preview":
                     status = None
@@ -1133,9 +1287,36 @@ class TuiOperations:
                     status = None
                 if status is not None:
                     effects.append(UpdateStatusEffect(status))
+                if (
+                    operation in {"initial", "regenerate_all"}
+                    and self._worker_item_id is not None
+                    and self.worker_error is None
+                ):
+                    if cancelled:
+                        effects.append(
+                            GenerationOutcomeEffect(
+                                self._worker_item_id,
+                                "cancelled",
+                            )
+                        )
+                    elif finished_full_count:
+                        effects.append(
+                            GenerationOutcomeEffect(
+                                self._worker_item_id,
+                                "completed",
+                            )
+                        )
+                    elif self.operation_total > 0:
+                        effects.append(
+                            GenerationOutcomeEffect(
+                                self._worker_item_id,
+                                "failed",
+                            )
+                        )
                 self.worker_operation = None
                 self.worker_target = None
                 self._worker_item_id = None
+                self._owned_item_ids = frozenset()
                 self._cancellation_event = None
                 self.cancellation_requested = False
 
@@ -1292,16 +1473,19 @@ class TuiOperations:
         number: int,
         *,
         item_id: str,
-        busy: bool,
         pronunciation_index: int,
     ) -> tuple[OperationEffect, ...]:
-        if session is None or busy or self.busy:
+        if session is None:
             return ()
+        conflict = self.resource_conflict_status(f"Save Take {number}")
+        if conflict is not None:
+            return (UpdateStatusEffect(conflict),)
 
         self.stop_playback()
         self.busy = True
         self.worker_operation = "accept"
         self.worker_target = number
+        self._owned_item_ids = frozenset({item_id})
         self.worker_error = None
         self.operation_completed = 0
         self.operation_total = 1

@@ -38,12 +38,10 @@ class TuiOutputPathController:
         *,
         get_output_dir: Callable[[], Any],
         save_output_dir: Callable[[str], bool],
-        busy: Callable[[], bool],
         set_status: Callable[[Status], None],
     ) -> None:
         self._get_output_dir = get_output_dir
         self._save_output_dir = save_output_dir
-        self._busy = busy
         self._set_status = set_status
         self.state: OutputPathEditState | None = None
 
@@ -52,11 +50,6 @@ class TuiOutputPathController:
         return self.state is not None
 
     def begin(self, owner: OutputPathOwner) -> bool:
-        if self._busy():
-            self._set_status(
-                info_status("Wait for synthesis to finish before changing Output.")
-            )
-            return False
         value = str(self._get_output_dir())
         self.state = OutputPathEditState(
             owner=owner,

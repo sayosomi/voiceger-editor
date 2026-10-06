@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Iterable, Iterator, TYPE_CHECKING
+from typing import Callable, Iterable, Iterator, Literal, TYPE_CHECKING
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 
 SessionFactory = Callable[[str], "UtteranceSession"]
+GenerationOutcome = Literal["completed", "cancelled", "failed"]
 
 
 def _validate_take_count(value: int | None, *, name: str, nullable: bool) -> None:
@@ -52,6 +53,7 @@ class CaptionBatchItem:
         self._included_for_generation = included_for_generation
         self._take_count_override = take_count_override
         self._accepted_take_number: int | None = None
+        self._generation_outcome: GenerationOutcome | None = None
 
     @property
     def item_id(self) -> str:
@@ -112,6 +114,20 @@ class CaptionBatchItem:
 
     def clear_acceptance(self) -> None:
         self._accepted_take_number = None
+
+    @property
+    def generation_outcome(self) -> GenerationOutcome | None:
+        """Return the most recent finished full-generation outcome."""
+
+        return self._generation_outcome
+
+    def set_generation_outcome(self, outcome: GenerationOutcome) -> None:
+        if outcome not in {"completed", "cancelled", "failed"}:
+            raise ValueError("generation_outcome must be completed, cancelled, or failed")
+        self._generation_outcome = outcome
+
+    def clear_generation_outcome(self) -> None:
+        self._generation_outcome = None
 
 
 class CaptionBatch:
@@ -281,6 +297,20 @@ class CaptionBatch:
     def clear_acceptance(self, item_id: str) -> CaptionBatchItem:
         item = self.get_item(item_id)
         item.clear_acceptance()
+        return item
+
+    def set_generation_outcome(
+        self,
+        item_id: str,
+        outcome: GenerationOutcome,
+    ) -> CaptionBatchItem:
+        item = self.get_item(item_id)
+        item.set_generation_outcome(outcome)
+        return item
+
+    def clear_generation_outcome(self, item_id: str) -> CaptionBatchItem:
+        item = self.get_item(item_id)
+        item.clear_generation_outcome()
         return item
 
     def effective_take_count(self, item: CaptionBatchItem) -> int:

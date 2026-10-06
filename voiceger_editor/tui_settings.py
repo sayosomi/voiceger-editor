@@ -19,6 +19,14 @@ _SYNTHESIS_SETTING_NAMES = (
     "temperature",
 )
 
+_OPERATION_RELEVANT_SETTING_NAMES = (
+    *_SYNTHESIS_SETTING_NAMES,
+    "take_count",
+    "output_dir",
+    "save_text",
+    "save_lab",
+)
+
 
 class TuiSettingsController:
     """Own runtime settings reconciliation and persistence semantics."""
@@ -35,6 +43,7 @@ class TuiSettingsController:
         set_batch_take_count: Callable[[int], None],
         set_status: Callable[[Status], None],
         save: Callable[[Settings, str | os.PathLike[str] | None], Any],
+        clear_generation_outcomes: Callable[[], None] = lambda: None,
     ) -> None:
         self.settings = settings
         self.persisted_settings = persisted_settings or settings
@@ -45,6 +54,7 @@ class TuiSettingsController:
         self._set_batch_take_count = set_batch_take_count
         self._set_status = set_status
         self._save = save
+        self._clear_generation_outcomes = clear_generation_outcomes
 
     def change(
         self,
@@ -60,10 +70,23 @@ class TuiSettingsController:
                 updated,
                 self.settings,
             )
+            changed_names = tuple(
+                name
+                for name in changes
+                if getattr(updated, name) != getattr(self.settings, name)
+            )
+            conflict = self._operations.settings_change_conflict_status(
+                changed_names
+            )
+            if conflict is not None:
+                self._set_status(conflict)
+                return False
             if synthesis_changed:
                 self._operations.stop_playback()
             for session in self._sessions():
                 session.replace_settings(updated)
+            if synthesis_changed:
+                self._clear_generation_outcomes()
         except (SettingsError, ValueError) as exc:
             self._set_status(error_status(f"Settings were not changed: {exc}"))
             return False
@@ -114,6 +137,17 @@ class TuiSettingsController:
         baseline = session.settings if session is not None else self.settings
         runtime_changed = target != self.settings or target != baseline
         synthesis_changed = self._synthesis_changed(target, baseline)
+        changed_names = tuple(
+            name
+            for name in _OPERATION_RELEVANT_SETTING_NAMES
+            if getattr(target, name) != getattr(self.settings, name)
+        )
+        conflict = self._operations.settings_change_conflict_status(
+            changed_names
+        )
+        if conflict is not None:
+            self._set_status(conflict)
+            return SettingsApplicationResult(error_status=conflict)
 
         if runtime_changed:
             try:
@@ -121,6 +155,8 @@ class TuiSettingsController:
                     self._operations.stop_playback()
                 for owned_session in self._sessions():
                     owned_session.replace_settings(target)
+                if synthesis_changed:
+                    self._clear_generation_outcomes()
             except (SettingsError, ValueError) as exc:
                 status = error_status(f"Settings were not changed: {exc}")
                 self._set_status(status)
