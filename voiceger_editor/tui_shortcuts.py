@@ -62,6 +62,8 @@ _MAIN_SHORTCUTS: tuple[MainShortcut, ...] = (
 _BATCH_LIST_SHORTCUTS: tuple[MainShortcut, ...] = (
     MainShortcut("add_captions", "Add captions", "a"),
     MainShortcut("generate_selected", "Generate selected", "g"),
+    MainShortcut("read_batch", "Read batch", "r"),
+    MainShortcut("write_batch", "Write batch", "w"),
     MainShortcut("settings", "Settings", "s"),
     MainShortcut("dictionary", "Dictionary", "d"),
     MainShortcut("help", "Help", "?"),
@@ -387,6 +389,32 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         ),
         MenuItem("dictionary", "Dictionary menu", "d", "action", "activate"),
         _escape_action("back", "Back"),
+    ),
+    "batch_recipe_read_path": (
+        MenuItem(
+            "path",
+            "Path",
+            None,
+            "editable",
+            no_shortcut_reason="Enter edits the batch recipe path.",
+        ),
+        MenuItem("read", "Read file", "r", "action", "activate"),
+        _escape_action("back", "Back"),
+    ),
+    "batch_recipe_write_path": (
+        MenuItem(
+            "path",
+            "Path",
+            None,
+            "editable",
+            no_shortcut_reason="Enter edits the batch recipe path.",
+        ),
+        MenuItem("write", "Write file", "w", "action", "activate"),
+        _escape_action("back", "Back"),
+    ),
+    "batch_recipe_replace_confirmation": (
+        MenuItem("replace", "Replace batch", "r", "action", "activate"),
+        _escape_action("cancel", "Cancel"),
     ),
     "batch_delete_confirmation": (
         MenuItem("delete", "Delete caption", "d", "action", "activate"),
