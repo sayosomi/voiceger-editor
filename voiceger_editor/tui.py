@@ -626,7 +626,8 @@ class TuiApp:
     ) -> None:
         for effect in effects:
             if isinstance(effect, UpdateStatusEffect):
-                self._status = effect.status
+                if effect.channel != "background":
+                    self._status = effect.status
             elif isinstance(effect, FocusEffect):
                 self._dispatch_navigation_actions(
                     self._navigation.set_focus_key(
