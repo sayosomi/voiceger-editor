@@ -1120,6 +1120,85 @@ class TuiTests(unittest.TestCase):
 
                 self.assertIn(expected, self.rendered(app._screen))
 
+    def test_other_batch_item_shows_busy_generate_and_explains_owner(self):
+        app = self.make_app(query=mixed_query())
+        first_item_id = app._batch.open_item_id
+        second = FakeSession(query=mixed_query())
+        second.caption = "second caption"
+        app._batch.batch.add_item(CaptionBatchItem(second))
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._worker_item_id = first_item_id
+        app._operations.operation_completed = 2
+        app._operations.operation_total = 4
+        app._operations._cancellation_event = Event()
+
+        app._handle_key("\x1b")
+        app._batch.focus_key = ("caption", 1)
+        app._handle_key("\n")
+        app._screen = FakeScreen(rows=24, columns=100)
+        app._render()
+
+        rendered = self.rendered(app._screen)
+        self.assertIn("Generate 4 takes [busy]", rendered)
+        self.assertNotIn("Generating 3/4", rendered)
+
+        app._handle_key("g")
+        self.assertEqual(
+            app._status,
+            "Caption 1 is generating (50%). "
+            "Finish or cancel it before generating Caption 2.",
+        )
+        self.assertEqual(app._operations._worker_item_id, first_item_id)
+
+    def test_batch_list_generate_selected_shows_busy_and_explains_owner(self):
+        app = self.make_app(query=mixed_query())
+        first_item_id = app._batch.open_item_id
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._worker_item_id = first_item_id
+        app._operations.operation_completed = 2
+        app._operations.operation_total = 4
+        app._operations._cancellation_event = Event()
+
+        app._handle_key("\x1b")
+        app._screen = FakeScreen(rows=24, columns=100)
+        app._render()
+
+        self.assertIn("[G] Generate selected [busy]", self.rendered(app._screen))
+
+        app._handle_key("g")
+        self.assertEqual(
+            app._status,
+            "Caption 1 is generating (50%). "
+            "Finish or cancel it before starting batch generation.",
+        )
+        self.assertEqual(app._operations._worker_item_id, first_item_id)
+
+    def test_regenerate_all_cannot_replace_an_active_generation_worker(self):
+        app = self.make_app(query=mixed_query())
+        item_id = app._batch.open_item_id
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._worker_item_id = item_id
+        app._operations.operation_completed = 1
+        app._operations.operation_total = 4
+        original_worker = app._operations.worker
+        app.session.regenerate_all_takes = Mock(
+            side_effect=AssertionError("must not start a second synthesis")
+        )
+
+        effects = app._operations.start_regenerate_all(
+            app.session,
+            take_count=4,
+            navigation_revision=app._navigation.revision,
+            item_id=item_id,
+        )
+
+        self.assertEqual(str(effects[0].status), "Another operation is already running.")
+        self.assertIs(app._operations.worker, original_worker)
+        app.session.regenerate_all_takes.assert_not_called()
+
     def test_help_scroll_clamp_accounts_for_status_footer_height(self):
         app = self.make_app(query=mixed_query())
         app._screen = FakeScreen(rows=8, columns=32)
