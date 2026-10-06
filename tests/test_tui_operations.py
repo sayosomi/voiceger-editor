@@ -524,6 +524,23 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertFalse(second_started.is_set())
         self.assertFalse(self.operations.busy)
         self.assertFalse(self.operations.cancellation_requested)
+        self.assertTrue(self.operations.cancellation_guard_armed)
+
+        self.operations.clear_completed_cancellation_guard()
+        self.assertFalse(self.operations.cancellation_guard_armed)
+
+    def test_natural_generation_completion_keeps_ctrl_c_guard_armed(self):
+        session = FakeSession((candidate(1),))
+        self.operations.start_generation(
+            session,
+            take_count=1,
+            navigation_revision=0,
+            item_id="origin",
+        )
+        self.operations.join_worker()
+        self.consume(session)
+
+        self.assertTrue(self.operations.cancellation_guard_armed)
 
     def test_shutdown_request_cancels_batch_and_join_retries_ctrl_c(self):
         cancellation_event = Event()
