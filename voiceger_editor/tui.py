@@ -45,6 +45,7 @@ from .tui_operations import (
     DiscardInitialBatchEffect,
     SessionPreparationCompletedEffect,
     FocusEffect,
+    GenerationOutcomeEffect,
     OperationEffect,
     PlayPreviewEffect,
     PlayTakeEffect,
@@ -473,6 +474,7 @@ class TuiApp:
                 pure_japanese_utterance_text=pure_japanese_utterance_text,
             )
         self._operations.clear_current_take()
+        self._batch.clear_open_item_generation_outcome()
 
     def _apply_caption(self, caption: str) -> CaptionApplicationResult:
         if not self._batch.in_item:
@@ -555,6 +557,7 @@ class TuiApp:
                     if self.session is not None:
                         self.session.discard_takes()
                     self._batch.clear_open_item_acceptance()
+                    self._batch.clear_open_item_generation_outcome()
                     self._operations.clear_current_take()
             elif isinstance(intent, CloseEditorIntent):
                 self._pressed_adjustment = None
@@ -659,8 +662,14 @@ class TuiApp:
                     if self.session is not None:
                         self.session.discard_takes()
                     self._batch.clear_open_item_acceptance()
+                    self._batch.clear_open_item_generation_outcome()
             elif isinstance(effect, TakeAcceptedEffect):
                 self._batch.complete_acceptance(effect.item_id, effect.number)
+            elif isinstance(effect, GenerationOutcomeEffect):
+                self._batch.set_item_generation_outcome(
+                    effect.item_id,
+                    effect.outcome,
+                )
             elif isinstance(effect, DictionaryOperationCompletedEffect):
                 self._dispatch_editor_intents(
                     self._dictionary_controller.complete_operation(
