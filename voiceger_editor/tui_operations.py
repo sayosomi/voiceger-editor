@@ -284,6 +284,8 @@ class TuiOperations:
         self.worker_target = None
         self._worker_item_id = None
         self._owned_item_ids = frozenset(item.item_id for item, _take_total in plan)
+        self._operation_serial += 1
+        self._active_operation_id = self._operation_serial
         self.worker_error = None
         self.operation_focus_revision = navigation_revision
         self.operation_completed = 0
