@@ -58,6 +58,28 @@ class OutputSaveTests(unittest.TestCase):
         self.assertEqual(first.wav_path.name, "202609271755_ファイル名.wav")
         self.assertEqual(second.wav_path.name, first.wav_path.name)
 
+    def test_custom_template_uses_style_and_keeps_extension_outside_template(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.dict(
+                "sys.modules",
+                {"soundfile": self.fake_soundfile_module()},
+            ):
+                saved = save_output(
+                    audio=[0.0],
+                    sampling_rate=32000,
+                    source_text="今日は雨なのだ。",
+                    style_name="Neutral",
+                    output_dir=root,
+                    timestamp=datetime(2026, 10, 7, 19, 45, 23),
+                    filename_template="{YYYY-MM-DD}_{HHmmss}_{style}_{text}",
+                )
+
+        self.assertEqual(
+            saved.wav_path.name,
+            "2026-10-07_194523_Neutral_今日は雨なのだ。.wav",
+        )
+
     def test_wav_collision_adds_deterministic_suffix_without_overwriting(self):
         source_text = "今日は雨ですね。"
         with tempfile.TemporaryDirectory() as directory:
