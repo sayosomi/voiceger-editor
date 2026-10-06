@@ -517,6 +517,7 @@ class TuiRenderer:
         focus_key: tuple[str, int | None],
         width: int,
         pressed_adjustment: tuple[str, str, int] | None = None,
+        active_generation: tuple[str, int, int] | None = None,
     ) -> list[NavigationLine]:
         """Build the top-level Batch List document."""
 
@@ -548,7 +549,17 @@ class TuiRenderer:
             marker = "▶ " if key == focus_key else "  "
             selected = "x" if item.included_for_generation else " "
             candidate_count = len(item.session.candidates)
-            if item.is_accepted:
+            active_progress = (
+                active_generation
+                if active_generation is not None
+                and active_generation[0] == item.item_id
+                else None
+            )
+            if active_progress is not None:
+                _item_id, completed, total = active_progress
+                percent = round(completed * 100 / total)
+                review_state = f"[{percent}%] "
+            elif item.is_accepted:
                 review_state = "[✓] "
             elif candidate_count:
                 target_count = batch.effective_take_count(item)
@@ -596,6 +607,7 @@ class TuiRenderer:
         delete_confirmation_caption: str | None = None,
         delete_confirmation_selection: str = "delete",
         pressed_adjustment: tuple[str, str, int] | None = None,
+        active_generation: tuple[str, int, int] | None = None,
     ) -> None:
         """Render the top-level Batch List screen."""
 
@@ -634,6 +646,7 @@ class TuiRenderer:
             focus_key,
             width,
             pressed_adjustment,
+            active_generation,
         )
         footer = self._status_footer_layout(status, height, width)
         viewport_height = max(0, footer.start_row - 2)
