@@ -531,17 +531,17 @@ class TuiRenderer:
 
         if batch.items:
             plain()
-        for name in (
-            "add_captions",
-            "generate_selected",
-            "read_batch",
-            "write_batch",
-            "settings",
-            "dictionary",
-            "help",
-            "quit",
-        ):
-            action((name, None), batch_list_shortcut(name).display_label)
+        action_groups = (
+            ("add_captions", "generate_selected"),
+            ("read_batch", "write_batch"),
+            ("settings", "dictionary"),
+            ("help", "quit"),
+        )
+        for group_index, names in enumerate(action_groups):
+            if group_index:
+                plain()
+            for name in names:
+                action((name, None), batch_list_shortcut(name).display_label)
         return lines
 
     def render_batch_list(
