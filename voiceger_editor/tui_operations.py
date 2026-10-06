@@ -717,6 +717,17 @@ class TuiOperations:
             return None
         return self._worker_item_id
 
+    @property
+    def generation_slot_busy(self) -> bool:
+        """Whether a Take synthesis operation currently owns the single slot."""
+
+        return self.busy and self.worker_operation in {
+            "initial",
+            "regenerate_one",
+            "regenerate_all",
+            "batch_generate",
+        }
+
     def generation_conflict_status(
         self,
         batch: CaptionBatch,
