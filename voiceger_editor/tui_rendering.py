@@ -39,6 +39,25 @@ from .tui_shortcuts import (
 from .tui_status import EMPTY_STATUS, Status, StatusKind, format_status
 
 
+_CANCEL_GENERATION_HINT = "[Ctrl+C] Cancel generation"
+
+
+def status_with_cancel_generation_hint(
+    status: Status,
+    cancel_generation_available: bool,
+) -> Status:
+    """Add the generation-cancellation affordance without mutating Status."""
+
+    if not cancel_generation_available:
+        return status
+    message = (
+        f"{status} · {_CANCEL_GENERATION_HINT}"
+        if status
+        else _CANCEL_GENERATION_HINT
+    )
+    return Status(status.kind, message)
+
+
 _DICTIONARY_SORT_LABELS = {
     "surface_asc": "Surface ↑",
     "surface_desc": "Surface ↓",
@@ -65,10 +84,8 @@ _HELP_ITEMS = (
         main_shortcut("delete_caption").shortcut.upper(),
         ": delete current Batch Item Caption through confirmation",
     ),
-    (
-        "Esc",
-        ": one level back; active synthesis cancellation takes precedence",
-    ),
+    ("Esc", ": one level back"),
+    ("Ctrl+C", ": cancel active Take generation; otherwise quit"),
     ("Tab / Shift+Tab", ": next / previous major Batch Item section"),
     (
         " / ".join(
