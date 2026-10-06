@@ -940,7 +940,7 @@ class TuiOperations:
                             "take(s) ready."
                         )
                 elif cancelled and operation == "initial":
-                    ready = len(session.candidates) if session is not None else 0
+                    ready = self.operation_completed
                     status = f"Generation cancelled. {ready} take(s) ready."
                     if ready == 0:
                         effects.append(StopPlaybackEffect())
@@ -956,12 +956,8 @@ class TuiOperations:
                     )
                 elif self.worker_error is not None:
                     status = error_status(f"Generation failed: {self.worker_error}")
-                elif (
-                    operation == "initial"
-                    and session is not None
-                    and session.candidates
-                ):
-                    status = f"{len(session.candidates)} take(s) ready."
+                elif operation == "initial" and self.operation_completed:
+                    status = f"{self.operation_completed} take(s) ready."
                 elif operation in {"regenerate_one", "regenerate_all"}:
                     status = "Take regeneration finished."
                 elif not exit_requested:
