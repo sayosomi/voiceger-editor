@@ -81,6 +81,8 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             open_caption_editor=Mock(),
             change_settings=Mock(),
             open_settings_editor=Mock(),
+            open_batch_read=Mock(),
+            open_batch_write=Mock(),
             dispatch_editor_intents=Mock(),
             dispatch_operation_effects=Mock(),
             open_help=Mock(),
