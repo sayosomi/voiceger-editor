@@ -263,6 +263,7 @@ Example:
 ```json
 {
   "output_dir": "/path/to/output",
+  "filename_template": "{YYYYMMDDHHmm}_{text}",
   "save_lab": false,
   "save_text": false,
   "speed": 1.0,
@@ -273,6 +274,22 @@ Example:
   "top_p": 1.0
 }
 ```
+
+### Accepted-output filename template
+
+The default accepted-output basename template is:
+
+```text
+{YYYYMMDDHHmm}_{text}
+```
+
+Configure it from **Settings -> Audio output -> Filename template**. The Audio Output screen shows a live preview before the Settings draft is applied.
+
+Supported case-sensitive date/time tokens are `YYYY`, `MM`, `DD`, `HH`, `mm`, and `ss`. `MM` is the month and `mm` is the minute. Named variables are `{text}` and `{style}`.
+
+The file extension is selected separately from the template. The current output format remains WAV, so a rendered basename such as `202610071945_hello` is saved as `202610071945_hello.wav`. TXT and LAB sidecars, when enabled, use the same final basename and collision suffix.
+
+Unknown variables and unsupported date/time tokens are rejected before the Settings draft can be saved.
 
 ## Command-line overrides
 
