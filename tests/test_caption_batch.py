@@ -117,6 +117,28 @@ class CaptionBatchTests(unittest.TestCase):
         self.assertIsNone(second.accepted_take_number)
         self.assertEqual(batch.accepted_items, ())
 
+    def test_generation_outcome_is_explicit_and_independent_of_take_count(self):
+        item = self.make_item("caption", item_id="item")
+        batch = CaptionBatch(default_take_count=4, items=[item])
+
+        self.assertIsNone(item.generation_outcome)
+
+        batch.set_generation_outcome("item", "completed")
+        batch.default_take_count = 9
+        self.assertEqual(item.generation_outcome, "completed")
+
+        batch.set_generation_outcome("item", "cancelled")
+        self.assertEqual(item.generation_outcome, "cancelled")
+
+        batch.set_generation_outcome("item", "failed")
+        self.assertEqual(item.generation_outcome, "failed")
+
+        batch.clear_generation_outcome("item")
+        self.assertIsNone(item.generation_outcome)
+
+        with self.assertRaisesRegex(ValueError, "generation_outcome"):
+            item.set_generation_outcome("running")
+
     def test_nullable_take_override_survives_ordinary_session_edits(self):
         item = self.make_item("before")
         batch = CaptionBatch(default_take_count=6, items=[item])
