@@ -478,10 +478,9 @@ class TuiOperations:
     ) -> tuple[OperationEffect, ...]:
         """Synthesize one fixed transient query on the background worker."""
 
-        if self.busy:
-            return (
-                UpdateStatusEffect("Wait for the current operation to finish."),
-            )
+        conflict = self.resource_conflict_status("Pronunciation Preview")
+        if conflict is not None:
+            return (UpdateStatusEffect(conflict),)
         try:
             query_snapshot = query.model_copy(deep=True)
             if session is None:
