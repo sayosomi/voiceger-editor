@@ -575,10 +575,9 @@ class TuiBatchItemController:
         actions.editor_controller.clear_groupings()
         session = self.batch.open_item(target)
         actions.set_session(session)
-        actions.navigation.focus_key = ("caption", None)
+        actions.navigation.focus_key = ("batch_item", None)
         actions.navigation.reset_pronunciation_index()
         actions.set_status(EMPTY_STATUS)
-        self.initialize_open_item_focus(bindings)
         if not getattr(session, "is_prepared", True):
             actions.dispatch_operation_effects(
                 actions.operations.start_session_preparation(
