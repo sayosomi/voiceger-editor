@@ -392,6 +392,7 @@ class TuiApp:
         )
 
     def _activate_quit(self) -> None:
+        self._help_controller.close()
         self._exit_requested = True
         self._dispatch_operation_effects(self._operations.request_shutdown())
 
