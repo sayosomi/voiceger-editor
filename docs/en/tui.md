@@ -42,6 +42,11 @@ the same order, while blank-only lines are ignored. The normal editor for an
 existing Caption still uses Enter to finish editing and never splits that
 Caption into multiple items.
 
+When an individual Caption is still generating in the background, `Add captions`
+remains available from BATCH LIST and does not cancel or retarget that generation.
+Editing an existing Caption remains unavailable until its synthesis-affecting work
+is finished.
+
 ## Read and Write batch recipes
 
 The Batch List exposes `[R] Read batch` and `[W] Write batch` for logical
