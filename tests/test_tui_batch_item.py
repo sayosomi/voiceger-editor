@@ -423,8 +423,50 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             item_id=subject.batch.open_item_id,
         )
 
+    def test_owned_caption_mutations_report_operation_conflict(self):
+        subject, _batch, bindings, _state = self.make_subject()
+        conflict = warning_status(
+            "Caption 1 is currently generating; editing Caption is unavailable "
+            "until generation finishes."
+        )
+        bindings.actions.operations.item_mutation_conflict_status.return_value = conflict
+
+        subject.dispatch_navigation_actions((OpenCaptionEditor(),), bindings)
+
+        bindings.actions.open_caption_editor.assert_not_called()
+        bindings.actions.set_status.assert_called_once_with(conflict)
+
+    def test_owned_caption_delete_and_clear_report_operation_conflict(self):
+        subject, batch, bindings, state = self.make_subject()
+        state["session"].candidates = [SimpleNamespace(number=1)]
+        conflict = warning_status(
+            "Caption 1 is currently generating; deleting Caption is unavailable "
+            "until generation finishes."
+        )
+        bindings.actions.operations.item_mutation_conflict_status.return_value = conflict
+
+        subject.dispatch_navigation_actions((DeleteCaption(),), bindings)
+
+        self.assertFalse(batch.delete_confirmation_active)
+        bindings.actions.set_status.assert_called_once_with(conflict)
+
+        bindings.actions.set_status.reset_mock()
+        bindings.actions.operations.item_mutation_conflict_status.return_value = (
+            warning_status(
+                "Caption 1 is currently generating; clearing candidates is unavailable "
+                "until generation finishes."
+            )
+        )
+        subject.dispatch_navigation_actions(
+            (OpenClearCandidatesConfirmation(),),
+            bindings,
+        )
+        bindings.actions.editor_controller.open_clear_candidates_confirmation.assert_not_called()
+        bindings.actions.set_status.assert_called_once()
+
     def test_generate_take_count_adjustment_uses_existing_settings_owner(self):
         subject, _batch, bindings, _state = self.make_subject()
+        bindings.actions.operations.busy = True
         bindings.actions.navigation.focus_key = ("generate", None)
 
         subject.handle_key(curses.KEY_RIGHT, bindings)
