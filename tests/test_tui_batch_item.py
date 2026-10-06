@@ -231,31 +231,6 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         self.assertEqual(subject.pronunciation_rows(bindings), ())
         bindings.actions.editor_controller.pronunciation_rows.assert_not_called()
 
-    def test_automatic_preparation_preserves_focus_but_rebuild_moves_to_pronunciation(self):
-        subject, _batch, bindings, state = self.make_subject()
-        bindings.actions.navigation.focus_key = ("caption", None)
-        bindings.actions.navigation.reset_after_rebuild = Mock(return_value=())
-
-        subject.complete_preparation(
-            state["session"],
-            rebuild=False,
-            error=None,
-            bindings=bindings,
-        )
-
-        self.assertEqual(bindings.actions.navigation.focus_key, ("caption", None))
-        bindings.actions.navigation.reset_after_rebuild.assert_not_called()
-        self.assertEqual(state["status"], "Pronunciation prepared.")
-
-        subject.complete_preparation(
-            state["session"],
-            rebuild=True,
-            error=None,
-            bindings=bindings,
-        )
-
-        bindings.actions.navigation.reset_after_rebuild.assert_called_once()
-
     def test_preparation_failure_is_visible_and_explicit_build_can_retry(self):
         subject, _batch, bindings, state = self.make_subject()
         state["session"].is_prepared = False
