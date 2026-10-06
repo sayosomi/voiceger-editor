@@ -54,7 +54,7 @@ class StopPlaybackEffect:
 
 @dataclass(frozen=True)
 class DiscardInitialBatchEffect:
-    pass
+    item_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +66,7 @@ class BatchCandidateReplacedEffect:
 @dataclass(frozen=True)
 class CandidateReplacedEffect:
     number: int
+    item_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -201,6 +202,8 @@ class TuiOperations:
         self.operation_focus_revision = 0
         self._cancellation_event: Event | None = None
         self.cancellation_requested = False
+        self._worker_item_id: str | None = None
+        self._ctrl_c_cancellation_guard = False
         self.current_take: int | None = None
         self.playback_process: subprocess.Popen[Any] | None = None
         self._preview_temporary_directory: (
@@ -241,6 +244,7 @@ class TuiOperations:
         self.busy = True
         self.worker_operation = "batch_generate"
         self.worker_target = None
+        self._worker_item_id = None
         self.worker_error = None
         self.operation_focus_revision = navigation_revision
         self.operation_completed = 0
@@ -248,6 +252,7 @@ class TuiOperations:
         cancellation_event = Event()
         self._cancellation_event = cancellation_event
         self.cancellation_requested = False
+        self._ctrl_c_cancellation_guard = True
 
         def work() -> None:
             overall_completed = 0
@@ -372,6 +377,7 @@ class TuiOperations:
         *,
         take_count: int,
         navigation_revision: int,
+        item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
         if self.busy:
             return (
@@ -398,6 +404,7 @@ class TuiOperations:
             operation="initial",
             take_count=take_count,
             navigation_revision=navigation_revision,
+            item_id=item_id,
         )
 
     def start_regeneration(
@@ -407,6 +414,7 @@ class TuiOperations:
         *,
         take_count: int,
         navigation_revision: int,
+        item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
         if session is None:
             return ()
@@ -419,6 +427,7 @@ class TuiOperations:
             target=number,
             take_count=take_count,
             navigation_revision=navigation_revision,
+            item_id=item_id,
         )
 
     def start_regenerate_all(
@@ -427,6 +436,7 @@ class TuiOperations:
         *,
         take_count: int,
         navigation_revision: int,
+        item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
         if session is None:
             return ()
@@ -442,6 +452,7 @@ class TuiOperations:
             operation="regenerate_all",
             take_count=take_count,
             navigation_revision=navigation_revision,
+            item_id=item_id,
         )
 
     def start_preview(
@@ -619,10 +630,12 @@ class TuiOperations:
         take_count: int,
         navigation_revision: int,
         target: int | None = None,
+        item_id: str | None = None,
     ) -> tuple[OperationEffect, ...]:
         self.busy = True
         self.worker_operation = operation
         self.worker_target = target
+        self._worker_item_id = item_id
         self.worker_error = None
         self.operation_focus_revision = navigation_revision
         self.operation_completed = 0
@@ -630,6 +643,8 @@ class TuiOperations:
         cancellation_event = Event()
         self._cancellation_event = cancellation_event
         self.cancellation_requested = False
+        if operation in {"initial", "regenerate_all"}:
+            self._ctrl_c_cancellation_guard = True
 
         def work() -> None:
             try:
@@ -664,6 +679,18 @@ class TuiOperations:
             "regenerate_all",
             "batch_generate",
         }
+
+    @property
+    def cancellation_guard_armed(self) -> bool:
+        """Whether Ctrl+C still belongs to the most recent cancellable generation."""
+
+        return self._ctrl_c_cancellation_guard
+
+    def clear_completed_cancellation_guard(self) -> None:
+        """Release Ctrl+C back to quit after post-generation user interaction."""
+
+        if not self.can_cancel_batch:
+            self._ctrl_c_cancellation_guard = False
 
     def request_batch_cancellation(self) -> tuple[OperationEffect, ...]:
         """Request cancellation at the next take boundary."""
@@ -851,14 +878,24 @@ class TuiOperations:
                         effects.append(FocusEffect(("candidate", value.number)))
                         effects.append(PlayTakeEffect(value.number))
                 elif operation == "regenerate_one":
-                    effects.append(CandidateReplacedEffect(value.number))
+                    effects.append(
+                        CandidateReplacedEffect(
+                            value.number,
+                            item_id=self._worker_item_id,
+                        )
+                    )
                     if (
                         value.number == self.worker_target
                         and self.current_take == value.number
                     ):
                         effects.append(PlayTakeEffect(value.number))
                 elif operation == "regenerate_all":
-                    effects.append(CandidateReplacedEffect(value.number))
+                    effects.append(
+                        CandidateReplacedEffect(
+                            value.number,
+                            item_id=self._worker_item_id,
+                        )
+                    )
                     if value.number == self.current_take:
                         effects.append(PlayTakeEffect(value.number))
 
@@ -877,7 +914,7 @@ class TuiOperations:
                     and not self.cancellation_requested
                 ):
                     effects.append(StopPlaybackEffect())
-                    effects.append(DiscardInitialBatchEffect())
+                    effects.append(DiscardInitialBatchEffect(self._worker_item_id))
                     self.current_take = None
                     effects.append(FocusEffect(("pronunciation", pronunciation_index)))
 
@@ -907,7 +944,7 @@ class TuiOperations:
                     status = f"Generation cancelled. {ready} take(s) ready."
                     if ready == 0:
                         effects.append(StopPlaybackEffect())
-                        effects.append(DiscardInitialBatchEffect())
+                        effects.append(DiscardInitialBatchEffect(self._worker_item_id))
                         self.current_take = None
                         effects.append(
                             FocusEffect(("pronunciation", pronunciation_index))
@@ -935,6 +972,7 @@ class TuiOperations:
                     effects.append(UpdateStatusEffect(status))
                 self.worker_operation = None
                 self.worker_target = None
+                self._worker_item_id = None
                 self._cancellation_event = None
                 self.cancellation_requested = False
 
