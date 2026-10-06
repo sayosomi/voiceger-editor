@@ -67,11 +67,12 @@ class TuiShortcutTests(unittest.TestCase):
             "add_section": {"a": "add", "c": "clear", "r": "reset"},
             "settings": {
                 "s": "style_id", "v": "speed", "n": "take_count",
-                "f": "output_dir", "x": "save_text", "l": "save_lab",
+                "f": "output_dir", "o": "audio_output",
                 "k": "top_k", "p": "top_p", "t": "temperature",
                 "d": "reset_sampling",
                 "a": "apply", "r": "reset",
             },
+            "audio_output_settings": {"x": "save_text", "l": "save_lab"},
             "dictionary_menu": {
                 "j": "japanese", "e": "english", "i": "import", "x": "export",
             },
@@ -470,8 +471,6 @@ class TuiShortcutTests(unittest.TestCase):
             ("s", "style_id"),
             ("v", "speed"),
             ("n", "take_count"),
-            ("x", "save_text"),
-            ("l", "save_lab"),
         ):
             with self.subTest(key=key):
                 intents = self.handle(controller, key)
@@ -488,8 +487,12 @@ class TuiShortcutTests(unittest.TestCase):
 
         self.handle(controller, "\n")
         self.assertIsNone(editor.active_field)
-        self.assertEqual(self.handle(controller, "o"), ())
-        self.assertEqual(editor.selection, "output_dir")
+
+        intents = self.handle(controller, "o")
+        self.assertTrue(intents)
+        self.assertEqual(controller.editor.kind, "audio_output_settings")
+        self.assertEqual(controller.editor.selection, "filename_template")
+        self.assertIs(controller.editor.payload["draft_settings"], editor.payload["draft_settings"])
 
     def test_editor_menu_global_help_and_quit_keys_emit_typed_intents(self):
         controller = self.make_controller()
