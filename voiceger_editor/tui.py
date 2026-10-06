@@ -784,7 +784,7 @@ class TuiApp:
                 delete_confirmation_selection=self._batch.delete_confirmation_selection,
                 pressed_adjustment=self._pressed_adjustment,
                 active_generation=self._operations.active_item_generation_progress,
-                generation_busy=self._operations.busy,
+                generation_busy=self._operations.generation_slot_busy,
             )
         else:
             self._dispatch_navigation_actions(
