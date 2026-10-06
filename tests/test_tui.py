@@ -916,7 +916,7 @@ class TuiTests(unittest.TestCase):
                 self.assertEqual(confirmation.kind, "dictionary_delete_confirmation")
                 method.assert_called_once()
 
-    def test_settings_summary_opens_style_and_output_opens_path_input(self):
+    def test_settings_summary_opens_style_and_output_edits_inline(self):
         app = self.make_app(query=mixed_query())
         set_navigation_focus(app, ("settings_summary", None))
         app._handle_key("\n")
@@ -926,8 +926,9 @@ class TuiTests(unittest.TestCase):
         app._handle_key("\x1b")
         set_navigation_focus(app, ("output", None))
         app._handle_key("\n")
-        self.assertEqual(app._editor_controller.editor.selection, "output_dir")
-        self.assertEqual(app._editor_controller.editor.active_field, "output_dir")
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertTrue(app._output_path_controller.active)
+        self.assertEqual(app._output_path_controller.state.owner, "batch_item")
 
         app._handle_key("\x1b")
         set_navigation_focus(app, ("settings", None))
@@ -2776,7 +2777,7 @@ class TuiTests(unittest.TestCase):
             rendered = self.rendered(screen)
             for label in (
                 "[S] Style *", "[V] Speed *", "[N] Takes",
-                "[O] Output", "[X] TXT", "[L] LAB",
+                "[F] Output", "[X] TXT", "[L] LAB",
             ):
                 self.assertIn(label, rendered)
             for heading in ("Voice", "Generation", "Output", "Sampling", "Actions"):
@@ -3555,10 +3556,10 @@ class TuiTests(unittest.TestCase):
         )
 
         output = self.make_app(query=mixed_query())
-        output._handle_key("o")
-        self.assertEqual(output._editor_controller.editor.kind, "settings")
-        self.assertEqual(output._editor_controller.editor.selection, "output_dir")
-        self.assertEqual(output._editor_controller.editor.active_field, "output_dir")
+        output._handle_key("f")
+        self.assertIsNone(output._editor_controller.editor)
+        self.assertTrue(output._output_path_controller.active)
+        self.assertEqual(output._output_path_controller.state.owner, "batch_item")
 
         for removed in (
             curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "x", "l"

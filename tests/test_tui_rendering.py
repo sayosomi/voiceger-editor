@@ -2091,7 +2091,7 @@ class TuiRenderingTests(unittest.TestCase):
             "[P] Top P *", "[T] Temperature *",
         ):
             self.assertIn(marked, visible)
-        for unmarked in ("[N] Takes", "[O] Output", "[X] TXT", "[L] LAB"):
+        for unmarked in ("[N] Takes", "[F] Output", "[X] TXT", "[L] LAB"):
             self.assertIn(unmarked, visible)
         self.assertIn("[D] Reset sampling to Voiceger defaults", visible)
         self.assertIn("[A] Apply and save", visible)

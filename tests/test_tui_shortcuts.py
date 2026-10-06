@@ -456,7 +456,7 @@ class TuiShortcutTests(unittest.TestCase):
         self.assertEqual(editor.selection, "clear")
         self.assertEqual(editor.payload["draft"], "")
 
-    def test_settings_focus_shortcuts_only_move_focus(self):
+    def test_settings_shortcuts_focus_values_and_f_starts_output_editing(self):
         controller = self.make_controller()
         controller.open_settings(
             Settings(),
@@ -470,7 +470,6 @@ class TuiShortcutTests(unittest.TestCase):
             ("s", "style_id"),
             ("v", "speed"),
             ("n", "take_count"),
-            ("o", "output_dir"),
             ("x", "save_text"),
             ("l", "save_lab"),
         ):
@@ -480,6 +479,17 @@ class TuiShortcutTests(unittest.TestCase):
                 self.assertIsNone(editor.active_field)
                 self.assertEqual(editor.payload["draft_settings"], opening)
                 self.assertTrue(intents)
+
+        intents = self.handle(controller, "f")
+        self.assertEqual(intents, ())
+        self.assertEqual(editor.selection, "output_dir")
+        self.assertEqual(editor.active_field, "output_dir")
+        self.assertEqual(editor.payload["draft_settings"], opening)
+
+        self.handle(controller, "\n")
+        self.assertIsNone(editor.active_field)
+        self.assertEqual(self.handle(controller, "o"), ())
+        self.assertEqual(editor.selection, "output_dir")
 
     def test_editor_menu_global_help_and_quit_keys_emit_typed_intents(self):
         controller = self.make_controller()
