@@ -94,6 +94,8 @@ Ordinary visible actions should have a direct shortcut unless there is an explic
 
 The displayed shortcut and the actual key behavior must agree.
 
+When a visible shortcut/action label must wrap and the complete label fits on one line, keep the shortcut and action together rather than splitting inside the shortcut token. For example, `[Ctrl+C] Cancel generation` should move as a unit to the next line instead of breaking `[Ctrl+C]` across rows.
+
 A shortcut may intentionally provide a faster action than Enter on the same row when that distinction is useful and explicit. Such differences must be deliberate and covered by focused interaction tests.
 
 ## Escape actions

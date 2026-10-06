@@ -15,7 +15,9 @@ from voiceger_editor.tui_dictionary import (
 )
 from voiceger_editor.tui_editors import EditorState
 from voiceger_editor.tui_operations import (
+    BackgroundOperationProgress,
     BatchCandidateReplacedEffect,
+    BatchGenerationProgressEvent,
     CandidateReplacedEffect,
     DictionaryOperationCompletedEffect,
     DictionaryOperationCompletedEvent,
@@ -1469,6 +1471,107 @@ class TuiBatchGenerationTests(unittest.TestCase):
             pronunciation_index=0,
             exit_requested=False,
         )
+
+    def test_batch_progress_snapshot_tracks_stable_operation_and_item(self):
+        first = CaptionBatchItem(BatchFakeSession("first", []), item_id="first")
+        second = CaptionBatchItem(BatchFakeSession("second", []), item_id="second")
+        batch = self.make_batch(first, second, default_take_count=4)
+        operations = TuiOperations()
+        operations.busy = True
+        operations.worker_operation = "batch_generate"
+        operations.operation_total = 8
+        operations._active_operation_id = 41
+        operations._owned_item_ids = frozenset({"first", "second"})
+        operations._batch_progress_item_id = "first"
+        operations._batch_progress_caption_number = 1
+        operations._batch_progress_caption_total = 2
+        operations._batch_progress_take_number = 1
+        operations._batch_progress_take_completed = 0
+        operations._batch_progress_take_total = 4
+
+        self.assertEqual(
+            operations.background_operation_progress,
+            BackgroundOperationProgress(
+                operation_id=41,
+                operation="batch_generate",
+                item_id="first",
+                completed=0,
+                total=8,
+                take_number=1,
+                take_completed=0,
+                take_total=4,
+                caption_number=1,
+                caption_total=2,
+            ),
+        )
+
+        operations.events.put(
+            BatchGenerationProgressEvent(
+                item_id="second",
+                caption_number=2,
+                caption_total=2,
+                take_number=2,
+                take_total=4,
+                overall_completed=5,
+                overall_total=8,
+            )
+        )
+        operations.consume_pending_events(
+            None,
+            navigation_revision=0,
+            pronunciation_index=0,
+            exit_requested=False,
+            batch=batch,
+        )
+
+        self.assertEqual(
+            operations.background_operation_progress,
+            BackgroundOperationProgress(
+                operation_id=41,
+                operation="batch_generate",
+                item_id="second",
+                completed=5,
+                total=8,
+                take_number=2,
+                take_completed=1,
+                take_total=4,
+                caption_number=2,
+                caption_total=2,
+            ),
+        )
+        self.assertEqual(
+            operations.active_item_generation_progress,
+            ("second", 1, 4),
+        )
+
+    def test_terminal_individual_generation_status_uses_source_item_identity(self):
+        session = FakeSession((candidate(1), candidate(2)))
+        batch = self.make_batch(CaptionBatchItem(session, item_id="origin"))
+        operations = TuiOperations()
+        operations.busy = True
+        operations.worker_operation = "initial"
+        operations._worker_item_id = "origin"
+        operations._owned_item_ids = frozenset({"origin"})
+        operations._active_operation_id = 9
+        operations.operation_completed = 2
+        operations.operation_total = 2
+        operations.events.put(("done", None))
+
+        effects = operations.consume_pending_events(
+            session,
+            navigation_revision=0,
+            pronunciation_index=0,
+            exit_requested=False,
+            batch=batch,
+        )
+
+        self.assertIn(
+            UpdateStatusEffect("Caption 1 generation finished. 2 take(s) ready."),
+            effects,
+        )
+        self.assertIn(GenerationOutcomeEffect("origin", "completed"), effects)
+        self.assertIsNone(operations.background_operation_progress)
+        self.assertEqual(operations.owned_item_ids, frozenset())
 
     def test_batch_generation_prepares_unprepared_item_before_synthesis(self):
         log = []

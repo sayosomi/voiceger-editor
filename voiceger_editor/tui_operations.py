@@ -40,6 +40,22 @@ class UpdateStatusEffect:
 
 
 @dataclass(frozen=True)
+class BackgroundOperationProgress:
+    """Stable snapshot for cross-screen Take-generation presentation."""
+
+    operation_id: int
+    operation: str
+    item_id: str | None
+    completed: int
+    total: int
+    take_number: int | None = None
+    take_completed: int = 0
+    take_total: int | None = None
+    caption_number: int | None = None
+    caption_total: int | None = None
+
+
+@dataclass(frozen=True)
 class FocusEffect:
     focus_key: tuple[str, int | None]
 
@@ -218,6 +234,14 @@ class TuiOperations:
         self.cancellation_requested = False
         self._worker_item_id: str | None = None
         self._owned_item_ids: frozenset[str] = frozenset()
+        self._operation_serial = 0
+        self._active_operation_id: int | None = None
+        self._batch_progress_item_id: str | None = None
+        self._batch_progress_caption_number: int | None = None
+        self._batch_progress_caption_total: int | None = None
+        self._batch_progress_take_number: int | None = None
+        self._batch_progress_take_completed = 0
+        self._batch_progress_take_total: int | None = None
         self._ctrl_c_cancellation_guard = False
         self.current_take: int | None = None
         self.playback_process: subprocess.Popen[Any] | None = None
@@ -260,6 +284,14 @@ class TuiOperations:
         self.worker_target = None
         self._worker_item_id = None
         self._owned_item_ids = frozenset(item.item_id for item, _take_total in plan)
+        self._operation_serial += 1
+        self._active_operation_id = self._operation_serial
+        self._batch_progress_item_id = plan[0][0].item_id
+        self._batch_progress_caption_number = 1
+        self._batch_progress_caption_total = len(plan)
+        self._batch_progress_take_number = 1
+        self._batch_progress_take_completed = 0
+        self._batch_progress_take_total = first_take_total
         self.worker_error = None
         self.operation_focus_revision = navigation_revision
         self.operation_completed = 0
@@ -672,6 +704,14 @@ class TuiOperations:
         self._owned_item_ids = (
             frozenset({item_id}) if item_id is not None else frozenset()
         )
+        self._operation_serial += 1
+        self._active_operation_id = self._operation_serial
+        self._batch_progress_item_id = None
+        self._batch_progress_caption_number = None
+        self._batch_progress_caption_total = None
+        self._batch_progress_take_number = None
+        self._batch_progress_take_completed = 0
+        self._batch_progress_take_total = None
         self.worker_error = None
         self.operation_focus_revision = navigation_revision
         self.operation_completed = 0
@@ -717,20 +757,66 @@ class TuiOperations:
         }
 
     @property
-    def active_item_generation_progress(self) -> tuple[str, int, int] | None:
-        """Return progress for the currently generating individual Batch Item."""
+    def background_operation_progress(self) -> BackgroundOperationProgress | None:
+        """Return stable cross-screen progress for the active Take operation."""
 
+        operation_id = self._active_operation_id
+        operation = self.worker_operation
         if (
-            not self.busy
-            or self.worker_operation not in {"initial", "regenerate_all"}
-            or self._worker_item_id is None
-            or self.operation_total <= 0
+            not self.generation_slot_busy
+            or operation_id is None
+            or operation is None
+        ):
+            return None
+
+        if operation == "batch_generate":
+            return BackgroundOperationProgress(
+                operation_id=operation_id,
+                operation=operation,
+                item_id=self._batch_progress_item_id,
+                completed=self.operation_completed,
+                total=self.operation_total,
+                take_number=self._batch_progress_take_number,
+                take_completed=self._batch_progress_take_completed,
+                take_total=self._batch_progress_take_total,
+                caption_number=self._batch_progress_caption_number,
+                caption_total=self._batch_progress_caption_total,
+            )
+
+        take_total = self.operation_total if self.operation_total > 0 else None
+        if operation == "regenerate_one":
+            take_number = self.worker_target
+        elif take_total is not None:
+            take_number = min(self.operation_completed + 1, take_total)
+        else:
+            take_number = None
+        return BackgroundOperationProgress(
+            operation_id=operation_id,
+            operation=operation,
+            item_id=self._worker_item_id,
+            completed=self.operation_completed,
+            total=self.operation_total,
+            take_number=take_number,
+            take_completed=self.operation_completed,
+            take_total=take_total,
+        )
+
+    @property
+    def active_item_generation_progress(self) -> tuple[str, int, int] | None:
+        """Return item-local progress for the Caption currently being synthesized."""
+
+        progress = self.background_operation_progress
+        if (
+            progress is None
+            or progress.item_id is None
+            or progress.take_total is None
+            or progress.take_total <= 0
         ):
             return None
         return (
-            self._worker_item_id,
-            self.operation_completed,
-            self.operation_total,
+            progress.item_id,
+            progress.take_completed,
+            progress.take_total,
         )
 
     @property
@@ -856,45 +942,6 @@ class TuiOperations:
                 "Output settings cannot change while a Take is being saved."
             )
         return None
-
-    def background_generation_status(self, batch: CaptionBatch) -> str:
-        """Describe active Take synthesis independently from transient Status."""
-
-        if not self.generation_slot_busy:
-            return ""
-
-        def caption_number(item_id: str | None) -> int | None:
-            if item_id is None:
-                return None
-            try:
-                item = batch.get_item(item_id)
-            except KeyError:
-                return None
-            return batch.items.index(item) + 1
-
-        operation = self.worker_operation
-        total = max(0, self.operation_total)
-        completed = max(0, min(self.operation_completed, total)) if total else 0
-        percent = round(completed * 100 / total) if total else 0
-
-        if operation in {"initial", "regenerate_all"}:
-            number = caption_number(self._worker_item_id)
-            owner = f"Caption {number}" if number is not None else "Caption"
-            verb = "Regenerating" if operation == "regenerate_all" else "Generating"
-            return f"{verb}: {owner} · {completed}/{total} ({percent}%)"
-
-        if operation == "regenerate_one":
-            number = caption_number(self._worker_item_id)
-            owner = f"Caption {number}" if number is not None else "Caption"
-            return f"Regenerating: {owner} · Take {self.worker_target}"
-
-        if operation == "batch_generate":
-            return (
-                f"Generating: selected Captions · "
-                f"{completed}/{total} ({percent}%)"
-            )
-
-        return ""
 
     def generation_conflict_status(
         self,
@@ -1026,8 +1073,18 @@ class TuiOperations:
         navigation_revision: int,
         pronunciation_index: int,
         exit_requested: bool,
+        batch: CaptionBatch | None = None,
     ) -> tuple[OperationEffect, ...]:
         effects: list[OperationEffect] = []
+
+        def caption_label(item_id: str | None) -> str | None:
+            if batch is None or item_id is None:
+                return None
+            try:
+                item = batch.get_item(item_id)
+            except KeyError:
+                return None
+            return f"Caption {batch.items.index(item) + 1}"
         while True:
             try:
                 event = self.events.get_nowait()
@@ -1106,6 +1163,12 @@ class TuiOperations:
                 continue
             if isinstance(event, BatchGenerationProgressEvent):
                 self.operation_completed = event.overall_completed
+                self._batch_progress_item_id = event.item_id
+                self._batch_progress_caption_number = event.caption_number
+                self._batch_progress_caption_total = event.caption_total
+                self._batch_progress_take_number = event.take_number
+                self._batch_progress_take_completed = max(0, event.take_number - 1)
+                self._batch_progress_take_total = event.take_total
                 effects.append(
                     UpdateStatusEffect(
                         f"Caption {event.caption_number}/{event.caption_total} · "
@@ -1117,6 +1180,12 @@ class TuiOperations:
                 continue
             if isinstance(event, BatchCandidateReadyEvent):
                 self.operation_completed = event.overall_completed
+                self._batch_progress_item_id = event.item_id
+                self._batch_progress_caption_number = event.caption_number
+                self._batch_progress_caption_total = event.caption_total
+                self._batch_progress_take_number = event.take_number
+                self._batch_progress_take_completed = event.take_number
+                self._batch_progress_take_total = event.take_total
                 effects.append(
                     UpdateStatusEffect(
                         f"Caption {event.caption_number}/{event.caption_total} · "
@@ -1144,12 +1213,24 @@ class TuiOperations:
                 continue
             if isinstance(event, BatchGenerationFailedEvent):
                 self.worker_error = event.error
+                self._batch_progress_item_id = event.item_id
+                self._batch_progress_caption_number = event.caption_number
+                self._batch_progress_caption_total = event.caption_total
+                self._batch_progress_take_number = event.take_number
+                self._batch_progress_take_completed = max(0, event.take_number - 1)
+                self._batch_progress_take_total = event.take_total
+                owner = caption_label(event.item_id)
+                location = (
+                    owner
+                    if owner is not None
+                    else f"Caption {event.caption_number}/{event.caption_total}"
+                )
                 effects.append(
                     UpdateStatusEffect(
                         error_status(
                             "Batch generation failed at "
-                            f"Caption {event.caption_number}/{event.caption_total}, "
-                            f"Take {event.take_number}/{event.take_total}: {event.error}"
+                            f"{location}, Take {event.take_number}/{event.take_total}: "
+                            f"{event.error}"
                         )
                     )
                 )
@@ -1214,9 +1295,13 @@ class TuiOperations:
                         UpdateStatusEffect(error_status(f"Preview failed: {value}"))
                     )
                 else:
-                    effects.append(
-                        UpdateStatusEffect(error_status(f"Generation failed: {value}"))
+                    owner = caption_label(self._worker_item_id)
+                    message = (
+                        f"{owner} generation failed: {value}"
+                        if owner is not None
+                        else f"Generation failed: {value}"
                     )
+                    effects.append(UpdateStatusEffect(error_status(message)))
                 if (
                     self.worker_operation == "initial"
                     and not self.cancellation_requested
@@ -1235,6 +1320,8 @@ class TuiOperations:
 
             elif kind == "done":
                 operation = self.worker_operation
+                owner = caption_label(self._worker_item_id)
+                batch_owner = caption_label(self._batch_progress_item_id)
                 finished_full_count = (
                     operation in {"initial", "regenerate_all"}
                     and self.operation_total > 0
@@ -1247,8 +1334,11 @@ class TuiOperations:
                     status = None
                 elif operation == "batch_generate":
                     if cancelled:
+                        owner_suffix = (
+                            f" at {batch_owner}" if batch_owner is not None else ""
+                        )
                         status = (
-                            "Batch generation cancelled. "
+                            f"Batch generation cancelled{owner_suffix}. "
                             f"{self.operation_completed}/{self.operation_total} "
                             "take(s) ready."
                         )
@@ -1262,7 +1352,11 @@ class TuiOperations:
                         )
                 elif cancelled and operation == "initial":
                     ready = self.operation_completed
-                    status = f"Generation cancelled. {ready} take(s) ready."
+                    status = (
+                        f"{owner} generation cancelled. {ready} take(s) ready."
+                        if owner is not None
+                        else f"Generation cancelled. {ready} take(s) ready."
+                    )
                     if ready == 0:
                         effects.append(StopPlaybackEffect())
                         effects.append(DiscardInitialBatchEffect(self._worker_item_id))
@@ -1272,15 +1366,31 @@ class TuiOperations:
                         )
                 elif cancelled and operation == "regenerate_all":
                     status = (
-                        "Regeneration cancelled after "
+                        f"{owner} regeneration cancelled after "
+                        f"{self.operation_completed} replacement(s)."
+                        if owner is not None
+                        else "Regeneration cancelled after "
                         f"{self.operation_completed} replacement(s)."
                     )
                 elif self.worker_error is not None:
-                    status = error_status(f"Generation failed: {self.worker_error}")
+                    status = error_status(
+                        f"{owner} generation failed: {self.worker_error}"
+                        if owner is not None
+                        else f"Generation failed: {self.worker_error}"
+                    )
                 elif operation == "initial" and self.operation_completed:
-                    status = f"{self.operation_completed} take(s) ready."
+                    status = (
+                        f"{owner} generation finished. "
+                        f"{self.operation_completed} take(s) ready."
+                        if owner is not None
+                        else f"{self.operation_completed} take(s) ready."
+                    )
                 elif operation in {"regenerate_one", "regenerate_all"}:
-                    status = "Take regeneration finished."
+                    status = (
+                        f"{owner} Take regeneration finished."
+                        if owner is not None
+                        else "Take regeneration finished."
+                    )
                 elif not exit_requested:
                     status = "No takes were generated. Select Generate to try again."
                 else:
@@ -1317,6 +1427,13 @@ class TuiOperations:
                 self.worker_target = None
                 self._worker_item_id = None
                 self._owned_item_ids = frozenset()
+                self._active_operation_id = None
+                self._batch_progress_item_id = None
+                self._batch_progress_caption_number = None
+                self._batch_progress_caption_total = None
+                self._batch_progress_take_number = None
+                self._batch_progress_take_completed = 0
+                self._batch_progress_take_total = None
                 self._cancellation_event = None
                 self.cancellation_requested = False
 
