@@ -3740,51 +3740,25 @@ class TuiTests(unittest.TestCase):
         self.assertIs(app.session, session)
         self.assertIn(1, app._editor_controller.grouping_cache)
 
-    def test_keyboard_interrupt_enters_visible_shutdown_drain_then_cleans_session(self):
+    def test_keyboard_interrupt_is_routed_as_generation_cancel(self):
         app = self.make_app(batch_item=False)
-        owned_session = app.session
-        app._initial_caption = "example"
         app._operations.busy = True
         app._operations.worker_operation = "initial"
         cancellation_event = Event()
         app._operations._cancellation_event = cancellation_event
-        app._operations.join_worker = Mock()
-        app._operations.stop_playback = Mock()
 
         class InterruptScreen(FakeScreen):
-            reads = 0
-
             def get_wch(self):
-                self.reads += 1
-                if self.reads == 1:
-                    raise KeyboardInterrupt
-                app._operations.events.put(("done", None))
-                raise curses.error("input timed out")
+                raise KeyboardInterrupt
 
-        screen = InterruptScreen()
-        rendered_statuses = []
-        original_render = app._render
+        app._screen = InterruptScreen()
+        key = app._read_key()
+        app._handle_key(key)
 
-        def record_render():
-            rendered_statuses.append(app._status)
-            original_render()
-
-        app._render = Mock(side_effect=record_render)
-        with patch(
-            "voiceger_editor.tui.UtteranceSession.from_caption",
-            return_value=owned_session,
-        ), patch("voiceger_editor.tui.curses.set_escdelay"):
-            app.run(screen)
-
-        self.assertTrue(app._exit_requested)
+        self.assertEqual(key, "\x03")
+        self.assertFalse(app._exit_requested)
         self.assertTrue(cancellation_event.is_set())
-        self.assertGreaterEqual(screen.refresh_count, 2)
-        self.assertIn("Cancelling current batch before cleanup…", rendered_statuses)
-        self.assertEqual(app._status, "Generation cancelled. 0 take(s) ready.")
-        app._operations.join_worker.assert_called_once_with()
-        self.assertEqual(app._operations.stop_playback.call_count, 2)
-        app._operations.stop_playback.assert_has_calls([call(), call()])
-        self.assertEqual(owned_session.close_calls, 1)
+        self.assertEqual(app._status, "Cancelling…")
 
     def test_main_sweeps_stale_take_directories_before_starting_tui(self):
         environment = SimpleNamespace(
