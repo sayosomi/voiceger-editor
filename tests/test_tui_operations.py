@@ -530,7 +530,8 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertFalse(self.operations.cancellation_guard_armed)
 
     def test_natural_generation_completion_keeps_ctrl_c_guard_armed(self):
-        session = FakeSession((candidate(1),))
+        session = FakeSession()
+        session.generated = (candidate(1),)
         self.operations.start_generation(
             session,
             take_count=1,
