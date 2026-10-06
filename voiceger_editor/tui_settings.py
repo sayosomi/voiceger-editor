@@ -43,6 +43,7 @@ class TuiSettingsController:
         set_batch_take_count: Callable[[int], None],
         set_status: Callable[[Status], None],
         save: Callable[[Settings, str | os.PathLike[str] | None], Any],
+        clear_generation_outcomes: Callable[[], None] = lambda: None,
     ) -> None:
         self.settings = settings
         self.persisted_settings = persisted_settings or settings
@@ -53,6 +54,7 @@ class TuiSettingsController:
         self._set_batch_take_count = set_batch_take_count
         self._set_status = set_status
         self._save = save
+        self._clear_generation_outcomes = clear_generation_outcomes
 
     def change(
         self,
@@ -83,6 +85,8 @@ class TuiSettingsController:
                 self._operations.stop_playback()
             for session in self._sessions():
                 session.replace_settings(updated)
+            if synthesis_changed:
+                self._clear_generation_outcomes()
         except (SettingsError, ValueError) as exc:
             self._set_status(error_status(f"Settings were not changed: {exc}"))
             return False
@@ -151,6 +155,8 @@ class TuiSettingsController:
                     self._operations.stop_playback()
                 for owned_session in self._sessions():
                     owned_session.replace_settings(target)
+                if synthesis_changed:
+                    self._clear_generation_outcomes()
             except (SettingsError, ValueError) as exc:
                 status = error_status(f"Settings were not changed: {exc}")
                 self._set_status(status)
