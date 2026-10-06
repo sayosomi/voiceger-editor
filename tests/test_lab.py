@@ -354,6 +354,7 @@ class AcceptedTakeLabTests(unittest.TestCase):
             style_name="Neutral",
             output_dir=Path("/output"),
             save_text=True,
+            filename_template="{YYYYMMDDHHmm}_{text}",
             avoid_lab_collision=True,
         )
         self.assertEqual(save_lab.call_count, 1)
