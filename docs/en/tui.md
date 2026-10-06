@@ -208,7 +208,16 @@ While an individual Generate or regenerate-all operation remains active, the ori
 
 Voiceger Editor keeps a single synthesis slot and does not queue another Generate request behind active work. When another Batch Item is open during generation, its Generate row remains visible but is marked `[busy]` and does not show the other Caption's progress. BATCH LIST similarly marks `Generate selected` as `[busy]`. Activating either action does not start, replace, or queue work; Status identifies the active Caption or batch generation and tells you to finish or cancel it first. Busy Generate rows omit adjustable angle brackets because the Take count is not currently actionable.
 
-Press Ctrl+C to request generation cancellation. Cancellation occurs at a safe Take boundary rather than interrupting synthesis in the middle of one Take, so any completed Takes are preserved and the application remains open. While cancellation is available, the Status area shows `[Ctrl+C] Cancel generation`.
+Active Take generation has its own persistent footer line, separate from ordinary Status. For example:
+
+```text
+Generating: Caption 1 · 2/4 (50%) · [Ctrl+C] Cancel generation
+Status: Caption 1 is generating (50%). Finish or cancel it before generating Caption 2.
+```
+
+Generation progress continues to update without erasing the Status response to the user's attempted action. Unrelated Status messages likewise do not hide the active generation indicator. The extra progress row disappears when generation ends.
+
+Press Ctrl+C to request generation cancellation. Cancellation occurs at a safe Take boundary rather than interrupting synthesis in the middle of one Take, so any completed Takes are preserved and the application remains open. While cancellation is available, the generation progress line shows `[Ctrl+C] Cancel generation`.
 
 If generation finishes at the same moment you press Ctrl+C, Voiceger Editor keeps a completion guard so that Ctrl+C does not accidentally quit or discard the finished results. Repeated Ctrl+C remains harmless until another non-Ctrl+C interaction restores the normal idle Ctrl+C Quit meaning. The `q` shortcut remains the explicit Quit action at all times.
 
