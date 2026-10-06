@@ -104,7 +104,6 @@ class TuiApp:
             save_output_dir=lambda value: self._settings_controller.change(
                 output_dir=value
             ),
-            busy=lambda: self._operations.busy,
             set_status=lambda status: setattr(self, "_status", status),
         )
         self._help_controller = TuiHelpController()
@@ -362,7 +361,10 @@ class TuiApp:
 
         if self._batch.delete_confirmation_active or not self._batch.in_item:
             self._batch.dispatch_actions(
-                self._batch.handle_key(key),
+                self._batch.handle_key(
+                    key,
+                    operations=self._operations,
+                ),
                 self._batch_action_bindings,
             )
             self.session = self.session if self._batch.in_item else None
@@ -421,7 +423,7 @@ class TuiApp:
                 self.session.caption if self.session is not None else None
             ),
             origin=self._navigation.focus_key if self._batch.in_item else self._batch.focus_key,
-            busy=self._operations.busy,
+            busy=self._operations.owns_item(self._batch.open_item_id),
             multiline=multiline,
         )
         self._dispatch_editor_intents(intents)
@@ -442,7 +444,7 @@ class TuiApp:
                 if self._batch.in_item
                 else self._batch.focus_key
             ),
-            busy=self._operations.busy,
+            busy=False,
             selected_field=selected_field,
             edit=edit,
         )
@@ -541,10 +543,13 @@ class TuiApp:
             elif isinstance(intent, QuitIntent):
                 self._activate_quit()
             elif isinstance(intent, ClearCandidatesIntent):
-                if self._operations.busy:
-                    self._status = info_status(
-                        "Finish or cancel synthesis before clearing candidates."
-                    )
+                conflict = self._operations.item_mutation_conflict_status(
+                    self._batch.batch,
+                    self._batch.open_item_id,
+                    action="clearing candidates",
+                )
+                if conflict is not None:
+                    self._status = conflict
                 else:
                     self._operations.stop_playback()
                     if self.session is not None:
