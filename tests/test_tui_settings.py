@@ -54,6 +54,11 @@ class TuiSettingsControllerTests(unittest.TestCase):
             ),
             set_status=lambda value: status.__setitem__("value", value),
             save=saver,
+            clear_generation_outcomes=(
+                (lambda: events.append("outcomes"))
+                if events is not None
+                else (lambda: None)
+            ),
         )
         return controller, owned, operations, saver, status, batch_take_count
 
@@ -111,7 +116,7 @@ class TuiSettingsControllerTests(unittest.TestCase):
 
         controller.change(speed=0.9)
 
-        self.assertEqual(events, ["stop", "settings", "clear"])
+        self.assertEqual(events, ["stop", "settings", "outcomes", "clear"])
         self.assertEqual(session.settings.speed, 0.9)
         operations.stop_playback.assert_called_once_with()
         operations.clear_current_take.assert_called_once_with()
