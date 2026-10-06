@@ -365,11 +365,7 @@ class TuiNavigationTests(unittest.TestCase):
         )
         self.assertEqual(
             self.navigation.activate_item(busy, ("generate", None)),
-            (
-                UpdateNavigationStatus(
-                    "A sequential take operation is already running."
-                ),
-            ),
+            (StartGeneration(),),
         )
 
     def test_generate_regenerate_and_candidate_regeneration_behavior(self):
