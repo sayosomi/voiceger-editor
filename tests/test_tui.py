@@ -1550,7 +1550,7 @@ class TuiTests(unittest.TestCase):
         self.assertIs(app.session, session)
         self.assertEqual(app._batch.item_title, "BATCH ITEM")
         self.assertEqual(app._batch.item_position, (1, 1))
-        self.assertEqual(app._navigation.focus_key, ("caption", None))
+        self.assertEqual(app._navigation.focus_key, ("candidate", 1))
 
         screen = FakeScreen()
         app._screen = screen
