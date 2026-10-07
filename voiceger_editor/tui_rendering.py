@@ -1458,9 +1458,12 @@ class TuiRenderer:
                         _OUTPUT_ENCODING_LABELS.get(output_encoding, output_encoding),
                     )
                 )
+            control_payload = dict(editor.payload)
+            control_payload["show_output_encoding"] = output_format != "mp3"
+            control_payload["show_mp3_bitrate"] = output_format == "mp3"
             plain()
             for key, value in controls:
-                item = menu_item(editor.kind, key, editor.payload)
+                item = menu_item(editor.kind, key, control_payload)
                 marker = "▶ " if editor.selection == key else "  "
                 value = _adjustable_value(
                     value,
