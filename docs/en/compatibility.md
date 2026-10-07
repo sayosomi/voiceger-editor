@@ -63,6 +63,7 @@ LAB output is not part of the verified 0.1 Windows support boundary. See [LAB Ou
 The documented 0.1 scope is:
 
 - Japanese;
+- English;
 - Japanese with English sections.
 
 ### Japanese
@@ -77,19 +78,21 @@ Supported features include:
 - VOICEVOX-style AudioQuery generation;
 - optional LAB output.
 
-### English sections
+### English
 
-English sections support:
+English-only Captions and English sections inside mixed Japanese-English speech support:
 
 - Voiceger English G2P;
 - ARPAbet-style phonemes;
 - stress editing;
 - English user dictionary;
 - previews;
+- Takes and accepted output;
+- synthesis in native Voiceger English mode for English-only Captions;
 - synthesis inside mixed Japanese-English speech;
 - optional LAB output.
 
-Example:
+Mixed example:
 
 ```text
 このずんだ餅はvery sweetなのだ。
