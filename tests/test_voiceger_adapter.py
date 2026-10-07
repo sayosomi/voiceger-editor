@@ -1,4 +1,5 @@
 import inspect
+import os
 import unittest
 from contextlib import nullcontext
 from pathlib import Path
@@ -540,6 +541,41 @@ class EnglishDictionaryAdapterTests(unittest.TestCase):
             openjtalk_dictionary=object(),
         )
         return adapter
+
+    def test_import_paths_register_voiceger_bundled_nltk_data(self):
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            voiceger_root = root / "voiceger"
+            (voiceger_root / "GPT-SoVITS" / "GPT_SoVITS").mkdir(parents=True)
+            nltk_data = voiceger_root / "nltk_data"
+            nltk_data.mkdir()
+
+            adapter = VoicegerAdapter(voiceger_root=voiceger_root)
+            fake_nltk = SimpleNamespace(
+                data=SimpleNamespace(path=["/already-loaded"])
+            )
+            with patch.dict(
+                os.environ,
+                {"NLTK_DATA": "/configured"},
+                clear=False,
+            ), patch.dict(
+                sys.modules,
+                {"nltk": fake_nltk},
+            ), patch.object(
+                sys,
+                "path",
+                list(sys.path),
+            ):
+                adapter._ensure_import_paths()
+                adapter._ensure_import_paths()
+
+                configured = os.environ["NLTK_DATA"].split(os.pathsep)
+                self.assertEqual(configured[0], str(nltk_data))
+                self.assertEqual(configured.count(str(nltk_data)), 1)
+                self.assertEqual(fake_nltk.data.path[0], str(nltk_data))
+                self.assertEqual(fake_nltk.data.path.count(str(nltk_data)), 1)
+                self.assertEqual(sys.path[0], str(adapter.gpt_sovits_dir))
+                self.assertEqual(sys.path[1], str(adapter.sovits_dir))
 
     def test_exact_dictionary_hit_bypasses_voiceger_for_both_apis(self):
         with TemporaryDirectory() as temporary:
