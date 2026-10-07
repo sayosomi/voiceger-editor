@@ -283,7 +283,7 @@ The default accepted-output basename template is:
 {YYYYMMDDHHmm}_{text}
 ```
 
-Configure it from **Settings -> Audio output -> Filename template**. The Audio Output screen shows a live preview before the Settings draft is applied.
+Configure it from **Settings -> File format & naming -> Filename template**. The File Format & Naming screen shows a live preview before the Settings draft is applied.
 
 Supported case-sensitive date/time tokens are `YYYY`, `MM`, `DD`, `HH`, `mm`, and `ss`. `MM` is the month and `mm` is the minute. Named variables are `{text}` and `{style}`.
 

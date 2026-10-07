@@ -2195,7 +2195,7 @@ class TuiRenderingTests(unittest.TestCase):
             "[P] Top P *", "[T] Temperature *",
         ):
             self.assertIn(marked, visible)
-        for unmarked in ("[N] Takes", "[F] Output", "[O] Audio output"):
+        for unmarked in ("[N] Takes", "[F] Output", "[O] File format & naming"):
             self.assertIn(unmarked, visible)
         self.assertNotIn("[X] TXT", visible)
         self.assertNotIn("[L] LAB", visible)
@@ -2231,7 +2231,7 @@ class TuiRenderingTests(unittest.TestCase):
     def test_audio_output_settings_render_draft_preview_and_sidecars(self):
         editor = SimpleNamespace(
             kind="audio_output_settings",
-            title="AUDIO OUTPUT",
+            title="FILE FORMAT & NAMING",
             selection="filename_template",
             payload={
                 "draft_settings": {
@@ -2257,7 +2257,7 @@ class TuiRenderingTests(unittest.TestCase):
             80,
         )
         visible = "\n".join(line for line, _key in document)
-        self.assertIn("AUDIO OUTPUT", visible)
+        self.assertIn("FILE FORMAT & NAMING", visible)
         self.assertIn("Filename template  {style}_{text}", visible)
         self.assertIn("Preview", visible)
         self.assertIn("Neutral_今日は雨.wav", visible)
@@ -2274,7 +2274,7 @@ class TuiRenderingTests(unittest.TestCase):
     def test_audio_output_preview_uses_live_template_draft_and_explains_invalid_input(self):
         editor = SimpleNamespace(
             kind="audio_output_settings",
-            title="AUDIO OUTPUT",
+            title="FILE FORMAT & NAMING",
             selection="filename_template",
             payload={
                 "draft_settings": {

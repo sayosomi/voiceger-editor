@@ -191,7 +191,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("speed", "Speed", "v", "adjustable", "focus"),
         MenuItem("take_count", "Takes", "n", "adjustable", "focus"),
         _path_edit_item("output_dir", "Output"),
-        MenuItem("audio_output", "Audio output", "o", "action", "activate"),
+        MenuItem("audio_output", "File format & naming", "o", "action", "activate"),
         MenuItem("top_k", "Top K", "k", "adjustable", "focus"),
         MenuItem("top_p", "Top P", "p", "adjustable", "focus"),
         MenuItem("temperature", "Temperature", "t", "adjustable", "focus"),

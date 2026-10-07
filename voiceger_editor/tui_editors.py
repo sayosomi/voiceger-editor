@@ -446,7 +446,7 @@ class TuiEditorController:
             pass
         self.editor = EditorState(
             kind="audio_output_settings",
-            title="AUDIO OUTPUT",
+            title="FILE FORMAT & NAMING",
             origin=parent.origin,
             selection="filename_template",
             payload={
