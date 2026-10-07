@@ -69,6 +69,33 @@ class MixedLanguageTests(unittest.TestCase):
             ],
         )
 
+    def test_english_only_query_and_plan_use_native_english_mode(self):
+        phonemes = ["K", "AE1", "P", "SH", "AH0", "N"]
+        query = build_mixed_audio_query(
+            "Caption 01",
+            segments=[DetectedSegment("en", "Caption 01")],
+            english_g2p=lambda _text: phonemes,
+        )
+
+        self.assertEqual(query.accent_phrases, [])
+        self.assertEqual(len(query.voicegerSegments), 1)
+        self.assertEqual(query.voicegerSegments[0].language, "en")
+        self.assertEqual(query.voicegerSegments[0].text, "Caption 01")
+        self.assertEqual(query.voicegerSegments[0].phonemes, phonemes)
+        self.assertEqual(
+            voiceger_text_language(query.voicegerSegments),
+            "English",
+        )
+
+        plan = build_mixed_synthesis_plan(query)
+        self.assertEqual(plan.text, "Caption 01")
+        self.assertEqual(plan.text_language, "English")
+        self.assertEqual(plan.japanese_overrides, ())
+        self.assertEqual(
+            plan.english_overrides,
+            (("Caption 01", phonemes),),
+        )
+
     def test_japanese_english_selects_native_mixed_mode(self):
         segments = [
             VoicegerSegment(language="ja", text="今日は"),

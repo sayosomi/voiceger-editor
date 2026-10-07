@@ -187,7 +187,36 @@ class VoicegerAdapter:
                 "required Voiceger text paths are missing: " + ", ".join(missing)
             )
 
+    def _ensure_voiceger_nltk_data(self) -> None:
+        """Expose Voiceger's bundled NLTK data to its English G2P."""
+
+        nltk_data = self.voiceger_root / "nltk_data"
+        if not nltk_data.is_dir():
+            return
+
+        value = str(nltk_data)
+        configured = [
+            item
+            for item in os.environ.get("NLTK_DATA", "").split(os.pathsep)
+            if item
+        ]
+        if value not in configured:
+            os.environ["NLTK_DATA"] = os.pathsep.join((value, *configured))
+
+        # NLTK snapshots its search path when imported. Voiceger's English
+        # module may already have imported it in this process, so update that
+        # existing path without making NLTK a voiceger-editor dependency.
+        nltk_module = sys.modules.get("nltk")
+        nltk_paths = getattr(
+            getattr(nltk_module, "data", None),
+            "path",
+            None,
+        )
+        if isinstance(nltk_paths, list) and value not in nltk_paths:
+            nltk_paths.insert(0, value)
+
     def _ensure_import_paths(self) -> None:
+        self._ensure_voiceger_nltk_data()
         for path in (self.sovits_dir, self.gpt_sovits_dir):
             value = str(path)
             if value not in sys.path:

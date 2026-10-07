@@ -121,6 +121,28 @@ class VoicegerIntegrationTests(unittest.TestCase):
             "キョ'ーワ/アメデスネ'！",
         )
 
+    def test_english_only_caption_with_numbers_prepares_and_synthesizes(self):
+        session = UtteranceSession.from_caption(
+            adapter=self.adapter,
+            caption="Caption 01",
+            settings=Settings(style_id=3),
+        )
+
+        session.prepare_from_caption()
+
+        self.assertTrue(session.is_prepared)
+        query = session.query
+        self.assertTrue(query.voicegerSegments)
+        self.assertTrue(
+            all(segment.language == "en" for segment in query.voicegerSegments)
+        )
+        self.assertTrue(
+            all(segment.phonemes for segment in query.voicegerSegments)
+        )
+        self.assertEqual(session.synthesis_source_text, "Caption 01")
+
+        self.assert_full_synthesis_succeeds(query)
+
     def test_japanese_english_mixed_synthesizes_without_runaway(self):
         query = build_mixed_audio_query(
             "今日はhelloと言うよ。",

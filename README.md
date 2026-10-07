@@ -93,6 +93,7 @@ BATCH LIST
 The supported 0.1 speech scope is:
 
 - Japanese;
+- English;
 - Japanese with English sections.
 
 0.1.0 is the initial public release. Interfaces may still change before 1.0.
