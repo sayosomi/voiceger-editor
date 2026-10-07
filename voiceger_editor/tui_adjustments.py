@@ -43,6 +43,28 @@ def step_bounded(
     return StepResult(updated, updated != current)
 
 
+def step_ordered(
+    current: T,
+    choices: Sequence[T],
+    *,
+    direction: int,
+) -> StepResult[T]:
+    """Move through ordered choices without wrapping at either endpoint."""
+
+    if not choices:
+        raise ValueError("ordered stepping requires at least one choice")
+    if direction == 0:
+        return StepResult(current, False)
+
+    index = choices.index(current)
+    signed_direction = -1 if direction < 0 else 1
+    target = index + signed_direction
+    if target < 0 or target >= len(choices):
+        return StepResult(current, False)
+    updated = choices[target]
+    return StepResult(updated, updated != current)
+
+
 def step_cyclic(
     current: T,
     choices: Sequence[T],
