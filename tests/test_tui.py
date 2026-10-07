@@ -3128,7 +3128,7 @@ class TuiTests(unittest.TestCase):
             rendered = self.rendered(screen)
             for label in (
                 "[S] Style *", "[V] Speed *", "[N] Takes",
-                "[F] Output", "[O] Audio output",
+                "[F] Output", "[O] File format & naming",
             ):
                 self.assertIn(label, rendered)
             for heading in ("Voice", "Generation", "Output", "Sampling", "Actions"):
