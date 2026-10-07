@@ -386,7 +386,7 @@ class TuiRenderingTests(unittest.TestCase):
             )
         ]
         self.assertIn("  Takes < 9 >", labels)
-        self.assertIn("▶ [x] 1  [!] first caption", labels)
+        self.assertIn("▶ [x] [1]  [!] first caption", labels)
 
         batch.set_generation_outcome(batch.items[0].item_id, "cancelled")
         labels = [
@@ -395,7 +395,7 @@ class TuiRenderingTests(unittest.TestCase):
                 batch, ("caption", 0), 80
             )
         ]
-        self.assertIn("▶ [x] 1  [⚠] first caption", labels)
+        self.assertIn("▶ [x] [1]  [⚠] first caption", labels)
 
         batch.set_generation_outcome(batch.items[0].item_id, "failed")
         labels = [
@@ -404,7 +404,7 @@ class TuiRenderingTests(unittest.TestCase):
                 batch, ("caption", 0), 80
             )
         ]
-        self.assertIn("▶ [x] 1  [⚠] first caption", labels)
+        self.assertIn("▶ [x] [1]  [⚠] first caption", labels)
 
         batch.set_generation_outcome(batch.items[0].item_id, "completed")
         batch.default_take_count = 4
@@ -414,7 +414,7 @@ class TuiRenderingTests(unittest.TestCase):
                 batch, ("caption", 0), 80
             )
         ]
-        self.assertIn("▶ [x] 1  [!] first caption", labels)
+        self.assertIn("▶ [x] [1]  [!] first caption", labels)
         self.assertFalse(any(label.startswith("Selected:") for label in labels))
         self.assertFalse(any(label.startswith("Requested:") for label in labels))
         for action in (
