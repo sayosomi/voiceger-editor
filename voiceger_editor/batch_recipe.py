@@ -738,7 +738,8 @@ def read_batch_recipe(
     """Read and fully validate a recipe before returning replacement batch state.
 
     runtime_settings supplies preferences intentionally excluded from the
-    recipe, such as output directory and TXT/LAB sidecar choices.
+    recipe, such as accepted-audio format, output directory, filename, and
+    TXT/LAB sidecar choices.
     """
 
     if not isinstance(runtime_settings, Settings):
