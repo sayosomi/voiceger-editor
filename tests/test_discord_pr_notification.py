@@ -71,6 +71,12 @@ class DiscordPrNotificationTests(unittest.TestCase):
         )
         self.assertIsNotNone(job)
 
+    def test_all_non_success_run_conclusions_are_notifiable(self) -> None:
+        for conclusion in ("failure", "cancelled", "timed_out", "action_required", "neutral", "skipped", "stale"):
+            with self.subTest(conclusion=conclusion):
+                self.assertTrue(notification._is_non_success(conclusion))
+        self.assertFalse(notification._is_non_success("success"))
+
     def test_out_of_date_content_identifies_both_refs(self) -> None:
         content = notification.build_out_of_date_content(
             repository="sayosomi/voiceger-editor",
@@ -80,7 +86,7 @@ class DiscordPrNotificationTests(unittest.TestCase):
             main_sha="b" * 40,
             head_sha="a" * 40,
         )
-        self.assertIn("out of date — latest main integration required", content)
+        self.assertIn("out of date with main", content)
         self.assertIn(f"main SHA: {'b' * 40}", content)
         self.assertIn(f"PR head SHA: {'a' * 40}", content)
 
