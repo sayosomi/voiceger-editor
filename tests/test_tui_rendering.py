@@ -2313,6 +2313,48 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("< PCM 24-bit >", visible)
         self.assertNotIn("Float 32-bit", visible)
 
+    def test_audio_output_renders_mp3_bitrate_without_encoding_row(self):
+        editor = SimpleNamespace(
+            kind="audio_output_settings",
+            title="AUDIO OUTPUT",
+            selection="mp3_bitrate",
+            payload={
+                "draft_settings": {
+                    "output_format": "mp3",
+                    "wav_encoding": "source",
+                    "flac_encoding": "pcm16",
+                    "mp3_bitrate": "256k",
+                    "filename_template": "{text}",
+                    "save_text": False,
+                    "save_lab": False,
+                },
+                "filename_preview": "sample.mp3",
+                "filename_preview_error": "",
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _, _ = self.renderer.editor_document(
+            render_state(editor=editor),
+            80,
+        )
+        visible = "\n".join(line for line, _key in document)
+        self.assertIn("< MP3 >", visible)
+        self.assertIn("Bitrate", visible)
+        self.assertIn("< 256 kbps >", visible)
+        self.assertNotIn("Encoding", visible)
+        self.assertEqual(
+            [key for _line, key in document if key is not None],
+            [
+                "output_format", "mp3_bitrate", "filename_template",
+                "save_text", "save_lab", "back",
+            ],
+        )
+
     def test_audio_output_preview_uses_live_template_draft_and_explains_invalid_input(self):
         editor = SimpleNamespace(
             kind="audio_output_settings",
