@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import json
 import math
 import os
@@ -15,7 +15,14 @@ from .filename import (
     FilenameTemplateError,
     validate_filename_template,
 )
-from .output import FLAC_ENCODINGS, OUTPUT_FORMATS, WAV_ENCODINGS
+from .output import (
+    DEFAULT_MP3_BITRATE,
+    FLAC_ENCODINGS,
+    MP3_BITRATES,
+    OUTPUT_FORMATS,
+    WAV_ENCODINGS,
+    available_output_formats,
+)
 
 
 _APP_DIRECTORY = "voiceger-editor"
@@ -29,6 +36,7 @@ _SETTING_NAMES = {
     "output_format",
     "wav_encoding",
     "flac_encoding",
+    "mp3_bitrate",
     "take_count",
     "style_id",
     "speed",
@@ -58,6 +66,7 @@ class Settings:
     output_format: str = "wav"
     wav_encoding: str = "source"
     flac_encoding: str = "pcm16"
+    mp3_bitrate: str = DEFAULT_MP3_BITRATE
     take_count: int = 4
     style_id: int = 3
     speed: float = 1.0
@@ -100,6 +109,10 @@ class Settings:
         if self.flac_encoding not in FLAC_ENCODINGS:
             raise SettingsError(
                 "flac_encoding must be one of: " + ", ".join(FLAC_ENCODINGS)
+            )
+        if self.mp3_bitrate not in MP3_BITRATES:
+            raise SettingsError(
+                "mp3_bitrate must be one of: " + ", ".join(MP3_BITRATES)
             )
 
         if (
@@ -238,9 +251,13 @@ def load_settings(
         raise SettingsError(f"{path}: unknown setting(s): {names}")
 
     try:
-        return Settings(**values)
+        settings = Settings(**values)
     except SettingsError as exc:
         raise SettingsError(f"{path}: {exc}") from exc
+
+    if settings.output_format == "mp3" and "mp3" not in available_output_formats():
+        settings = replace(settings, output_format="wav")
+    return settings
 
 
 def save_settings(
@@ -259,6 +276,7 @@ def save_settings(
         "output_format": settings.output_format,
         "wav_encoding": settings.wav_encoding,
         "flac_encoding": settings.flac_encoding,
+        "mp3_bitrate": settings.mp3_bitrate,
         "take_count": settings.take_count,
         "style_id": settings.style_id,
         "speed": settings.speed,
