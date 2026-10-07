@@ -37,6 +37,7 @@ from .filename import (
     render_output_basename,
     validate_filename_template,
 )
+from .output import FLAC_ENCODINGS, OUTPUT_FORMATS, WAV_ENCODINGS, output_extension
 from .pronunciation import (
     AccentPhrase as CoreAccentPhrase,
     PronunciationPunctuation as CorePronunciationPunctuation,
@@ -416,6 +417,9 @@ class TuiEditorController:
             "take_count": str(settings.take_count),
             "output_dir": str(settings.output_dir),
             "filename_template": settings.filename_template,
+            "output_format": settings.output_format,
+            "wav_encoding": settings.wav_encoding,
+            "flac_encoding": settings.flac_encoding,
             "save_text": settings.save_text,
             "save_lab": settings.save_lab,
             "top_k": str(settings.top_k),
@@ -446,15 +450,14 @@ class TuiEditorController:
             pass
         self.editor = EditorState(
             kind="audio_output_settings",
-            title="FILE FORMAT & NAMING",
+            title="AUDIO OUTPUT",
             origin=parent.origin,
-            selection="filename_template",
+            selection="output_format",
             payload={
                 "parent_editor": parent,
                 "draft_settings": draft,
                 "preview_text": current_caption or "Sample text",
                 "preview_style": style_name,
-                "output_extension": ".wav",
             },
         )
         self._refresh_filename_preview(self.editor)
@@ -483,7 +486,10 @@ class TuiEditorController:
             editor.payload["filename_preview_error"] = str(exc)
             return
         editor.payload["filename_preview"] = (
-            basename + str(editor.payload.get("output_extension", ".wav"))
+            basename
+            + output_extension(
+                str(editor.payload["draft_settings"].get("output_format", "wav"))
+            )
         )
         editor.payload["filename_preview_error"] = ""
 
@@ -1300,7 +1306,7 @@ class TuiEditorController:
             if selected == "filename_template":
                 value = editor.payload["draft_settings"]["filename_template"]
                 return self.begin_field("filename_template", str(value))
-            if selected in {"save_text", "save_lab"}:
+            if selected in {"output_format", "output_encoding", "save_text", "save_lab"}:
                 return self.adjust_settings(1)
             if selected == "back":
                 return self._restore_parent_editor("")
@@ -1857,6 +1863,9 @@ class TuiEditorController:
                 take_count=int(draft["take_count"]),
                 output_dir=Path(draft["output_dir"]),
                 filename_template=draft["filename_template"],
+                output_format=draft["output_format"],
+                wav_encoding=draft["wav_encoding"],
+                flac_encoding=draft["flac_encoding"],
                 save_text=draft["save_text"],
                 save_lab=draft["save_lab"],
                 top_k=int(draft["top_k"]),
@@ -2010,7 +2019,7 @@ class TuiEditorController:
         draft = editor.payload["draft_settings"]
         selected = editor.selection
         allowed = (
-            {"save_text", "save_lab"}
+            {"output_format", "output_encoding", "save_text", "save_lab"}
             if editor.kind == "audio_output_settings"
             else {
                 "style_id", "speed", "take_count",
@@ -2139,6 +2148,28 @@ class TuiEditorController:
                 editor.error = EMPTY_STATUS
                 return clear_feedback
             draft[selected] = f"{result.value:.2f}"
+        elif selected == "output_format":
+            result = step_cyclic(
+                str(draft["output_format"]),
+                OUTPUT_FORMATS,
+                direction=direction,
+            )
+            if not result.changed:
+                return clear_feedback
+            draft["output_format"] = result.value
+            self._refresh_filename_preview(editor)
+        elif selected == "output_encoding":
+            output_format = str(draft["output_format"])
+            encoding_key = "wav_encoding" if output_format == "wav" else "flac_encoding"
+            encodings = WAV_ENCODINGS if output_format == "wav" else FLAC_ENCODINGS
+            result = step_cyclic(
+                str(draft[encoding_key]),
+                encodings,
+                direction=direction,
+            )
+            if not result.changed:
+                return clear_feedback
+            draft[encoding_key] = result.value
         elif selected in {"save_text", "save_lab"}:
             result = step_cyclic(
                 bool(draft[selected]),
