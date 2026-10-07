@@ -120,14 +120,22 @@ Supported accepted-audio formats are:
 
 - **WAV**: Source, PCM 16-bit, PCM 24-bit, or Float 32-bit.
 - **FLAC**: PCM 16-bit or PCM 24-bit.
+- **MP3**: 96, 128, 160, 192, 256, or 320 kbps when an external `ffmpeg`
+  executable is installed and discoverable, normally through `PATH`.
+
+MP3 support is optional. Voiceger Editor does not install or bundle ffmpeg, and
+startup continues normally when ffmpeg is unavailable. In that case MP3 is not
+shown as a Format choice. A saved MP3 selection safely falls back to WAV when
+ffmpeg is unavailable, while the saved MP3 bitrate is retained.
 
 WAV **Source** is the default and preserves the existing accepted-Take behavior:
 Voiceger Editor copies the generated candidate WAV without an unnecessary
-decode/re-encode step. Explicit WAV encodings and FLAC are converted only when
-the Take is accepted. Candidate Takes and pronunciation Preview audio remain WAV.
+decode/re-encode step. Explicit WAV encodings, FLAC, and MP3 are converted only
+when the Take is accepted. Candidate Takes, pronunciation Preview audio, and LAB
+processing remain WAV-based.
 
-Voiceger Editor remembers the WAV and FLAC encoding choices separately when you
-switch Format back and forth.
+Voiceger Editor remembers the WAV and FLAC encoding choices and the MP3 bitrate
+separately when you switch Format back and forth.
 
 ## TXT sidecar
 
