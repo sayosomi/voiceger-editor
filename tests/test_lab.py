@@ -149,6 +149,7 @@ class LabCoreTests(unittest.TestCase):
             wav_path, text_path, reserved = _reserve_output_paths(
                 output_dir=output_dir,
                 initial_name="sample.wav",
+                audio_extension=".wav",
                 save_text=True,
                 avoid_lab_collision=True,
             )
@@ -329,14 +330,14 @@ class AcceptedTakeLabTests(unittest.TestCase):
         batch._candidates[1] = candidate
 
         saved = SavedOutput(
-            wav_path=Path("/output/accepted.wav"),
+            wav_path=Path("/output/accepted.flac"),
             text_path=Path("/output/accepted.txt"),
         )
         lab_result = LabSidecarResult(path=Path("/output/accepted.lab"))
         with patch(
-            "voiceger_editor.takes.save_output_wav",
+            "voiceger_editor.takes.save_output_audio",
             return_value=saved,
-        ) as save_wav, patch(
+        ) as save_audio, patch(
             "voiceger_editor.takes.save_lab_sidecar",
             return_value=lab_result,
         ) as save_lab:
@@ -346,19 +347,27 @@ class AcceptedTakeLabTests(unittest.TestCase):
                 output_dir=Path("/output"),
                 save_text=True,
                 save_lab=True,
+                output_format="flac",
+                output_encoding="pcm24",
             )
 
-        save_wav.assert_called_once_with(
+        save_audio.assert_called_once_with(
             wav_source=candidate_path,
             source_text="hello.",
             style_name="Neutral",
             output_dir=Path("/output"),
+            output_format="flac",
+            output_encoding="pcm24",
             save_text=True,
             filename_template="{YYYYMMDDHHmm}_{text}",
             avoid_lab_collision=True,
         )
         self.assertEqual(save_lab.call_count, 1)
-        self.assertEqual(save_lab.call_args.kwargs["wav_path"], saved.wav_path)
+        self.assertEqual(save_lab.call_args.kwargs["wav_path"], candidate_path)
+        self.assertEqual(
+            save_lab.call_args.kwargs["destination"],
+            Path("/output/accepted.lab"),
+        )
         self.assertEqual(
             save_lab.call_args.kwargs["query"].model_dump(),
             query.model_dump(),
@@ -397,7 +406,7 @@ class AcceptedTakeLabTests(unittest.TestCase):
             text_path=None,
         )
         with patch(
-            "voiceger_editor.takes.save_output_wav",
+            "voiceger_editor.takes.save_output_audio",
             return_value=saved,
         ), patch(
             "voiceger_editor.takes.save_lab_sidecar",
