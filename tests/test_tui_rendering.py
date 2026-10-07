@@ -2880,6 +2880,166 @@ class TuiRenderingTests(unittest.TestCase):
         }
         self.assertEqual(surface_columns, {7})
 
+    def test_english_dictionary_aligns_pronunciation_by_surface_display_width(self):
+        entries = (
+            SimpleNamespace(
+                surface="Tohoku",
+                phonemes=("T", "OW1", "HH", "OW0", "K", "UW0"),
+            ),
+            SimpleNamespace(
+                surface="Zundamon",
+                phonemes=("Z", "UW1", "N", "D", "AA0", "M", "OW0", "N"),
+            ),
+            SimpleNamespace(
+                surface="Zunko",
+                phonemes=("Z", "UW1", "NG", "K", "OW0"),
+            ),
+        )
+        editor = SimpleNamespace(
+            kind="dictionary_english_list",
+            title="ENGLISH DICTIONARY",
+            selection=("entry", 1),
+            payload={
+                "entries": entries,
+                "sort_mode": "surface_asc",
+                "text_filter": "",
+                "filter_enabled": False,
+                "word_type_filter": None,
+                "visible_count": len(entries),
+                "total_count": len(entries),
+                "can_delete": True,
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        rows = {
+            key[1]: line
+            for line, key in document
+            if isinstance(key, tuple) and key[0] == "entry"
+        }
+
+        def pronunciation_column(line, surface):
+            surface_end = line.index(surface) + len(surface)
+            suffix = line[surface_end:]
+            gap = len(suffix) - len(suffix.lstrip(" "))
+            return _display_width(line[:surface_end]) + gap
+
+        columns = {
+            pronunciation_column(rows[index], entry.surface)
+            for index, entry in enumerate(entries)
+        }
+        self.assertEqual(len(columns), 1)
+
+    def test_japanese_dictionary_aligns_pronunciation_by_terminal_display_width(self):
+        entries = (
+            (
+                "id-1",
+                SimpleNamespace(
+                    surface="雨",
+                    pronunciation="アメ",
+                    accent_type=1,
+                ),
+            ),
+            (
+                "id-2",
+                SimpleNamespace(
+                    surface="ずんだもん",
+                    pronunciation="ズンダモン",
+                    accent_type=3,
+                ),
+            ),
+            (
+                "id-3",
+                SimpleNamespace(
+                    surface="東北",
+                    pronunciation="トウホク",
+                    accent_type=2,
+                ),
+            ),
+        )
+        editor = SimpleNamespace(
+            kind="dictionary_japanese_list",
+            title="JAPANESE DICTIONARY",
+            selection=("entry", 1),
+            payload={
+                "entries": entries,
+                "sort_mode": "surface_asc",
+                "text_filter": "",
+                "filter_enabled": False,
+                "word_type_filter": "ALL",
+                "visible_count": len(entries),
+                "total_count": len(entries),
+                "can_delete": True,
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        rows = {
+            key[1]: line
+            for line, key in document
+            if isinstance(key, tuple) and key[0] == "entry"
+        }
+
+        def pronunciation_column(line, surface):
+            surface_end = line.index(surface) + len(surface)
+            suffix = line[surface_end:]
+            gap = len(suffix) - len(suffix.lstrip(" "))
+            return _display_width(line[:surface_end]) + gap
+
+        columns = {
+            pronunciation_column(rows[index], word.surface)
+            for index, (_word_uuid, word) in enumerate(entries)
+        }
+        self.assertEqual(len(columns), 1)
+
+    def test_dictionary_surface_column_is_bounded_by_long_visible_surface(self):
+        entries = (
+            SimpleNamespace(surface="short", phonemes=("SH", "AO1", "R", "T")),
+            SimpleNamespace(surface="x" * 80, phonemes=("EH1", "K", "S")),
+        )
+        editor = SimpleNamespace(
+            kind="dictionary_english_list",
+            title="ENGLISH DICTIONARY",
+            selection=("entry", 0),
+            payload={
+                "entries": entries,
+                "sort_mode": "surface_asc",
+                "text_filter": "",
+                "filter_enabled": False,
+                "word_type_filter": None,
+                "visible_count": len(entries),
+                "total_count": len(entries),
+                "can_delete": True,
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 100
+        )
+        short_row = next(line for line, key in document if key == ("entry", 0))
+        phoneme_column = _display_width(short_row[: short_row.index("SH")])
+
+        self.assertLessEqual(phoneme_column, 40)
+
 
     def test_dictionary_lists_render_visible_one_based_numbers(self):
         japanese_entries = tuple(
