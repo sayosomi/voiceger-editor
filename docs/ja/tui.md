@@ -251,5 +251,6 @@ Enter で編集を終了し、`[A] Apply` を実行します。
 - [BATCH LIST](batch-list.md) — Caption の追加・管理・一括生成
 - [BATCH ITEM](batch-item.md) — 個別の Caption の編集、Take の生成・再生・保存
 - [発音編集](pronunciation.md) — 日本語の読み・アクセント、英語の ARPAbet
+- [ARPAbet](arpabet.md) — 英語の音素と強勢の読み方・書き方
 - [ユーザー辞書](dictionary.md) — 日本語・英語の単語を登録して再利用
 - [設定](settings.md) — スタイル、話速、Take 数、保存先、出力形式など
