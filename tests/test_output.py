@@ -7,7 +7,7 @@ from types import ModuleType
 from unittest.mock import patch
 
 from voiceger_editor.filename import build_output_filename
-from voiceger_editor.output import save_output, save_output_wav
+from voiceger_editor.output import save_output, save_output_audio, save_output_wav
 
 
 class OutputSaveTests(unittest.TestCase):
@@ -211,6 +211,60 @@ class OutputSaveTests(unittest.TestCase):
 
             self.assertEqual(existing.read_bytes(), b"keep")
             self.assertEqual(list(output_dir.iterdir()), [existing])
+
+
+    def test_generic_wav_source_preserves_candidate_bytes_without_reencoding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root / "candidate.wav"
+            original = b"exact candidate wav bytes\\x00\\x01"
+            candidate.write_bytes(original)
+
+            saved = save_output_audio(
+                wav_source=candidate,
+                source_text="source",
+                style_name="Neutral",
+                output_dir=root / "output",
+                output_format="wav",
+                output_encoding="source",
+                timestamp=self.timestamp,
+            )
+
+            self.assertEqual(saved.audio_path.suffix, ".wav")
+            self.assertEqual(saved.audio_path.read_bytes(), original)
+
+    def test_explicit_wav_and_flac_encodings_write_requested_soundfile_subtypes(self):
+        import soundfile as sf
+
+        cases = (
+            ("wav", "pcm16", "WAV", "PCM_16"),
+            ("wav", "pcm24", "WAV", "PCM_24"),
+            ("wav", "float32", "WAV", "FLOAT"),
+            ("flac", "pcm16", "FLAC", "PCM_16"),
+            ("flac", "pcm24", "FLAC", "PCM_24"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root / "candidate.wav"
+            sf.write(candidate, [0.0, 0.25, -0.25], 32000, format="WAV", subtype="FLOAT")
+
+            for output_format, encoding, expected_format, expected_subtype in cases:
+                with self.subTest(output_format=output_format, encoding=encoding):
+                    saved = save_output_audio(
+                        wav_source=candidate,
+                        source_text=f"{output_format}-{encoding}",
+                        style_name="Neutral",
+                        output_dir=root / "output",
+                        output_format=output_format,
+                        output_encoding=encoding,
+                        save_text=True,
+                        timestamp=self.timestamp,
+                    )
+                    info = sf.info(saved.audio_path)
+                    self.assertEqual(info.format, expected_format)
+                    self.assertEqual(info.subtype, expected_subtype)
+                    self.assertEqual(saved.audio_path.suffix, f".{output_format}")
+                    self.assertEqual(saved.text_path.stem, saved.audio_path.stem)
 
 
 if __name__ == "__main__":
