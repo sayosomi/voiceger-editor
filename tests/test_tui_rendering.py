@@ -374,8 +374,8 @@ class TuiRenderingTests(unittest.TestCase):
         lines = self.renderer.batch_list_document(batch, ("caption", 0), 80)
         labels = [line.text for line in lines]
         self.assertIn("  Takes < 4 >", labels)
-        self.assertIn("▶ [x] 1  [!] first caption", labels)
-        self.assertIn("  [ ] 2  [✓] second caption", labels)
+        self.assertIn("▶ [x] [1]  [!] first caption", labels)
+        self.assertIn("  [ ] [2]  [✓] second caption", labels)
         self.assertFalse(any("[25%]" in label for label in labels))
 
         batch.default_take_count = 9
@@ -852,7 +852,7 @@ class TuiRenderingTests(unittest.TestCase):
         )
         labels = [line.text for line in lines]
 
-        self.assertIn("  [x] 2  [25%] second caption", labels)
+        self.assertIn("  [x] [2]  [25%] second caption", labels)
         self.assertNotIn("[25%]", next(
             line for line in labels if "first caption" in line
         ))
