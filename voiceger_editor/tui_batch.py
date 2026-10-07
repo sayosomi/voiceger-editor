@@ -11,9 +11,10 @@ from .tui_adjustments import step_bounded
 from .tui_confirmation import handle_confirmation_key
 from .tui_editors import adjustment_feedback_intents
 from .tui_navigation import TuiNavigation
+from .tui_numbered_list import NumberedListJump
 from .tui_operations import OperationEffect, TuiOperations
 from .tui_selection import move_clamped_selection
-from .tui_status import EMPTY_STATUS, Status, info_status
+from .tui_status import EMPTY_STATUS, Status, info_status, warning_status
 from .tui_shortcuts import (
     resolve_batch_list_caption_shortcut,
     resolve_batch_list_shortcut,
@@ -129,6 +130,15 @@ class TuiBatchController:
         self._pending_delete_item_id: str | None = None
         self._pending_delete_from_item = False
         self._delete_confirmation_selection = "cancel"
+        self._number_jump = NumberedListJump()
+
+    @property
+    def number_jump_active(self) -> bool:
+        return self._number_jump.active
+
+    @property
+    def number_jump_value(self) -> str:
+        return self._number_jump.value
 
     @property
     def item_index(self) -> int | None:
@@ -291,6 +301,7 @@ class TuiBatchController:
         self._pending_delete_item_id = None
         self._pending_delete_from_item = False
         self._delete_confirmation_selection = "cancel"
+        self._number_jump.reset()
         self.focus_key = (
             ("caption", 0) if len(batch) else ("add_captions", None)
         )
@@ -424,9 +435,6 @@ class TuiBatchController:
         *,
         operations: TuiOperations | None = None,
     ) -> tuple[BatchAction, ...]:
-        if key in ("Q", "\x03"):
-            return (QuitBatch(),)
-
         if self.delete_confirmation_active:
             if key == "q":
                 return (QuitBatch(),)
@@ -446,6 +454,22 @@ class TuiBatchController:
             elif interaction.activation == "cancel":
                 self._cancel_delete()
             return ()
+
+        number_jump = self._number_jump.handle_key(
+            key,
+            item_count=len(self.batch),
+        )
+        if number_jump.handled:
+            if number_jump.warning is not None:
+                return (ReportBatchStatus(warning_status(number_jump.warning)),)
+            if number_jump.target_number is not None:
+                index = number_jump.target_number - 1
+                self.focus_key = ("caption", index)
+                return (OpenBatchItem(index),)
+            return ()
+
+        if key in ("Q", "\x03"):
+            return (QuitBatch(),)
 
         shortcut = resolve_batch_list_shortcut(key)
         if shortcut is not None:
