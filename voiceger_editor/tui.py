@@ -743,6 +743,12 @@ class TuiApp:
                 self._operations.can_cancel_batch,
             ),
             output_path_edit=self._output_path_controller.state,
+            batch_item_number_jump_active=(
+                self._batch_item_controller.number_jump_active
+            ),
+            batch_item_number_jump_value=(
+                self._batch_item_controller.number_jump_value
+            ),
         )
 
     def _render(self) -> None:
