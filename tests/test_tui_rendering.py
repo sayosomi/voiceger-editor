@@ -168,6 +168,8 @@ def render_state(
     accepted_take_number=None,
     batch_item_position=None,
     output_path_edit=None,
+    batch_item_number_jump_active=False,
+    batch_item_number_jump_value="",
 ):
     return TuiRenderState(
         voiceger_root=Path("/nonexistent/voiceger"),
@@ -190,6 +192,8 @@ def render_state(
         accepted_take_number=accepted_take_number,
         batch_item_position=batch_item_position,
         output_path_edit=output_path_edit,
+        batch_item_number_jump_active=batch_item_number_jump_active,
+        batch_item_number_jump_value=batch_item_number_jump_value,
     )
 
 
@@ -2585,8 +2589,8 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertEqual(labels[("build_pronunciation", None)], "  [P] Build pronunciation")
         self.assertEqual(labels[("add_section", None)], "  [A] Add section")
         self.assertEqual(labels[("generate", None)], "▶ [G] Regenerate all <<6 > takes")
-        self.assertEqual(labels[("candidate", 1)], "  [1] Take 1  0.01s")
-        self.assertEqual(labels[("candidate", 2)], "  [2] ✓ Take 2  0.01s")
+        self.assertEqual(labels[("candidate", 1)], "  [1]  Take 1  0.01s")
+        self.assertEqual(labels[("candidate", 2)], "  [2]  Take 2  0.01s ✓")
         self.assertEqual(labels[("clear_candidates", None)], "  [C] Clear candidates")
         self.assertEqual(labels[("delete_caption", None)], "  [X] Delete caption")
         keyed = [line.key for line in lines if line.key is not None]
@@ -2633,8 +2637,44 @@ class TuiRenderingTests(unittest.TestCase):
             if line.key is not None
         }
 
-        self.assertEqual(labels[("candidate", 9)], "  [9] Take 9  0.01s")
-        self.assertEqual(labels[("candidate", 10)], "  Take 10  0.01s")
+        self.assertEqual(labels[("candidate", 9)], "  [9]  Take 9  0.01s")
+        self.assertEqual(labels[("candidate", 10)], "   10  Take 10  0.01s")
+
+    def test_take_number_jump_row_only_appears_for_ten_or_more_candidates(self):
+        nine = render_state(
+            session=FakeSession(
+                candidates=tuple(candidate(number) for number in range(1, 10))
+            )
+        )
+        nine_labels = self.labels(self.renderer.navigation_document(nine, 100))
+        self.assertNotIn("  [0] Jump to Take", nine_labels)
+
+        twelve = render_state(
+            session=FakeSession(
+                candidates=tuple(candidate(number) for number in range(1, 13))
+            )
+        )
+        twelve_labels = self.labels(self.renderer.navigation_document(twelve, 100))
+        candidates_index = twelve_labels.index("Candidates")
+        self.assertEqual(twelve_labels[candidates_index + 1], "  [0] Jump to Take")
+        self.assertEqual(twelve_labels[candidates_index + 2], "")
+        self.assertEqual(twelve_labels[candidates_index + 3], "  [1]  Take 1  0.01s")
+        self.assertEqual(twelve_labels[candidates_index + 12], "   10  Take 10  0.01s")
+
+    def test_active_take_number_jump_replaces_entry_row_with_explicit_input(self):
+        state = render_state(
+            session=FakeSession(
+                candidates=tuple(candidate(number) for number in range(1, 13))
+            ),
+            batch_item_number_jump_active=True,
+            batch_item_number_jump_value="12",
+        )
+        labels = self.labels(self.renderer.navigation_document(state, 100))
+        candidates_index = labels.index("Candidates")
+
+        self.assertEqual(labels[candidates_index + 1], "▶ Jump to Take: 12_ / 12")
+        self.assertEqual(labels[candidates_index + 2], "  [Enter] Play   [Esc] Cancel")
+        self.assertNotIn("  [0] Jump to Take", labels)
 
     def test_unavailable_status_and_terminal_write_safety_remain(self):
         screen = FakeScreen()

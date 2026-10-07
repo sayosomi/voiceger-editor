@@ -464,6 +464,99 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         bindings.actions.editor_controller.open_clear_candidates_confirmation.assert_not_called()
         bindings.actions.set_status.assert_called_once()
 
+    def test_direct_take_number_focuses_and_plays_existing_candidate(self):
+        subject, _batch, bindings, state = self.make_subject()
+        state["session"].candidates = [
+            SimpleNamespace(number=number) for number in range(1, 10)
+        ]
+        bindings.actions.operations.play_take.return_value = ()
+
+        subject.handle_key("9", bindings)
+
+        self.assertEqual(bindings.actions.navigation.focus_key, ("candidate", 9))
+        self.assertEqual(bindings.actions.operations.current_take, 9)
+        bindings.actions.operations.play_take.assert_called_once_with(
+            state["session"],
+            9,
+        )
+
+    def test_multi_digit_take_jump_focuses_and_plays_without_accepting(self):
+        subject, _batch, bindings, state = self.make_subject()
+        state["session"].candidates = [
+            SimpleNamespace(number=number) for number in range(1, 13)
+        ]
+        bindings.actions.operations.play_take.return_value = ()
+
+        subject.handle_key("0", bindings)
+        subject.handle_key("1", bindings)
+        subject.handle_key("2", bindings)
+        subject.handle_key("\n", bindings)
+
+        self.assertFalse(subject.number_jump_active)
+        self.assertEqual(bindings.actions.navigation.focus_key, ("candidate", 12))
+        self.assertEqual(bindings.actions.operations.current_take, 12)
+        bindings.actions.operations.play_take.assert_called_once_with(
+            state["session"],
+            12,
+        )
+        bindings.actions.operations.accept_take.assert_not_called()
+
+    def test_take_jump_escape_cancels_without_changing_focus(self):
+        subject, _batch, bindings, state = self.make_subject()
+        state["session"].candidates = [
+            SimpleNamespace(number=number) for number in range(1, 13)
+        ]
+        bindings.actions.navigation.focus_key = ("candidate", 2)
+
+        subject.handle_key("0", bindings)
+        subject.handle_key("1", bindings)
+        subject.handle_key("\x1b", bindings)
+
+        self.assertFalse(subject.number_jump_active)
+        self.assertEqual(bindings.actions.navigation.focus_key, ("candidate", 2))
+        bindings.actions.operations.play_take.assert_not_called()
+
+    def test_invalid_take_jump_warns_stays_active_and_swallows_shortcuts(self):
+        subject, _batch, bindings, state = self.make_subject()
+        state["session"].candidates = [
+            SimpleNamespace(number=number) for number in range(1, 13)
+        ]
+
+        subject.handle_key("0", bindings)
+        subject.handle_key("1", bindings)
+        subject.handle_key("3", bindings)
+        subject.handle_key("\n", bindings)
+
+        self.assertTrue(subject.number_jump_active)
+        self.assertEqual(subject.number_jump_value, "13")
+        self.assertEqual(
+            state["status"],
+            warning_status("Enter a number from 1 to 12."),
+        )
+
+        subject.handle_key("r", bindings)
+        self.assertTrue(subject.number_jump_active)
+        bindings.actions.operations.start_regeneration.assert_not_called()
+
+    def test_normal_enter_accepts_after_take_jump_completes(self):
+        subject, _batch, bindings, state = self.make_subject()
+        state["session"].candidates = [
+            SimpleNamespace(number=number) for number in range(1, 13)
+        ]
+        bindings.actions.operations.play_take.return_value = ()
+        bindings.actions.operations.accept_take.return_value = ()
+
+        subject.handle_key("0", bindings)
+        subject.handle_key("1", bindings)
+        subject.handle_key("2", bindings)
+        subject.handle_key("\n", bindings)
+        bindings.actions.operations.accept_take.assert_not_called()
+
+        subject.handle_key("\n", bindings)
+
+        bindings.actions.operations.accept_take.assert_called_once()
+        self.assertEqual(bindings.actions.operations.accept_take.call_args.args[1], 12)
+
     def test_generate_take_count_adjustment_uses_existing_settings_owner(self):
         subject, _batch, bindings, _state = self.make_subject()
         bindings.actions.operations.busy = True

@@ -33,9 +33,16 @@ from .tui_navigation import (
     StartGeneration,
     UpdateNavigationStatus,
 )
+from .tui_numbered_list import NumberedListJump
 from .tui_output_path import BeginOutputPathEditIntent
 from .tui_shortcuts import resolve_main_shortcut
-from .tui_status import EMPTY_STATUS, Status, error_status, info_status
+from .tui_status import (
+    EMPTY_STATUS,
+    Status,
+    error_status,
+    info_status,
+    warning_status,
+)
 
 
 _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
@@ -58,11 +65,21 @@ class TuiBatchItemController:
     def __init__(self, batch: TuiBatchController) -> None:
         self.batch = batch
         self._pending_prepare_focus: tuple[FocusKey, FocusKey] | None = None
+        self._number_jump = NumberedListJump()
+
+    @property
+    def number_jump_active(self) -> bool:
+        return self._number_jump.active
+
+    @property
+    def number_jump_value(self) -> str:
+        return self._number_jump.value
 
     def initialize_open_item_focus(self, bindings: BatchItemBindings) -> None:
         """Choose the most useful initial focus for the currently open item."""
 
         self._pending_prepare_focus = None
+        self._number_jump.reset()
         session = bindings.get_session()
         actions = bindings.actions
         if session is None:
@@ -176,6 +193,25 @@ class TuiBatchItemController:
 
     def handle_key(self, key: Any, bindings: BatchItemBindings) -> None:
         actions = bindings.actions
+        session = bindings.get_session()
+        number_jump = self._number_jump.handle_key(
+            key,
+            item_count=len(getattr(session, "candidates", ())) if session is not None else 0,
+        )
+        if number_jump.handled:
+            if number_jump.warning is not None:
+                actions.set_status(warning_status(number_jump.warning))
+            elif number_jump.target_number is not None:
+                context = self.navigation_context(bindings)
+                self.dispatch_navigation_actions(
+                    actions.navigation.focus_candidate(
+                        context,
+                        number_jump.target_number,
+                    ),
+                    bindings,
+                )
+            return
+
         if self._handle_item_navigation_key(key, bindings):
             return
         if key in ("Q", "\x03"):
@@ -233,12 +269,6 @@ class TuiBatchItemController:
                             direction,
                         )
                     )
-            return
-        if isinstance(key, str) and len(key) == 1 and key in "123456789":
-            self.dispatch_navigation_actions(
-                actions.navigation.focus_candidate(context, int(key)),
-                bindings,
-            )
             return
         if key == "r":
             self.dispatch_navigation_actions(

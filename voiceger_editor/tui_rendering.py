@@ -250,6 +250,8 @@ class TuiRenderState:
     active_generation_item_id: str | None = None
     background_status: str = ""
     output_path_edit: OutputPathEditRenderState | None = None
+    batch_item_number_jump_active: bool = False
+    batch_item_number_jump_value: str = ""
 
 
 @dataclass(frozen=True)
@@ -1157,22 +1159,36 @@ class TuiRenderer:
                 ):
                     generate_label += " [busy]"
             plain()
-            if not session.candidates:
+            candidates = tuple(session.candidates)
+            if not candidates:
                 plain("Candidates   No candidates yet.")
             else:
                 plain("Candidates")
-            for candidate in session.candidates:
+                if len(candidates) >= 10:
+                    if state.batch_item_number_jump_active:
+                        plain(
+                            "▶ Jump to Take: "
+                            f"{state.batch_item_number_jump_value}_ / {len(candidates)}"
+                        )
+                        plain("  [Enter] Play   [Esc] Cancel")
+                    else:
+                        plain("  [0] Jump to Take")
+                    plain()
+            for candidate in candidates:
                 duration = _duration_seconds(
                     candidate.frame_count,
                     candidate.sampling_rate,
                 )
+                number_token = _numbered_shortcut_token(
+                    candidate.number,
+                    len(candidates),
+                )
                 accepted_marker = (
-                    "✓ " if candidate.number == state.accepted_take_number else ""
+                    " ✓" if candidate.number == state.accepted_take_number else ""
                 )
                 label = (
-                    f"[{candidate.number}] {accepted_marker}Take {candidate.number}  {duration:.2f}s"
-                    if candidate.number <= 9
-                    else f"{accepted_marker}Take {candidate.number}  {duration:.2f}s"
+                    f"{number_token}  Take {candidate.number}  {duration:.2f}s"
+                    f"{accepted_marker}"
                 )
                 action(
                     ("candidate", candidate.number),
