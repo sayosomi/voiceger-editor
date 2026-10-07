@@ -1616,10 +1616,14 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(editor.kind, "audio_output_settings")
         self.assertEqual(
             controller.selection_keys(),
-            ["filename_template", "save_text", "save_lab", "back"],
+            [
+                "output_format", "output_encoding", "filename_template",
+                "save_text", "save_lab", "back",
+            ],
         )
         self.assertIs(editor.payload["draft_settings"], parent.payload["draft_settings"])
 
+        editor.selection = "filename_template"
         controller.handle_key(
             "\n", settings=settings, query=None, current_caption="今日は雨"
         )
@@ -1651,6 +1655,44 @@ class TuiEditorControllerTests(unittest.TestCase):
             parent.payload["draft_settings"]["filename_template"],
             "{YYYY-MM-DD}_{style}_{text}",
         )
+
+    def test_audio_output_switching_preserves_format_specific_encoding_and_preview(self):
+        settings = self.settings()
+        controller, _provider = self.make_controller()
+        controller.open_settings(settings, origin=("settings", None), busy=False)
+        controller.editor.selection = "audio_output"
+        controller.handle_key(
+            "\n", settings=settings, query=None, current_caption="Preview caption"
+        )
+        editor = controller.editor
+        draft = editor.payload["draft_settings"]
+
+        self.assertEqual(editor.selection, "output_format")
+        self.assertEqual(draft["output_format"], "wav")
+        self.assertEqual(draft["wav_encoding"], "source")
+        self.assertTrue(editor.payload["filename_preview"].endswith(".wav"))
+
+        editor.selection = "output_encoding"
+        controller.adjust_settings(1)
+        self.assertEqual(draft["wav_encoding"], "pcm16")
+
+        editor.selection = "output_format"
+        controller.adjust_settings(1)
+        self.assertEqual(draft["output_format"], "flac")
+        self.assertEqual(draft["flac_encoding"], "pcm16")
+        self.assertTrue(editor.payload["filename_preview"].endswith(".flac"))
+
+        editor.selection = "output_encoding"
+        controller.adjust_settings(1)
+        self.assertEqual(draft["flac_encoding"], "pcm24")
+
+        editor.selection = "output_format"
+        controller.adjust_settings(1)
+        self.assertEqual(draft["output_format"], "wav")
+        self.assertEqual(draft["wav_encoding"], "pcm16")
+        controller.adjust_settings(1)
+        self.assertEqual(draft["output_format"], "flac")
+        self.assertEqual(draft["flac_encoding"], "pcm24")
 
     def test_settings_txt_left_and_right_each_toggle_continuously(self):
         settings = self.settings()
@@ -1856,6 +1898,9 @@ class TuiEditorControllerTests(unittest.TestCase):
                 "take_count": "6",
                 "output_dir": "/tmp/opening-output",
                 "filename_template": "{YYYYMMDDHHmm}_{text}",
+                "output_format": "wav",
+                "wav_encoding": "source",
+                "flac_encoding": "pcm16",
                 "save_text": True,
                 "save_lab": False,
                 "top_k": "20",
