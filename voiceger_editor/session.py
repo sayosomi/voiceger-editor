@@ -405,10 +405,17 @@ class UtteranceSession:
 
     def accept_take(self, take_number: int) -> SavedOutput:
         batch = self._require_active_batch()
+        output_encoding = (
+            self._settings.wav_encoding
+            if self._settings.output_format == "wav"
+            else self._settings.flac_encoding
+        )
         accept_kwargs = {
             "output_dir": self._settings.output_dir,
             "save_text": self._settings.save_text,
             "filename_template": self._settings.filename_template,
+            "output_format": self._settings.output_format,
+            "output_encoding": output_encoding,
         }
         if self._settings.save_lab:
             accept_kwargs["save_lab"] = True
