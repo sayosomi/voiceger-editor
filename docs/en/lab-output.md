@@ -56,10 +56,10 @@ To disable it for one invocation:
 
 LAB is generated only for the accepted Take.
 
-Candidate Takes remain WAV and are not aligned in advance. When the accepted
-audio Format is FLAC, LAB alignment still uses the generated candidate WAV
-internally, while the final `.lab` is written beside the FLAC with the same
-basename.
+Candidate Takes remain WAV and are not aligned in advance. LAB alignment uses
+the generated candidate WAV internally even when the accepted audio Format is
+FLAC or MP3. The final `.lab` is written beside the accepted audio file with
+the same basename.
 
 WAV example:
 
@@ -74,6 +74,8 @@ FLAC example:
 202610020307_今日は雨なのだ。.flac
 202610020307_今日は雨なのだ。.lab
 ```
+
+MP3 uses the same rule when ffmpeg-backed MP3 output is available.
 
 If TXT is also enabled:
 
@@ -93,17 +95,22 @@ If the basename already exists, Voiceger Editor adds:
 
 before the extension.
 
-## Filename format
+## Filename and audio format
 
-Accepted TUI Takes use:
+Accepted-Take naming is controlled by **Settings -> File format & naming**.
+
+The default basename template is:
 
 ```text
-YYYYMMDDHHMM_テキスト.wav
+{YYYYMMDDHHmm}_{text}
 ```
 
-The timestamp uses local time and minute resolution.
+The audio extension comes from the selected Format: WAV, FLAC, or MP3 when MP3
+is available. TXT and LAB sidecars use the same final basename and collision
+suffix.
 
-Style is not included in the filename.
+The template can also use `{style}` and the supported date/time tokens described
+in [Settings](settings.md). The default template does not include Style.
 
 Characters that are invalid in filenames are removed.
 
@@ -186,7 +193,7 @@ Regenerate the Take after enabling LAB.
 
 ## Failure behavior
 
-The accepted WAV or FLAC file is the primary output.
+The accepted audio file is the primary output.
 
 If LAB generation fails:
 

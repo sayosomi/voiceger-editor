@@ -68,7 +68,7 @@ The VOICEVOX-style API kana form uses `/`:
 
 ## Move Japanese accent
 
-On the Main screen, select a Japanese pronunciation row.
+On a Batch Item, select a Japanese pronunciation row.
 
 Use Left / Right to move the accent by one mora.
 
@@ -133,6 +133,15 @@ S W IY1 T
 ```
 
 Voiceger Editor validates supported phoneme tokens before applying the edit.
+
+## English-only Captions
+
+An English-only Caption is prepared with Voiceger's English G2P and exposes the
+same editable ARPAbet word groups used by English sections in mixed text.
+
+Preview, Generate, regeneration, playback, Accept, and the English user dictionary
+are supported. Synthesis uses Voiceger's native English mode; Voiceger Editor does
+not insert a fake Japanese section just to route synthesis.
 
 ## Mixed Japanese-English text
 

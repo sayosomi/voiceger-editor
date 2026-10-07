@@ -2,11 +2,11 @@
 
 Voiceger Editor has separate Japanese and English user dictionaries.
 
-Use the Dictionary screen from the Main TUI, or save directly from a pronunciation editor.
+Open Dictionary from Batch List or Batch Item, or save directly from a pronunciation editor.
 
 ## Open the dictionary
 
-From the Main screen, select Dictionary or press:
+From Batch List or Batch Item, select Dictionary or press:
 
 ```text
 d
@@ -18,6 +18,22 @@ Choose:
 - English;
 - Import dictionary;
 - Export dictionary.
+
+The Japanese and English dictionary lists share the numbered-list navigation used
+elsewhere in the TUI. Keys `1` through `9` open the matching visible word
+directly. With 10 or more visible words, `0` opens explicit number entry; type
+the target number and press Enter.
+
+Both lists expose `[S] Sort` and `[F] Filter`. Sort can be cycled with the
+shortcut or with Left / Right while focused. Japanese sort modes are Surface
+ascending/descending, Word type, Priority ascending/descending, and Added
+ascending/descending. English sort modes are Surface ascending/descending and
+Added ascending/descending.
+
+Japanese Filter can match Surface or Pronunciation and can restrict Word type.
+English Filter matches Surface or ARPAbet. Once filter criteria exist, Left /
+Right on the Filter row toggles those saved criteria on or off without deleting
+them.
 
 ## Japanese dictionary
 

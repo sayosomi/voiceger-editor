@@ -90,13 +90,15 @@ BATCH LIST
 → accept one Take
 ```
 
+English-only Captions use the same Batch List → Batch Item workflow and Voiceger's native English mode.
+
 The supported 0.1 speech scope is:
 
 - Japanese;
 - English;
 - Japanese with English sections.
 
-0.1.0 is the initial public release. Interfaces may still change before 1.0.
+0.1.0 was the initial public release. This documentation describes the v0.1.1 behavior within the 0.1 series. Interfaces may still change before 1.0.
 
 See [Compatibility](docs/en/compatibility.md) for details.
 

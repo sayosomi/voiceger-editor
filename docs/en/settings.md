@@ -2,7 +2,7 @@
 
 Voiceger Editor stores reusable synthesis and output settings.
 
-Open Settings from the Main TUI with:
+Open Settings from Batch List or Batch Item with:
 
 ```text
 s
@@ -13,6 +13,11 @@ Use Up / Down to choose a row.
 Use Left / Right for adjustable values.
 
 Use Enter for direct text or numeric editing where available.
+
+Settings also exposes direct row shortcuts: `s` Style, `v` Speed, `n` Takes,
+`f` Output, `o` File format & naming, `k` Top K, `p` Top P, and `t`
+Temperature. These shortcuts focus or activate the same visible rows rather than
+using a separate settings path.
 
 Select `Apply and save` to persist changes.
 

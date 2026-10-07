@@ -126,6 +126,15 @@ Windows PowerShell:
 curl.exe -s -G -X POST "http://127.0.0.1:8001/audio_query" --data-urlencode "text=今日は雨なのだ。" --data-urlencode "speaker=3" --output query.json
 ```
 
+English-only text can be used directly:
+
+```text
+Caption 01
+```
+
+For an all-English query, Voiceger Editor keeps all language segments as English
+and synthesis uses Voiceger's native English mode.
+
 Japanese-English mixed text can be used in the same request:
 
 ```text
@@ -163,6 +172,10 @@ You can edit the JSON returned by `/audio_query` before synthesis.
 For Japanese pronunciation, `accent_phrases` contains morae and accent positions.
 
 Changing an accent value changes the selected accent position.
+
+For English-only and mixed queries, keep the `voicegerSegments` extension when
+sending the query to `/synthesis`; it preserves the English sections and their
+explicit ARPAbet pronunciation.
 
 ## `/accent_phrases`
 
