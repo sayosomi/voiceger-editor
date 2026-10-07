@@ -1685,11 +1685,25 @@ class TuiEditorControllerTests(unittest.TestCase):
         editor.selection = "output_encoding"
         controller.adjust_settings(1)
         self.assertEqual(draft["flac_encoding"], "pcm24")
+        self.assertEqual(
+            controller.adjust_settings(1),
+            (ClearAdjustmentFeedbackIntent(),),
+        )
+        self.assertEqual(draft["flac_encoding"], "pcm24")
 
         editor.selection = "output_format"
         controller.adjust_settings(1)
         self.assertEqual(draft["output_format"], "wav")
         self.assertEqual(draft["wav_encoding"], "pcm16")
+        editor.selection = "output_encoding"
+        controller.adjust_settings(-1)
+        self.assertEqual(draft["wav_encoding"], "source")
+        self.assertEqual(
+            controller.adjust_settings(-1),
+            (ClearAdjustmentFeedbackIntent(),),
+        )
+        self.assertEqual(draft["wav_encoding"], "source")
+        editor.selection = "output_format"
         controller.adjust_settings(1)
         self.assertEqual(draft["output_format"], "flac")
         self.assertEqual(draft["flac_encoding"], "pcm24")
