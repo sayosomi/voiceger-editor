@@ -80,10 +80,10 @@ Install the TUI from PyPI:
 python -m pip install "voiceger-editor[tui]"
 ```
 
-For the exact v0.1.0 release:
+For the exact v0.1.1 release:
 
 ```text
-python -m pip install "voiceger-editor[tui]==0.1.0"
+python -m pip install "voiceger-editor[tui]==0.1.1"
 ```
 
 Check the installed version:
@@ -92,10 +92,10 @@ Check the installed version:
 voiceger-editor --version
 ```
 
-Expected output:
+Expected output for v0.1.1:
 
 ```text
-voiceger-editor 0.1.0
+voiceger-editor 0.1.1
 ```
 
 ### API support
@@ -281,17 +281,25 @@ Run:
 voiceger-editor
 ```
 
-Or start with a Caption:
+Or preload the Batch List with a Caption:
 
 ```bash
 voiceger-editor "このずんだ餅はvery sweetなのだ。"
 ```
 
+English-only Captions are also supported:
+
+```bash
+voiceger-editor "Caption 01"
+```
+
 The normal workflow is:
 
 ```text
-Caption
-→ pronunciation
+BATCH LIST
+→ open a Caption
+→ BATCH ITEM n/m
+→ review or edit pronunciation
 → Generate
 → listen to Takes
 → accept one Take

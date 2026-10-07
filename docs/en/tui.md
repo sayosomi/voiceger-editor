@@ -28,6 +28,11 @@ BATCH LIST
 → accept one Take
 ```
 
+English-only Captions are supported alongside Japanese and mixed Japanese-English
+Captions. Opening an unprepared Caption starts pronunciation preparation for that
+Caption; when preparation succeeds, the normal Japanese or English pronunciation
+rows become available.
+
 On `BATCH LIST`, Space toggles whether the focused Caption is selected for
 outer batch generation. Left / Right on `Takes` changes the batch default Take
 count. Open a Caption to use its visible Batch Item actions, including Caption
@@ -92,6 +97,22 @@ editable and can generate new Takes.
 
 The TUI uses one vertical navigation flow. Editing opens a focused editor instead of changing values accidentally during normal navigation.
 
+## Numbered-list navigation
+
+Batch List Captions, Dictionary words, and Batch Item Take candidates share the
+same numbered-list convention:
+
+- items 1 through 9 show bracketed shortcuts such as `[1]` and can be opened or
+  focused directly with that number key;
+- when a list has 10 or more items, `[0]` opens an explicit number entry;
+- type the target number and press Enter to jump;
+- Esc cancels number entry;
+- an out-of-range number reports a Warning and keeps number entry active.
+
+For Batch List, the jump opens the requested Caption. For Dictionary lists, it
+opens the requested word. For Take candidates, it focuses and plays the requested
+Take; that jump Enter does not Accept it.
+
 ## Caption
 
 From `BATCH LIST`, select a Caption and press Enter to open its `BATCH ITEM n/m`
@@ -102,6 +123,12 @@ Example:
 
 ```text
 今日は雨なのだ。
+```
+
+English-only text is supported:
+
+```text
+Caption 01
 ```
 
 Mixed Japanese-English text is also supported:
@@ -128,9 +155,13 @@ Shortcut:
 p
 ```
 
+When a Batch Item has not been prepared yet, opening it automatically starts the
+same preparation pipeline and shows preparation Status until it completes. This
+includes English-only Captions, which use Voiceger's English G2P.
+
 If manual pronunciation edits already exist, the TUI asks for confirmation before replacing them.
 
-Rebuilding pronunciation clears existing candidate Takes.
+Rebuilding pronunciation clears existing candidate Takes and any acceptance state tied to them.
 
 ## Japanese pronunciation
 
@@ -208,6 +239,11 @@ While an individual Generate or regenerate-all operation remains active, the ori
 
 Voiceger Editor keeps a single synthesis slot and does not queue another Generate request behind active work. When another Batch Item is open during generation, its Generate row remains visible but is marked `[busy]` and does not show the other Caption's progress. BATCH LIST similarly marks `Generate selected` as `[busy]`. Activating either action does not start, replace, or queue work; Status identifies the active Caption or batch generation and tells you to finish or cancel it first. Busy Generate rows omit adjustable angle brackets because the Take count is not currently actionable.
 
+Batch List also summarizes per-Caption review state: `[✓]` means a Take has
+been accepted, `[!]` means generation completed and still needs review, and
+`[⚠]` marks a cancelled or failed generation outcome. Active generation
+temporarily replaces that marker with percentage progress.
+
 Active Take generation has its own persistent footer line, separate from ordinary Status. For example:
 
 ```text
@@ -223,25 +259,27 @@ If generation finishes at the same moment you press Ctrl+C, Voiceger Editor keep
 
 ## Listen to Takes
 
-Moving onto a Take selects it for review.
+Moving focus onto a Take plays it for review. Use:
 
-Use:
+- Space to replay the focused Take;
+- number keys `1` through `9` to focus and play that Take directly;
+- with 10 or more Takes, `0` → number → Enter to focus and play an arbitrary Take;
+- `r` to regenerate only the focused Take when that action is available.
 
-- Space to replay the selected Take;
-- number keys `1` through `9` to jump to a visible candidate;
-- `r` to regenerate only the selected Take when that action is available.
-
-Regenerating one Take leaves the other candidates unchanged.
+Regenerating one Take leaves the other candidates unchanged. Replacing the
+currently accepted Take invalidates that acceptance until a Take is accepted again.
 
 ## Accept a Take
 
-Select a Take and press Enter.
+Focus a Take and press Enter.
 
-The accepted Take is saved as WAV.
+The accepted Take is saved in the configured audio format: WAV or FLAC, or MP3
+when ffmpeg is available. If enabled, TXT and LAB sidecars use the same final
+basename.
 
-If enabled, TXT and LAB sidecars are saved with the same basename.
-
-After acceptance, temporary candidates are cleared and the TUI returns to the pronunciation workflow.
+Acceptance does not discard the candidate set. The accepted candidate is marked
+with `✓` inside the Batch Item, and the corresponding Batch List Caption shows
+`[✓]`. You can continue reviewing or regenerating candidates after acceptance.
 
 ## Clear candidates
 
@@ -257,7 +295,7 @@ Candidate clearing is not available while synthesis is actively running.
 
 ## Changes that clear Takes
 
-Applying a synthesis-affecting change clears existing candidate Takes.
+Applying a synthesis-affecting change clears existing candidate Takes and any acceptance state that depended on them.
 
 This includes:
 
@@ -279,6 +317,8 @@ Changing the configured Take count does not change the synthesis parameters of T
 | --- | --- |
 | Space | Toggle focused Caption `[x] / [ ]` |
 | Enter | Open focused Caption |
+| `1`–`9` | Open the matching Caption directly |
+| `0` | With 10+ Captions, enter an arbitrary Caption number |
 | Left / Right | Change batch default Takes when `Takes` is focused |
 | `a` | Add captions |
 | `g` | Generate selected |
@@ -293,6 +333,10 @@ Changing the configured Take count does not change the synthesis parameters of T
 
 | Key | Action |
 | --- | --- |
+| `[` / `]` | Previous / next Batch Item |
+| Left / Right on `BATCH ITEM n/m` | Previous / next Batch Item |
+| `1`–`9` | Focus and play the matching Take |
+| `0` | With 10+ Takes, enter an arbitrary Take number |
 | `f` | Edit Output path |
 | `e` | Caption |
 | `p` | Build pronunciation |
@@ -306,6 +350,8 @@ Changing the configured Take count does not change the synthesis parameters of T
 | `q` | Quit |
 
 Press `f` from Batch Item to jump directly into Output path editing.
+The `[` and `]` shortcuts move between Batch Items without wrapping; focusing
+the `BATCH ITEM n/m` navigator exposes the same movement on Left / Right.
 Other Settings-local shortcuts are available after opening Settings.
 
 ## Settings and dictionary

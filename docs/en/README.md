@@ -1,6 +1,6 @@
 # User Documentation
 
-This is the English user documentation for Voiceger Editor 0.1.
+This is the English user documentation for the Voiceger Editor 0.1 series. It describes the v0.1.1 product behavior.
 
 Voiceger Editor adds pronunciation editing, Take generation, and a VOICEVOX-style API to a local Voiceger installation.
 
@@ -41,11 +41,12 @@ Install Voiceger
 The documented 0.1 speech scope is:
 
 - Japanese;
+- English;
 - Japanese with English sections.
 
 Japanese pronunciation and pitch accent can be edited.
 
-English sections can use editable ARPAbet pronunciation and stress.
+English-only Captions and English sections inside mixed text use editable ARPAbet pronunciation and stress.
 
 ## Project names
 
