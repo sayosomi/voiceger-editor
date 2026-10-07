@@ -942,6 +942,7 @@ class TuiOperations:
             "output_format",
             "wav_encoding",
             "flac_encoding",
+            "mp3_bitrate",
             "save_text",
             "save_lab",
         }
