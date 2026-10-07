@@ -1095,6 +1095,7 @@ class UtteranceSessionTests(unittest.TestCase):
                     {
                         "output_dir": session.settings.output_dir,
                         "save_text": session.settings.save_text,
+                        "filename_template": session.settings.filename_template,
                     },
                 )
             ],
@@ -1110,6 +1111,7 @@ class UtteranceSessionTests(unittest.TestCase):
         replacement_settings = replace(
             session.settings,
             output_dir=Path("/latest-output"),
+            filename_template="{style}_{text}",
             save_text=False,
         )
         with patch(
@@ -1128,6 +1130,7 @@ class UtteranceSessionTests(unittest.TestCase):
                     {
                         "output_dir": Path("/latest-output"),
                         "save_text": False,
+                        "filename_template": "{style}_{text}",
                     },
                 )
             ],

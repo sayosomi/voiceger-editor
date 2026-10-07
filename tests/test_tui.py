@@ -1728,6 +1728,10 @@ class TuiTests(unittest.TestCase):
             self.assertIn("[N] Takes", take_moved_left)
             self.assertIn("<<4 >", take_moved_left)
 
+            editor.selection = "audio_output"
+            app._handle_key("\n")
+            editor = app._editor_controller.editor
+            self.assertEqual(editor.kind, "audio_output_settings")
             editor.selection = "save_text"
             editor.payload["draft_settings"]["save_text"] = False
             app._pressed_adjustment = ("settings", "take_count", 1)
@@ -1771,6 +1775,9 @@ class TuiTests(unittest.TestCase):
             self.assertIn("[X] TXT", txt_right_again)
             self.assertIn("< OFF>>", txt_right_again)
 
+            app._handle_key("\x1b")
+            editor = app._editor_controller.editor
+            self.assertEqual(editor.kind, "settings")
             editor.selection = "style_id"
             app._handle_key(curses.KEY_RIGHT)
             app._handle_key(curses.KEY_DOWN)
@@ -3104,11 +3111,6 @@ class TuiTests(unittest.TestCase):
             app._handle_key(curses.KEY_LEFT)
             self.assertEqual(editor.payload["draft_settings"]["take_count"], "99")
 
-            editor.selection = "save_text"
-            app._handle_key(curses.KEY_LEFT)
-            self.assertTrue(editor.payload["draft_settings"]["save_text"])
-            app._handle_key(curses.KEY_RIGHT)
-            self.assertFalse(editor.payload["draft_settings"]["save_text"])
             self.assertEqual(app.settings, original_settings)
             self.assertEqual(app.session.replace_settings_calls, [])
             self.assertEqual(app.session.candidates, (candidate(1),))
@@ -3126,7 +3128,7 @@ class TuiTests(unittest.TestCase):
             rendered = self.rendered(screen)
             for label in (
                 "[S] Style *", "[V] Speed *", "[N] Takes",
-                "[F] Output", "[X] TXT", "[L] LAB",
+                "[F] Output", "[O] File format & naming",
             ):
                 self.assertIn(label, rendered)
             for heading in ("Voice", "Generation", "Output", "Sampling", "Actions"):
@@ -3165,8 +3167,6 @@ class TuiTests(unittest.TestCase):
         cases = (
             ("style_id", "22", Settings(style_id=22)),
             ("speed", "1.25", Settings(speed=1.25)),
-            ("save_text", True, Settings(save_text=True)),
-            ("save_lab", True, Settings(save_lab=True)),
         )
         for field, value, expected in cases:
             with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
@@ -3174,11 +3174,7 @@ class TuiTests(unittest.TestCase):
                 app.config_path = Path(directory) / "config.json"
                 app._open_settings_editor(field)
                 editor = app._editor_controller.editor
-                if field in {"save_text", "save_lab"}:
-                    app._handle_key(curses.KEY_RIGHT)
-                    self.assertTrue(editor.payload["draft_settings"][field])
-                else:
-                    editor.payload["draft_settings"][field] = value
+                editor.payload["draft_settings"][field] = value
 
                 target = Settings(
                     style_id=expected.style_id,
@@ -3198,6 +3194,7 @@ class TuiTests(unittest.TestCase):
                     json.loads(app.config_path.read_text()),
                     {
                         "output_dir": str(target.output_dir),
+                        "filename_template": target.filename_template,
                         "take_count": target.take_count,
                         "style_id": target.style_id,
                         "speed": target.speed,
@@ -3208,6 +3205,40 @@ class TuiTests(unittest.TestCase):
                         "save_lab": target.save_lab,
                     },
                 )
+
+    def test_audio_output_template_and_sidecars_apply_with_parent_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
+            app.config_path = Path(directory) / "config.json"
+            app._open_settings_editor()
+            parent = app._editor_controller.editor
+            parent.selection = "audio_output"
+            app._handle_key("\n")
+            editor = app._editor_controller.editor
+            self.assertEqual(editor.kind, "audio_output_settings")
+
+            editor.selection = "filename_template"
+            app._handle_key("\n")
+            editor.input_value = "{style}_{text}_{HHmmss}"
+            app._handle_key("\n")
+            editor.selection = "save_text"
+            app._handle_key(curses.KEY_RIGHT)
+            editor.selection = "save_lab"
+            app._handle_key(curses.KEY_RIGHT)
+
+            app._handle_key("\x1b")
+            self.assertIs(app._editor_controller.editor, parent)
+            parent.selection = "apply"
+            app._handle_key("\n")
+
+            self.assertIsNone(app._editor_controller.editor)
+            self.assertEqual(app.settings.filename_template, "{style}_{text}_{HHmmss}")
+            self.assertTrue(app.settings.save_text)
+            self.assertTrue(app.settings.save_lab)
+            saved = json.loads(app.config_path.read_text())
+            self.assertEqual(saved["filename_template"], "{style}_{text}_{HHmmss}")
+            self.assertTrue(saved["save_text"])
+            self.assertTrue(saved["save_lab"])
 
     def test_sampling_draft_only_applies_and_invalidates_candidates_on_apply(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -3293,6 +3324,7 @@ class TuiTests(unittest.TestCase):
                 json.loads(app.config_path.read_text()),
                 {
                     "output_dir": str(target.output_dir),
+                    "filename_template": target.filename_template,
                     "take_count": 42,
                     "style_id": target.style_id,
                     "speed": target.speed,
@@ -3341,6 +3373,7 @@ class TuiTests(unittest.TestCase):
                 "speed": "1.2",
                 "take_count": "6",
                 "output_dir": "/tmp/opening-settings",
+                "filename_template": "{YYYYMMDDHHmm}_{text}",
                 "save_text": True,
                 "save_lab": False,
                 "top_k": "20",
@@ -3416,6 +3449,7 @@ class TuiTests(unittest.TestCase):
             self.assertEqual(app._persisted_settings, target)
             self.assertEqual(json.loads(config_path.read_text()), {
                 "output_dir": "/tmp/explicit-output",
+                "filename_template": target.filename_template,
                 "take_count": 7,
                 "style_id": 22,
                 "speed": 1.25,

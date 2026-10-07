@@ -270,6 +270,10 @@ def _active_input_prefix(editor: EditorRenderState) -> str:
     if editor.kind in {"dictionary_japanese_entry", "dictionary_english_entry"}:
         label = "Surface" if editor.active_field == "surface" else "Pronunciation"
         return f"▶ {label:<15}"
+    if editor.kind == "audio_output_settings":
+        if editor.active_field == "filename_template":
+            return "▶ Filename template  "
+        return "▶ "
     if editor.kind == "settings":
         labels = {
             "style_id": "Style",
@@ -1363,8 +1367,6 @@ class TuiRenderer:
                 ),
                 ("take_count", str(draft["take_count"])),
                 ("output_dir", str(draft["output_dir"])),
-                ("save_text", "ON" if draft["save_text"] else "OFF"),
-                ("save_lab", "ON" if draft.get("save_lab", False) else "OFF"),
                 ("top_k", str(draft.get("top_k", VOICEGER_DEFAULT_TOP_K))),
                 (
                     "top_p",
@@ -1399,7 +1401,7 @@ class TuiRenderer:
                     )
                 else:
                     if key in {
-                        "style_id", "speed", "take_count", "save_text", "save_lab",
+                        "style_id", "speed", "take_count",
                         "top_k", "top_p", "temperature",
                     }:
                         value = _adjustable_value(
@@ -1413,12 +1415,45 @@ class TuiRenderer:
                         else label
                     )
                     lines.append((f"{marker}{visible_label:<20}{value}", key))
+                if key == "output_dir":
+                    selectable("audio_output")
             selectable("reset_sampling")
             plain("Actions")
             selectable("apply")
             selectable("reset")
             selectable("back")
             plain("* Applying this setting clears existing candidates.")
+        elif editor.kind == "audio_output_settings":
+            draft = editor.payload["draft_settings"]
+            plain()
+            if editor.active_field == "filename_template":
+                input_field("filename_template")
+            else:
+                wrapped_selectable_text(
+                    "filename_template",
+                    "Filename template  " + str(draft["filename_template"]),
+                )
+            plain()
+            plain("Preview")
+            preview_error = str(editor.payload.get("filename_preview_error", ""))
+            if preview_error:
+                wrap("  Invalid: ", preview_error)
+            else:
+                wrap("  ", str(editor.payload.get("filename_preview", "")))
+            plain()
+            plain("Sidecars")
+            for key in ("save_text", "save_lab"):
+                item = menu_item(editor.kind, key, editor.payload)
+                marker = "▶ " if editor.selection == key else "  "
+                value = "ON" if draft.get(key, False) else "OFF"
+                value = _adjustable_value(
+                    value,
+                    self._adjustment_press_direction(state, "settings", key),
+                )
+                lines.append((f"{marker}{item.display_label:<14}{value}", key))
+            plain()
+            plain("Tokens: YYYY MM DD HH mm ss · {text} {style}")
+            selectable("back")
         elif editor.kind == "english_word":
             plain()
             plain("Word")

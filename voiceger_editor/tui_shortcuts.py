@@ -191,8 +191,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("speed", "Speed", "v", "adjustable", "focus"),
         MenuItem("take_count", "Takes", "n", "adjustable", "focus"),
         _path_edit_item("output_dir", "Output"),
-        MenuItem("save_text", "TXT", "x", "adjustable", "focus"),
-        MenuItem("save_lab", "LAB", "l", "adjustable", "focus"),
+        MenuItem("audio_output", "File format & naming", "o", "action", "activate"),
         MenuItem("top_k", "Top K", "k", "adjustable", "focus"),
         MenuItem("top_p", "Top P", "p", "adjustable", "focus"),
         MenuItem("temperature", "Temperature", "t", "adjustable", "focus"),
@@ -205,6 +204,18 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         ),
         MenuItem("apply", "Apply and save", "a", "action", "activate"),
         MenuItem("reset", "Reset", "r", "action", "activate"),
+        _escape_action("back", "Back"),
+    ),
+    "audio_output_settings": (
+        MenuItem(
+            "filename_template",
+            "Filename template",
+            None,
+            "editable",
+            no_shortcut_reason="Enter edits the filename template.",
+        ),
+        MenuItem("save_text", "TXT", "x", "adjustable", "focus"),
+        MenuItem("save_lab", "LAB", "l", "adjustable", "focus"),
         _escape_action("back", "Back"),
     ),
     "dictionary_menu": (

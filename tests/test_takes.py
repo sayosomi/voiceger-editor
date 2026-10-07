@@ -487,6 +487,7 @@ class TakeBatchTests(unittest.TestCase):
                 style_name="Sweet",
                 output_dir=Path(directory),
                 save_text=True,
+                filename_template="{YYYYMMDDHHmm}_{text}",
             )
             self.assertTrue(all(path.exists() for path in temporary_paths))
             self.assertTrue(temporary_directory.exists())

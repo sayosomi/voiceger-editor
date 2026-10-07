@@ -936,7 +936,12 @@ class TuiOperations:
             return warning_status(
                 "Synthesis settings cannot change while the current operation is active."
             )
-        output_names = {"output_dir", "save_text", "save_lab"}
+        output_names = {
+            "output_dir",
+            "filename_template",
+            "save_text",
+            "save_lab",
+        }
         if self.worker_operation == "accept" and changed & output_names:
             return warning_status(
                 "Output settings cannot change while a Take is being saved."

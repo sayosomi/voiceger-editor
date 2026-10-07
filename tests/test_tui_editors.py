@@ -1577,7 +1577,7 @@ class TuiEditorControllerTests(unittest.TestCase):
         self.assertEqual(
             controller.selection_keys(),
             [
-                "style_id", "speed", "take_count", "output_dir", "save_text", "save_lab",
+                "style_id", "speed", "take_count", "output_dir", "audio_output",
                 "top_k", "top_p", "temperature", "reset_sampling",
                 "apply", "reset", "back",
             ],
@@ -1586,8 +1586,6 @@ class TuiEditorControllerTests(unittest.TestCase):
         drafts = (
             ("style_id", {"style_id": "22"}, Settings(style_id=22, output_dir=settings.output_dir)),
             ("speed", {"speed": "1.25"}, Settings(speed=1.25, output_dir=settings.output_dir)),
-            ("save_text", {"save_text": True}, Settings(save_text=True, output_dir=settings.output_dir)),
-            ("save_lab", {"save_lab": True}, Settings(save_lab=True, output_dir=settings.output_dir)),
         )
         for field, updates, expected in drafts:
             with self.subTest(field=field):
@@ -1604,11 +1602,66 @@ class TuiEditorControllerTests(unittest.TestCase):
                 self.assertIs(controller.editor, editor)
                 self.assertIsNone(editor.active_field)
 
+    def test_audio_output_template_validation_and_back_preserve_parent_draft(self):
+        settings = self.settings()
+        controller, _provider = self.make_controller()
+        controller.open_settings(settings, origin=("settings", None), busy=False)
+        parent = controller.editor
+        parent.selection = "audio_output"
+
+        controller.handle_key(
+            "\n", settings=settings, query=None, current_caption="今日は雨"
+        )
+        editor = controller.editor
+        self.assertEqual(editor.kind, "audio_output_settings")
+        self.assertEqual(
+            controller.selection_keys(),
+            ["filename_template", "save_text", "save_lab", "back"],
+        )
+        self.assertIs(editor.payload["draft_settings"], parent.payload["draft_settings"])
+
+        controller.handle_key(
+            "\n", settings=settings, query=None, current_caption="今日は雨"
+        )
+        editor.input_value = "{take}_{text}"
+        self.assertEqual(
+            controller.handle_key(
+                "\n", settings=settings, query=None, current_caption="今日は雨"
+            ),
+            (),
+        )
+        self.assertEqual(editor.active_field, "filename_template")
+        self.assertIn("Filename template is invalid", str(editor.error))
+
+        editor.input_value = "{YYYY-MM-DD}_{style}_{text}"
+        controller.handle_key(
+            "\n", settings=settings, query=None, current_caption="今日は雨"
+        )
+        self.assertIsNone(editor.active_field)
+        self.assertEqual(
+            editor.payload["draft_settings"]["filename_template"],
+            "{YYYY-MM-DD}_{style}_{text}",
+        )
+
+        controller.handle_key(
+            "\x1b", settings=settings, query=None, current_caption="今日は雨"
+        )
+        self.assertIs(controller.editor, parent)
+        self.assertEqual(
+            parent.payload["draft_settings"]["filename_template"],
+            "{YYYY-MM-DD}_{style}_{text}",
+        )
+
     def test_settings_txt_left_and_right_each_toggle_continuously(self):
         settings = self.settings()
         controller, _provider = self.make_controller()
         controller.open_settings(settings, origin=("settings", None), busy=False)
+        controller.editor.selection = "audio_output"
+        controller.handle_key(
+            "\n", settings=settings, query=None, current_caption="Preview caption"
+        )
         editor = controller.editor
+        self.assertEqual(editor.kind, "audio_output_settings")
         editor.selection = "save_text"
         editor.payload["draft_settings"]["save_text"] = False
 
@@ -1802,6 +1855,7 @@ class TuiEditorControllerTests(unittest.TestCase):
                 "speed": "1.2",
                 "take_count": "6",
                 "output_dir": "/tmp/opening-output",
+                "filename_template": "{YYYYMMDDHHmm}_{text}",
                 "save_text": True,
                 "save_lab": False,
                 "top_k": "20",
