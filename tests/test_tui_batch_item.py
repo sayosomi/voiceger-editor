@@ -464,21 +464,30 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         bindings.actions.editor_controller.open_clear_candidates_confirmation.assert_not_called()
         bindings.actions.set_status.assert_called_once()
 
-    def test_direct_take_number_focuses_and_plays_existing_candidate(self):
+    def test_direct_take_numbers_one_through_nine_focus_and_play(self):
         subject, _batch, bindings, state = self.make_subject()
         state["session"].candidates = [
             SimpleNamespace(number=number) for number in range(1, 10)
         ]
         bindings.actions.operations.play_take.return_value = ()
 
-        subject.handle_key("9", bindings)
+        for number in range(1, 10):
+            with self.subTest(number=number):
+                bindings.actions.navigation.focus_key = ("caption", None)
+                bindings.actions.operations.current_take = None
+                bindings.actions.operations.play_take.reset_mock()
 
-        self.assertEqual(bindings.actions.navigation.focus_key, ("candidate", 9))
-        self.assertEqual(bindings.actions.operations.current_take, 9)
-        bindings.actions.operations.play_take.assert_called_once_with(
-            state["session"],
-            9,
-        )
+                subject.handle_key(str(number), bindings)
+
+                self.assertEqual(
+                    bindings.actions.navigation.focus_key,
+                    ("candidate", number),
+                )
+                self.assertEqual(bindings.actions.operations.current_take, number)
+                bindings.actions.operations.play_take.assert_called_once_with(
+                    state["session"],
+                    number,
+                )
 
     def test_multi_digit_take_jump_focuses_and_plays_without_accepting(self):
         subject, _batch, bindings, state = self.make_subject()

@@ -2626,9 +2626,11 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("[E] Caption : ", caption)
         self.assertNotIn("[T]", caption)
 
-    def test_candidates_above_nine_have_no_direct_numeric_shortcut_label(self):
+    def test_candidate_number_tokens_bracket_one_through_nine_and_align_ten(self):
         state = render_state(
-            session=FakeSession(candidates=(candidate(9), candidate(10))),
+            session=FakeSession(
+                candidates=tuple(candidate(number) for number in range(1, 11))
+            ),
             settings=Settings(take_count=100),
         )
         labels = {
@@ -2637,7 +2639,12 @@ class TuiRenderingTests(unittest.TestCase):
             if line.key is not None
         }
 
-        self.assertEqual(labels[("candidate", 9)], "  [9]  Take 9  0.01s")
+        for number in range(1, 10):
+            with self.subTest(number=number):
+                self.assertEqual(
+                    labels[("candidate", number)],
+                    f"  [{number}]  Take {number}  0.01s",
+                )
         self.assertEqual(labels[("candidate", 10)], "   10  Take 10  0.01s")
 
     def test_take_number_jump_row_only_appears_for_ten_or_more_candidates(self):
