@@ -1707,7 +1707,7 @@ class TuiRenderer:
                 key = ("entry", index)
                 wrapped_selectable_text(
                     key,
-                    f"{word.surface}      {display}",
+                    f"{index + 1}  {word.surface}      {display}",
                 )
             plain()
             selectable_value(
@@ -1756,7 +1756,7 @@ class TuiRenderer:
                 key = ("entry", index)
                 wrapped_selectable_text(
                     key,
-                    f"{entry.surface}      {' '.join(entry.phonemes)}",
+                    f"{index + 1}  {entry.surface}      {' '.join(entry.phonemes)}",
                 )
             plain()
             selectable_value(
@@ -2011,6 +2011,41 @@ class TuiRenderer:
             width,
             header_attr,
         )
+        content_start_row = 1
+        if editor.kind in {
+            "dictionary_japanese_list",
+            "dictionary_english_list",
+        }:
+            entries = tuple(editor.payload.get("entries", ()))
+            if len(entries) >= 10:
+                if bool(editor.payload.get("number_jump_active", False)):
+                    safe_add(
+                        screen,
+                        1,
+                        0,
+                        (
+                            "▶ Jump to number: "
+                            f"{editor.payload.get('number_jump_value', '')}_ / {len(entries)}"
+                        ),
+                        width,
+                        self._focus_attribute(),
+                    )
+                    safe_add(
+                        screen,
+                        2,
+                        0,
+                        "  [Enter] Open   [Esc] Cancel",
+                        width,
+                    )
+                else:
+                    safe_add(
+                        screen,
+                        1,
+                        0,
+                        "  [0] Jump to number",
+                        width,
+                    )
+                content_start_row = 3
         document = document[1:]
         if cursor_line is not None:
             cursor_line -= 1
@@ -2033,7 +2068,7 @@ class TuiRenderer:
                 else None
             ),
         )
-        viewport_height = max(0, footer.start_row - 1)
+        viewport_height = max(0, footer.start_row - content_start_row)
         focused_line = next(
             (
                 index
@@ -2049,12 +2084,12 @@ class TuiRenderer:
             start = max(0, len(document) - viewport_height)
         for offset, (line, key) in enumerate(document[start : start + viewport_height]):
             attr = self._focus_attribute() if key == editor.selection else 0
-            safe_add(screen, offset + 1, 0, line, width, attr)
+            safe_add(screen, offset + content_start_row, 0, line, width, attr)
         self._render_status_footer(screen, footer, width)
         if cursor_line is not None and start <= cursor_line < start + viewport_height:
             try:
                 screen.move(
-                    cursor_line - start + 1,
+                    cursor_line - start + content_start_row,
                     min(width - 1, cursor_column),
                 )
             except curses.error:
