@@ -346,6 +346,14 @@ def _positioned_title(
     return title_part + (" " * gap) + indicator
 
 
+def _numbered_shortcut_token(number: int, item_count: int) -> str:
+    """Format one numbered-list position with direct-shortcut semantics."""
+
+    token_width = max(3, len(str(max(1, item_count))))
+    token = f"[{number}]" if 1 <= number <= 9 else str(number)
+    return token.rjust(token_width)
+
+
 class TuiRenderer:
     """Own display documents, terminal layout, and curses drawing."""
 
@@ -702,7 +710,8 @@ class TuiRenderer:
                 review_state = "[!] "
             else:
                 review_state = ""
-            prefix = f"{marker}[{selected}] {index + 1}  {review_state}"
+            number_token = _numbered_shortcut_token(index + 1, len(batch))
+            prefix = f"{marker}[{selected}] {number_token}  {review_state}"
             available = max(1, width - 1 - _display_width(prefix))
             pieces = _wrap_text(item.caption, available) or [""]
             lines.append(NavigationLine(prefix + pieces[0], key, key))
@@ -788,7 +797,7 @@ class TuiRenderer:
                     screen,
                     1,
                     0,
-                    f"▶ Jump to number: {number_jump_value}_ / {len(batch)}",
+                    f"▶ Jump to Caption: {number_jump_value}_ / {len(batch)}",
                     width,
                     self._focus_attribute(),
                 )
@@ -804,7 +813,7 @@ class TuiRenderer:
                     screen,
                     1,
                     0,
-                    "  [0] Jump to number",
+                    "  [0] Jump to Caption",
                     width,
                 )
             content_start_row = 3
@@ -1705,9 +1714,10 @@ class TuiRenderer:
                     )
                 )
                 key = ("entry", index)
+                number_token = _numbered_shortcut_token(index + 1, len(entries))
                 wrapped_selectable_text(
                     key,
-                    f"{word.surface}      {display}",
+                    f"{number_token}  {word.surface}      {display}",
                 )
             plain()
             selectable_value(
@@ -1754,9 +1764,10 @@ class TuiRenderer:
                 )
             for index, entry in enumerate(entries):
                 key = ("entry", index)
+                number_token = _numbered_shortcut_token(index + 1, len(entries))
                 wrapped_selectable_text(
                     key,
-                    f"{entry.surface}      {' '.join(entry.phonemes)}",
+                    f"{number_token}  {entry.surface}      {' '.join(entry.phonemes)}",
                 )
             plain()
             selectable_value(
@@ -2011,6 +2022,41 @@ class TuiRenderer:
             width,
             header_attr,
         )
+        content_start_row = 1
+        if editor.kind in {
+            "dictionary_japanese_list",
+            "dictionary_english_list",
+        }:
+            entries = tuple(editor.payload.get("entries", ()))
+            if len(entries) >= 10:
+                if bool(editor.payload.get("number_jump_active", False)):
+                    safe_add(
+                        screen,
+                        1,
+                        0,
+                        (
+                            "▶ Jump to word: "
+                            f"{editor.payload.get('number_jump_value', '')}_ / {len(entries)}"
+                        ),
+                        width,
+                        self._focus_attribute(),
+                    )
+                    safe_add(
+                        screen,
+                        2,
+                        0,
+                        "  [Enter] Open   [Esc] Cancel",
+                        width,
+                    )
+                else:
+                    safe_add(
+                        screen,
+                        1,
+                        0,
+                        "  [0] Jump to word",
+                        width,
+                    )
+                content_start_row = 3
         document = document[1:]
         if cursor_line is not None:
             cursor_line -= 1
@@ -2033,7 +2079,7 @@ class TuiRenderer:
                 else None
             ),
         )
-        viewport_height = max(0, footer.start_row - 1)
+        viewport_height = max(0, footer.start_row - content_start_row)
         focused_line = next(
             (
                 index
@@ -2049,12 +2095,12 @@ class TuiRenderer:
             start = max(0, len(document) - viewport_height)
         for offset, (line, key) in enumerate(document[start : start + viewport_height]):
             attr = self._focus_attribute() if key == editor.selection else 0
-            safe_add(screen, offset + 1, 0, line, width, attr)
+            safe_add(screen, offset + content_start_row, 0, line, width, attr)
         self._render_status_footer(screen, footer, width)
         if cursor_line is not None and start <= cursor_line < start + viewport_height:
             try:
                 screen.move(
-                    cursor_line - start + 1,
+                    cursor_line - start + content_start_row,
                     min(width - 1, cursor_column),
                 )
             except curses.error:

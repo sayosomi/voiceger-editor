@@ -374,8 +374,8 @@ class TuiRenderingTests(unittest.TestCase):
         lines = self.renderer.batch_list_document(batch, ("caption", 0), 80)
         labels = [line.text for line in lines]
         self.assertIn("  Takes < 4 >", labels)
-        self.assertIn("▶ [x] 1  [!] first caption", labels)
-        self.assertIn("  [ ] 2  [✓] second caption", labels)
+        self.assertIn("▶ [x] [1]  [!] first caption", labels)
+        self.assertIn("  [ ] [2]  [✓] second caption", labels)
         self.assertFalse(any("[25%]" in label for label in labels))
 
         batch.default_take_count = 9
@@ -386,7 +386,7 @@ class TuiRenderingTests(unittest.TestCase):
             )
         ]
         self.assertIn("  Takes < 9 >", labels)
-        self.assertIn("▶ [x] 1  [!] first caption", labels)
+        self.assertIn("▶ [x] [1]  [!] first caption", labels)
 
         batch.set_generation_outcome(batch.items[0].item_id, "cancelled")
         labels = [
@@ -395,7 +395,7 @@ class TuiRenderingTests(unittest.TestCase):
                 batch, ("caption", 0), 80
             )
         ]
-        self.assertIn("▶ [x] 1  [⚠] first caption", labels)
+        self.assertIn("▶ [x] [1]  [⚠] first caption", labels)
 
         batch.set_generation_outcome(batch.items[0].item_id, "failed")
         labels = [
@@ -404,7 +404,7 @@ class TuiRenderingTests(unittest.TestCase):
                 batch, ("caption", 0), 80
             )
         ]
-        self.assertIn("▶ [x] 1  [⚠] first caption", labels)
+        self.assertIn("▶ [x] [1]  [⚠] first caption", labels)
 
         batch.set_generation_outcome(batch.items[0].item_id, "completed")
         batch.default_take_count = 4
@@ -414,7 +414,7 @@ class TuiRenderingTests(unittest.TestCase):
                 batch, ("caption", 0), 80
             )
         ]
-        self.assertIn("▶ [x] 1  [!] first caption", labels)
+        self.assertIn("▶ [x] [1]  [!] first caption", labels)
         self.assertFalse(any(label.startswith("Selected:") for label in labels))
         self.assertFalse(any(label.startswith("Requested:") for label in labels))
         for action in (
@@ -852,7 +852,7 @@ class TuiRenderingTests(unittest.TestCase):
         )
         labels = [line.text for line in lines]
 
-        self.assertIn("  [x] 2  [25%] second caption", labels)
+        self.assertIn("  [x] [2]  [25%] second caption", labels)
         self.assertNotIn("[25%]", next(
             line for line in labels if "first caption" in line
         ))
@@ -2668,7 +2668,7 @@ class TuiRenderingTests(unittest.TestCase):
             screen.columns,
         )
         self.assertFalse(
-            any("[0] Jump to number" in text for _row, _col, text, _attr in screen.drawn)
+            any("[0] Jump to Caption" in text for _row, _col, text, _attr in screen.drawn)
         )
 
         ten = make_batch(10)
@@ -2682,7 +2682,7 @@ class TuiRenderingTests(unittest.TestCase):
             screen.columns,
         )
         jump_row = next(item for item in screen.drawn if item[0] == 1)
-        self.assertEqual(jump_row[2], "  [0] Jump to number")
+        self.assertEqual(jump_row[2], "  [0] Jump to Caption")
 
     def test_batch_list_number_jump_row_stays_pinned_when_scrolled_deep(self):
         batch = CaptionBatch(default_take_count=4)
@@ -2706,7 +2706,7 @@ class TuiRenderingTests(unittest.TestCase):
 
         self.assertEqual(
             next(text for row, _col, text, _attr in screen.drawn if row == 1),
-            "  [0] Jump to number",
+            "  [0] Jump to Caption",
         )
         self.assertTrue(
             any(
@@ -2740,7 +2740,7 @@ class TuiRenderingTests(unittest.TestCase):
 
         self.assertEqual(
             next(text for row, _col, text, _attr in screen.drawn if row == 1),
-            "▶ Jump to number: 11_ / 12",
+            "▶ Jump to Caption: 11_ / 12",
         )
         self.assertEqual(
             next(text for row, _col, text, _attr in screen.drawn if row == 2),
@@ -2749,6 +2749,241 @@ class TuiRenderingTests(unittest.TestCase):
         visible = self.rendered(screen)
         self.assertIn("Generating Caption 3: 1/4", visible)
         self.assertIn("Warning: Requested Caption is unavailable.", visible)
+
+
+    def test_batch_list_number_tokens_mark_direct_shortcuts_and_align_content(self):
+        batch = CaptionBatch(default_take_count=4)
+        batch.add_captions_from_text(
+            "\n".join(f"caption {number}" for number in range(1, 13)),
+            session_factory=lambda caption: SimpleNamespace(
+                caption=caption,
+                candidates=(),
+            ),
+        )
+
+        lines = self.renderer.batch_list_document(
+            batch,
+            ("caption", 11),
+            80,
+        )
+        rows = {
+            line.key[1] + 1: line.text
+            for line in lines
+            if line.key is not None and line.key[0] == "caption"
+        }
+
+        self.assertIn("[x] [1]  caption 1", rows[1])
+        self.assertIn("[x] [9]  caption 9", rows[9])
+        self.assertIn("[x]  10  caption 10", rows[10])
+        self.assertIn("[x]  12  caption 12", rows[12])
+        caption_columns = {
+            rows[number].index(f"caption {number}")
+            for number in (1, 9, 10, 12)
+        }
+        self.assertEqual(caption_columns, {11})
+
+    def test_dictionary_number_tokens_mark_direct_shortcuts_and_align_content(self):
+        entries = tuple(
+            SimpleNamespace(
+                surface=f"word-{number:02d}",
+                phonemes=("W", "ER1", "D"),
+            )
+            for number in range(1, 13)
+        )
+        editor = SimpleNamespace(
+            kind="dictionary_english_list",
+            title="ENGLISH DICTIONARY",
+            selection=("entry", 11),
+            payload={
+                "entries": entries,
+                "sort_mode": "surface_asc",
+                "text_filter": "",
+                "filter_enabled": False,
+                "word_type_filter": None,
+                "visible_count": 12,
+                "total_count": 12,
+                "can_delete": True,
+                "number_jump_active": False,
+                "number_jump_value": "",
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor),
+            80,
+        )
+        rows = {
+            key[1] + 1: line
+            for line, key in document
+            if isinstance(key, tuple) and key[0] == "entry"
+        }
+
+        self.assertTrue(rows[1].startswith("  [1]  word-01"))
+        self.assertTrue(rows[9].startswith("  [9]  word-09"))
+        self.assertTrue(rows[10].startswith("   10  word-10"))
+        self.assertTrue(rows[12].startswith("▶  12  word-12"))
+        surface_columns = {
+            rows[number].index(f"word-{number:02d}")
+            for number in (1, 9, 10, 12)
+        }
+        self.assertEqual(surface_columns, {7})
+
+
+    def test_dictionary_lists_render_visible_one_based_numbers(self):
+        japanese_entries = tuple(
+            (
+                f"id-{number}",
+                SimpleNamespace(
+                    surface=f"単語{number}",
+                    pronunciation="ズンダモン",
+                    accent_type=3,
+                ),
+            )
+            for number in range(1, 3)
+        )
+        english_entries = tuple(
+            SimpleNamespace(
+                surface=f"word-{number}",
+                phonemes=("W", "ER1", "D"),
+            )
+            for number in range(1, 3)
+        )
+        cases = (
+            SimpleNamespace(
+                kind="dictionary_japanese_list",
+                title="JAPANESE DICTIONARY",
+                selection=("entry", 1),
+                payload={
+                    "entries": japanese_entries,
+                    "sort_mode": "surface_asc",
+                    "text_filter": "",
+                    "filter_enabled": False,
+                    "word_type_filter": "ALL",
+                    "visible_count": 2,
+                    "total_count": 2,
+                    "can_delete": True,
+                },
+                active_field=None,
+                input_value="",
+                input_cursor=0,
+                error="",
+                scroll=0,
+            ),
+            SimpleNamespace(
+                kind="dictionary_english_list",
+                title="ENGLISH DICTIONARY",
+                selection=("entry", 1),
+                payload={
+                    "entries": english_entries,
+                    "sort_mode": "surface_asc",
+                    "text_filter": "",
+                    "filter_enabled": False,
+                    "word_type_filter": None,
+                    "visible_count": 2,
+                    "total_count": 2,
+                    "can_delete": True,
+                },
+                active_field=None,
+                input_value="",
+                input_cursor=0,
+                error="",
+                scroll=0,
+            ),
+        )
+
+        for editor in cases:
+            with self.subTest(kind=editor.kind):
+                document, _cursor_line, _cursor_column = self.renderer.editor_document(
+                    render_state(editor=editor), 80
+                )
+                first = next(line for line, key in document if key == ("entry", 0))
+                second = next(line for line, key in document if key == ("entry", 1))
+                self.assertIn("[1]  ", first)
+                self.assertIn("[2]  ", second)
+                self.assertTrue(second.startswith("▶ [2]  "))
+
+    def test_dictionary_jump_row_is_pinned_only_for_ten_or_more_visible_entries(self):
+        def editor_for(count, *, active=False, value="", total=None, filtered=False):
+            entries = tuple(
+                SimpleNamespace(
+                    surface=f"word-{number:02d}",
+                    phonemes=("W", "ER1", "D"),
+                )
+                for number in range(1, count + 1)
+            )
+            return SimpleNamespace(
+                kind="dictionary_english_list",
+                title="ENGLISH DICTIONARY",
+                selection=("entry", max(0, count - 1)) if count else "add",
+                payload={
+                    "entries": entries,
+                    "entry_index": max(0, count - 1) if count else None,
+                    "sort_mode": "surface_asc",
+                    "text_filter": "word" if filtered else "",
+                    "filter_enabled": filtered,
+                    "word_type_filter": None,
+                    "visible_count": count,
+                    "total_count": count if total is None else total,
+                    "can_delete": bool(entries),
+                    "number_jump_active": active,
+                    "number_jump_value": value,
+                },
+                active_field=None,
+                input_value="",
+                input_cursor=0,
+                error="",
+                scroll=0,
+            )
+
+        screen = FakeScreen(rows=10, columns=80)
+        self.renderer.render_editor(
+            screen,
+            render_state(editor=editor_for(12)),
+            screen.rows,
+            screen.columns,
+        )
+        jump_row = next(item for item in screen.drawn if item[0] == 1)
+        self.assertEqual(jump_row[2], "  [0] Jump to word")
+
+        screen = FakeScreen(rows=10, columns=80)
+        self.renderer.render_editor(
+            screen,
+            render_state(editor=editor_for(12, active=True, value="11")),
+            screen.rows,
+            screen.columns,
+        )
+        self.assertIn(
+            (1, 0, "▶ Jump to word: 11_ / 12"),
+            [(row, col, text) for row, col, text, _attr in screen.drawn],
+        )
+        self.assertIn(
+            (2, 0, "  [Enter] Open   [Esc] Cancel"),
+            [(row, col, text) for row, col, text, _attr in screen.drawn],
+        )
+
+        for editor in (
+            editor_for(9),
+            editor_for(3, total=12, filtered=True),
+        ):
+            with self.subTest(count=len(editor.payload["entries"])):
+                screen = FakeScreen(rows=10, columns=80)
+                self.renderer.render_editor(
+                    screen,
+                    render_state(editor=editor),
+                    screen.rows,
+                    screen.columns,
+                )
+                self.assertFalse(
+                    any(
+                        "Jump to word" in text
+                        for _row, _col, text, _attr in screen.drawn
+                    )
+                )
 
 
 if __name__ == "__main__":

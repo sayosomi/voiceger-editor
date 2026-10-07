@@ -11,7 +11,9 @@ from voiceger_editor.tui_dictionary_list import DictionaryListStateOwner
 from voiceger_editor.tui_editors import (
     AdjustmentPressedIntent,
     ClearAdjustmentFeedbackIntent,
+    UpdateStatusIntent,
 )
+from voiceger_editor.tui_status import StatusKind
 from voiceger_editor.user_dictionary import JapaneseWordType
 
 
@@ -654,6 +656,145 @@ class DictionaryListControllerIntegrationTests(unittest.TestCase):
             ("recording",),
         )
         self.assertEqual(self.controller.editor.selection, ("entry", 0))
+
+
+    def test_numeric_shortcuts_open_visible_japanese_and_english_entries(self):
+        self.core.japanese = {
+            f"id-{number:02d}": ja_word(f"word-{number:02d}")
+            for number in range(1, 10)
+        }
+        self.core.english = {
+            f"word-{number:02d}": en_word(
+                f"word-{number:02d}",
+                ("W", "ER1", "D"),
+            )
+            for number in range(1, 10)
+        }
+
+        self.controller.open_menu()
+        self.key("j")
+        self.key("1")
+        self.assertEqual(self.controller.editor.kind, "dictionary_japanese_entry")
+        self.assertEqual(self.controller.editor.payload["word_uuid"], "id-01")
+        self.assertEqual(self.controller.editor.payload["entry_index"], 0)
+        self.assertEqual(self.controller.editor.payload["entry_total"], 9)
+        self.key("\x1b")
+        self.key("9")
+        self.assertEqual(self.controller.editor.payload["word_uuid"], "id-09")
+        self.assertEqual(self.controller.editor.payload["entry_index"], 8)
+
+        self.controller.open_menu()
+        self.key("e")
+        self.key("1")
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_entry")
+        self.assertEqual(self.controller.editor.payload["original_surface"], "word-01")
+        self.key("\x1b")
+        self.key("9")
+        self.assertEqual(self.controller.editor.payload["original_surface"], "word-09")
+        self.assertEqual(self.controller.editor.payload["entry_index"], 8)
+
+    def test_unavailable_digit_is_harmless_and_editable_fields_accept_digits(self):
+        self.core.english = {
+            f"word-{number:02d}": en_word(
+                f"word-{number:02d}",
+                ("W", "ER1", "D"),
+            )
+            for number in range(1, 4)
+        }
+        self.controller.open_menu()
+        self.key("e")
+        original_selection = self.controller.editor.selection
+
+        self.assertEqual(self.key("9"), ())
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_list")
+        self.assertEqual(self.controller.editor.selection, original_selection)
+
+        self.key("a")
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_entry")
+        self.assertEqual(self.controller.editor.active_field, "surface")
+        self.key("9")
+        self.assertEqual(self.controller.editor.input_value, "9")
+
+    def test_multi_digit_jump_invalid_warning_and_escape_cancel(self):
+        self.core.english = {
+            f"word-{number:02d}": en_word(
+                f"word-{number:02d}",
+                ("W", "ER1", "D"),
+            )
+            for number in range(1, 13)
+        }
+        self.controller.open_menu()
+        self.key("e")
+
+        self.assertEqual(self.key("0"), ())
+        self.assertTrue(self.controller.editor.payload["number_jump_active"])
+        self.key("1")
+        self.key("1")
+        self.assertEqual(self.controller.editor.payload["number_jump_value"], "11")
+        self.key("\n")
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_entry")
+        self.assertEqual(self.controller.editor.payload["original_surface"], "word-11")
+        self.assertEqual(self.controller.editor.payload["entry_index"], 10)
+
+        self.key("\x1b")
+        self.key("0")
+        self.key("1")
+        self.key("3")
+        intents = self.key("\n")
+        self.assertEqual(len(intents), 1)
+        self.assertIsInstance(intents[0], UpdateStatusIntent)
+        self.assertEqual(intents[0].status.kind, StatusKind.WARNING)
+        self.assertEqual(str(intents[0].status), "Enter a number from 1 to 12.")
+        self.assertTrue(self.controller.editor.payload["number_jump_active"])
+        self.assertEqual(self.controller.editor.payload["number_jump_value"], "13")
+
+        self.assertEqual(self.key("\x1b"), ())
+        self.assertFalse(self.controller.editor.payload["number_jump_active"])
+        self.assertEqual(self.controller.editor.kind, "dictionary_english_list")
+
+    def test_sort_changes_numeric_mapping_and_direct_open_restores_focus_identity(self):
+        self.core.japanese = {
+            "zebra": ja_word("zebra"),
+            "apple": ja_word("apple"),
+        }
+        self.controller.open_menu()
+        self.key("j")
+
+        self.key("1")
+        self.assertEqual(self.controller.editor.payload["word_uuid"], "apple")
+        self.key("\x1b")
+        self.assertEqual(self.controller.editor.selection, ("entry", 0))
+        self.key("s")
+        self.assertEqual(
+            self.controller.editor.payload["entry_ids"],
+            ("zebra", "apple"),
+        )
+        self.key("1")
+        self.assertEqual(self.controller.editor.payload["word_uuid"], "zebra")
+        self.key("\x1b")
+        self.assertEqual(self.controller.editor.selection, ("entry", 0))
+        self.assertEqual(self.controller.editor.payload["entry_ids"][0], "zebra")
+
+    def test_filter_results_are_renumbered_from_one(self):
+        self.core.english = {
+            "Apple": en_word("Apple", ("AE1", "P", "AH0", "L")),
+            "record": en_word("record", ("R", "EH1", "K", "ER0", "D")),
+            "zebra": en_word("zebra", ("Z", "IY1", "B", "R", "AH0")),
+        }
+        self.controller.open_menu()
+        self.key("e")
+        self.controller.set_english_list_filter(text_query="record")
+
+        self.assertEqual(self.controller.editor.payload["entry_ids"], ("record",))
+        self.assertEqual(self.controller.editor.payload["visible_count"], 1)
+        self.key("1")
+        self.assertEqual(self.controller.editor.payload["original_surface"], "record")
+
+        self.key("\x1b")
+        self.controller.set_english_list_filter(text_query="")
+        self.assertEqual(self.controller.editor.payload["entry_ids"][0], "Apple")
+        self.key("1")
+        self.assertEqual(self.controller.editor.payload["original_surface"], "Apple")
 
 
 if __name__ == "__main__":

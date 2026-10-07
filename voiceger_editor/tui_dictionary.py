@@ -52,9 +52,10 @@ from .tui_editors import (
     UpdateStatusIntent,
 )
 from .tui_output_path import BeginOutputPathEditIntent
+from .tui_numbered_list import NumberedListJump
 from .tui_selection import move_clamped_selection
 from .tui_shortcuts import menu_items, resolve_shortcut
-from .tui_status import EMPTY_STATUS, Status, error_status, info_status
+from .tui_status import EMPTY_STATUS, Status, error_status, info_status, warning_status
 from .tui_text_editing import apply_text_edit_key
 from .user_dictionary import JapaneseWordType, UserDictionaryCore, japanese_word_type
 from .voicevox_api_models import AccentPhrase, AudioQuery, Mora, VoicegerSegment
@@ -182,6 +183,7 @@ class TuiDictionaryController:
         self._english_word_groups = english_word_groups
         self._output_dir = output_dir or (lambda: Path("."))
         self._list_state = DictionaryListStateOwner(core)
+        self._number_jump = NumberedListJump()
         self._import_review: DictionaryImportReview | None = None
         self._import_source_path = ""
 
@@ -646,8 +648,7 @@ class TuiDictionaryController:
         else:
             self.editor = parent
 
-    @staticmethod
-    def _list_payload(view: DictionaryListView) -> dict[str, Any]:
+    def _list_payload(self, view: DictionaryListView) -> dict[str, Any]:
         return {
             "entries": view.entries,
             "entry_ids": view.identities,
@@ -659,7 +660,38 @@ class TuiDictionaryController:
             "visible_count": view.shown_count,
             "total_count": view.total_count,
             "can_delete": bool(view.entries),
+            "number_jump_active": self._number_jump.active,
+            "number_jump_value": self._number_jump.value,
         }
+
+    def _sync_number_jump_payload(self, editor: EditorState) -> None:
+        if editor.kind not in {
+            "dictionary_japanese_list",
+            "dictionary_english_list",
+        }:
+            return
+        editor.payload["number_jump_active"] = self._number_jump.active
+        editor.payload["number_jump_value"] = self._number_jump.value
+
+    def _open_list_entry_number(
+        self,
+        target_number: int,
+    ) -> tuple[DictionaryControllerIntent, ...]:
+        editor = self.editor
+        if editor is None or editor.kind not in {
+            "dictionary_japanese_list",
+            "dictionary_english_list",
+        }:
+            return ()
+        target_index = target_number - 1
+        entries = tuple(editor.payload.get("entries", ()))
+        if not 0 <= target_index < len(entries):
+            return ()
+        editor.selection = ("entry", target_index)
+        editor.payload["entry_index"] = target_index
+        editor.error = EMPTY_STATUS
+        self._remember_list_focus(editor)
+        return self._activate()
 
     @staticmethod
     def _focused_list_identity(editor: EditorState) -> str | None:
@@ -688,6 +720,7 @@ class TuiDictionaryController:
         return identity
 
     def _japanese_list_state(self) -> EditorState:
+        self._number_jump.reset()
         view = self._list_state.japanese_view()
         return EditorState(
             kind="dictionary_japanese_list",
@@ -702,6 +735,7 @@ class TuiDictionaryController:
         )
 
     def _english_list_state(self) -> EditorState:
+        self._number_jump.reset()
         view = self._list_state.english_view()
         return EditorState(
             kind="dictionary_english_list",
@@ -2213,6 +2247,24 @@ class TuiDictionaryController:
                 if edit.edit_attempted:
                     editor.error = EMPTY_STATUS
             return ()
+
+        if editor.kind in {
+            "dictionary_japanese_list",
+            "dictionary_english_list",
+        }:
+            number_jump = self._number_jump.handle_key(
+                key,
+                item_count=len(editor.payload.get("entries", ())),
+            )
+            if number_jump.handled:
+                self._sync_number_jump_payload(editor)
+                if number_jump.warning is not None:
+                    return (
+                        UpdateStatusIntent(warning_status(number_jump.warning)),
+                    )
+                if number_jump.target_number is not None:
+                    return self._open_list_entry_number(number_jump.target_number)
+                return ()
 
         if key in ("q", "Q", "\x03"):
             return (QuitIntent(),)
