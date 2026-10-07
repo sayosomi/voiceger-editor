@@ -2645,5 +2645,111 @@ class TuiRenderingTests(unittest.TestCase):
         self.renderer._safe_add(screen, 0, 0, "safe", 80)
 
 
+    def test_batch_list_number_jump_row_only_appears_for_ten_or_more_captions(self):
+        def make_batch(count):
+            batch = CaptionBatch(default_take_count=4)
+            batch.add_captions_from_text(
+                "\n".join(f"caption {number}" for number in range(1, count + 1)),
+                session_factory=lambda caption: SimpleNamespace(
+                    caption=caption,
+                    candidates=(),
+                ),
+            )
+            return batch
+
+        nine = make_batch(9)
+        screen = FakeScreen()
+        self.renderer.render_batch_list(
+            screen,
+            nine,
+            ("caption", 0),
+            EMPTY_STATUS,
+            screen.rows,
+            screen.columns,
+        )
+        self.assertFalse(
+            any("[0] Jump to number" in text for _row, _col, text, _attr in screen.drawn)
+        )
+
+        ten = make_batch(10)
+        screen = FakeScreen()
+        self.renderer.render_batch_list(
+            screen,
+            ten,
+            ("caption", 0),
+            EMPTY_STATUS,
+            screen.rows,
+            screen.columns,
+        )
+        jump_row = next(item for item in screen.drawn if item[0] == 1)
+        self.assertEqual(jump_row[2], "  [0] Jump to number")
+
+    def test_batch_list_number_jump_row_stays_pinned_when_scrolled_deep(self):
+        batch = CaptionBatch(default_take_count=4)
+        batch.add_captions_from_text(
+            "\n".join(f"caption {number}" for number in range(1, 26)),
+            session_factory=lambda caption: SimpleNamespace(
+                caption=caption,
+                candidates=(),
+            ),
+        )
+        screen = FakeScreen(rows=12, columns=80)
+
+        self.renderer.render_batch_list(
+            screen,
+            batch,
+            ("caption", 19),
+            EMPTY_STATUS,
+            screen.rows,
+            screen.columns,
+        )
+
+        self.assertEqual(
+            next(text for row, _col, text, _attr in screen.drawn if row == 1),
+            "  [0] Jump to number",
+        )
+        self.assertTrue(
+            any(
+                row >= 3 and "20  caption 20" in text
+                for row, _col, text, _attr in screen.drawn
+            )
+        )
+
+    def test_active_batch_number_jump_replaces_pinned_row_without_owning_status(self):
+        batch = CaptionBatch(default_take_count=4)
+        batch.add_captions_from_text(
+            "\n".join(f"caption {number}" for number in range(1, 13)),
+            session_factory=lambda caption: SimpleNamespace(
+                caption=caption,
+                candidates=(),
+            ),
+        )
+        screen = FakeScreen(rows=14, columns=80)
+
+        self.renderer.render_batch_list(
+            screen,
+            batch,
+            ("caption", 10),
+            warning_status("Requested Caption is unavailable."),
+            screen.rows,
+            screen.columns,
+            background_status="Generating Caption 3: 1/4",
+            number_jump_active=True,
+            number_jump_value="11",
+        )
+
+        self.assertEqual(
+            next(text for row, _col, text, _attr in screen.drawn if row == 1),
+            "▶ Jump to number: 11_ / 12",
+        )
+        self.assertEqual(
+            next(text for row, _col, text, _attr in screen.drawn if row == 2),
+            "  [Enter] Open   [Esc] Cancel",
+        )
+        visible = self.rendered(screen)
+        self.assertIn("Generating Caption 3: 1/4", visible)
+        self.assertIn("Warning: Requested Caption is unavailable.", visible)
+
+
 if __name__ == "__main__":
     unittest.main()

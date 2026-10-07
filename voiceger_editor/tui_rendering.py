@@ -745,6 +745,8 @@ class TuiRenderer:
         active_generation: tuple[str, int, int] | None = None,
         generation_busy: bool = False,
         background_status: str = "",
+        number_jump_active: bool = False,
+        number_jump_value: str = "",
     ) -> None:
         """Render the top-level Batch List screen."""
 
@@ -779,6 +781,33 @@ class TuiRenderer:
             width,
             self._attribute("A_BOLD"),
         )
+        content_start_row = 2
+        if len(batch) >= 10:
+            if number_jump_active:
+                safe_add(
+                    screen,
+                    1,
+                    0,
+                    f"▶ Jump to number: {number_jump_value}_ / {len(batch)}",
+                    width,
+                    self._focus_attribute(),
+                )
+                safe_add(
+                    screen,
+                    2,
+                    0,
+                    "  [Enter] Open   [Esc] Cancel",
+                    width,
+                )
+            else:
+                safe_add(
+                    screen,
+                    1,
+                    0,
+                    "  [0] Jump to number",
+                    width,
+                )
+            content_start_row = 3
         lines = self.batch_list_document(
             batch,
             focus_key,
@@ -793,7 +822,7 @@ class TuiRenderer:
             width,
             background_status=background_status,
         )
-        viewport_height = max(0, footer.start_row - 2)
+        viewport_height = max(0, footer.start_row - content_start_row)
         focused_index = next(
             (
                 index
@@ -806,7 +835,7 @@ class TuiRenderer:
         if start + viewport_height > len(lines):
             start = max(0, len(lines) - viewport_height)
         for offset, line in enumerate(lines[start : start + viewport_height]):
-            row = 2 + offset
+            row = content_start_row + offset
             focused = line.focus_owner == focus_key
             safe_add(
                 screen,

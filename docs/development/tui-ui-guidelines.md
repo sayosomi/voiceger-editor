@@ -16,6 +16,18 @@ Destructive or replacement confirmation screens should initially focus Cancel. T
 
 An adjustment or action that does not leave the current screen should normally keep focus on the row that was operated.
 
+### Numbered lists
+
+When list entries already display stable 1-based item numbers, those visible numbers may also be direct numeric shortcuts.
+
+- `1` through `9` activate the matching numbered item immediately when it exists.
+- Lists with 10 or more items may use `0` to enter an explicit arbitrary-number input state.
+- Arbitrary-number entry is explicit; do not infer multi-digit shortcuts from timing or timeout-based digit buffering.
+- While arbitrary-number entry is active, ordinary list action shortcuts do not fire.
+- This convention applies to list navigation, not general text editing. Editable text fields continue to accept numeric input normally.
+
+Feature owners decide whether a list adopts this convention and where any entry affordance is rendered.
+
 ## Adjustable values
 
 Angle brackets are an interaction promise.
