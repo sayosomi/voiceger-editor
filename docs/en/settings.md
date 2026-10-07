@@ -28,6 +28,9 @@ Leaving Settings without applying does not save the draft.
 | Speed | `1.00` |
 | Takes | `4` |
 | Output | `~/.voiceger-editor/output` |
+| Format | WAV |
+| WAV encoding | Source |
+| FLAC encoding | PCM 16-bit |
 | TXT | Off |
 | LAB | Off |
 | Top K | `20` |
@@ -105,9 +108,29 @@ recipe Write, and Dictionary Export all use `Settings.output_dir`. Their
 Read Batch and Import Dictionary only use Output as the initial directory for
 their temporary input File path; changing an input path does not change Output.
 
+## Audio Output
+
+Settings exposes **File format & naming**, which opens the **AUDIO OUTPUT** screen.
+The screen owns the accepted-Take format, format-specific encoding, filename template,
+TXT, and LAB settings. These values remain part of the parent Settings draft until
+you return and select `Apply and save`.
+
+Supported accepted-audio formats are:
+
+- **WAV**: Source, PCM 16-bit, PCM 24-bit, or Float 32-bit.
+- **FLAC**: PCM 16-bit or PCM 24-bit.
+
+WAV **Source** is the default and preserves the existing accepted-Take behavior:
+Voiceger Editor copies the generated candidate WAV without an unnecessary
+decode/re-encode step. Explicit WAV encodings and FLAC are converted only when
+the Take is accepted. Candidate Takes and pronunciation Preview audio remain WAV.
+
+Voiceger Editor remembers the WAV and FLAC encoding choices separately when you
+switch Format back and forth.
+
 ## TXT sidecar
 
-When TXT is enabled, accepting a Take saves the exact source text beside the WAV.
+When TXT is enabled, accepting a Take saves the exact source text beside the accepted audio file.
 
 Example:
 
@@ -264,6 +287,9 @@ Example:
 {
   "output_dir": "/path/to/output",
   "filename_template": "{YYYYMMDDHHmm}_{text}",
+  "output_format": "wav",
+  "wav_encoding": "source",
+  "flac_encoding": "pcm16",
   "save_lab": false,
   "save_text": false,
   "speed": 1.0,
@@ -283,11 +309,11 @@ The default accepted-output basename template is:
 {YYYYMMDDHHmm}_{text}
 ```
 
-Configure it from **Settings -> File format & naming -> Filename template**. The File Format & Naming screen shows a live preview before the Settings draft is applied.
+Configure it from **Settings -> File format & naming -> Filename template**. The **AUDIO OUTPUT** screen shows a live preview before the Settings draft is applied.
 
 Supported case-sensitive date/time tokens are `YYYY`, `MM`, `DD`, `HH`, `mm`, and `ss`. `MM` is the month and `mm` is the minute. Named variables are `{text}` and `{style}`.
 
-The file extension is selected separately from the template. The current output format remains WAV, so a rendered basename such as `202610071945_hello` is saved as `202610071945_hello.wav`. TXT and LAB sidecars, when enabled, use the same final basename and collision suffix.
+The file extension comes from Format rather than the template. A rendered basename such as `202610071945_hello` is therefore saved as either `202610071945_hello.wav` or `202610071945_hello.flac`. TXT and LAB sidecars, when enabled, use the same final basename and collision suffix.
 
 Unknown variables and unsupported date/time tokens are rejected before the Settings draft can be saved.
 

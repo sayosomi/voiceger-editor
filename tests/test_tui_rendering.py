@@ -2231,17 +2231,19 @@ class TuiRenderingTests(unittest.TestCase):
     def test_audio_output_settings_render_draft_preview_and_sidecars(self):
         editor = SimpleNamespace(
             kind="audio_output_settings",
-            title="FILE FORMAT & NAMING",
-            selection="filename_template",
+            title="AUDIO OUTPUT",
+            selection="output_format",
             payload={
                 "draft_settings": {
+                    "output_format": "wav",
+                    "wav_encoding": "source",
+                    "flac_encoding": "pcm16",
                     "filename_template": "{style}_{text}",
                     "save_text": True,
                     "save_lab": False,
                 },
                 "preview_text": "今日は雨",
                 "preview_style": "Neutral",
-                "output_extension": ".wav",
                 "filename_preview": "Neutral_今日は雨.wav",
                 "filename_preview_error": "",
             },
@@ -2257,7 +2259,11 @@ class TuiRenderingTests(unittest.TestCase):
             80,
         )
         visible = "\n".join(line for line, _key in document)
-        self.assertIn("FILE FORMAT & NAMING", visible)
+        self.assertIn("AUDIO OUTPUT", visible)
+        self.assertIn("Format", visible)
+        self.assertIn("< WAV >", visible)
+        self.assertIn("Encoding", visible)
+        self.assertIn("< Source >", visible)
         self.assertIn("Filename template  {style}_{text}", visible)
         self.assertIn("Preview", visible)
         self.assertIn("Neutral_今日は雨.wav", visible)
@@ -2268,23 +2274,61 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("YYYY MM DD HH mm ss · {text} {style}", visible)
         self.assertEqual(
             [key for _line, key in document if key is not None],
-            ["filename_template", "save_text", "save_lab", "back"],
+            [
+                "output_format", "output_encoding", "filename_template",
+                "save_text", "save_lab", "back",
+            ],
         )
+
+    def test_audio_output_renders_flac_specific_encoding(self):
+        editor = SimpleNamespace(
+            kind="audio_output_settings",
+            title="AUDIO OUTPUT",
+            selection="output_encoding",
+            payload={
+                "draft_settings": {
+                    "output_format": "flac",
+                    "wav_encoding": "float32",
+                    "flac_encoding": "pcm24",
+                    "filename_template": "{text}",
+                    "save_text": False,
+                    "save_lab": False,
+                },
+                "filename_preview": "sample.flac",
+                "filename_preview_error": "",
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+
+        document, _, _ = self.renderer.editor_document(
+            render_state(editor=editor),
+            80,
+        )
+        visible = "\n".join(line for line, _key in document)
+        self.assertIn("< FLAC >", visible)
+        self.assertIn("< PCM 24-bit >", visible)
+        self.assertNotIn("Float 32-bit", visible)
 
     def test_audio_output_preview_uses_live_template_draft_and_explains_invalid_input(self):
         editor = SimpleNamespace(
             kind="audio_output_settings",
-            title="FILE FORMAT & NAMING",
+            title="AUDIO OUTPUT",
             selection="filename_template",
             payload={
                 "draft_settings": {
+                    "output_format": "flac",
+                    "wav_encoding": "source",
+                    "flac_encoding": "pcm24",
                     "filename_template": "{text}",
                     "save_text": False,
                     "save_lab": False,
                 },
                 "preview_text": "sample",
                 "preview_style": "Neutral",
-                "output_extension": ".wav",
                 "filename_preview": "",
                 "filename_preview_error": "unsupported date/time token in {take}",
             },

@@ -27,6 +27,9 @@ class SettingsTests(unittest.TestCase):
             Path.home() / ".voiceger-editor" / "output",
         )
         self.assertEqual(settings.filename_template, "{YYYYMMDDHHmm}_{text}")
+        self.assertEqual(settings.output_format, "wav")
+        self.assertEqual(settings.wav_encoding, "source")
+        self.assertEqual(settings.flac_encoding, "pcm16")
         self.assertEqual(settings.take_count, 4)
         self.assertEqual(settings.style_id, 3)
         self.assertEqual(settings.speed, 1.0)
@@ -42,6 +45,9 @@ class SettingsTests(unittest.TestCase):
             settings = Settings(
                 output_dir=Path(directory) / "生成音声",
                 filename_template="{YYYY-MM-DD}_{HHmmss}_{style}_{text}",
+                output_format="flac",
+                wav_encoding="pcm24",
+                flac_encoding="pcm24",
                 take_count=8,
                 style_id=38,
                 speed=1.25,
@@ -64,6 +70,9 @@ class SettingsTests(unittest.TestCase):
                 {
                     "output_dir": str(settings.output_dir),
                     "filename_template": "{YYYY-MM-DD}_{HHmmss}_{style}_{text}",
+                    "output_format": "flac",
+                    "wav_encoding": "pcm24",
+                    "flac_encoding": "pcm24",
                     "take_count": 8,
                     "style_id": 38,
                     "speed": 1.25,
@@ -93,6 +102,9 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.top_p, 1.0)
         self.assertEqual(settings.temperature, 1.0)
         self.assertEqual(settings.filename_template, "{YYYYMMDDHHmm}_{text}")
+        self.assertEqual(settings.output_format, "wav")
+        self.assertEqual(settings.wav_encoding, "source")
+        self.assertEqual(settings.flac_encoding, "pcm16")
 
     def test_custom_config_path_can_be_loaded_and_saved(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -136,6 +148,9 @@ class SettingsTests(unittest.TestCase):
             {"filename_template": ""},
             {"filename_template": "{take}_{text}"},
             {"filename_template": "{YYYYQQ}_{text}"},
+            {"output_format": "mp3"},
+            {"wav_encoding": "pcm32"},
+            {"flac_encoding": "source"},
             {"output_dir": ""},
             {"output_dir": "invalid\x00path"},
         ]
@@ -161,6 +176,9 @@ class SettingsTests(unittest.TestCase):
             '{"save_text": "yes"}',
             '{"save_lab": "yes"}',
             '{"filename_template": "{datetime}_{text}"}',
+            '{"output_format": "mp3"}',
+            '{"wav_encoding": "pcm32"}',
+            '{"flac_encoding": "source"}',
             '{"future_setting": true}',
         ]
         with tempfile.TemporaryDirectory() as directory:

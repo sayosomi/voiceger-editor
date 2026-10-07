@@ -15,6 +15,7 @@ from .filename import (
     FilenameTemplateError,
     validate_filename_template,
 )
+from .output import FLAC_ENCODINGS, OUTPUT_FORMATS, WAV_ENCODINGS
 
 
 _APP_DIRECTORY = "voiceger-editor"
@@ -25,6 +26,9 @@ VOICEGER_DEFAULT_TEMPERATURE = 1.0
 _SETTING_NAMES = {
     "output_dir",
     "filename_template",
+    "output_format",
+    "wav_encoding",
+    "flac_encoding",
     "take_count",
     "style_id",
     "speed",
@@ -51,6 +55,9 @@ class Settings:
 
     output_dir: Path = field(default_factory=_default_output_dir)
     filename_template: str = DEFAULT_FILENAME_TEMPLATE
+    output_format: str = "wav"
+    wav_encoding: str = "source"
+    flac_encoding: str = "pcm16"
     take_count: int = 4
     style_id: int = 3
     speed: float = 1.0
@@ -81,6 +88,19 @@ class Settings:
             validate_filename_template(self.filename_template)
         except FilenameTemplateError as exc:
             raise SettingsError(f"invalid filename_template: {exc}") from exc
+
+        if self.output_format not in OUTPUT_FORMATS:
+            raise SettingsError(
+                "output_format must be one of: " + ", ".join(OUTPUT_FORMATS)
+            )
+        if self.wav_encoding not in WAV_ENCODINGS:
+            raise SettingsError(
+                "wav_encoding must be one of: " + ", ".join(WAV_ENCODINGS)
+            )
+        if self.flac_encoding not in FLAC_ENCODINGS:
+            raise SettingsError(
+                "flac_encoding must be one of: " + ", ".join(FLAC_ENCODINGS)
+            )
 
         if (
             isinstance(self.take_count, bool)
@@ -236,6 +256,9 @@ def save_settings(
     payload = {
         "output_dir": str(settings.output_dir),
         "filename_template": settings.filename_template,
+        "output_format": settings.output_format,
+        "wav_encoding": settings.wav_encoding,
+        "flac_encoding": settings.flac_encoding,
         "take_count": settings.take_count,
         "style_id": settings.style_id,
         "speed": settings.speed,

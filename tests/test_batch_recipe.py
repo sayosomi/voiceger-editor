@@ -172,6 +172,9 @@ class BatchRecipeTests(unittest.TestCase):
         self.runtime_settings = Settings(
             output_dir=self.root / "runtime-output",
             filename_template="{style}_{text}",
+            output_format="flac",
+            wav_encoding="pcm24",
+            flac_encoding="pcm24",
             take_count=4,
             style_id=3,
             speed=1.0,
@@ -325,6 +328,18 @@ class BatchRecipeTests(unittest.TestCase):
                 item.session.settings.filename_template,
                 self.runtime_settings.filename_template,
             )
+            self.assertEqual(
+                item.session.settings.output_format,
+                self.runtime_settings.output_format,
+            )
+            self.assertEqual(
+                item.session.settings.wav_encoding,
+                self.runtime_settings.wav_encoding,
+            )
+            self.assertEqual(
+                item.session.settings.flac_encoding,
+                self.runtime_settings.flac_encoding,
+            )
             self.assertTrue(item.session.settings.save_text)
             self.assertTrue(item.session.settings.save_lab)
 
@@ -343,6 +358,9 @@ class BatchRecipeTests(unittest.TestCase):
         for forbidden in (
             "output_dir",
             "filename_template",
+            "output_format",
+            "wav_encoding",
+            "flac_encoding",
             "save_text",
             "save_lab",
             "candidate",

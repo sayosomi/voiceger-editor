@@ -13,7 +13,7 @@ from typing import Any, Callable, Iterator, Mapping
 
 from .filename import DEFAULT_FILENAME_TEMPLATE
 from .lab import LabSidecarResult, save_lab_sidecar
-from .output import SavedOutput, save_output_wav
+from .output import SavedOutput, save_output_audio
 from .voicevox_api_models import AudioQuery
 
 
@@ -266,6 +266,8 @@ class TakeBatch:
         save_text: bool,
         save_lab: bool = False,
         filename_template: str = DEFAULT_FILENAME_TEMPLATE,
+        output_format: str = "wav",
+        output_encoding: str = "source",
     ) -> SavedOutput:
         """Save the selected candidate while keeping the review batch open."""
 
@@ -280,12 +282,14 @@ class TakeBatch:
             "source_text": candidate.source_text,
             "style_name": candidate.style_name,
             "output_dir": output_dir,
+            "output_format": output_format,
+            "output_encoding": output_encoding,
             "save_text": save_text,
             "filename_template": filename_template,
         }
         if save_lab:
             save_kwargs["avoid_lab_collision"] = True
-        saved = save_output_wav(**save_kwargs)
+        saved = save_output_audio(**save_kwargs)
 
         if save_lab:
             if candidate.query is None:
@@ -294,7 +298,8 @@ class TakeBatch:
                 )
             else:
                 lab_result = save_lab_sidecar(
-                    wav_path=saved.wav_path,
+                    wav_path=candidate.wav_path,
+                    destination=saved.audio_path.with_suffix(".lab"),
                     query=deepcopy(candidate.query),
                     mixed_provenance=candidate.mixed_lab_provenance,
                     mixed_provenance_warning=(

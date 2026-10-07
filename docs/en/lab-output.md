@@ -34,7 +34,7 @@ The core TUI and HTTP API do not require the `lab` extra.
 
 ## Enable LAB output
 
-Open Settings and set:
+Open **Settings -> File format & naming** and set LAB to ON on the **AUDIO OUTPUT** screen:
 
 ```text
 LAB: ON
@@ -56,12 +56,22 @@ To disable it for one invocation:
 
 LAB is generated only for the accepted Take.
 
-Candidate Takes are not aligned in advance.
+Candidate Takes remain WAV and are not aligned in advance. When the accepted
+audio Format is FLAC, LAB alignment still uses the generated candidate WAV
+internally, while the final `.lab` is written beside the FLAC with the same
+basename.
 
-Example:
+WAV example:
 
 ```text
 202610020307_今日は雨なのだ。.wav
+202610020307_今日は雨なのだ。.lab
+```
+
+FLAC example:
+
+```text
+202610020307_今日は雨なのだ。.flac
 202610020307_今日は雨なのだ。.lab
 ```
 
@@ -121,7 +131,7 @@ Boundary silence is written as:
 pau
 ```
 
-The final LAB covers the complete accepted WAV.
+The final LAB covers the complete accepted Take audio.
 
 ## Japanese
 
@@ -170,20 +180,20 @@ LAB OFF
 → accept existing candidate
 ```
 
-The WAV can still be accepted, but mixed LAB timing information is missing.
+The Take can still be accepted in the selected audio format, but mixed LAB timing information is missing.
 
 Regenerate the Take after enabling LAB.
 
 ## Failure behavior
 
-The accepted WAV is the primary output.
+The accepted WAV or FLAC file is the primary output.
 
 If LAB generation fails:
 
-- the WAV is kept;
+- the accepted audio file is kept;
 - the TXT sidecar is kept if it was requested and saved successfully;
 - no partial final `.lab` is left behind;
-- Voiceger Editor reports that WAV saving succeeded but LAB generation failed.
+- Voiceger Editor reports that audio saving succeeded but LAB generation failed.
 
 Possible causes include:
 

@@ -205,16 +205,23 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertIsNotNone(conflict)
         self.assertIn("Synthesis settings cannot change", str(conflict))
 
-    def test_filename_template_change_is_blocked_while_accepting(self):
+    def test_output_setting_changes_are_blocked_while_accepting(self):
         self.operations.busy = True
         self.operations.worker_operation = "accept"
 
-        conflict = self.operations.settings_change_conflict_status(
-            ("filename_template",)
-        )
-
-        self.assertIsNotNone(conflict)
-        self.assertIn("Output settings cannot change", str(conflict))
+        for name in (
+            "output_dir",
+            "filename_template",
+            "output_format",
+            "wav_encoding",
+            "flac_encoding",
+            "save_text",
+            "save_lab",
+        ):
+            with self.subTest(name=name):
+                conflict = self.operations.settings_change_conflict_status((name,))
+                self.assertIsNotNone(conflict)
+                self.assertIn("Output settings cannot change", str(conflict))
 
     def test_preview_worker_emits_ready_playback_effect_without_candidate_focus(self):
         session_candidate = candidate(3)

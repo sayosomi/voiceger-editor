@@ -42,6 +42,17 @@ from .tui_status import EMPTY_STATUS, Status, StatusKind, format_status
 
 _CANCEL_GENERATION_HINT = "[Ctrl+C] Cancel generation"
 
+_OUTPUT_FORMAT_LABELS = {
+    "wav": "WAV",
+    "flac": "FLAC",
+}
+_OUTPUT_ENCODING_LABELS = {
+    "source": "Source",
+    "pcm16": "PCM 16-bit",
+    "pcm24": "PCM 24-bit",
+    "float32": "Float 32-bit",
+}
+
 
 def status_with_cancel_generation_hint(
     status: Status,
@@ -1425,6 +1436,29 @@ class TuiRenderer:
             plain("* Applying this setting clears existing candidates.")
         elif editor.kind == "audio_output_settings":
             draft = editor.payload["draft_settings"]
+            output_format = str(draft.get("output_format", "wav"))
+            encoding_key = (
+                "wav_encoding" if output_format == "wav" else "flac_encoding"
+            )
+            output_encoding = str(draft.get(encoding_key, "source"))
+            plain()
+            for key, value in (
+                (
+                    "output_format",
+                    _OUTPUT_FORMAT_LABELS.get(output_format, output_format),
+                ),
+                (
+                    "output_encoding",
+                    _OUTPUT_ENCODING_LABELS.get(output_encoding, output_encoding),
+                ),
+            ):
+                item = menu_item(editor.kind, key, editor.payload)
+                marker = "▶ " if editor.selection == key else "  "
+                value = _adjustable_value(
+                    value,
+                    self._adjustment_press_direction(state, "settings", key),
+                )
+                lines.append((f"{marker}{item.display_label:<18}{value}", key))
             plain()
             if editor.active_field == "filename_template":
                 input_field("filename_template")

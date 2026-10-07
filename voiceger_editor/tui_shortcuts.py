@@ -208,6 +208,20 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
     ),
     "audio_output_settings": (
         MenuItem(
+            "output_format",
+            "Format",
+            None,
+            "adjustable",
+            no_shortcut_reason="Left/Right changes the focused output format.",
+        ),
+        MenuItem(
+            "output_encoding",
+            "Encoding",
+            None,
+            "adjustable",
+            no_shortcut_reason="Left/Right changes the focused encoding.",
+        ),
+        MenuItem(
             "filename_template",
             "Filename template",
             None,
