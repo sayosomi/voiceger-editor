@@ -37,7 +37,13 @@ from .filename import (
     render_output_basename,
     validate_filename_template,
 )
-from .output import FLAC_ENCODINGS, OUTPUT_FORMATS, WAV_ENCODINGS, output_extension
+from .output import (
+    FLAC_ENCODINGS,
+    MP3_BITRATES,
+    WAV_ENCODINGS,
+    available_output_formats,
+    output_extension,
+)
 from .pronunciation import (
     AccentPhrase as CoreAccentPhrase,
     PronunciationPunctuation as CorePronunciationPunctuation,
@@ -420,6 +426,7 @@ class TuiEditorController:
             "output_format": settings.output_format,
             "wav_encoding": settings.wav_encoding,
             "flac_encoding": settings.flac_encoding,
+            "mp3_bitrate": settings.mp3_bitrate,
             "save_text": settings.save_text,
             "save_lab": settings.save_lab,
             "top_k": str(settings.top_k),
@@ -435,6 +442,9 @@ class TuiEditorController:
         if parent is None or parent.kind != "settings":
             return ()
         draft = parent.payload["draft_settings"]
+        available_formats = available_output_formats()
+        if draft["output_format"] not in available_formats:
+            draft["output_format"] = "wav"
         style_name = f"Style {draft['style_id']}"
         try:
             style_id = int(draft["style_id"])
@@ -458,6 +468,8 @@ class TuiEditorController:
                 "draft_settings": draft,
                 "preview_text": current_caption or "Sample text",
                 "preview_style": style_name,
+                "show_output_encoding": draft["output_format"] != "mp3",
+                "show_mp3_bitrate": draft["output_format"] == "mp3",
             },
         )
         self._refresh_filename_preview(self.editor)
@@ -1306,7 +1318,13 @@ class TuiEditorController:
             if selected == "filename_template":
                 value = editor.payload["draft_settings"]["filename_template"]
                 return self.begin_field("filename_template", str(value))
-            if selected in {"output_format", "output_encoding", "save_text", "save_lab"}:
+            if selected in {
+                "output_format",
+                "output_encoding",
+                "mp3_bitrate",
+                "save_text",
+                "save_lab",
+            }:
                 return self.adjust_settings(1)
             if selected == "back":
                 return self._restore_parent_editor("")
@@ -1866,6 +1884,7 @@ class TuiEditorController:
                 output_format=draft["output_format"],
                 wav_encoding=draft["wav_encoding"],
                 flac_encoding=draft["flac_encoding"],
+                mp3_bitrate=draft["mp3_bitrate"],
                 save_text=draft["save_text"],
                 save_lab=draft["save_lab"],
                 top_k=int(draft["top_k"]),
@@ -2019,7 +2038,7 @@ class TuiEditorController:
         draft = editor.payload["draft_settings"]
         selected = editor.selection
         allowed = (
-            {"output_format", "output_encoding", "save_text", "save_lab"}
+            {"output_format", "output_encoding", "mp3_bitrate", "save_text", "save_lab"}
             if editor.kind == "audio_output_settings"
             else {
                 "style_id", "speed", "take_count",
@@ -2149,17 +2168,26 @@ class TuiEditorController:
                 return clear_feedback
             draft[selected] = f"{result.value:.2f}"
         elif selected == "output_format":
+            formats = available_output_formats()
+            current = str(draft["output_format"])
+            if current not in formats:
+                current = formats[0]
+                draft["output_format"] = current
             result = step_cyclic(
-                str(draft["output_format"]),
-                OUTPUT_FORMATS,
+                current,
+                formats,
                 direction=direction,
             )
             if not result.changed:
                 return clear_feedback
             draft["output_format"] = result.value
+            editor.payload["show_output_encoding"] = result.value != "mp3"
+            editor.payload["show_mp3_bitrate"] = result.value == "mp3"
             self._refresh_filename_preview(editor)
         elif selected == "output_encoding":
             output_format = str(draft["output_format"])
+            if output_format == "mp3":
+                return clear_feedback
             encoding_key = "wav_encoding" if output_format == "wav" else "flac_encoding"
             encodings = WAV_ENCODINGS if output_format == "wav" else FLAC_ENCODINGS
             result = step_ordered(
@@ -2170,6 +2198,17 @@ class TuiEditorController:
             if not result.changed:
                 return clear_feedback
             draft[encoding_key] = result.value
+        elif selected == "mp3_bitrate":
+            if str(draft["output_format"]) != "mp3":
+                return clear_feedback
+            result = step_ordered(
+                str(draft["mp3_bitrate"]),
+                MP3_BITRATES,
+                direction=direction,
+            )
+            if not result.changed:
+                return clear_feedback
+            draft["mp3_bitrate"] = result.value
         elif selected in {"save_text", "save_lab"}:
             result = step_cyclic(
                 bool(draft[selected]),
