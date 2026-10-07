@@ -491,7 +491,7 @@ class TuiShortcutTests(unittest.TestCase):
         intents = self.handle(controller, "o")
         self.assertTrue(intents)
         self.assertEqual(controller.editor.kind, "audio_output_settings")
-        self.assertEqual(controller.editor.selection, "filename_template")
+        self.assertEqual(controller.editor.selection, "output_format")
         self.assertIs(controller.editor.payload["draft_settings"], editor.payload["draft_settings"])
 
     def test_editor_menu_global_help_and_quit_keys_emit_typed_intents(self):
