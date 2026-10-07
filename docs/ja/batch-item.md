@@ -90,6 +90,8 @@ Enter を押すと、日本語の読みやアクセントを詳しく編集で�
 
 英語では、ARPAbet の発音が表示されます。Left / Right で第一強勢の位置を移動し、Enter で ARPAbet を編集できます。
 
+ARPAbet の音素や強勢の表記については [ARPAbet](arpabet.md) を参照してください。
+
 詳しくは [発音編集](pronunciation.md) を参照してください。
 
 ### 発音情報を作り直す
@@ -232,5 +234,6 @@ Caption を削除すると、その Caption の一時的な Take も削除され
 ## 関連ページ
 
 - [発音編集](pronunciation.md)
+- [ARPAbet](arpabet.md)
 - [設定](settings.md)
 - [BATCH LIST](batch-list.md)
