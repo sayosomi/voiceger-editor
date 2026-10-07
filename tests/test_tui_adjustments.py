@@ -5,6 +5,7 @@ from voiceger_editor.tui_adjustments import (
     StepResult,
     step_bounded,
     step_cyclic,
+    step_ordered,
 )
 
 
@@ -101,6 +102,31 @@ class TuiAdjustmentTests(unittest.TestCase):
                 minimum=10,
                 maximum=1,
             )
+
+    def test_ordered_step_moves_without_wrapping(self):
+        choices = ("first", "second", "third")
+        self.assertEqual(
+            step_ordered("second", choices, direction=1),
+            StepResult("third", True),
+        )
+        self.assertEqual(
+            step_ordered("third", choices, direction=1),
+            StepResult("third", False),
+        )
+        self.assertEqual(
+            step_ordered("first", choices, direction=-1),
+            StepResult("first", False),
+        )
+        self.assertEqual(
+            step_ordered("second", choices, direction=-3),
+            StepResult("first", True),
+        )
+
+    def test_ordered_step_rejects_empty_choices_and_missing_current_value(self):
+        with self.assertRaises(ValueError):
+            step_ordered("missing", (), direction=1)
+        with self.assertRaises(ValueError):
+            step_ordered("missing", ("first", "second"), direction=1)
 
     def test_cyclic_step_wraps_in_both_directions(self):
         choices = ("first", "second", "third")
