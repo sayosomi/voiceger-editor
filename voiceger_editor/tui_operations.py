@@ -939,6 +939,9 @@ class TuiOperations:
         output_names = {
             "output_dir",
             "filename_template",
+            "output_format",
+            "wav_encoding",
+            "flac_encoding",
             "save_text",
             "save_lab",
         }
