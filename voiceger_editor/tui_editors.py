@@ -51,7 +51,7 @@ from .settings import (
     VOICEGER_DEFAULT_TOP_K,
     VOICEGER_DEFAULT_TOP_P,
 )
-from .tui_adjustments import step_bounded, step_cyclic
+from .tui_adjustments import step_bounded, step_cyclic, step_ordered
 from .tui_confirmation import handle_confirmation_key
 from .tui_display import _display_width
 from .tui_selection import move_clamped_selection
@@ -2162,7 +2162,7 @@ class TuiEditorController:
             output_format = str(draft["output_format"])
             encoding_key = "wav_encoding" if output_format == "wav" else "flac_encoding"
             encodings = WAV_ENCODINGS if output_format == "wav" else FLAC_ENCODINGS
-            result = step_cyclic(
+            result = step_ordered(
                 str(draft[encoding_key]),
                 encodings,
                 direction=direction,
