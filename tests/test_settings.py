@@ -30,6 +30,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.output_format, "wav")
         self.assertEqual(settings.wav_encoding, "source")
         self.assertEqual(settings.flac_encoding, "pcm16")
+        self.assertEqual(settings.mp3_bitrate, "192k")
         self.assertEqual(settings.take_count, 4)
         self.assertEqual(settings.style_id, 3)
         self.assertEqual(settings.speed, 1.0)
@@ -48,6 +49,7 @@ class SettingsTests(unittest.TestCase):
                 output_format="flac",
                 wav_encoding="pcm24",
                 flac_encoding="pcm24",
+                mp3_bitrate="256k",
                 take_count=8,
                 style_id=38,
                 speed=1.25,
@@ -73,6 +75,7 @@ class SettingsTests(unittest.TestCase):
                     "output_format": "flac",
                     "wav_encoding": "pcm24",
                     "flac_encoding": "pcm24",
+                    "mp3_bitrate": "256k",
                     "take_count": 8,
                     "style_id": 38,
                     "speed": 1.25,
@@ -105,6 +108,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.output_format, "wav")
         self.assertEqual(settings.wav_encoding, "source")
         self.assertEqual(settings.flac_encoding, "pcm16")
+        self.assertEqual(settings.mp3_bitrate, "192k")
 
     def test_custom_config_path_can_be_loaded_and_saved(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -148,9 +152,10 @@ class SettingsTests(unittest.TestCase):
             {"filename_template": ""},
             {"filename_template": "{take}_{text}"},
             {"filename_template": "{YYYYQQ}_{text}"},
-            {"output_format": "mp3"},
+            {"output_format": "ogg"},
             {"wav_encoding": "pcm32"},
             {"flac_encoding": "source"},
+            {"mp3_bitrate": "64k"},
             {"output_dir": ""},
             {"output_dir": "invalid\x00path"},
         ]
@@ -176,9 +181,10 @@ class SettingsTests(unittest.TestCase):
             '{"save_text": "yes"}',
             '{"save_lab": "yes"}',
             '{"filename_template": "{datetime}_{text}"}',
-            '{"output_format": "mp3"}',
+            '{"output_format": "ogg"}',
             '{"wav_encoding": "pcm32"}',
             '{"flac_encoding": "source"}',
+            '{"mp3_bitrate": "64k"}',
             '{"future_setting": true}',
         ]
         with tempfile.TemporaryDirectory() as directory:
@@ -188,6 +194,40 @@ class SettingsTests(unittest.TestCase):
                     config_path.write_text(contents, encoding="utf-8")
                     with self.assertRaises(SettingsError):
                         load_settings(config_path)
+
+    def test_saved_mp3_selection_is_preserved_when_ffmpeg_is_available(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "config.json"
+            config_path.write_text(
+                '{"output_format":"mp3","mp3_bitrate":"320k"}',
+                encoding="utf-8",
+            )
+
+            with patch(
+                "voiceger_editor.settings.available_output_formats",
+                return_value=("wav", "flac", "mp3"),
+            ):
+                settings = load_settings(config_path)
+
+        self.assertEqual(settings.output_format, "mp3")
+        self.assertEqual(settings.mp3_bitrate, "320k")
+
+    def test_saved_mp3_selection_falls_back_to_wav_without_ffmpeg_but_keeps_bitrate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "config.json"
+            config_path.write_text(
+                '{"output_format":"mp3","mp3_bitrate":"256k"}',
+                encoding="utf-8",
+            )
+
+            with patch(
+                "voiceger_editor.settings.available_output_formats",
+                return_value=("wav", "flac"),
+            ):
+                settings = load_settings(config_path)
+
+        self.assertEqual(settings.output_format, "wav")
+        self.assertEqual(settings.mp3_bitrate, "256k")
 
     def test_malformed_json_fails_with_path_and_location(self):
         with tempfile.TemporaryDirectory() as directory:
