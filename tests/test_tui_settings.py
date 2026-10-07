@@ -97,6 +97,26 @@ class TuiSettingsControllerTests(unittest.TestCase):
         operations.settings_change_conflict_status.assert_called_once()
         save.assert_called_once()
 
+    def test_audio_output_changes_are_operation_relevant_without_being_synthesis_changes(self):
+        events = []
+        controller, session, operations, save, _status, _batch = (
+            self.make_controller(events=events)
+        )
+
+        self.assertTrue(
+            controller.change(output_format="flac", flac_encoding="pcm24")
+        )
+
+        operations.settings_change_conflict_status.assert_called_once_with(
+            ("output_format", "flac_encoding")
+        )
+        self.assertEqual(session.settings.output_format, "flac")
+        self.assertEqual(session.settings.flac_encoding, "pcm24")
+        self.assertEqual(events, ["settings"])
+        operations.stop_playback.assert_not_called()
+        operations.clear_current_take.assert_not_called()
+        save.assert_called_once()
+
     def test_operation_policy_blocks_conflicting_synthesis_setting_before_mutation(self):
         controller, session, operations, save, status, _batch = self.make_controller()
         conflict = "Synthesis settings cannot change while the current operation is active."
