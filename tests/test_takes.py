@@ -476,16 +476,18 @@ class TakeBatchTests(unittest.TestCase):
                 text_path=Path(directory) / "saved.txt",
             )
             with patch(
-                "voiceger_editor.takes.save_output_wav", return_value=saved
-            ) as save_output_wav:
+                "voiceger_editor.takes.save_output_audio", return_value=saved
+            ) as save_output_audio:
                 result = batch.accept(2, output_dir=Path(directory), save_text=True)
 
             self.assertIs(result, saved)
-            save_output_wav.assert_called_once_with(
+            save_output_audio.assert_called_once_with(
                 wav_source=temporary_paths[1],
                 source_text="generated source",
                 style_name="Sweet",
                 output_dir=Path(directory),
+                output_format="wav",
+                output_encoding="source",
                 save_text=True,
                 filename_template="{YYYYMMDDHHmm}_{text}",
             )
@@ -506,7 +508,7 @@ class TakeBatchTests(unittest.TestCase):
             ):
                 candidates = list(batch.generate_all())
             with patch(
-                "voiceger_editor.takes.save_output_wav",
+                "voiceger_editor.takes.save_output_audio",
                 side_effect=OSError("save failed"),
             ):
                 with self.assertRaisesRegex(OSError, "save failed"):
