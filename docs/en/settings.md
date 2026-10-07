@@ -299,6 +299,7 @@ Example:
   "output_format": "wav",
   "wav_encoding": "source",
   "flac_encoding": "pcm16",
+  "mp3_bitrate": "192k",
   "save_lab": false,
   "save_text": false,
   "speed": 1.0,
@@ -322,7 +323,7 @@ Configure it from **Settings -> File format & naming -> Filename template**. The
 
 Supported case-sensitive date/time tokens are `YYYY`, `MM`, `DD`, `HH`, `mm`, and `ss`. `MM` is the month and `mm` is the minute. Named variables are `{text}` and `{style}`.
 
-The file extension comes from Format rather than the template. A rendered basename such as `202610071945_hello` is therefore saved as either `202610071945_hello.wav` or `202610071945_hello.flac`. TXT and LAB sidecars, when enabled, use the same final basename and collision suffix.
+The file extension comes from Format rather than the template. A rendered basename such as `202610071945_hello` is saved with the selected extension, such as `.wav`, `.flac`, or `.mp3` when MP3 is available. TXT and LAB sidecars, when enabled, use the same final basename and collision suffix.
 
 Unknown variables and unsupported date/time tokens are rejected before the Settings draft can be saved.
 
