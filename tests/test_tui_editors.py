@@ -1981,6 +1981,7 @@ class TuiEditorControllerTests(unittest.TestCase):
                 "output_format": "wav",
                 "wav_encoding": "source",
                 "flac_encoding": "pcm16",
+                "mp3_bitrate": "192k",
                 "save_text": True,
                 "save_lab": False,
                 "top_k": "20",
