@@ -144,3 +144,27 @@ jobs:
           .ci-smoke/bin/python -m pip check
           .ci-smoke/bin/voiceger-editor --help
           .ci-smoke/bin/voiceger-editor --version
+
+  ci:
+    name: CI
+    if: ${{ always() }}
+    needs:
+      - unit-tests
+      - windows-startup
+      - package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check required CI results
+        env:
+          UNIT_TESTS_RESULT: ${{ needs.unit-tests.result }}
+          WINDOWS_STARTUP_RESULT: ${{ needs.windows-startup.result }}
+          PACKAGE_RESULT: ${{ needs.package.result }}
+        run: |
+          set -euo pipefail
+          for result in "$UNIT_TESTS_RESULT" "$WINDOWS_STARTUP_RESULT" "$PACKAGE_RESULT"; do
+            if [[ "$result" != "success" ]]; then
+              echo "Required CI job did not succeed: $result"
+              exit 1
+            fi
+          done
