@@ -816,6 +816,8 @@ class TuiApp:
                 active_generation=self._operations.active_item_generation_progress,
                 generation_busy=self._operations.generation_slot_busy,
                 background_status=background_status,
+                number_jump_active=self._batch.number_jump_active,
+                number_jump_value=self._batch.number_jump_value,
             )
         else:
             self._dispatch_navigation_actions(
