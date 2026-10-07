@@ -31,6 +31,7 @@ Leaving Settings without applying does not save the draft.
 | Format | WAV |
 | WAV encoding | Source |
 | FLAC encoding | PCM 16-bit |
+| MP3 bitrate | 192 kbps |
 | TXT | Off |
 | LAB | Off |
 | Top K | `20` |
