@@ -714,6 +714,9 @@ class UtteranceSessionTests(unittest.TestCase):
             style_id=self.settings.style_id,
             speed=self.settings.speed,
             save_text=False,
+            output_format="flac",
+            wav_encoding="pcm24",
+            flac_encoding="pcm24",
         )
 
         with patch(
@@ -1096,6 +1099,8 @@ class UtteranceSessionTests(unittest.TestCase):
                         "output_dir": session.settings.output_dir,
                         "save_text": session.settings.save_text,
                         "filename_template": session.settings.filename_template,
+                        "output_format": "wav",
+                        "output_encoding": "source",
                     },
                 )
             ],
@@ -1113,6 +1118,9 @@ class UtteranceSessionTests(unittest.TestCase):
             output_dir=Path("/latest-output"),
             filename_template="{style}_{text}",
             save_text=False,
+            output_format="flac",
+            wav_encoding="pcm24",
+            flac_encoding="pcm24",
         )
         with patch(
             "voiceger_editor.session.get_style",
@@ -1131,6 +1139,8 @@ class UtteranceSessionTests(unittest.TestCase):
                         "output_dir": Path("/latest-output"),
                         "save_text": False,
                         "filename_template": "{style}_{text}",
+                        "output_format": "flac",
+                        "output_encoding": "pcm24",
                     },
                 )
             ],
