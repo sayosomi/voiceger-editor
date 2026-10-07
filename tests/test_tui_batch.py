@@ -597,7 +597,7 @@ class TuiBatchControllerTests(unittest.TestCase):
 
         self.assertEqual(len(actions), 1)
         self.assertIsInstance(actions[0], ReportBatchStatus)
-        self.assertEqual(actions[0].status.message, "Enter a number from 1 to 12.")
+        self.assertEqual(str(actions[0].status), "Enter a number from 1 to 12.")
         self.assertTrue(controller.number_jump_active)
         self.assertEqual(controller.number_jump_value, "13")
         self.assertEqual(controller.handle_key("a"), ())
