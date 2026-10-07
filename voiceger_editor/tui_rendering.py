@@ -346,6 +346,14 @@ def _positioned_title(
     return title_part + (" " * gap) + indicator
 
 
+def _numbered_shortcut_token(number: int, item_count: int) -> str:
+    """Format one numbered-list position with direct-shortcut semantics."""
+
+    token_width = max(3, len(str(max(1, item_count))))
+    token = f"[{number}]" if 1 <= number <= 9 else str(number)
+    return token.rjust(token_width)
+
+
 class TuiRenderer:
     """Own display documents, terminal layout, and curses drawing."""
 
@@ -702,7 +710,8 @@ class TuiRenderer:
                 review_state = "[!] "
             else:
                 review_state = ""
-            prefix = f"{marker}[{selected}] {index + 1}  {review_state}"
+            number_token = _numbered_shortcut_token(index + 1, len(batch))
+            prefix = f"{marker}[{selected}] {number_token}  {review_state}"
             available = max(1, width - 1 - _display_width(prefix))
             pieces = _wrap_text(item.caption, available) or [""]
             lines.append(NavigationLine(prefix + pieces[0], key, key))
@@ -788,7 +797,7 @@ class TuiRenderer:
                     screen,
                     1,
                     0,
-                    f"▶ Jump to number: {number_jump_value}_ / {len(batch)}",
+                    f"▶ Jump to Caption: {number_jump_value}_ / {len(batch)}",
                     width,
                     self._focus_attribute(),
                 )
@@ -804,7 +813,7 @@ class TuiRenderer:
                     screen,
                     1,
                     0,
-                    "  [0] Jump to number",
+                    "  [0] Jump to Caption",
                     width,
                 )
             content_start_row = 3
@@ -1705,9 +1714,10 @@ class TuiRenderer:
                     )
                 )
                 key = ("entry", index)
+                number_token = _numbered_shortcut_token(index + 1, len(entries))
                 wrapped_selectable_text(
                     key,
-                    f"{index + 1}  {word.surface}      {display}",
+                    f"{number_token}  {word.surface}      {display}",
                 )
             plain()
             selectable_value(
@@ -1754,9 +1764,10 @@ class TuiRenderer:
                 )
             for index, entry in enumerate(entries):
                 key = ("entry", index)
+                number_token = _numbered_shortcut_token(index + 1, len(entries))
                 wrapped_selectable_text(
                     key,
-                    f"{index + 1}  {entry.surface}      {' '.join(entry.phonemes)}",
+                    f"{number_token}  {entry.surface}      {' '.join(entry.phonemes)}",
                 )
             plain()
             selectable_value(
@@ -2024,7 +2035,7 @@ class TuiRenderer:
                         1,
                         0,
                         (
-                            "▶ Jump to number: "
+                            "▶ Jump to word: "
                             f"{editor.payload.get('number_jump_value', '')}_ / {len(entries)}"
                         ),
                         width,
@@ -2042,7 +2053,7 @@ class TuiRenderer:
                         screen,
                         1,
                         0,
-                        "  [0] Jump to number",
+                        "  [0] Jump to word",
                         width,
                     )
                 content_start_row = 3

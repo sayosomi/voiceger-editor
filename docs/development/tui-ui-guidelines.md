@@ -21,6 +21,9 @@ An adjustment or action that does not leave the current screen should normally k
 When list entries already display stable 1-based item numbers, those visible numbers may also be direct numeric shortcuts.
 
 - `1` through `9` activate the matching numbered item immediately when it exists.
+- When those directly pressable positions are rendered as visible shortcuts, show them as `[1]` through `[9]`; brackets mean that exact key can be pressed directly.
+- Positions 10 and above are rendered as plain numbers without brackets because they are not single-key shortcuts.
+- Keep the number-token column fixed-width so the item content after it remains aligned; the width must accommodate both `[1]`–`[9]` and the largest visible position.
 - Lists with 10 or more items may use `0` to enter an explicit arbitrary-number input state.
 - Arbitrary-number entry is explicit; do not infer multi-digit shortcuts from timing or timeout-based digit buffering.
 - While arbitrary-number entry is active, ordinary list action shortcuts do not fire.
