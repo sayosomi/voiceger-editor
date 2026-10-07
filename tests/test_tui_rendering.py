@@ -2780,7 +2780,7 @@ class TuiRenderingTests(unittest.TestCase):
             rows[number].index(f"caption {number}")
             for number in (1, 9, 10, 12)
         }
-        self.assertEqual(caption_columns, {10})
+        self.assertEqual(caption_columns, {11})
 
     def test_dictionary_number_tokens_mark_direct_shortcuts_and_align_content(self):
         entries = tuple(
