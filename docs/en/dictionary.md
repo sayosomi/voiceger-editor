@@ -6,7 +6,7 @@ Open Dictionary from Batch List or Batch Item, or save directly from a pronuncia
 
 ## Open the dictionary
 
-From the Main screen, select Dictionary or press:
+From Batch List or Batch Item, select Dictionary or press:
 
 ```text
 d
