@@ -20,6 +20,7 @@ from voiceger_editor.tui_batch import (
     OpenBatchSettings,
     OpenBatchWrite,
     QuitBatch,
+    ReportBatchStatus,
     TuiBatchController,
 )
 
@@ -536,6 +537,89 @@ class TuiBatchControllerTests(unittest.TestCase):
         sessions = controller.sessions
         controller.close_sessions()
         self.assertTrue(all(session.closed for session in sessions))
+
+
+    def test_numeric_shortcuts_open_existing_caption_numbers_directly(self):
+        controller = self.make_controller(
+            "\n".join(f"caption {number}" for number in range(1, 10))
+        )
+
+        self.assertEqual(controller.handle_key("1"), (OpenBatchItem(0),))
+        self.assertEqual(controller.focus_key, ("caption", 0))
+        self.assertEqual(controller.handle_key("9"), (OpenBatchItem(8),))
+        self.assertEqual(controller.focus_key, ("caption", 8))
+
+    def test_unavailable_direct_digit_is_a_harmless_no_op(self):
+        controller = self.make_controller("first\nsecond")
+        original_focus = controller.focus_key
+
+        self.assertEqual(controller.handle_key("9"), ())
+        self.assertEqual(controller.focus_key, original_focus)
+        self.assertFalse(controller.number_jump_active)
+
+    def test_zero_enters_jump_mode_and_multi_digit_enter_opens_caption(self):
+        controller = self.make_controller(
+            "\n".join(f"caption {number}" for number in range(1, 13))
+        )
+
+        self.assertEqual(controller.handle_key("0"), ())
+        self.assertTrue(controller.number_jump_active)
+        controller.handle_key("1")
+        controller.handle_key("1")
+        self.assertEqual(controller.number_jump_value, "11")
+
+        self.assertEqual(controller.handle_key("\n"), (OpenBatchItem(10),))
+        self.assertFalse(controller.number_jump_active)
+        self.assertEqual(controller.focus_key, ("caption", 10))
+
+    def test_jump_escape_cancels_without_opening(self):
+        controller = self.make_controller(
+            "\n".join(f"caption {number}" for number in range(1, 13))
+        )
+        original_focus = controller.focus_key
+        controller.handle_key("0")
+        controller.handle_key("1")
+
+        self.assertEqual(controller.handle_key("\x1b"), ())
+        self.assertFalse(controller.number_jump_active)
+        self.assertEqual(controller.focus_key, original_focus)
+        self.assertFalse(controller.in_item)
+
+    def test_invalid_jump_warns_stays_active_and_suppresses_batch_shortcuts(self):
+        controller = self.make_controller(
+            "\n".join(f"caption {number}" for number in range(1, 13))
+        )
+        controller.handle_key("0")
+        controller.handle_key("1")
+        controller.handle_key("3")
+
+        actions = controller.handle_key("\n")
+
+        self.assertEqual(len(actions), 1)
+        self.assertIsInstance(actions[0], ReportBatchStatus)
+        self.assertEqual(actions[0].status.message, "Enter a number from 1 to 12.")
+        self.assertTrue(controller.number_jump_active)
+        self.assertEqual(controller.number_jump_value, "13")
+        self.assertEqual(controller.handle_key("a"), ())
+        self.assertTrue(controller.number_jump_active)
+
+    def test_existing_navigation_and_actions_resume_after_jump_cancel(self):
+        controller = self.make_controller(
+            "\n".join(f"caption {number}" for number in range(1, 13))
+        )
+        controller.handle_key("0")
+        controller.handle_key("\x1b")
+
+        controller.handle_key(curses.KEY_DOWN)
+        self.assertEqual(controller.focus_key, ("caption", 1))
+        included = controller.batch.items[1].included_for_generation
+        controller.handle_key(" ")
+        self.assertNotEqual(
+            controller.batch.items[1].included_for_generation,
+            included,
+        )
+        self.assertEqual(controller.handle_key("\n"), (OpenBatchItem(1),))
+        self.assertEqual(controller.handle_key("a"), (AddCaptions(),))
 
 
 if __name__ == "__main__":
