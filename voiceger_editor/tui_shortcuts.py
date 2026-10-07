@@ -220,6 +220,15 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
             None,
             "adjustable",
             no_shortcut_reason="Left/Right changes the focused encoding.",
+            condition_key="show_output_encoding",
+        ),
+        MenuItem(
+            "mp3_bitrate",
+            "Bitrate",
+            None,
+            "adjustable",
+            no_shortcut_reason="Left/Right changes the focused MP3 bitrate.",
+            condition_key="show_mp3_bitrate",
         ),
         MenuItem(
             "filename_template",

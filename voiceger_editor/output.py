@@ -7,18 +7,22 @@ from datetime import datetime
 import errno
 from pathlib import Path
 import shutil
+import subprocess
 from typing import Any, Optional
 
 from .filename import DEFAULT_FILENAME_TEMPLATE, build_output_filename
 
 
-OUTPUT_FORMATS = ("wav", "flac")
+OUTPUT_FORMATS = ("wav", "flac", "mp3")
 WAV_ENCODINGS = ("source", "pcm16", "pcm24", "float32")
 FLAC_ENCODINGS = ("pcm16", "pcm24")
+MP3_BITRATES = ("96k", "128k", "160k", "192k", "256k", "320k")
+DEFAULT_MP3_BITRATE = "192k"
 
 _OUTPUT_EXTENSIONS = {
     "wav": ".wav",
     "flac": ".flac",
+    "mp3": ".mp3",
 }
 _OUTPUT_SUBTYPES = {
     ("wav", "pcm16"): "PCM_16",
@@ -45,6 +49,20 @@ class SavedOutput:
         return self.wav_path
 
 
+def ffmpeg_executable() -> str | None:
+    """Return the ffmpeg executable available from the current environment."""
+
+    return shutil.which("ffmpeg")
+
+
+def available_output_formats() -> tuple[str, ...]:
+    """Return accepted-output formats currently usable on this machine."""
+
+    if ffmpeg_executable() is None:
+        return tuple(value for value in OUTPUT_FORMATS if value != "mp3")
+    return OUTPUT_FORMATS
+
+
 def output_extension(output_format: str) -> str:
     """Return the file extension for one validated accepted-output format."""
 
@@ -57,11 +75,54 @@ def output_extension(output_format: str) -> str:
 def _validate_output_selection(output_format: str, output_encoding: str) -> None:
     if output_format not in OUTPUT_FORMATS:
         raise ValueError(f"unsupported output format: {output_format!r}")
-    allowed = WAV_ENCODINGS if output_format == "wav" else FLAC_ENCODINGS
+    if output_format == "wav":
+        allowed = WAV_ENCODINGS
+        label = "encoding"
+    elif output_format == "flac":
+        allowed = FLAC_ENCODINGS
+        label = "encoding"
+    else:
+        allowed = MP3_BITRATES
+        label = "bitrate"
     if output_encoding not in allowed:
         raise ValueError(
-            f"unsupported {output_format.upper()} encoding: {output_encoding!r}"
+            f"unsupported {output_format.upper()} {label}: {output_encoding!r}"
         )
+
+
+def _write_mp3(*, wav_source: Path, destination: Path, bitrate: str) -> None:
+    executable = ffmpeg_executable()
+    if executable is None:
+        raise RuntimeError("MP3 output requires ffmpeg to be installed and discoverable on PATH.")
+
+    try:
+        subprocess.run(
+            [
+                executable,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(wav_source),
+                "-b:a",
+                bitrate,
+                str(destination),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or "").strip()
+        if detail:
+            raise RuntimeError(f"MP3 conversion failed: {detail}") from exc
+        raise RuntimeError(
+            f"MP3 conversion failed: ffmpeg exited with status {exc.returncode}."
+        ) from exc
+    except OSError as exc:
+        raise RuntimeError(f"MP3 conversion failed: {exc}") from exc
 
 
 def _reserve(path: Path) -> None:
@@ -195,8 +256,8 @@ def save_output_audio(
     """Persist a candidate WAV using the selected accepted-output format.
 
     WAV Source preserves the established acceptance path by copying candidate
-    bytes without decoding. Explicit WAV encodings and FLAC are converted only
-    for the final accepted output.
+    bytes without decoding. Explicit WAV encodings, FLAC, and optional MP3 are
+    converted only for the final accepted output.
     """
 
     _validate_output_selection(output_format, output_encoding)
@@ -219,6 +280,12 @@ def save_output_audio(
     try:
         if output_format == "wav" and output_encoding == "source":
             shutil.copyfile(wav_source, audio_path)
+        elif output_format == "mp3":
+            _write_mp3(
+                wav_source=Path(wav_source),
+                destination=audio_path,
+                bitrate=output_encoding,
+            )
         else:
             import soundfile as sf
 

@@ -175,6 +175,7 @@ class BatchRecipeTests(unittest.TestCase):
             output_format="flac",
             wav_encoding="pcm24",
             flac_encoding="pcm24",
+            mp3_bitrate="320k",
             take_count=4,
             style_id=3,
             speed=1.0,
@@ -340,6 +341,10 @@ class BatchRecipeTests(unittest.TestCase):
                 item.session.settings.flac_encoding,
                 self.runtime_settings.flac_encoding,
             )
+            self.assertEqual(
+                item.session.settings.mp3_bitrate,
+                self.runtime_settings.mp3_bitrate,
+            )
             self.assertTrue(item.session.settings.save_text)
             self.assertTrue(item.session.settings.save_lab)
 
@@ -361,6 +366,7 @@ class BatchRecipeTests(unittest.TestCase):
             "output_format",
             "wav_encoding",
             "flac_encoding",
+            "mp3_bitrate",
             "save_text",
             "save_lab",
             "candidate",

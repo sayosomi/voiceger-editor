@@ -45,6 +45,7 @@ _CANCEL_GENERATION_HINT = "[Ctrl+C] Cancel generation"
 _OUTPUT_FORMAT_LABELS = {
     "wav": "WAV",
     "flac": "FLAC",
+    "mp3": "MP3",
 }
 _OUTPUT_ENCODING_LABELS = {
     "source": "Source",
@@ -1437,22 +1438,32 @@ class TuiRenderer:
         elif editor.kind == "audio_output_settings":
             draft = editor.payload["draft_settings"]
             output_format = str(draft.get("output_format", "wav"))
-            encoding_key = (
-                "wav_encoding" if output_format == "wav" else "flac_encoding"
-            )
-            output_encoding = str(draft.get(encoding_key, "source"))
-            plain()
-            for key, value in (
+            controls = [
                 (
                     "output_format",
                     _OUTPUT_FORMAT_LABELS.get(output_format, output_format),
-                ),
-                (
-                    "output_encoding",
-                    _OUTPUT_ENCODING_LABELS.get(output_encoding, output_encoding),
-                ),
-            ):
-                item = menu_item(editor.kind, key, editor.payload)
+                )
+            ]
+            if output_format == "mp3":
+                bitrate = str(draft.get("mp3_bitrate", "192k"))
+                controls.append(("mp3_bitrate", bitrate.replace("k", " kbps")))
+            else:
+                encoding_key = (
+                    "wav_encoding" if output_format == "wav" else "flac_encoding"
+                )
+                output_encoding = str(draft.get(encoding_key, "source"))
+                controls.append(
+                    (
+                        "output_encoding",
+                        _OUTPUT_ENCODING_LABELS.get(output_encoding, output_encoding),
+                    )
+                )
+            control_payload = dict(editor.payload)
+            control_payload["show_output_encoding"] = output_format != "mp3"
+            control_payload["show_mp3_bitrate"] = output_format == "mp3"
+            plain()
+            for key, value in controls:
+                item = menu_item(editor.kind, key, control_payload)
                 marker = "▶ " if editor.selection == key else "  "
                 value = _adjustable_value(
                     value,

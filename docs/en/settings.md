@@ -31,6 +31,7 @@ Leaving Settings without applying does not save the draft.
 | Format | WAV |
 | WAV encoding | Source |
 | FLAC encoding | PCM 16-bit |
+| MP3 bitrate | 192 kbps |
 | TXT | Off |
 | LAB | Off |
 | Top K | `20` |
@@ -119,14 +120,22 @@ Supported accepted-audio formats are:
 
 - **WAV**: Source, PCM 16-bit, PCM 24-bit, or Float 32-bit.
 - **FLAC**: PCM 16-bit or PCM 24-bit.
+- **MP3**: 96, 128, 160, 192, 256, or 320 kbps when an external `ffmpeg`
+  executable is installed and discoverable, normally through `PATH`.
+
+MP3 support is optional. Voiceger Editor does not install or bundle ffmpeg, and
+startup continues normally when ffmpeg is unavailable. In that case MP3 is not
+shown as a Format choice. A saved MP3 selection safely falls back to WAV when
+ffmpeg is unavailable, while the saved MP3 bitrate is retained.
 
 WAV **Source** is the default and preserves the existing accepted-Take behavior:
 Voiceger Editor copies the generated candidate WAV without an unnecessary
-decode/re-encode step. Explicit WAV encodings and FLAC are converted only when
-the Take is accepted. Candidate Takes and pronunciation Preview audio remain WAV.
+decode/re-encode step. Explicit WAV encodings, FLAC, and MP3 are converted only
+when the Take is accepted. Candidate Takes, pronunciation Preview audio, and LAB
+processing remain WAV-based.
 
-Voiceger Editor remembers the WAV and FLAC encoding choices separately when you
-switch Format back and forth.
+Voiceger Editor remembers the WAV and FLAC encoding choices and the MP3 bitrate
+separately when you switch Format back and forth.
 
 ## TXT sidecar
 
@@ -290,6 +299,7 @@ Example:
   "output_format": "wav",
   "wav_encoding": "source",
   "flac_encoding": "pcm16",
+  "mp3_bitrate": "192k",
   "save_lab": false,
   "save_text": false,
   "speed": 1.0,
@@ -313,7 +323,7 @@ Configure it from **Settings -> File format & naming -> Filename template**. The
 
 Supported case-sensitive date/time tokens are `YYYY`, `MM`, `DD`, `HH`, `mm`, and `ss`. `MM` is the month and `mm` is the minute. Named variables are `{text}` and `{style}`.
 
-The file extension comes from Format rather than the template. A rendered basename such as `202610071945_hello` is therefore saved as either `202610071945_hello.wav` or `202610071945_hello.flac`. TXT and LAB sidecars, when enabled, use the same final basename and collision suffix.
+The file extension comes from Format rather than the template. A rendered basename such as `202610071945_hello` is saved with the selected extension, such as `.wav`, `.flac`, or `.mp3` when MP3 is available. TXT and LAB sidecars, when enabled, use the same final basename and collision suffix.
 
 Unknown variables and unsupported date/time tokens are rejected before the Settings draft can be saved.
 

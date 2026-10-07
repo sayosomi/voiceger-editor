@@ -1656,7 +1656,13 @@ class TuiEditorControllerTests(unittest.TestCase):
             "{YYYY-MM-DD}_{style}_{text}",
         )
 
-    def test_audio_output_switching_preserves_format_specific_encoding_and_preview(self):
+    @patch(
+        "voiceger_editor.tui_editors.available_output_formats",
+        return_value=("wav", "flac"),
+    )
+    def test_audio_output_switching_preserves_format_specific_encoding_and_preview(
+        self, _formats
+    ):
         settings = self.settings()
         controller, _provider = self.make_controller()
         controller.open_settings(settings, origin=("settings", None), busy=False)
@@ -1707,6 +1713,66 @@ class TuiEditorControllerTests(unittest.TestCase):
         controller.adjust_settings(1)
         self.assertEqual(draft["output_format"], "flac")
         self.assertEqual(draft["flac_encoding"], "pcm24")
+
+    @patch(
+        "voiceger_editor.tui_editors.available_output_formats",
+        return_value=("wav", "flac", "mp3"),
+    )
+    def test_audio_output_mp3_uses_bitrate_row_and_remembers_bitrate(self, _formats):
+        settings = self.settings()
+        controller, _provider = self.make_controller()
+        controller.open_settings(settings, origin=("settings", None), busy=False)
+        controller.editor.selection = "audio_output"
+        controller.handle_key(
+            "\n", settings=settings, query=None, current_caption="Preview caption"
+        )
+        editor = controller.editor
+        draft = editor.payload["draft_settings"]
+
+        editor.selection = "output_format"
+        controller.adjust_settings(1)
+        controller.adjust_settings(1)
+
+        self.assertEqual(draft["output_format"], "mp3")
+        self.assertEqual(
+            controller.selection_keys(),
+            [
+                "output_format", "mp3_bitrate", "filename_template",
+                "save_text", "save_lab", "back",
+            ],
+        )
+        self.assertTrue(editor.payload["filename_preview"].endswith(".mp3"))
+        editor.selection = "mp3_bitrate"
+        controller.adjust_settings(1)
+        self.assertEqual(draft["mp3_bitrate"], "256k")
+
+        editor.selection = "output_format"
+        controller.adjust_settings(1)
+        self.assertEqual(draft["output_format"], "wav")
+        controller.adjust_settings(-1)
+        self.assertEqual(draft["output_format"], "mp3")
+        self.assertEqual(draft["mp3_bitrate"], "256k")
+
+    @patch(
+        "voiceger_editor.tui_editors.available_output_formats",
+        return_value=("wav", "flac"),
+    )
+    def test_audio_output_without_ffmpeg_never_selects_mp3(self, _formats):
+        settings = self.settings()
+        controller, _provider = self.make_controller()
+        controller.open_settings(settings, origin=("settings", None), busy=False)
+        controller.editor.selection = "audio_output"
+        controller.handle_key(
+            "\n", settings=settings, query=None, current_caption="Preview caption"
+        )
+        editor = controller.editor
+
+        editor.selection = "output_format"
+        controller.adjust_settings(1)
+        self.assertEqual(editor.payload["draft_settings"]["output_format"], "flac")
+        controller.adjust_settings(1)
+        self.assertEqual(editor.payload["draft_settings"]["output_format"], "wav")
+        self.assertNotIn("mp3_bitrate", controller.selection_keys())
 
     def test_settings_txt_left_and_right_each_toggle_continuously(self):
         settings = self.settings()
@@ -1915,6 +1981,7 @@ class TuiEditorControllerTests(unittest.TestCase):
                 "output_format": "wav",
                 "wav_encoding": "source",
                 "flac_encoding": "pcm16",
+                "mp3_bitrate": "192k",
                 "save_text": True,
                 "save_lab": False,
                 "top_k": "20",

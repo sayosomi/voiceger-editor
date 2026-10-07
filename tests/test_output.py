@@ -1,13 +1,20 @@
 import tempfile
 import unittest
 import errno
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
 
 from voiceger_editor.filename import build_output_filename
-from voiceger_editor.output import save_output, save_output_audio, save_output_wav
+from voiceger_editor.output import (
+    MP3_BITRATES,
+    available_output_formats,
+    save_output,
+    save_output_audio,
+    save_output_wav,
+)
 
 
 class OutputSaveTests(unittest.TestCase):
@@ -265,6 +272,165 @@ class OutputSaveTests(unittest.TestCase):
                     self.assertEqual(info.subtype, expected_subtype)
                     self.assertEqual(saved.audio_path.suffix, f".{output_format}")
                     self.assertEqual(saved.text_path.stem, saved.audio_path.stem)
+
+
+    def test_available_output_formats_only_include_mp3_when_ffmpeg_is_discoverable(self):
+        with patch("voiceger_editor.output.ffmpeg_executable", return_value=None):
+            self.assertEqual(available_output_formats(), ("wav", "flac"))
+
+        with patch(
+            "voiceger_editor.output.ffmpeg_executable",
+            return_value="/usr/local/bin/ffmpeg",
+        ):
+            self.assertEqual(available_output_formats(), ("wav", "flac", "mp3"))
+
+    def test_each_mp3_bitrate_maps_to_ffmpeg_and_preserves_candidate_wav(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root / "candidate.wav"
+            original = b"candidate wav bytes"
+            candidate.write_bytes(original)
+
+            def fake_run(command, **kwargs):
+                Path(command[-1]).write_bytes(b"encoded mp3")
+                return None
+
+            with (
+                patch(
+                    "voiceger_editor.output.ffmpeg_executable",
+                    return_value="/usr/local/bin/ffmpeg",
+                ),
+                patch(
+                    "voiceger_editor.output.subprocess.run",
+                    side_effect=fake_run,
+                ) as run,
+            ):
+                for bitrate in MP3_BITRATES:
+                    with self.subTest(bitrate=bitrate):
+                        saved = save_output_audio(
+                            wav_source=candidate,
+                            source_text=f"mp3-{bitrate}",
+                            style_name="Neutral",
+                            output_dir=root / "output",
+                            output_format="mp3",
+                            output_encoding=bitrate,
+                            save_text=True,
+                            timestamp=self.timestamp,
+                        )
+
+                        command = run.call_args.args[0]
+                        self.assertEqual(
+                            command[:8],
+                            [
+                                "/usr/local/bin/ffmpeg",
+                                "-hide_banner",
+                                "-loglevel",
+                                "error",
+                                "-y",
+                                "-i",
+                                str(candidate),
+                                "-b:a",
+                            ],
+                        )
+                        self.assertEqual(command[8], bitrate)
+                        self.assertEqual(command[9], str(saved.audio_path))
+                        self.assertEqual(
+                            run.call_args.kwargs,
+                            {
+                                "check": True,
+                                "stdout": subprocess.DEVNULL,
+                                "stderr": subprocess.PIPE,
+                                "text": True,
+                            },
+                        )
+                        self.assertEqual(saved.audio_path.suffix, ".mp3")
+                        self.assertEqual(saved.audio_path.read_bytes(), b"encoded mp3")
+                        self.assertEqual(saved.text_path.stem, saved.audio_path.stem)
+                        self.assertEqual(saved.text_path.read_text(encoding="utf-8"), f"mp3-{bitrate}")
+                        self.assertEqual(candidate.read_bytes(), original)
+
+    def test_mp3_collision_reservation_keeps_a_free_basename(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root / "candidate.wav"
+            candidate.write_bytes(b"candidate")
+
+            def fake_run(command, **_kwargs):
+                Path(command[-1]).write_bytes(b"encoded")
+                return None
+
+            with (
+                patch(
+                    "voiceger_editor.output.ffmpeg_executable",
+                    return_value="/usr/bin/ffmpeg",
+                ),
+                patch(
+                    "voiceger_editor.output.subprocess.run",
+                    side_effect=fake_run,
+                ),
+            ):
+                first = save_output_audio(
+                    wav_source=candidate,
+                    source_text="same",
+                    style_name="Neutral",
+                    output_dir=root / "output",
+                    output_format="mp3",
+                    output_encoding="192k",
+                    timestamp=self.timestamp,
+                )
+                second = save_output_audio(
+                    wav_source=candidate,
+                    source_text="same",
+                    style_name="Neutral",
+                    output_dir=root / "output",
+                    output_format="mp3",
+                    output_encoding="192k",
+                    timestamp=self.timestamp,
+                )
+
+            self.assertEqual(first.audio_path.suffix, ".mp3")
+            self.assertEqual(second.audio_path.suffix, ".mp3")
+            self.assertEqual(second.audio_path.stem, first.audio_path.stem + "-2")
+
+    def test_mp3_conversion_failure_removes_reserved_outputs_and_preserves_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root / "candidate.wav"
+            candidate.write_bytes(b"candidate")
+            output_dir = root / "output"
+
+            failure = subprocess.CalledProcessError(
+                1,
+                ["ffmpeg"],
+                stderr="encoder failed",
+            )
+            with (
+                patch(
+                    "voiceger_editor.output.ffmpeg_executable",
+                    return_value="/usr/bin/ffmpeg",
+                ),
+                patch(
+                    "voiceger_editor.output.subprocess.run",
+                    side_effect=failure,
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "MP3 conversion failed: encoder failed",
+                ):
+                    save_output_audio(
+                        wav_source=candidate,
+                        source_text="failed",
+                        style_name="Neutral",
+                        output_dir=output_dir,
+                        output_format="mp3",
+                        output_encoding="192k",
+                        save_text=True,
+                        timestamp=self.timestamp,
+                    )
+
+            self.assertEqual(candidate.read_bytes(), b"candidate")
+            self.assertEqual(list(output_dir.iterdir()), [])
 
 
 if __name__ == "__main__":
