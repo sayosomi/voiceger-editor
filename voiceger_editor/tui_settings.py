@@ -24,6 +24,9 @@ _OPERATION_RELEVANT_SETTING_NAMES = (
     "take_count",
     "output_dir",
     "filename_template",
+    "output_format",
+    "wav_encoding",
+    "flac_encoding",
     "save_text",
     "save_lab",
 )
