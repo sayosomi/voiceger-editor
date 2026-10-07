@@ -39,6 +39,10 @@ def _truncate(value: str, limit: int = MAX_DISCORD_MESSAGE_LENGTH) -> str:
     return value[: max(0, limit - 1)] + "…"
 
 
+def _is_non_success(conclusion: Any) -> bool:
+    return isinstance(conclusion, str) and conclusion != "success"
+
+
 def _is_failure(conclusion: Any) -> bool:
     return isinstance(conclusion, str) and conclusion in FAILURE_CONCLUSIONS
 
@@ -108,7 +112,7 @@ def build_out_of_date_content(
     return _truncate(
         "\n".join(
             [
-                f"⚠️ [{_display(repository, 180)}] PR #{_display(number, 32)} out of date — latest main integration required",
+                f"⚠️ [{_display(repository, 180)}] PR #{_display(number, 32)} out of date with main",
                 _display(title, 400),
                 f"PR URL: {_display(url, 350)}",
                 f"main SHA: {_display(main_sha, 64)}",
@@ -233,9 +237,7 @@ def notify_ci_failure() -> None:
     run = event.get("workflow_run")
     if not isinstance(run, dict) or run.get("event") != "pull_request":
         raise RuntimeError("Expected a pull-request workflow_run event")
-    if run.get("conclusion") == "success":
-        return
-    if not _is_failure(run.get("conclusion")):
+    if not _is_non_success(run.get("conclusion")):
         return
 
     pull_requests = run.get("pull_requests")
