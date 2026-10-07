@@ -42,6 +42,37 @@ from .tui_status import EMPTY_STATUS, Status, StatusKind, format_status
 
 _CANCEL_GENERATION_HINT = "[Ctrl+C] Cancel generation"
 
+_DICTIONARY_SURFACE_COLUMN_MAX_WIDTH = 24
+_DICTIONARY_SURFACE_PRONUNCIATION_GAP = 6
+
+
+def _dictionary_surface_column_width(surfaces: Sequence[str]) -> int:
+    """Return a bounded display-width column for visible dictionary surfaces."""
+
+    return min(
+        max((_display_width(str(surface)) for surface in surfaces), default=0),
+        _DICTIONARY_SURFACE_COLUMN_MAX_WIDTH,
+    )
+
+
+def _dictionary_list_row(
+    number_token: str,
+    surface: str,
+    pronunciation: str,
+    surface_column_width: int,
+) -> str:
+    """Align dictionary pronunciation after a display-width-aware surface column."""
+
+    surface = str(surface)
+    gap = max(
+        _DICTIONARY_SURFACE_PRONUNCIATION_GAP,
+        surface_column_width
+        - _display_width(surface)
+        + _DICTIONARY_SURFACE_PRONUNCIATION_GAP,
+    )
+    return f"{number_token}  {surface}{' ' * gap}{pronunciation}"
+
+
 _OUTPUT_FORMAT_LABELS = {
     "wav": "WAV",
     "flac": "FLAC",
@@ -1721,6 +1752,9 @@ class TuiRenderer:
                     if filter_active and total_count
                     else "  No Japanese dictionary words."
                 )
+            surface_column_width = _dictionary_surface_column_width(
+                tuple(str(word.surface) for _word_uuid, word in entries)
+            )
             for index, (_word_uuid, word) in enumerate(entries):
                 parsed = parse_pronunciation(word.pronunciation + "'")
                 display = " ".join(
@@ -1733,7 +1767,12 @@ class TuiRenderer:
                 number_token = _numbered_shortcut_token(index + 1, len(entries))
                 wrapped_selectable_text(
                     key,
-                    f"{number_token}  {word.surface}      {display}",
+                    _dictionary_list_row(
+                        number_token,
+                        str(word.surface),
+                        display,
+                        surface_column_width,
+                    ),
                 )
             plain()
             selectable_value(
@@ -1778,12 +1817,20 @@ class TuiRenderer:
                     if filter_active and total_count
                     else "  No English dictionary words."
                 )
+            surface_column_width = _dictionary_surface_column_width(
+                tuple(str(entry.surface) for entry in entries)
+            )
             for index, entry in enumerate(entries):
                 key = ("entry", index)
                 number_token = _numbered_shortcut_token(index + 1, len(entries))
                 wrapped_selectable_text(
                     key,
-                    f"{number_token}  {entry.surface}      {' '.join(entry.phonemes)}",
+                    _dictionary_list_row(
+                        number_token,
+                        str(entry.surface),
+                        " ".join(entry.phonemes),
+                        surface_column_width,
+                    ),
                 )
             plain()
             selectable_value(
