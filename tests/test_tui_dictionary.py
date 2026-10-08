@@ -146,20 +146,14 @@ class TuiDictionaryControllerTests(DictionaryControllerTestCase):
         self.assertNotIn("phonemes", other_editor.payload)
 
 
-from tests.tui_app_test_support import (
-    TuiAppTestCase,
-    FakeScreen,
-    candidate,
-    editor_document,
-    english_grouping,
-    english_query,
-    focus_candidate,
-    japanese_query,
-    mixed_query,
-    navigation_document,
-    navigation_items,
-    set_navigation_focus,
-)
+from threading import Event
+from types import SimpleNamespace
+from voiceger_editor.openjtalk_dictionary import expand_word_type
+from voiceger_editor.pronunciation import parse_pronunciation
+from voiceger_editor.tui_editors import OpenDictionaryIntent
+from voiceger_editor.tui_status import EMPTY_STATUS, StatusKind, error_status
+from voiceger_editor.user_dictionary import JapaneseWordType
+from tests.tui_app_test_support import TuiAppTestCase, FakeScreen, mixed_query
 
 class TuiDictionaryIntegrationTests(TuiAppTestCase):
     def test_dictionary_explicit_generation_renders_status_before_analysis_for_both_languages(self):
