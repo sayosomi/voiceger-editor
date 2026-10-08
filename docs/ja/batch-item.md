@@ -9,7 +9,7 @@
 ```text
 BATCH ITEM                                                  < 1 / 3 >
 
-  Style 3 Neutral | Speed 1.00 | Takes 4 | TXT ON
+  Neutral | 1.00x | Takes 4 | TXT ON | LAB OFF
   [F] Output: ~/.voiceger-editor/output
 
   [E] Caption : 今日は雨なのだ。
@@ -40,7 +40,7 @@ BATCH ITEM                                                  < 1 / 3 >
 
 は、3件ある Caption のうち1件目を開いていることを表します。
 
-その下には、現在の Style、Speed、Take 数、TXT 出力の設定と Output フォルダが表示されます。
+その下には、現在のスタイル名、話速（`1.00x` など）、Take 数、TXT・LAB 出力の ON/OFF と Output フォルダが表示されます。
 
 ## 前後の Caption に移動する
 
