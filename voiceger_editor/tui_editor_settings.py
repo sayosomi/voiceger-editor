@@ -120,7 +120,7 @@ class TuiSettingsEditorOwner(EditorOwnerBase):
         if parent is None or parent.kind != "settings":
             return ()
         draft = parent.payload["draft_settings"]
-        available_formats = available_output_formats()
+        available_formats = self._host._available_output_formats()
         if draft["output_format"] not in available_formats:
             draft["output_format"] = "wav"
         style_name = f"Style {draft['style_id']}"
@@ -518,7 +518,7 @@ class TuiSettingsEditorOwner(EditorOwnerBase):
                 return clear_feedback
             draft[selected] = f"{result.value:.2f}"
         elif selected == "output_format":
-            formats = available_output_formats()
+            formats = self._host._available_output_formats()
             current = str(draft["output_format"])
             if current not in formats:
                 current = formats[0]
