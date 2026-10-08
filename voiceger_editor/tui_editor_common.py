@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING, Union
 
-from .tui_status import Status, info_status
+from .tui_status import EMPTY_STATUS, Status, info_status
 
 if TYPE_CHECKING:
     from .tui_editor_english import EnglishGroupingCache
@@ -23,7 +23,7 @@ class EditorState:
     input_value: str = ""
     input_cursor: int = 0
     input_original: str = ""
-    error: Status | None = None
+    error: Status = EMPTY_STATUS
     scroll: int = 0
 
 
