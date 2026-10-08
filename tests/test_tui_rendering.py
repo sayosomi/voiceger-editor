@@ -1116,7 +1116,7 @@ class TuiRenderingTests(unittest.TestCase):
             with self.subTest(kind=editor.kind, active_field=editor.active_field):
                 screen = FakeScreen(rows=10, columns=80)
                 with patch(
-                    "voiceger_editor.tui_rendering.available_styles",
+                    "voiceger_editor.tui_rendering_shared.available_styles",
                     return_value=(),
                 ):
                     self.renderer.render_editor(
@@ -2186,7 +2186,7 @@ class TuiRenderingTests(unittest.TestCase):
             active_field=None, input_value="", input_cursor=0, error="", scroll=0,
         )
         with patch(
-            "voiceger_editor.tui_rendering.available_styles",
+            "voiceger_editor.tui_rendering_shared.available_styles",
             return_value=(SimpleNamespace(id=3, name="Neutral"),),
         ):
             document, _, _ = self.renderer.editor_document(render_state(editor=editor), 80)
@@ -2225,7 +2225,7 @@ class TuiRenderingTests(unittest.TestCase):
         editor.input_value = "1.25"
         editor.input_cursor = 4
         with patch(
-            "voiceger_editor.tui_rendering.available_styles",
+            "voiceger_editor.tui_rendering_shared.available_styles",
             return_value=(SimpleNamespace(id=3, name="Neutral"),),
         ):
             active, _, _ = self.renderer.editor_document(render_state(editor=editor), 80)
@@ -2405,7 +2405,7 @@ class TuiRenderingTests(unittest.TestCase):
             active_field=None, input_value="", input_cursor=0, error="", scroll=0,
         )
         with patch(
-            "voiceger_editor.tui_rendering.available_styles",
+            "voiceger_editor.tui_rendering_shared.available_styles",
             return_value=(),
         ):
             document, _, _ = self.renderer.editor_document(
@@ -2414,7 +2414,7 @@ class TuiRenderingTests(unittest.TestCase):
         self.assertIn("▶ [S] Style *", "\n".join(line for line, _key in document))
 
         with patch(
-            "voiceger_editor.tui_rendering.available_styles",
+            "voiceger_editor.tui_rendering_shared.available_styles",
             side_effect=RuntimeError("styles unavailable"),
         ):
             value = self.renderer.setting_display("style_id", "19", Path("/missing"))
