@@ -330,7 +330,7 @@ class EntrypointTermsAndStartupTests(unittest.TestCase):
             "voiceger_editor.entrypoint.VoicegerAdapter",
         ) as adapter, patch(
             "curses.wrapper",
-        ) as wrapper, redirect_stderr(StringIO()):
+        ) as wrapper, redirect_stdout(StringIO()), redirect_stderr(StringIO()):
             self.assertEqual(entrypoint.main([]), 2)
 
         open_browser.assert_called_once_with(OFFICIAL_TERMS_URL)
@@ -521,7 +521,7 @@ class EntrypointTermsAndStartupTests(unittest.TestCase):
             "voiceger_editor.entrypoint.VoicegerAdapter",
         ) as adapter, patch(
             "curses.wrapper",
-        ) as wrapper, redirect_stderr(StringIO()) as stderr:
+        ) as wrapper, redirect_stdout(StringIO()), redirect_stderr(StringIO()) as stderr:
             self.assertEqual(entrypoint.main([]), 2)
 
         self.assertIn("Cannot continue", stderr.getvalue())
