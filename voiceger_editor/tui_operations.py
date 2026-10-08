@@ -47,6 +47,11 @@ from .tui_operation_workers import (
 )
 from .tui_operation_conflicts import TuiOperationConflictPolicy
 from .tui_operation_playback import TuiPlaybackOwner
+from .tui_operation_status import (
+    generation_candidate_status,
+    generation_done_status,
+    generation_error_status,
+)
 from .tui_status import Status, error_status
 from .voiceger_adapter import VoicegerAdapter
 from .voicevox_api_models import AudioQuery
@@ -870,18 +875,9 @@ class TuiOperations:
         if kind == "candidate":
             operation = self.worker_operation
             self.operation_completed += 1
-            if operation == "initial":
-                status = (
-                    f"Generating {min(self.operation_completed + 1, self.operation_total)}"
-                    f"/{self.operation_total} · {self.operation_completed} ready"
-                )
-            elif operation == "regenerate_all":
-                status = (
-                    f"Regenerating {min(self.operation_completed + 1, self.operation_total)}"
-                    f"/{self.operation_total} · {self.operation_completed} ready"
-                )
-            else:
-                status = f"Take {value.number} replacement ready."
+            status = generation_candidate_status(
+                operation, self.operation_completed, self.operation_total, value.number
+            )
             effects.append(UpdateStatusEffect(status, channel="background"))
 
             if operation == "initial":
@@ -917,18 +913,13 @@ class TuiOperations:
 
         if kind == "error":
             self.worker_error = value
-            if self.worker_operation == "preview":
-                effects.append(
-                    UpdateStatusEffect(error_status(f"Preview failed: {value}"))
+            effects.append(
+                UpdateStatusEffect(
+                    generation_error_status(
+                        self.worker_operation, caption_label(self._worker_item_id), value
+                    )
                 )
-            else:
-                owner = caption_label(self._worker_item_id)
-                message = (
-                    f"{owner} generation failed: {value}"
-                    if owner is not None
-                    else f"Generation failed: {value}"
-                )
-                effects.append(UpdateStatusEffect(error_status(message)))
+            )
             if (
                 self.worker_operation == "initial"
                 and not self.cancellation_requested
@@ -960,71 +951,21 @@ class TuiOperations:
         )
         cancelled = self.cancellation_requested and not finished_full_count
         self.busy = False
-        if operation == "preview":
-            status = None
-        elif operation == "batch_generate":
-            if cancelled:
-                owner_suffix = (
-                    f" at {batch_owner}" if batch_owner is not None else ""
-                )
-                status = (
-                    f"Batch generation cancelled{owner_suffix}. "
-                    f"{self.operation_completed}/{self.operation_total} "
-                    "take(s) ready."
-                )
-            elif self.worker_error is not None:
-                status = None
-            else:
-                status = (
-                    "Batch generation finished. "
-                    f"{self.operation_completed}/{self.operation_total} "
-                    "take(s) ready."
-                )
-        elif cancelled and operation == "initial":
-            ready = self.operation_completed
-            status = (
-                f"{owner} generation cancelled. {ready} take(s) ready."
-                if owner is not None
-                else f"Generation cancelled. {ready} take(s) ready."
-            )
-            if ready == 0:
-                effects.append(StopPlaybackEffect())
-                effects.append(DiscardInitialBatchEffect(self._worker_item_id))
-                self.current_take = None
-                effects.append(
-                    FocusEffect(("pronunciation", pronunciation_index))
-                )
-        elif cancelled and operation == "regenerate_all":
-            status = (
-                f"{owner} regeneration cancelled after "
-                f"{self.operation_completed} replacement(s)."
-                if owner is not None
-                else "Regeneration cancelled after "
-                f"{self.operation_completed} replacement(s)."
-            )
-        elif self.worker_error is not None:
-            status = error_status(
-                f"{owner} generation failed: {self.worker_error}"
-                if owner is not None
-                else f"Generation failed: {self.worker_error}"
-            )
-        elif operation == "initial" and self.operation_completed:
-            status = (
-                f"{owner} generation finished. "
-                f"{self.operation_completed} take(s) ready."
-                if owner is not None
-                else f"{self.operation_completed} take(s) ready."
-            )
-        elif operation in {"regenerate_one", "regenerate_all"}:
-            status = (
-                f"{owner} Take regeneration finished."
-                if owner is not None
-                else "Take regeneration finished."
-            )
-        elif not exit_requested:
-            status = "No takes were generated. Select Generate to try again."
-        else:
-            status = None
+        status = generation_done_status(
+            operation=operation,
+            owner=owner,
+            batch_owner=batch_owner,
+            completed=self.operation_completed,
+            total=self.operation_total,
+            worker_error=self.worker_error,
+            cancelled=cancelled,
+            exit_requested=exit_requested,
+        )
+        if cancelled and operation == "initial" and self.operation_completed == 0:
+            effects.append(StopPlaybackEffect())
+            effects.append(DiscardInitialBatchEffect(self._worker_item_id))
+            self.current_take = None
+            effects.append(FocusEffect(("pronunciation", pronunciation_index)))
         if status is not None:
             effects.append(UpdateStatusEffect(status))
         if (
