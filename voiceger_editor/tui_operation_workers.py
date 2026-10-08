@@ -5,30 +5,35 @@ from __future__ import annotations
 from contextlib import redirect_stderr, redirect_stdout
 import os
 from threading import Event
-from typing import Any, Callable, Iterable
+from typing import TYPE_CHECKING, Any, Callable, Iterable
 
 from .caption_batch import CaptionBatchItem
 from .session import UtteranceSession
-from .tui_dictionary_operations import DictionaryOperationIntent
 from .tui_operation_contracts import (
     BatchCandidateReadyEvent,
     BatchGenerationCancelledEvent,
     BatchGenerationFailedEvent,
     BatchGenerationProgressEvent,
     DictionaryOperationCompletedEvent,
+    GenerationCandidateEvent,
+    GenerationFailedEvent,
+    OperationDoneEvent,
     PreviewFailedEvent,
     PreviewReadyEvent,
     SessionPreparationCompletedEvent,
 )
 from .voicevox_api_models import AudioQuery
 
+if TYPE_CHECKING:
+    from .tui_dictionary_operations import DictionaryOperationIntent
+
 
 def make_batch_generation_work(
     plan: tuple[tuple[CaptionBatchItem, int], ...],
-        *,
-        overall_total: int,
-        cancellation_event: Event,
-        emit_event: Callable[[Any], None],
+    *,
+    overall_total: int,
+    cancellation_event: Event,
+    emit_event: Callable[[Any], None],
 ) -> Callable[[], None]:
     """Build background work from call-time inputs; emit events without owning lifecycle state."""
 
@@ -137,16 +142,16 @@ def make_batch_generation_work(
                                 if callable(close):
                                     close()
         finally:
-            emit_event(("done", None))
+            emit_event(OperationDoneEvent())
 
     return work
 
 
 def make_preview_work(
     session: UtteranceSession,
-        query_snapshot: AudioQuery,
-        *,
-        emit_event: Callable[[Any], None],
+    query_snapshot: AudioQuery,
+    *,
+    emit_event: Callable[[Any], None],
 ) -> Callable[[], None]:
     """Build background work from call-time inputs; emit events without owning lifecycle state."""
 
@@ -164,16 +169,16 @@ def make_preview_work(
         except BaseException as exc:
             emit_event(PreviewFailedEvent(exc))
         finally:
-            emit_event(("done", None))
+            emit_event(OperationDoneEvent())
 
     return work
 
 
 def make_preparation_work(
     session: UtteranceSession,
-        *,
-        rebuild: bool,
-        emit_event: Callable[[Any], None],
+    *,
+    rebuild: bool,
+    emit_event: Callable[[Any], None],
 ) -> Callable[[], None]:
     """Build background work from call-time inputs; emit events without owning lifecycle state."""
 
@@ -203,8 +208,8 @@ def make_preparation_work(
 
 def make_dictionary_work(
     intent: DictionaryOperationIntent,
-        *,
-        emit_event: Callable[[Any], None],
+    *,
+    emit_event: Callable[[Any], None],
 ) -> Callable[[], None]:
     """Build background work from call-time inputs; emit events without owning lifecycle state."""
 
@@ -233,9 +238,9 @@ def make_dictionary_work(
 
 def make_generation_work(
     make_values: Callable[[], Iterable[Any]],
-        *,
-        cancellation_event: Event,
-        emit_event: Callable[[Any], None],
+    *,
+    cancellation_event: Event,
+    emit_event: Callable[[Any], None],
 ) -> Callable[[], None]:
     """Build background work from call-time inputs; emit events without owning lifecycle state."""
 
@@ -249,11 +254,11 @@ def make_generation_work(
                             candidate = next(values)
                         except StopIteration:
                             break
-                        emit_event(("candidate", candidate))
+                        emit_event(GenerationCandidateEvent(candidate))
         except BaseException as exc:
-            emit_event(("error", exc))
+            emit_event(GenerationFailedEvent(exc))
         finally:
-            emit_event(("done", None))
+            emit_event(OperationDoneEvent())
 
     return work
 

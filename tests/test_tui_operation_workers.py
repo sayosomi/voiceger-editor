@@ -11,6 +11,9 @@ from voiceger_editor.tui_operation_contracts import (
     BatchGenerationFailedEvent,
     BatchGenerationProgressEvent,
     DictionaryOperationCompletedEvent,
+    GenerationCandidateEvent,
+    GenerationFailedEvent,
+    OperationDoneEvent,
     PreviewFailedEvent,
     PreviewReadyEvent,
     SessionPreparationCompletedEvent,
@@ -30,7 +33,7 @@ class TuiOperationWorkerTests(unittest.TestCase):
         values = [SimpleNamespace(number=1), SimpleNamespace(number=2)]
         work = make_generation_work(lambda: iter(values), cancellation_event=Event(), emit_event=events.append)
         work()
-        self.assertEqual(events, [("candidate", values[0]), ("candidate", values[1]), ("done", None)])
+        self.assertEqual(events, [GenerationCandidateEvent(values[0]), GenerationCandidateEvent(values[1]), OperationDoneEvent()])
 
     def test_individual_generation_cancellation_before_next_take(self):
         events = []
@@ -38,11 +41,11 @@ class TuiOperationWorkerTests(unittest.TestCase):
 
         def emit(event):
             events.append(event)
-            if event[0] == "candidate":
+            if isinstance(event, GenerationCandidateEvent):
                 cancel.set()
 
         make_generation_work(lambda: iter((1, 2)), cancellation_event=cancel, emit_event=emit)()
-        self.assertEqual(events, [("candidate", 1), ("done", None)])
+        self.assertEqual(events, [GenerationCandidateEvent(1), OperationDoneEvent()])
 
     def test_individual_generation_error_always_ends_with_done(self):
         events = []
@@ -52,9 +55,9 @@ class TuiOperationWorkerTests(unittest.TestCase):
 
         make_generation_work(failing_values, cancellation_event=Event(), emit_event=events.append)()
         self.assertEqual(len(events), 2)
-        self.assertEqual(events[0][0], "error")
-        self.assertEqual(str(events[0][1]), "generator failed")
-        self.assertEqual(events[-1], ("done", None))
+        self.assertIsInstance(events[0], GenerationFailedEvent)
+        self.assertEqual(str(events[0].error), "generator failed")
+        self.assertEqual(events[-1], OperationDoneEvent())
 
     def test_batch_generation_emits_typed_progress_and_candidate_events(self):
         events = []
@@ -72,7 +75,7 @@ class TuiOperationWorkerTests(unittest.TestCase):
         self.assertEqual(events[1].item_id, "item-1")
         self.assertEqual(events[1].overall_completed, 1)
         self.assertEqual(events[3].overall_completed, 2)
-        self.assertEqual(events[-1], ("done", None))
+        self.assertEqual(events[-1], OperationDoneEvent())
         session.generate_takes.assert_called_once_with(take_count=2)
 
     def test_batch_cancels_after_inflight_take_and_emits_done(self):
@@ -95,7 +98,7 @@ class TuiOperationWorkerTests(unittest.TestCase):
             BatchGenerationProgressEvent, BatchCandidateReadyEvent,
             BatchGenerationCancelledEvent,
         ])
-        self.assertEqual(events[-1], ("done", None))
+        self.assertEqual(events[-1], OperationDoneEvent())
 
     def test_batch_preparation_failure_reports_typed_event_then_done(self):
         events = []
@@ -108,7 +111,7 @@ class TuiOperationWorkerTests(unittest.TestCase):
         self.assertIsInstance(events[0], BatchGenerationFailedEvent)
         self.assertEqual(events[0].item_id, "bad")
         self.assertEqual(str(events[0].error), "bad Caption")
-        self.assertEqual(events[-1], ("done", None))
+        self.assertEqual(events[-1], OperationDoneEvent())
 
     def test_preview_returns_typed_ready_or_failure_followed_by_done(self):
         events = []
@@ -116,14 +119,14 @@ class TuiOperationWorkerTests(unittest.TestCase):
         session = SimpleNamespace(preview_synthesis=Mock(return_value={"audio": "wave", "sampling_rate": 24000}))
         make_preview_work(session, query, emit_event=events.append)()
         session.preview_synthesis.assert_called_once_with(query)
-        self.assertEqual(events, [PreviewReadyEvent("wave", 24000), ("done", None)])
+        self.assertEqual(events, [PreviewReadyEvent("wave", 24000), OperationDoneEvent()])
 
         events.clear()
         session.preview_synthesis.side_effect = RuntimeError("preview unavailable")
         make_preview_work(session, query, emit_event=events.append)()
         self.assertIsInstance(events[0], PreviewFailedEvent)
         self.assertEqual(str(events[0].error), "preview unavailable")
-        self.assertEqual(events[-1], ("done", None))
+        self.assertEqual(events[-1], OperationDoneEvent())
 
     def test_preparation_reports_completion_without_generating_done_event(self):
         events = []

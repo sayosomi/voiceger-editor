@@ -26,6 +26,9 @@ from .tui_operation_contracts import (
     DiscardInitialBatchEffect,
     FocusEffect,
     GenerationOutcomeEffect,
+    GenerationCandidateEvent,
+    GenerationFailedEvent,
+    OperationDoneEvent,
     OperationEffect,
     PlayPreviewEffect,
     PlayTakeEffect,
@@ -870,7 +873,16 @@ class TuiOperations:
         exit_requested: bool,
         caption_label: Callable[[str | None], str | None],
     ) -> None:
-        kind, value = event
+        # Accept legacy tuple events from direct callers while worker builders
+        # use explicit event contracts for the single authoritative queue.
+        if isinstance(event, GenerationCandidateEvent):
+            kind, value = "candidate", event.candidate
+        elif isinstance(event, GenerationFailedEvent):
+            kind, value = "error", event.error
+        elif isinstance(event, OperationDoneEvent):
+            kind, value = "done", None
+        else:
+            kind, value = event
 
         if kind == "candidate":
             operation = self.worker_operation

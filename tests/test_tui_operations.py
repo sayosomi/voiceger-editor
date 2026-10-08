@@ -24,6 +24,9 @@ from voiceger_editor.tui_operations import (
     DiscardInitialBatchEffect,
     FocusEffect,
     GenerationOutcomeEffect,
+    GenerationCandidateEvent,
+    GenerationFailedEvent,
+    OperationDoneEvent,
     PlayPreviewEffect,
     PlayTakeEffect,
     PreviewFailedEvent,
@@ -141,7 +144,7 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(event.audio, "preview")
         self.assertEqual(event.sampling_rate, 22050)
         done_event = self.operations.events.get_nowait()
-        self.assertEqual(done_event, ("done", None))
+        self.assertEqual(done_event, OperationDoneEvent())
         self.operations.events.put(event)
         self.operations.events.put(done_event)
 
@@ -192,7 +195,7 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertIsInstance(event, PreviewReadyEvent)
         self.assertEqual(event.audio, "preview")
         self.assertEqual(event.sampling_rate, 22050)
-        self.assertEqual(self.operations.events.get_nowait(), ("done", None))
+        self.assertEqual(self.operations.events.get_nowait(), OperationDoneEvent())
 
     def test_preview_worker_failure_is_preview_specific_and_keeps_candidates(self):
         session_candidate = candidate(2)
@@ -207,7 +210,7 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertIsInstance(event, PreviewFailedEvent)
         self.assertEqual(str(event.error), "model unavailable")
         done_event = self.operations.events.get_nowait()
-        self.assertEqual(done_event, ("done", None))
+        self.assertEqual(done_event, OperationDoneEvent())
         self.operations.events.put(event)
         self.operations.events.put(done_event)
 
@@ -419,8 +422,8 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(stderr.getvalue(), "")
         self.assertEqual(worker.name, "voiceger-tui-synthesis")
         self.assertTrue(worker.daemon)
-        self.assertEqual(self.operations.events.get_nowait()[0], "candidate")
-        self.assertEqual(self.operations.events.get_nowait(), ("done", None))
+        self.assertIsInstance(self.operations.events.get_nowait(), GenerationCandidateEvent)
+        self.assertEqual(self.operations.events.get_nowait(), OperationDoneEvent())
 
     def test_worker_posts_error_and_always_posts_done(self):
         error = RuntimeError("iterator failed")
@@ -437,9 +440,9 @@ class TuiOperationsTests(unittest.TestCase):
             navigation_revision=0,
         )
         self.operations.join_worker()
-        self.assertEqual(self.operations.events.get_nowait()[0], "candidate")
-        self.assertEqual(self.operations.events.get_nowait(), ("error", error))
-        self.assertEqual(self.operations.events.get_nowait(), ("done", None))
+        self.assertIsInstance(self.operations.events.get_nowait(), GenerationCandidateEvent)
+        self.assertEqual(self.operations.events.get_nowait(), GenerationFailedEvent(error))
+        self.assertEqual(self.operations.events.get_nowait(), OperationDoneEvent())
 
     def test_initial_cancellation_finishes_in_flight_take_and_starts_no_next_take(self):
         session = FakeSession()

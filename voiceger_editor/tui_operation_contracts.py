@@ -140,6 +140,21 @@ class PreviewFailedEvent:
 
 
 @dataclass(frozen=True)
+class GenerationCandidateEvent:
+    candidate: Any
+
+
+@dataclass(frozen=True)
+class GenerationFailedEvent:
+    error: BaseException
+
+
+@dataclass(frozen=True)
+class OperationDoneEvent:
+    pass
+
+
+@dataclass(frozen=True)
 class BatchGenerationProgressEvent:
     item_id: str
     caption_number: int
