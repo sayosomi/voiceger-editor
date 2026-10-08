@@ -147,6 +147,19 @@ class NavigationLine:
 
 
 
+def adjustment_press_direction(
+    state: TuiRenderState,
+    area: str,
+    control: str,
+) -> int | None:
+    """Return the transient Left/Right feedback direction for one control."""
+
+    pressed = state.pressed_adjustment
+    if pressed is None or pressed[:2] != (area, control):
+        return None
+    return pressed[2]
+
+
 def _active_input_prefix(editor: EditorRenderState) -> str:
     if editor.kind == "caption":
         return "▶ "
