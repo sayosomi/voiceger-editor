@@ -129,6 +129,12 @@ def build_mixed_audio_query(
             output_sampling_rate=output_sampling_rate,
         )
 
+    # LangSegment may normalize whitespace around numbers or punctuation.
+    # For an all-English utterance, preserve the user's exact source text and
+    # run Voiceger's canonical English G2P over that whole utterance.
+    if detected and all(segment.language == "en" for segment in detected):
+        detected = [DetectedSegment(language="en", text=text)]
+
     accent_phrases = []
     extension_segments: List[VoicegerSegment] = []
 
