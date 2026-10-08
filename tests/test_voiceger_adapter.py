@@ -547,10 +547,10 @@ class EnglishDictionaryAdapterTests(unittest.TestCase):
             root = Path(temporary)
             voiceger_root = root / "voiceger"
             (voiceger_root / "GPT-SoVITS" / "GPT_SoVITS").mkdir(parents=True)
-            nltk_data = voiceger_root / "nltk_data"
-            nltk_data.mkdir()
+            (voiceger_root / "nltk_data").mkdir()
 
             adapter = VoicegerAdapter(voiceger_root=voiceger_root)
+            nltk_data = adapter.voiceger_root / "nltk_data"
             fake_nltk = SimpleNamespace(
                 data=SimpleNamespace(path=["/already-loaded"])
             )
