@@ -1591,7 +1591,7 @@ class TuiTests(unittest.TestCase):
         editor = app._editor_controller.editor
 
         with patch("voiceger_editor.tui.available_styles", return_value=styles), patch(
-            "voiceger_editor.tui_rendering.available_styles",
+            "voiceger_editor.tui_rendering_shared.available_styles",
             return_value=styles,
         ):
             editor.selection = "style_id"
@@ -1789,7 +1789,7 @@ class TuiTests(unittest.TestCase):
 
             screen = FakeScreen(columns=100)
             app._screen = screen
-            with patch("voiceger_editor.tui_rendering.available_styles", return_value=styles):
+            with patch("voiceger_editor.tui_rendering_shared.available_styles", return_value=styles):
                 app._render()
             self.assertIsNone(app._pressed_adjustment)
             app._render()
