@@ -12,6 +12,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 
 from ._version import __version__
+from .api_english_dictionary import build_english_dictionary_router
 from .mixed_language import build_mixed_audio_query
 from .openjtalk_converter import OpenJTalkConversionError
 from .openjtalk_dictionary import OpenJTalkDictionaryError
@@ -101,6 +102,11 @@ def root():
             "PUT /user_dict_word/{word_uuid}",
             "DELETE /user_dict_word/{word_uuid}",
             "POST /import_user_dict",
+            "GET /english_user_dict",
+            "POST /english_user_dict_word",
+            "PUT /english_user_dict_word/{surface}",
+            "DELETE /english_user_dict_word/{surface}",
+            "POST /import_english_user_dict",
         ],
     }
 
@@ -374,3 +380,7 @@ def import_user_dict(
             status_code=500,
             detail="Japanese user dictionary could not be imported.",
         ) from exc
+
+
+# Resolve get_adapter at request time so overrides use the same shared core.
+app.include_router(build_english_dictionary_router(lambda: get_adapter()))
