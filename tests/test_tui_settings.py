@@ -225,24 +225,13 @@ class TuiSettingsControllerTests(unittest.TestCase):
         self.assertIn("unsupported style", status["value"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
-from tests.tui_app_test_support import (
-    TuiAppTestCase,
-    FakeScreen,
-    candidate,
-    editor_document,
-    english_grouping,
-    english_query,
-    focus_candidate,
-    japanese_query,
-    mixed_query,
-    navigation_document,
-    navigation_items,
-    set_navigation_focus,
-)
+import curses
+import json
+import tempfile
+from unittest.mock import patch
+from voiceger_editor.caption_batch import CaptionBatchItem
+from voiceger_editor.tui import TuiApp
+from tests.tui_app_test_support import TuiAppTestCase, FakeSession as AppFakeSession, candidate, mixed_query, navigation_items
 
 class TuiSettingsIntegrationTests(TuiAppTestCase):
     def test_settings_are_reachable_and_editable_without_shortcuts(self):
@@ -381,7 +370,7 @@ class TuiSettingsIntegrationTests(TuiAppTestCase):
                 persisted_settings=persisted,
                 config_path=config_path,
             )
-            app.session = FakeSession(query=mixed_query(), candidates=(candidate(1),))
+            app.session = AppFakeSession(query=mixed_query(), candidates=(candidate(1),))
             app.session.settings = effective
             app._batch.batch.add_item(CaptionBatchItem(app.session))
             app._batch.open_item(0)
@@ -417,3 +406,7 @@ class TuiSettingsIntegrationTests(TuiAppTestCase):
                 "save_text": True,
                 "save_lab": False,
             })
+
+
+if __name__ == "__main__":
+    unittest.main()
