@@ -358,6 +358,13 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
         return self._host._english.adjust_stress(query, row, direction)
 
     @staticmethod
+    def _set_pronunciation_draft(editor: EditorState, value: str) -> None:
+        field = "pronunciation" if editor.kind == "japanese" else "phonemes"
+        editor.input_value = value
+        editor.input_original = value
+        editor.input_cursor = len(value)
+        editor.active_field = None
+        editor.payload[field] = value
 
     def preview(self, query: AudioQuery | None) -> tuple[EditorIntent, ...]:
         """Validate a pronunciation draft and emit a transient query intent."""
