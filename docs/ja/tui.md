@@ -109,138 +109,25 @@ BATCH LIST · 1/1 selected · 4 takes · Accepted 0/1
 
 ## 発音を確認する
 
-Caption を初めて開くと、発音情報が自動で作られます。
+Caption を開くと、発音情報が自動で作られ、`BATCH ITEM` に日本語の読みとアクセントが表示されます。
 
-処理が終わると、`BATCH ITEM` は次のように表示されます。
+`JA` は日本語の発音情報です。`[キョ]`、`[ア]`、`[ダ]` のように `[]` で囲まれているモーラが、アクセント句ごとのアクセント位置を示します。
 
-```text
-BATCH ITEM                                                  < 1 / 1 >
+発音の変更方法は [発音編集](pronunciation.md)、画面全体の操作は [BATCH ITEM](batch-item.md) を参照してください。
 
-  Neutral | 1.00x | Takes 1 | TXT ON | LAB OFF
-  [F] Output: ~/.voiceger-editor/output
+## Take を生成して採用する
 
-  [E] Caption : 今日は雨なのだ。
-  [P] Build pronunciation
+発音を確認したら、`BATCH ITEM` の `[G] Generate` で Take を生成します。
 
-▶ JA | [キョ] ー ワ
-     | [ア] メ ナ
-     | ノ [ダ]。
+作成された Take を再生して聞き比べ、採用するものを選んで Enter を押すと、音声が Output フォルダに保存されます。
 
-  [A] Add section
-
-  Candidates   No candidates yet.
-  [G] Generate < 1 > takes
-
-  [X] Delete caption
-
-  [S] Settings
-  [D] Dictionary
-  [?] Help
-  [Q] Quit
-```
-
-2行目にはスタイル名、話速、Take 数、TXT・LAB 出力の ON/OFF が表示されます。3行目には Output フォルダが表示されます。表示内容は現在の設定によって変わります。
-
-`JA` から始まる部分が、自動で作られた日本語の発音情報です。
-
-```text
-JA | [キョ] ー ワ
-   | [ア] メ ナ
-   | ノ [ダ]。
-```
-
-この例では「今日は雨なのだ。」が3つのアクセント句に分かれています。
-
-`[キョ]`、`[ア]`、`[ダ]` のように `[]` で囲まれているモーラが、それぞれのアクセント句の現在のアクセント位置です。
-
-発音に問題がなければ、そのまま Take を生成できます。
-
-発音やアクセントを直したい場合は、この発音表示を選んで編集します。詳しくは [発音編集](pronunciation.md) を参照してください。
-
-## Take を生成する
-
-`[G] Generate` を選んで Enter を押すと、Take の生成が始まります。
-
-```text
-[G] Generate < 1 > takes
-```
-
-この例では1つの Take を生成します。
-
-生成する数は Left / Right で変更できます。
-
-生成が終わると、作成した Take が `Candidates` に表示されます。
-
-Take にカーソルを移動すると音声が再生されます。Space を押すと、選択している Take をもう一度再生できます。
-
-複数の Take を生成した場合は、それぞれを聞き比べて採用するものを選びます。
-
-採用する Take にカーソルを合わせて Enter を押します。
-
-## 保存先を確認する
-
-採用した Take は、`BATCH ITEM` 上部の `[F] Output` に表示されているフォルダへ保存されます。
-
-デフォルトの保存先は次のとおりです。
-
-```text
-~/.voiceger-editor/output
-```
-
-保存先は `[F] Output` や `[S] Settings` から変更できます。
-
-ファイル名や WAV / FLAC / MP3 などの出力形式も設定できます。詳しくは [設定](settings.md) を参照してください。
+Take の生成数、再生、個別の再生成、保存操作は [BATCH ITEM](batch-item.md) で説明しています。出力先や保存形式は [設定](settings.md) を参照してください。
 
 ## BATCH LIST に戻る
 
-Esc を押すと、`BATCH ITEM` から `BATCH LIST` に戻ります。
+Esc を押すと `BATCH LIST` に戻ります。Caption はそのまま残り、別の Caption を追加して作業を続けられます。
 
-この例では次のように表示されます。
-
-```text
-BATCH LIST · 1/1 selected · 1 take · Accepted 1/1
-
-  Takes < 1 >
-
-▶ [x] [1]  今日は雨なのだ。
-
-  [A] Add captions
-  [G] Generate selected
-
-  [R] Read batch
-  [W] Write batch
-
-  [S] Settings
-  [D] Dictionary
-
-  [?] Help
-
-  [Q] Quit
-```
-
-`BATCH LIST` に戻っても、登録した Caption はそのまま残っています。
-
-ここから別の Caption を追加したり、もう一度 `BATCH ITEM` を開いたりできます。
-
-## 2本目の Caption を追加する
-
-次は Caption をもう1つ追加してみます。
-
-`BATCH LIST` で `[A] Add captions` を選んで Enter を押すか、`A` を押します。
-
-今回は、
-
-```text
-明日も元気なのだ。
-```
-
-と入力します。
-
-Enter で編集を終了し、`[A] Apply` を実行します。
-
-`BATCH LIST` に戻ると、2つの Caption が並びます。
-
-このように、`BATCH LIST` で複数の Caption を管理し、それぞれを `BATCH ITEM` で編集できます。
+Caption の追加や一括生成、一覧管理については [BATCH LIST](batch-list.md) を参照してください。
 
 ## 次に読む
 
