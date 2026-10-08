@@ -5,11 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING, Union
 
+from .settings import Settings
+from .voicevox_api_models import AudioQuery
 from .tui_status import EMPTY_STATUS, Status, info_status
 
 if TYPE_CHECKING:
     from .tui_editor_english import EnglishGroupingCache
-    from .voicevox_api_models import AudioQuery
 
 
 @dataclass
@@ -64,7 +65,7 @@ class BuildPronunciationIntent:
 
 @dataclass(frozen=True)
 class ApplySettingsIntent:
-    settings: Any
+    settings: Settings
 
 
 @dataclass(frozen=True)
