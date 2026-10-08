@@ -9,7 +9,11 @@ from .settings import (
 )
 from .tui_display import _adjustable_value
 from .tui_rendering_editor_common import EditorDocumentBuilder
-from .tui_rendering_shared import adjustment_press_direction, setting_display
+from .tui_rendering_shared import (
+    _active_input_prefix,
+    adjustment_press_direction,
+    setting_display,
+)
 from .tui_shortcuts import menu_item
 
 _OUTPUT_FORMAT_LABELS = {
