@@ -215,7 +215,6 @@ class TuiRenderer:
             pass
 
     @staticmethod
-    @staticmethod
     def help_document(width: int):
         return _help_document(width)
 
