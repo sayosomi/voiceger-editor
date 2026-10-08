@@ -286,6 +286,6 @@ See [Settings](settings.md) for configuration paths.
 
 The HTTP API exposes the Japanese dictionary through VOICEVOX-compatible dictionary endpoints.
 
-The English dictionary is currently a Voiceger Editor TUI feature.
+The English dictionary is available through Voiceger Editor-specific HTTP endpoints for listing, creating/replacing, updating, deleting, and importing entries. These endpoints use the same persistent `english_user_dict.json` as the TUI, but are not VOICEVOX-compatible endpoints. API changes are visible to the next `/audio_query` in the same process; changes made by a different already-running process are not automatically reloaded.
 
 See [HTTP API](api.md).
