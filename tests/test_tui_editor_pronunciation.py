@@ -47,7 +47,7 @@ class TuiPronunciationEditorOwnerTests(unittest.TestCase):
         )
 
         self.assertEqual(controller.editor.kind, "japanese")
-        self.assertTrue(controller.editor.error.message)
+        self.assertIn("Use spaces for phrase boundaries", str(controller.editor.error))
 
 
 if __name__ == "__main__":
