@@ -22,6 +22,7 @@ from .tui_editor_common import (
     EditorIntent,
     EditorOwnerBase,
     EditorState,
+    PreviewIntent,
     ReplaceQueryIntent,
     UpdateStatusIntent,
     adjustment_feedback_intents,
