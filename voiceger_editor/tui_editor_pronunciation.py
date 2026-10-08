@@ -7,6 +7,7 @@ from typing import Sequence
 
 from .english_stress import (
     EnglishPhonemeEditorState,
+    english_phonemes_to_editor_state,
     normalize_english_phonemes,
 )
 from .pronunciation import (
