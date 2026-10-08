@@ -1,14 +1,6 @@
 {
   "exceptions": [
     {
-      "path": "tests/test_tui_rendering.py",
-      "symbol": "TuiRenderingTests",
-      "metric": "class_methods",
-      "reviewed_max": 84,
-      "justification": "Existing broad renderer compatibility coverage remains grouped in this legacy regression class; focused rendering test modules own new subsystem behavior and this baseline may not silently grow.",
-      "follow_up_issue": null
-    },
-    {
       "path": "tests/test_tui_editors.py",
       "symbol": "TuiEditorControllerTests",
       "metric": "class_methods",
