@@ -26,6 +26,7 @@ from .tui_rendering_shared import (
     NavigationLine,
     OutputPathEditRenderState,
     TuiRenderState,
+    _active_input_prefix,
     _numbered_shortcut_token,
     _positioned_title,
     background_with_cancel_generation_hint,
