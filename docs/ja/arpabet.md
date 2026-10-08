@@ -12,24 +12,13 @@ V EH1 R IY0
 
 ## BATCH ITEM での表示
 
-`BATCH ITEM` では、たとえば次のように表示されます。
+`BATCH ITEM` では、英語の発音が次のように表示されます。
 
 ```text
 EN | very   V [EH1] R IY0
-   | sweet  S W [IY1] T
 ```
 
-`[]` で囲まれている音が、現在の第一強勢です。
-
-この `[]` は BATCH ITEM 上の表示です。
-
-詳細編集画面では、
-
-```text
-V EH1 R IY0
-```
-
-のように、ARPAbet 本来の数字付き表記を直接編集します。
+`[]` で囲まれた母音は、現在の第一強勢です。発音の変更方法は [発音編集](pronunciation.md) を参照してください。
 
 ## 強勢の数字
 
@@ -140,95 +129,13 @@ HH AH0 L OW1
 
 音素は半角スペースで区切って並べます。
 
-## 第一強勢を移動する
+## ARPAbet の発音を編集する
 
-`BATCH ITEM` では、英単語の発音行にカーソルを合わせて Left / Right を押すと、第一強勢を母音の間で移動できます。
+`BATCH ITEM` から強勢や音素を編集できます。具体的な操作手順は [発音編集](pronunciation.md) を参照してください。
 
-たとえば、
+英語の発音は Voiceger が単語から自動生成するため、通常は修正が必要な部分だけを編集すれば十分です。
 
-```text
-▶ EN | very   V [EH1] R IY0
-```
-
-から、
-
-```text
-▶ EN | very   V EH0 R [IY1]
-```
-
-のように変更できます。
-
-ARPAbet では、
-
-```text
-V EH1 R IY0
-```
-
-から、
-
-```text
-V EH0 R IY1
-```
-
-へ変わったことになります。
-
-## ARPAbet を直接編集する
-
-英単語の発音行で Enter を押すと、`EDIT PRONUNCIATION` が開きます。
-
-```text
-EDIT PRONUNCIATION
-
-Word
-  sweet
-
-▶ S W IY1 T
-
-  [P] Preview
-  [A] Apply
-  [S] Save to dictionary
-  [D] Dictionary menu
-  [E] Edit text
-  [C] Clear
-  [R] Reset
-  [Esc] Back
-```
-
-音素は半角スペースで区切って入力します。
-
-編集した発音は `[P] Preview` で確認し、問題なければ `[A] Apply` で反映します。
-
-Voiceger Editor が対応していない音素を入力すると、Apply する前にエラーになります。
-
-## 発音が分からないとき
-
-最初から ARPAbet をすべて手入力する必要はありません。
-
-Caption を開くと、Voiceger が英語のつづりから発音情報を自動で作ります。
-
-まず自動生成された発音を聞き、必要なところだけ Voiceger Editor で変更する使い方が基本です。
-
-たとえば、
-
-```text
-sweet
-```
-
-から自動で、
-
-```text
-S W IY1 T
-```
-
-が作られたあと、必要に応じて音素や強勢を修正します。
-
-## ユーザー辞書と ARPAbet
-
-調整した英単語の発音は、英語ユーザー辞書に保存できます。
-
-同じ単語を何度も使う場合は、発音を辞書に登録しておくと毎回編集する必要がありません。
-
-詳しくは [ユーザー辞書](dictionary.md) を参照してください。
+よく使う単語の発音を登録する方法は [ユーザー辞書](dictionary.md) を参照してください。
 
 ## 日本語を ARPAbet で近似する
 
