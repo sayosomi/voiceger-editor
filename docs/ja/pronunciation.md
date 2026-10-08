@@ -171,13 +171,7 @@ Caption 全体の文章を編集する場合は、`BATCH ITEM` の `[E] Caption`
 EN | very   V [EH1] R IY0
 ```
 
-母音の後ろの数字は強勢を表します。
-
-- `0` — 強勢なし
-- `1` — 第一強勢
-- `2` — 第二強勢
-
-ARPAbet の音素や書き方について詳しくは [ARPAbet](arpabet.md) を参照してください。
+母音の後ろの数字は強勢を表します。数字の意味や使用できる音素は [ARPAbet](arpabet.md) を参照してください。
 
 ## 英語の第一強勢を変更する
 
@@ -258,17 +252,9 @@ Add section では、Left / Right で日本語・英語を選び、文章を入�
 
 ## 発音を辞書に保存する
 
-日本語・英語の `EDIT PRONUNCIATION` では、現在の発音をユーザー辞書に保存できます。
+`EDIT PRONUNCIATION` の `[S] Save to dictionary` から、編集中の発音を辞書に登録できます。
 
-```text
-[S] Save to dictionary
-```
-
-同じ単語を今後も同じ発音で読ませたい場合に使用します。
-
-`[D] Dictionary menu` からユーザー辞書を開くこともできます。
-
-詳しくは [ユーザー辞書](dictionary.md) を参照してください。
+登録方法や辞書の管理については [ユーザー辞書](dictionary.md) を参照してください。
 
 ## 関連ページ
 
