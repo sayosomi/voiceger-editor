@@ -87,6 +87,15 @@ def _punctuation_suffixes(value: str) -> tuple[str, ...]:
 class TuiPronunciationEditorOwner(EditorOwnerBase):
     """Own pronunciation rows and Japanese/English pronunciation edit policy."""
 
+    @property
+    def grouping_error(self):
+        return self._host.grouping_error
+
+    @grouping_error.setter
+    def grouping_error(self, value) -> None:
+        self._host.grouping_error = value
+
+
     def pronunciation_rows(
         self,
         query: AudioQuery,
