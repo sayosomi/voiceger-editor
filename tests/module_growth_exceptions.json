@@ -1,12 +1,6 @@
 {
   "exceptions": [
     {
-      "path": "voiceger_editor/tui_operations.py",
-      "reviewed_max_lines": 1660,
-      "justification": "Temporary baseline for the current background-operation lifecycle concentration; lifecycle responsibilities are scheduled for focused extraction.",
-      "follow_up_issue": "https://github.com/sayosomi/voiceger-editor/issues/236"
-    },
-    {
       "path": "tests/test_tui.py",
       "reviewed_max_lines": 4630,
       "justification": "Temporary baseline for the remaining composition-root test concentration; focused subsystem tests should continue moving to their owning suites.",
