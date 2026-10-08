@@ -7,16 +7,17 @@ G2P functions for one target utterance, then restores the original functions.
 
 from __future__ import annotations
 
-from collections import defaultdict, deque
 from contextlib import contextmanager
 import os
 from pathlib import Path
 import sys
 from threading import RLock
-from types import MethodType
 from typing import Any, Optional
 
 from .english_stress import normalize_english_phonemes
+from .mixed_lab_capture import MixedLabCapture
+from .mixed_pronunciation_overrides import MixedPronunciationOverrides
+from .mixed_runtime_hooks import scoped_mixed_runtime_hooks
 from .openjtalk_converter import text_to_pronunciation
 from .output import save_output
 from .pronunciation import (
@@ -517,181 +518,29 @@ class VoicegerAdapter:
         self._ensure_runtime()
 
         with self._lock:
-            english = self._runtime["english"]
             japanese = self._runtime["japanese"]
+            english = self._runtime["english"]
             inference_webui = self._runtime["inference_webui"]
-            MhaPatched = self._runtime["MhaPatched"]
-            get_tts_wav = self._runtime["get_tts_wav"]
-            original_clean_text_inf = inference_webui.clean_text_inf
-            original_japanese_g2p = japanese.g2p
+            overrides = MixedPronunciationOverrides(
+                japanese=japanese,
+                english=english,
+                inference_webui=inference_webui,
+                japanese_overrides=japanese_overrides,
+                english_overrides=english_overrides,
+            )
+            capture = MixedLabCapture(inference_webui, mixed_lab_query)
 
-            capture_records: list[dict[str, Any]] = []
-            capture_errors: list[str] = []
-            capture_installed = False
-            capture_missing = object()
-            capture_original_instance = capture_missing
-            capture_model = None
-            expected_mixed_phone_ids = None
-            mixed_lab_spans = None
-
-            if mixed_lab_query is not None:
-                try:
-                    from .lab_mixed_attention import (
-                        build_mixed_lab_segment_spans,
-                        voiceger_ids_for_spans,
-                    )
-
-                    mixed_lab_spans = build_mixed_lab_segment_spans(
-                        mixed_lab_query
-                    )
-                    expected_mixed_phone_ids = voiceger_ids_for_spans(
-                        mixed_lab_spans,
-                        cleaned_text_to_sequence=(
-                            inference_webui.cleaned_text_to_sequence
-                        ),
-                        version=str(inference_webui.version),
-                    )
-                    capture_model = inference_webui.vq_model
-                    original_decode = capture_model.decode
-                    capture_original_instance = capture_model.__dict__.get(
-                        "decode",
-                        capture_missing,
-                    )
-
-                    def capture_decode(
-                        self,
-                        codes,
-                        text,
-                        refer,
-                        noise_scale=0.5,
-                        speed=1,
-                    ):
-                        decoded = original_decode(
-                            codes,
-                            text,
-                            refer,
-                            noise_scale=noise_scale,
-                            speed=speed,
-                        )
-                        try:
-                            attention = self.enc_p.mrte.cross_attention.attn
-                            if attention is None:
-                                raise RuntimeError(
-                                    "MRTE cross-attention is unavailable"
-                                )
-                            capture_records.append(
-                                {
-                                    "target_phone_ids": [
-                                        int(value)
-                                        for value in (
-                                            text.detach()
-                                            .cpu()
-                                            .reshape(-1)
-                                            .tolist()
-                                        )
-                                    ],
-                                    "attention": (
-                                        attention.detach()
-                                        .float()
-                                        .cpu()
-                                        .numpy()
-                                        .copy()
-                                    ),
-                                    "raw_speech_sample_count": int(
-                                        decoded.shape[-1]
-                                    ),
-                                    "raw_speech_sampling_rate": int(
-                                        inference_webui.hps.data.sampling_rate
-                                    ),
-                                }
-                            )
-                        except Exception as exc:
-                            capture_errors.append(
-                                f"{type(exc).__name__}: {exc}"
-                            )
-                        return decoded
-
-                except Exception as exc:
-                    capture_errors.append(
-                        f"{type(exc).__name__}: {exc}"
-                    )
-
-            def canonical_japanese_text(value: str) -> str:
-                normalized = japanese.text_normalize(value).strip()
-                return normalized.rstrip(" .,!?。！？…、，：；·")
-
-            japanese_override_queues = defaultdict(deque)
-            for segment_text, tokens in japanese_overrides:
-                canonical = canonical_japanese_text(segment_text)
-                japanese_override_queues[canonical].append(list(tokens))
-
-            def canonical_english_text(value: str) -> str:
-                normalized = english.text_normalize(value).strip()
-                return normalized.strip(" .,!?…")
-
-            english_override_entries = []
-            for segment_text, tokens in english_overrides or []:
-                english_override_entries.append(
-                    {
-                        "canonical": canonical_english_text(segment_text),
-                        "tokens": normalize_english_phonemes(tokens),
-                        "consumed": False,
-                    }
-                )
-
-            def controlled_japanese_g2p(
-                norm_text: str,
-                with_prosody: bool = True,
+            with scoped_mixed_runtime_hooks(
+                japanese=japanese,
+                inference_webui=inference_webui,
+                overrides=overrides,
+                capture=capture,
             ):
-                if with_prosody:
-                    queue = japanese_override_queues.get(
-                        canonical_japanese_text(norm_text)
-                    )
-                    if queue:
-                        return queue.popleft()
-                with OPENJTALK_LOCK:
-                    return original_japanese_g2p(norm_text, with_prosody)
-
-            def controlled_clean_text_inf(
-                value: str,
-                language: str,
-                version: str,
-            ):
-                if language == "en":
-                    actual = canonical_english_text(value)
-                    for entry in english_override_entries:
-                        if actual == entry["canonical"]:
-                            entry["consumed"] = True
-                            phones = list(entry["tokens"])
-                            phone_ids = inference_webui.cleaned_text_to_sequence(
-                                phones,
-                                version,
-                            )
-                            norm_text = english.text_normalize(value)
-                            return phone_ids, None, norm_text
-                return original_clean_text_inf(value, language, version)
-
-            if capture_model is not None and not capture_errors:
-                try:
-                    setattr(
-                        capture_model,
-                        "decode",
-                        MethodType(capture_decode, capture_model),
-                    )
-                    capture_installed = True
-                except Exception as exc:
-                    capture_errors.append(
-                        f"{type(exc).__name__}: {exc}"
-                    )
-
-            try:
-                inference_webui.clean_text_inf = controlled_clean_text_inf
-                japanese.g2p = controlled_japanese_g2p
                 with LANGSEGMENT_LOCK:
                     with _pushd(self.sovits_dir):
-                        with MhaPatched():
+                        with self._runtime["MhaPatched"]():
                             results = list(
-                                get_tts_wav(
+                                self._runtime["get_tts_wav"](
                                     ref_wav_path=str(selected_ref_wav),
                                     prompt_text=selected_prompt_text,
                                     prompt_language="Japanese",
@@ -703,38 +552,17 @@ class VoicegerAdapter:
                                     speed=speed,
                                 )
                             )
-            finally:
-                inference_webui.clean_text_inf = original_clean_text_inf
-                japanese.g2p = original_japanese_g2p
-                if capture_installed and capture_model is not None:
-                    if capture_original_instance is capture_missing:
-                        delattr(capture_model, "decode")
-                    else:
-                        setattr(
-                            capture_model,
-                            "decode",
-                            capture_original_instance,
-                        )
 
-            remaining_japanese = sum(
-                len(queue)
-                for queue in japanese_override_queues.values()
-            )
-            if remaining_japanese:
+            if overrides.remaining_japanese:
                 raise VoicegerAdapterError(
                     "Voiceger mixed-language segmentation did not consume "
-                    f"{remaining_japanese} Japanese pronunciation override(s)"
+                    f"{overrides.remaining_japanese} Japanese pronunciation override(s)"
                 )
 
-            remaining_english = sum(
-                1
-                for entry in english_override_entries
-                if not entry["consumed"]
-            )
-            if remaining_english:
+            if overrides.remaining_english:
                 raise VoicegerAdapterError(
                     "Voiceger mixed-language segmentation did not consume "
-                    f"{remaining_english} English phoneme override(s)"
+                    f"{overrides.remaining_english} English phoneme override(s)"
                 )
 
             if not results:
@@ -745,64 +573,10 @@ class VoicegerAdapter:
                 "audio": audio,
                 "sampling_rate": int(sample_rate),
             }
-
             if mixed_lab_query is not None:
-                provenance = None
-                provenance_warning = None
-                if capture_errors:
-                    provenance_warning = (
-                        "mixed LAB timing capture failed: "
-                        + "; ".join(capture_errors)
-                    )
-                elif len(capture_records) != 1:
-                    provenance_warning = (
-                        "mixed LAB timing capture requires exactly one "
-                        f"Voiceger decode, got {len(capture_records)}"
-                    )
-                elif (
-                    expected_mixed_phone_ids is None
-                    or capture_records[0]["target_phone_ids"]
-                    != expected_mixed_phone_ids
-                ):
-                    provenance_warning = (
-                        "mixed LAB target phone IDs do not match the "
-                        "adapter-owned pronunciation"
-                    )
-                elif mixed_lab_spans is None:
-                    provenance_warning = (
-                        "mixed LAB segment phone spans are unavailable"
-                    )
-                else:
-                    try:
-                        from .lab_mixed_attention import (
-                            derive_mixed_lab_provenance,
-                        )
-
-                        provenance = derive_mixed_lab_provenance(
-                            mixed_lab_spans,
-                            capture_records[0]["attention"],
-                            raw_speech_sample_count=(
-                                capture_records[0][
-                                    "raw_speech_sample_count"
-                                ]
-                            ),
-                            raw_speech_sampling_rate=(
-                                capture_records[0][
-                                    "raw_speech_sampling_rate"
-                                ]
-                            ),
-                            raw_audio=audio,
-                        )
-                    except Exception as exc:
-                        provenance_warning = (
-                            "mixed LAB timing capture failed: "
-                            f"{type(exc).__name__}: {exc}"
-                        )
+                provenance, warning = capture.result(audio)
                 response["mixed_lab_provenance"] = provenance
-                response["mixed_lab_provenance_warning"] = (
-                    provenance_warning
-                )
-
+                response["mixed_lab_provenance_warning"] = warning
             return response
 
     def synthesize(
