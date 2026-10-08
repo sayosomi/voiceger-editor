@@ -141,7 +141,7 @@ POST /accent_phrases
 POST /synthesis
 ```
 
-Japanese dictionary endpoints are also available.
+Japanese VOICEVOX-compatible dictionary endpoints and Voiceger Editor-specific English dictionary endpoints are also available.
 
 See [HTTP API](api.md).
 
