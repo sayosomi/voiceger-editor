@@ -152,14 +152,52 @@ class TuiTextEditorOwner(EditorOwnerBase):
         return (UpdateStatusIntent(""), *self.begin_field("draft", source_text))
 
     @staticmethod
+    def _set_caption_draft(editor: EditorState, caption: str) -> None:
+        editor.payload["draft"] = caption
+        editor.input_value = caption
+        editor.input_original = caption
+        editor.input_cursor = len(caption)
 
     @staticmethod
+    def _set_text_draft(editor: EditorState, value: str) -> None:
+        editor.payload["draft"] = value
+        editor.input_value = value
+        editor.input_original = value
+        editor.input_cursor = len(value)
+        editor.active_field = None
 
     @staticmethod
+    def _word_group_values(
+        grouping: EnglishGroupingCache,
+    ) -> tuple[tuple[str, tuple[str, ...]], ...]:
+        return tuple((group.label, group.phonemes) for group in grouping.groups)
 
     @staticmethod
+    def _grouping_cache(
+        source_text: str,
+        groups: Sequence[tuple[str, Sequence[str]]],
+    ) -> EnglishGroupingCache:
+        return EnglishGroupingCache(
+            source_text,
+            tuple(
+                EnglishWordGroup(
+                    label=label,
+                    phonemes=tuple(phonemes),
+                    editable=any(character.isalpha() for character in label),
+                )
+                for label, phonemes in groups
+            ),
+        )
 
     @staticmethod
+    def _validated_text(editor: EditorState) -> str:
+        text = editor.payload["draft"]
+        language = "Japanese" if editor.payload["language"] == "ja" else "English"
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError(f"{language} section text must not be empty")
+        if "\n" in text or "\r" in text:
+            raise ValueError(f"{language} section text must not contain newlines")
+        return text
 
     def preview_section_text(
         self,
