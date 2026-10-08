@@ -45,6 +45,7 @@ from voiceger_editor.voicevox_api_models import (
 from tests.tui_app_test_support import (
     TuiAppTestCase,
     FakeScreen,
+    FakeSession,
     candidate,
     editor_document,
     english_grouping,
