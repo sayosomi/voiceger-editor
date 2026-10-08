@@ -622,30 +622,16 @@ class TuiBatchControllerTests(unittest.TestCase):
         self.assertEqual(controller.handle_key("a"), (AddCaptions(),))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
-from tests.tui_app_test_support import (
-    TuiAppTestCase,
-    FakeScreen,
-    candidate,
-    editor_document,
-    english_grouping,
-    english_query,
-    focus_candidate,
-    japanese_query,
-    mixed_query,
-    navigation_document,
-    navigation_items,
-    set_navigation_focus,
-)
+from threading import Event
+from voiceger_editor.caption_batch import CaptionBatchItem
+from voiceger_editor.tui_status import StatusKind, warning_status
+from tests.tui_app_test_support import TuiAppTestCase, FakeScreen, FakeSession as AppFakeSession, candidate, mixed_query
 
 class TuiBatchIntegrationTests(TuiAppTestCase):
     def test_other_batch_item_shows_busy_generate_and_explains_owner(self):
         app = self.make_app(query=mixed_query())
         first_item_id = app._batch.open_item_id
-        second = FakeSession(query=mixed_query())
+        second = AppFakeSession(query=mixed_query())
         second.caption = "second caption"
         app._batch.batch.add_item(CaptionBatchItem(second))
         app._operations.busy = True
@@ -811,3 +797,7 @@ class TuiBatchIntegrationTests(TuiAppTestCase):
         self.assertEqual(app.session.discard_calls, 0)
         self.assertIn("currently generating", app._status)
         self.assertIn("clearing candidates", app._status)
+
+
+if __name__ == "__main__":
+    unittest.main()
