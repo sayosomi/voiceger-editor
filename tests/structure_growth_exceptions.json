@@ -9,14 +9,6 @@
       "follow_up_issue": null
     },
     {
-      "path": "voiceger_editor/voiceger_adapter.py",
-      "symbol": "VoicegerAdapter.synthesize_mixed_audio",
-      "metric": "function_lines",
-      "reviewed_max": 332,
-      "justification": "Mixed-language synthesis currently owns one transactional Voiceger override and timing-capture lifecycle; the existing method is reviewed at its current size but may not silently grow.",
-      "follow_up_issue": null
-    },
-    {
       "path": "voiceger_editor/tui_editors.py",
       "symbol": "TuiEditorController",
       "metric": "class_methods",
