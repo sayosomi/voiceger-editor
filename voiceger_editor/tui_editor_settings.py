@@ -27,6 +27,7 @@ from .settings import (
 )
 from .tui_adjustments import step_bounded, step_cyclic, step_ordered
 from .tui_editor_common import (
+    ApplySettingsIntent,
     ClearAdjustmentFeedbackIntent,
     EditorIntent,
     EditorOwnerBase,
