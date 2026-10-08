@@ -116,7 +116,7 @@ Caption を初めて開くと、発音情報が自動で作られます。
 ```text
 BATCH ITEM                                                  < 1 / 1 >
 
-  Style 3 Neutral | Speed 1.00 | Takes 1 | TXT ON
+  Neutral | 1.00x | Takes 1 | TXT ON | LAB OFF
   [F] Output: ~/.voiceger-editor/output
 
   [E] Caption : 今日は雨なのだ。
@@ -139,7 +139,7 @@ BATCH ITEM                                                  < 1 / 1 >
   [Q] Quit
 ```
 
-`Style`、`Takes`、`TXT`、`Output` などの表示は、現在の設定によって変わります。
+2行目にはスタイル名、話速、Take 数、TXT・LAB 出力の ON/OFF が表示されます。3行目には Output フォルダが表示されます。表示内容は現在の設定によって変わります。
 
 `JA` から始まる部分が、自動で作られた日本語の発音情報です。
 
