@@ -68,7 +68,8 @@ class TuiTests(TuiAppTestCase):
         set_navigation_focus(app, ("settings_summary", None))
         app._render()
         summary = next(item for item in screen.drawn if item[0] == 1)
-        self.assertTrue(summary[2].startswith("▶ Style 3"))
+        self.assertTrue(summary[2].startswith("▶ "))
+        self.assertIn(" | 1.00x | Takes 4 | TXT OFF | LAB OFF", summary[2])
         self.assertTrue(summary[3] & curses.A_REVERSE)
 
         set_navigation_focus(app, ("output", None))

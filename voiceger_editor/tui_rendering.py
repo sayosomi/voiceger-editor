@@ -512,11 +512,9 @@ class TuiRenderer:
             "unavailable",
         )
         text_state = "TXT ON" if settings.save_text else "TXT OFF"
-        suffix = f" | {text_state}"
-        prefix = (
-            f"Style {settings.style_id} {style_name} | Speed {settings.speed:.2f} | "
-            f"Takes {settings.take_count}"
-        )
+        lab_state = "LAB ON" if settings.save_lab else "LAB OFF"
+        suffix = f" | {text_state} | {lab_state}"
+        prefix = f"{style_name} | {settings.speed:.2f}x | Takes {settings.take_count}"
         marker = "▶ " if state.focus_key == ("settings_summary", None) else "  "
         prefix_width = max(
             0,

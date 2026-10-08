@@ -59,6 +59,51 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
         self.assertTrue(header.endswith("< 2 / 4 >"))
         self.assertTrue(header_row[3] & curses.A_REVERSE)
 
+    def test_batch_item_summary_is_compact_and_shows_txt_and_lab_states(self):
+        cases = ((False, True), (True, False), (True, True), (False, False))
+        for save_text, save_lab in cases:
+            with self.subTest(save_text=save_text, save_lab=save_lab):
+                screen = FakeScreen()
+                settings = Settings(
+                    style_id=3, speed=1.0, take_count=1,
+                    save_text=save_text, save_lab=save_lab,
+                )
+                with patch(
+                    "voiceger_editor.tui_rendering.available_styles",
+                    return_value=(SimpleNamespace(id=3, name="Neutral"),),
+                ):
+                    self.renderer.render_navigation(
+                        screen, render_state(settings=settings),
+                        screen.rows, screen.columns, title="BATCH ITEM",
+                    )
+                summary = next(
+                    text for row, _col, text, _attr in screen.drawn if row == 1
+                )
+                txt = "ON" if save_text else "OFF"
+                lab = "ON" if save_lab else "OFF"
+                self.assertEqual(
+                    summary,
+                    f"▶ Neutral | 1.00x | Takes 1 | TXT {txt} | LAB {lab}",
+                )
+
+    def test_batch_item_summary_prioritizes_txt_and_lab_when_narrow(self):
+        screen = FakeScreen(columns=35)
+        settings = Settings(take_count=1, save_text=False, save_lab=True)
+        with patch(
+            "voiceger_editor.tui_rendering.available_styles",
+            return_value=(SimpleNamespace(id=3, name="Neutral"),),
+        ):
+            self.renderer.render_navigation(
+                screen, render_state(settings=settings),
+                screen.rows, screen.columns, title="BATCH ITEM",
+            )
+        summary = next(
+            text for row, _col, text, _attr in screen.drawn if row == 1
+        )
+        self.assertTrue(summary.startswith("▶ "))
+        self.assertTrue(summary.endswith(" | TXT OFF | LAB ON"))
+        self.assertLessEqual(_display_width(summary), screen.columns - 1)
+
     def test_batch_item_output_row_is_a_visible_f_shortcut(self):
         screen = FakeScreen()
         settings = Settings(output_dir=Path("/tmp/voiceger-output"))
