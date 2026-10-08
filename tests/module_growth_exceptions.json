@@ -1,12 +1,6 @@
 {
   "exceptions": [
     {
-      "path": "voiceger_editor/tui_dictionary.py",
-      "reviewed_max_lines": 2432,
-      "justification": "Temporary baseline for the current Dictionary TUI controller concentration; split responsibilities instead of adding more unrelated policy here.",
-      "follow_up_issue": "https://github.com/sayosomi/voiceger-editor/issues/233"
-    },
-    {
       "path": "voiceger_editor/tui_editors.py",
       "reviewed_max_lines": 2222,
       "justification": "Temporary baseline for the current multi-editor controller concentration; editor-family ownership cleanup is already tracked.",

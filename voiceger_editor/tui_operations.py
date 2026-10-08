@@ -22,7 +22,7 @@ from .voiceger_adapter import VoicegerAdapter
 from .voicevox_api_models import AudioQuery
 
 if TYPE_CHECKING:
-    from .tui_dictionary import DictionaryOperationIntent, DictionaryOperationRequest
+    from .tui_dictionary_operations import DictionaryOperationIntent, DictionaryOperationRequest
 
 
 @dataclass(frozen=True)
