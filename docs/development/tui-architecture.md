@@ -33,7 +33,16 @@ Keyboard interaction and presentation conventions are documented separately in [
 | `voiceger_editor/tui_settings.py` | TUI runtime/persisted Settings reconciliation, persistence outcomes, operation-aware settings conflict checks, synthesis-setting invalidation policy, and Batch default Take-count synchronization. |
 | `voiceger_editor/tui_operations.py` | Shared single-worker/background-operation lifecycle and event queue for synthesis, lazy Caption pronunciation/query preparation, Take acceptance, and slow Dictionary work; shared-resource occupancy; stable Caption item ownership and structured cross-screen progress identity for active operation plans; operation-specific conflict policy; candidate playback and acceptance; typed operation effects. |
 | `voiceger_editor/tui_status.py` | Shared semantic TUI Status model, severity constructors, and the single visible prefix formatter. |
-| `voiceger_editor/tui_rendering.py` | Batch List, Batch Item navigation, editor, and help document construction; presentation of structured background-operation progress; shared background-progress/Status footer layout and rendering; render-state presentation; terminal drawing behavior. |
+| `voiceger_editor/tui_rendering.py` | Low-level curses drawing, semantic terminal attributes, shared Status/background footer layout, viewport clipping/cursor placement, and compatibility delegation to focused document builders. |
+| `voiceger_editor/tui_rendering_shared.py` | Read-only render-state protocols/dataclasses plus reusable pure presentation helpers shared across screen document builders. |
+| `voiceger_editor/tui_rendering_help.py` | Help document construction and Help shortcut/explanation presentation data. |
+| `voiceger_editor/tui_rendering_batch.py` | Batch List document construction, including numbered-caption rows, selection/review state, Take-count presentation, and action grouping. |
+| `voiceger_editor/tui_rendering_navigation.py` | Batch Item navigation document construction for Caption, pronunciation, candidate, generation, and top-level action rows. |
+| `voiceger_editor/tui_rendering_editor_common.py` | Shared editor-document accumulation primitives for wrapping, selectable rows, editable fields, and shared Output-path presentation. |
+| `voiceger_editor/tui_rendering_editor.py` | Editor document dispatch and shared title/Dictionary-entry navigator construction. |
+| `voiceger_editor/tui_rendering_editor_general.py` | General editor-family documents: confirmations, Caption/pronunciation editors, batch-recipe path screens, and section text/add flows. |
+| `voiceger_editor/tui_rendering_settings.py` | Settings and Audio Output Settings document construction. |
+| `voiceger_editor/tui_rendering_dictionary.py` | Dictionary menu/import/list/filter/entry/detail document construction and Dictionary-specific row formatting. |
 | `voiceger_editor/tui_display.py` | Pure display-cell width; wrapping and truncation; cursor movement across wrapped input; phoneme and display-formatting helpers. |
 
 ## Dependency direction
