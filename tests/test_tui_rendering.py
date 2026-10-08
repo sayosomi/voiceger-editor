@@ -3193,24 +3193,8 @@ class TuiRenderingTests(unittest.TestCase):
                 )
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
-from tests.tui_app_test_support import (
-    TuiAppTestCase,
-    FakeScreen,
-    candidate,
-    editor_document,
-    english_grouping,
-    english_query,
-    focus_candidate,
-    japanese_query,
-    mixed_query,
-    navigation_document,
-    navigation_items,
-    set_navigation_focus,
-)
+from threading import Event
+from tests.tui_app_test_support import TuiAppTestCase, FakeScreen as TuiAppFakeScreen, mixed_query
 
 class TuiRenderingIntegrationTests(TuiAppTestCase):
     def test_active_generation_renders_ctrl_c_cancel_hint(self):
@@ -3218,7 +3202,7 @@ class TuiRenderingIntegrationTests(TuiAppTestCase):
         app._operations.busy = True
         app._operations.worker_operation = "initial"
         app._operations._active_operation_id = 1
-        app._screen = FakeScreen(rows=24, columns=100)
+        app._screen = TuiAppFakeScreen(rows=24, columns=100)
 
         app._render()
 
@@ -3237,7 +3221,7 @@ class TuiRenderingIntegrationTests(TuiAppTestCase):
                 app._operations.operation_total = 4
 
                 app._handle_key("\x1b")
-                app._screen = FakeScreen(rows=24, columns=100)
+                app._screen = TuiAppFakeScreen(rows=24, columns=100)
                 app._render()
 
                 self.assertIn(expected, self.rendered(app._screen))
@@ -3255,7 +3239,7 @@ class TuiRenderingIntegrationTests(TuiAppTestCase):
         app._status = info_status("Caption 2 was added.")
 
         app._handle_key("?")
-        app._screen = FakeScreen(rows=24, columns=100)
+        app._screen = TuiAppFakeScreen(rows=24, columns=100)
         app._render()
         rendered = self.rendered(app._screen)
 
@@ -3267,7 +3251,7 @@ class TuiRenderingIntegrationTests(TuiAppTestCase):
 
     def test_help_scroll_clamp_accounts_for_status_footer_height(self):
         app = self.make_app(query=mixed_query())
-        app._screen = FakeScreen(rows=8, columns=32)
+        app._screen = TuiAppFakeScreen(rows=8, columns=32)
         app._status = info_status(
             "This is a long shared Status message that occupies multiple footer rows."
         )
@@ -3287,3 +3271,7 @@ class TuiRenderingIntegrationTests(TuiAppTestCase):
         app._handle_key(curses.KEY_DOWN)
 
         self.assertEqual(app._help_scroll, max_scroll)
+
+
+if __name__ == "__main__":
+    unittest.main()
