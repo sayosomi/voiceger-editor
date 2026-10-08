@@ -13,12 +13,6 @@
       "follow_up_issue": "https://github.com/sayosomi/voiceger-editor/issues/236"
     },
     {
-      "path": "voiceger_editor/tui_rendering.py",
-      "reviewed_max_lines": 2170,
-      "justification": "Temporary baseline for the current rendering/document-construction concentration; screen-oriented rendering ownership cleanup is tracked.",
-      "follow_up_issue": "https://github.com/sayosomi/voiceger-editor/issues/234"
-    },
-    {
       "path": "tests/test_tui.py",
       "reviewed_max_lines": 4630,
       "justification": "Temporary baseline for the remaining composition-root test concentration; focused subsystem tests should continue moving to their owning suites.",
