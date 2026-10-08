@@ -612,24 +612,8 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         bindings.actions.editor_controller.pronunciation_rows.assert_called_once()
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
-from tests.tui_app_test_support import (
-    TuiAppTestCase,
-    FakeScreen,
-    candidate,
-    editor_document,
-    english_grouping,
-    english_query,
-    focus_candidate,
-    japanese_query,
-    mixed_query,
-    navigation_document,
-    navigation_items,
-    set_navigation_focus,
-)
+from unittest.mock import call
+from tests.tui_app_test_support import TuiAppTestCase, FakeScreen, candidate, focus_candidate, mixed_query, set_navigation_focus
 
 class TuiBatchItemIntegrationTests(TuiAppTestCase):
     def test_candidate_regeneration_uses_only_focused_candidate(self):
@@ -790,3 +774,7 @@ class TuiBatchItemIntegrationTests(TuiAppTestCase):
         quit_shortcut = self.make_app(query=mixed_query())
         quit_shortcut._handle_key("q")
         self.assertTrue(quit_shortcut._exit_requested)
+
+
+if __name__ == "__main__":
+    unittest.main()
