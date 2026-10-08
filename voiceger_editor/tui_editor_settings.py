@@ -93,6 +93,23 @@ class TuiSettingsEditorOwner(EditorOwnerBase):
         return tuple(intents)
 
     @staticmethod
+    def _settings_draft(settings: Settings) -> dict[str, Any]:
+        return {
+            "style_id": str(settings.style_id),
+            "speed": str(settings.speed),
+            "take_count": str(settings.take_count),
+            "output_dir": str(settings.output_dir),
+            "filename_template": settings.filename_template,
+            "output_format": settings.output_format,
+            "wav_encoding": settings.wav_encoding,
+            "flac_encoding": settings.flac_encoding,
+            "mp3_bitrate": settings.mp3_bitrate,
+            "save_text": settings.save_text,
+            "save_lab": settings.save_lab,
+            "top_k": str(settings.top_k),
+            "top_p": f"{settings.top_p:.2f}",
+            "temperature": f"{settings.temperature:.2f}",
+        }
 
     def open_audio_output_settings(
         self,
@@ -136,6 +153,34 @@ class TuiSettingsEditorOwner(EditorOwnerBase):
         return (ClearAdjustmentFeedbackIntent(), UpdateStatusIntent(""))
 
     @staticmethod
+    def _refresh_filename_preview(
+        editor: EditorState,
+        template: str | None = None,
+    ) -> None:
+        if editor.kind != "audio_output_settings":
+            return
+        candidate = (
+            str(template)
+            if template is not None
+            else str(editor.payload["draft_settings"]["filename_template"])
+        )
+        try:
+            basename = render_output_basename(
+                template=candidate,
+                text=str(editor.payload.get("preview_text", "Sample text")),
+                style=str(editor.payload.get("preview_style", "Style")),
+            )
+        except FilenameTemplateError as exc:
+            editor.payload["filename_preview"] = ""
+            editor.payload["filename_preview_error"] = str(exc)
+            return
+        editor.payload["filename_preview"] = (
+            basename
+            + output_extension(
+                str(editor.payload["draft_settings"].get("output_format", "wav"))
+            )
+        )
+        editor.payload["filename_preview_error"] = ""
 
     def move_settings_section(self, direction: int) -> tuple[EditorIntent, ...]:
         editor = self.editor
