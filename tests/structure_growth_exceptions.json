@@ -1,14 +1,6 @@
 {
   "exceptions": [
     {
-      "path": "tests/test_tui_editors.py",
-      "symbol": "TuiEditorControllerTests",
-      "metric": "class_methods",
-      "reviewed_max": 71,
-      "justification": "Existing compatibility coverage for the editor facade remains centralized here while focused editor-family test modules own new behavior; this baseline may not silently grow.",
-      "follow_up_issue": null
-    },
-    {
       "path": "tests/test_tui.py",
       "symbol": "TuiTests",
       "metric": "class_methods",
