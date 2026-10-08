@@ -11,9 +11,15 @@ from .styles import available_styles
 from .tui_confirmation import ConfirmationDetail, confirmation_lines
 from .tui_display import _display_width, _truncate_display, _wrap_active_input, _wrap_text
 from .tui_rendering_batch import batch_list_document as _batch_list_document
+from .tui_rendering_dictionary import (
+    _DICTIONARY_SORT_LABELS,
+    _dictionary_list_row,
+    _dictionary_surface_column_width,
+)
 from .tui_rendering_editor import editor_document as _editor_document
 from .tui_rendering_help import _HELP_ITEMS, help_document as _help_document
 from .tui_rendering_navigation import navigation_document as _navigation_document
+from .tui_rendering_settings import _OUTPUT_ENCODING_LABELS, _OUTPUT_FORMAT_LABELS
 from .tui_rendering_shared import (
     _CANCEL_GENERATION_HINT,
     EditorRenderState,
