@@ -372,7 +372,7 @@ class EntrypointTermsAndStartupTests(unittest.TestCase):
             "voiceger_editor.entrypoint.VoicegerAdapter",
         ) as adapter, patch(
             "curses.wrapper",
-        ) as wrapper:
+        ) as wrapper, redirect_stdout(StringIO()):
             self.assertEqual(entrypoint.main([]), 2)
 
         record_acceptance.assert_not_called()
