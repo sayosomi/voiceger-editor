@@ -77,6 +77,16 @@ Japanese dictionary endpoints:
 | DELETE | `/user_dict_word/{word_uuid}` |
 | POST | `/import_user_dict` |
 
+English dictionary endpoints (Voiceger Editor extensions, not VOICEVOX endpoints):
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| GET | `/english_user_dict` | List English pronunciations |
+| POST | `/english_user_dict_word` | Add or replace an entry |
+| PUT | `/english_user_dict_word/{surface}` | Update or rename an entry |
+| DELETE | `/english_user_dict_word/{surface}` | Delete an entry |
+| POST | `/import_english_user_dict` | Import native English dictionary JSON |
+
 ## Speakers and styles
 
 ```bash
@@ -282,9 +292,47 @@ The API also supports update, delete, and import operations.
 
 `/import_user_dict` accepts the UUID-keyed expanded VOICEVOX `UserDictWord` format.
 
-The HTTP dictionary API covers the Japanese dictionary.
+The endpoints above cover the Japanese dictionary and remain VOICEVOX-compatible.
 
-The English pronunciation dictionary is managed through the TUI.
+## English user dictionary
+
+The HTTP API and TUI share the same persistent English dictionary. English routes are Voiceger Editor extensions, not VOICEVOX-compatible routes.
+
+List the English dictionary:
+
+```bash
+curl http://127.0.0.1:8001/english_user_dict
+```
+
+The response is a JSON object whose keys are surface spellings and whose values are ARPAbet token arrays:
+
+```json
+{
+  "sweet": ["S", "W", "IY1", "T"]
+}
+```
+
+Add or replace an entry (existing spellings match without regard to letter case):
+
+```bash
+curl -s -X POST 'http://127.0.0.1:8001/english_user_dict_word' \
+  -H 'Content-Type: application/json' \
+  -d '{"surface":"sweet","phonemes":["S","W","IY1","T"]}'
+```
+
+This returns the validated `{"surface": ..., "phonemes": [...]}` object. To update or rename an existing word, use `PUT /english_user_dict_word/{surface}` with the same JSON request body. To remove a word, use `DELETE /english_user_dict_word/{surface}`. PUT and DELETE return `204 No Content`. If the original word is missing, update and delete return `422`; renaming to an existing surface also returns `422`.
+
+Import a native English dictionary (same JSON shape as GET and TUI English export):
+
+```bash
+curl -s -X POST 'http://127.0.0.1:8001/import_english_user_dict?override=true' \
+  -H 'Content-Type: application/json' \
+  -d '{"sweet":["S","W","IY1","T"]}'
+```
+
+Import returns `204 No Content`. `override=false` is the default and retains existing entries with matching spellings; `override=true` replaces matching entries. Import is atomic: invalid data is rejected before the shared dictionary is modified.
+
+Only valid Voiceger ARPAbet tokens are accepted. Invalid input returns `422`. The API writes the same `english_user_dict.json` file as the TUI. Changes made through these endpoints affect subsequent `/audio_query` calls without restarting the API process; previously returned AudioQuery values are unchanged. Edits by a different running process are not automatically reloaded into an already-running API process.
 
 See [User Dictionary](dictionary.md).
 
