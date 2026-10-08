@@ -6,6 +6,7 @@ import curses
 from copy import deepcopy
 from typing import Any, Callable, Sequence
 
+from .output import available_output_formats
 from .settings import Settings
 from .tui_confirmation import handle_confirmation_key
 from .tui_display import _display_width
@@ -78,6 +79,11 @@ class TuiEditorController:
         )
         self._text = TuiTextEditorOwner(self)
         self._pronunciation = TuiPronunciationEditorOwner(self)
+
+    @staticmethod
+    def _available_output_formats():
+        return available_output_formats()
+
 
     @property
     def grouping_cache(self) -> dict[int, EnglishGroupingCache]:
