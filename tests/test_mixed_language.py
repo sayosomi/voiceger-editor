@@ -96,6 +96,34 @@ class MixedLanguageTests(unittest.TestCase):
             (("Caption 01", phonemes),),
         )
 
+    def test_english_only_query_preserves_source_when_detector_rewrites_spacing(self):
+        seen = []
+
+        def english_g2p(value):
+            seen.append(value)
+            return ["K", "AE1", "P", "SH", "AH0", "N"]
+
+        query = build_mixed_audio_query(
+            "Caption 01",
+            segments=[
+                DetectedSegment("en", "Caption  "),
+                DetectedSegment("en", "01 "),
+            ],
+            english_g2p=english_g2p,
+        )
+
+        self.assertEqual(len(query.voicegerSegments), 1)
+        self.assertEqual(query.voicegerSegments[0].language, "en")
+        self.assertEqual(query.voicegerSegments[0].text, "Caption 01")
+        self.assertEqual(seen, ["Caption 01"])
+
+        plan = build_mixed_synthesis_plan(query)
+        self.assertEqual(plan.text, "Caption 01")
+        self.assertEqual(
+            plan.english_overrides,
+            (("Caption 01", ["K", "AE1", "P", "SH", "AH0", "N"]),),
+        )
+
     def test_japanese_english_selects_native_mixed_mode(self):
         segments = [
             VoicegerSegment(language="ja", text="今日は"),
