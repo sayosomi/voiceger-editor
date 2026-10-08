@@ -60,7 +60,8 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
         self.assertTrue(header_row[3] & curses.A_REVERSE)
 
     def test_batch_item_summary_is_compact_and_shows_txt_and_lab_states(self):
-        for save_text, save_lab in ((False, True), (True, False), (True, True), (False, False)):
+        cases = ((False, True), (True, False), (True, True), (False, False))
+        for save_text, save_lab in cases:
             with self.subTest(save_text=save_text, save_lab=save_lab):
                 screen = FakeScreen()
                 settings = Settings(
@@ -75,7 +76,9 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
                         screen, render_state(settings=settings),
                         screen.rows, screen.columns, title="BATCH ITEM",
                     )
-                summary = next(text for row, _col, text, _attr in screen.drawn if row == 1)
+                summary = next(
+                    text for row, _col, text, _attr in screen.drawn if row == 1
+                )
                 txt = "ON" if save_text else "OFF"
                 lab = "ON" if save_lab else "OFF"
                 self.assertEqual(
@@ -94,7 +97,9 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
                 screen, render_state(settings=settings),
                 screen.rows, screen.columns, title="BATCH ITEM",
             )
-        summary = next(text for row, _col, text, _attr in screen.drawn if row == 1)
+        summary = next(
+            text for row, _col, text, _attr in screen.drawn if row == 1
+        )
         self.assertTrue(summary.startswith("▶ "))
         self.assertTrue(summary.endswith(" | TXT OFF | LAB ON"))
         self.assertLessEqual(_display_width(summary), screen.columns - 1)
