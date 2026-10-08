@@ -42,14 +42,15 @@ VOICEGER_ROOT=~/voiceger_v2 \
   tests.integration.test_voiceger_runtime -v
 ```
 
-## Module growth guard
+## Module and structure growth guards
 
-- The unit suite includes a repository-wide Python module growth guard in `tests/test_module_growth.py`.
-- The current review triggers are 1,500 physical source lines for production modules under `voiceger_editor/` and 3,500 lines for test modules under `tests/`.
+- The unit suite includes a repository-wide Python module growth guard in `tests/test_module_growth.py` and an AST-based local-structure guard in `tests/test_structure_growth.py`.
+- The module review triggers are 1,500 physical source lines for production modules under `voiceger_editor/` and 3,500 lines for test modules under `tests/`.
+- The structural review triggers are 250 source lines for a single function/method and 50 direct methods for a class.
 - These thresholds are review/growth triggers only. Responsibility boundaries remain the architecture rule; do not split code mechanically just to satisfy a number.
-- Oversized files that have been explicitly reviewed must be listed in `tests/module_growth_exceptions.json` with a reviewed maximum line count, a concise responsibility justification, and a follow-up Issue when the exception represents temporary debt.
-- A registered exception must not grow beyond its reviewed baseline without an intentional registry change. Remove the exception once the file drops below its review trigger.
-- When a module reaches a review trigger, first look for an existing focused owner or introduce a coherent new owner. Do not use formatting compression, code golf, or line-count tricks to evade the guard.
+- Oversized modules that have been explicitly reviewed must be listed in `tests/module_growth_exceptions.json`. Reviewed local concentrations must be listed by path, qualified symbol, metric, and reviewed maximum in `tests/structure_growth_exceptions.json`. Both registries require a concise responsibility justification and may link a follow-up Issue when the exception represents temporary debt.
+- A registered exception must not grow beyond its reviewed baseline without an intentional registry change. Remove the exception once the module or symbol drops below its review trigger.
+- When a module or symbol reaches a review trigger, first look for an existing focused owner or introduce a coherent new owner. Do not use formatting compression, code golf, helper-method fragmentation, or arbitrary extraction to evade either guard.
 
 ## TUI architecture
 
