@@ -38,7 +38,7 @@ class TuiPronunciationEditorOwnerTests(EditorControllerTestCase):
             controller._pronunciation,
             TuiPronunciationEditorOwner,
         )
-        query = AudioQuery(accent_phrases=[_phrase()], kana="ナ'")
+        query = AudioQuery(accent_phrases=[_phrase(("ナ",), 1)], kana="ナ'")
         rows = controller.pronunciation_rows(
             query,
             (("ja", "な", None),),
