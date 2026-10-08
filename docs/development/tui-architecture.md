@@ -65,12 +65,14 @@ Reusable application or core behavior belongs outside TUI modules. Examples incl
 
 When new TUI state, policy, interaction behavior, rendering behavior, operation behavior, or another responsibility has no appropriate existing owner, give it a focused module instead of adding it to `TuiApp`.
 
-## Module growth review guard
+## Module and structure growth review guards
 
-The repository unit suite scans Python modules under `voiceger_editor/` and `tests/` for silent large-file growth. The current review triggers are 1,500 physical source lines for production modules and 3,500 lines for test modules.
+The repository unit suite scans Python modules under `voiceger_editor/` and `tests/` for silent large-file growth. The current module review triggers are 1,500 physical source lines for production modules and 3,500 lines for test modules.
 
-These values are review triggers, not architecture definitions. When a module reaches a trigger, first decide whether the new responsibility belongs in an existing focused owner or a coherent new owner. Do not extract arbitrary fragments merely to reduce a number, and do not use formatting compression, code golf, or line-count tricks to evade the guard.
+A second AST-based guard reviews extreme local concentration that module length alone can miss. Its current triggers are 250 source lines for a single function or method and 50 direct methods for a class.
 
-Current files that intentionally remain above a trigger are recorded in `tests/module_growth_exceptions.json`. Each exception has a reviewed maximum line count and a responsibility justification, plus a follow-up Issue when the exception is temporary debt. An excepted module may not silently grow beyond that reviewed baseline. Once a refactor brings it below the trigger, remove the exception.
+These values are review triggers, not architecture definitions. When a module or symbol reaches a trigger, first decide whether the responsibility belongs in an existing focused owner or a coherent new owner. Do not extract arbitrary fragments merely to reduce a number, split one coherent method into meaningless helpers, or use formatting compression, code golf, or other metric-gaming tricks to evade the guards.
 
-File length therefore remains subordinate to responsibility ownership. `tui.py` may grow or shrink as composition wiring changes, but it must not become the owner of new feature behavior. The existing dependency boundary preventing extracted TUI modules from importing `tui.py` or `TuiApp` remains independently enforced.
+Current modules that intentionally remain above a module trigger are recorded in `tests/module_growth_exceptions.json`. Reviewed local concentrations are recorded in `tests/structure_growth_exceptions.json` by path, qualified symbol, metric, and reviewed maximum. Each exception has a responsibility justification, plus a follow-up Issue when the exception is temporary debt. An excepted module or symbol may not silently grow beyond its reviewed baseline. Once a refactor brings it below the trigger, remove the exception.
+
+File length and structural metrics therefore remain subordinate to responsibility ownership. `tui.py` may grow or shrink as composition wiring changes, but it must not become the owner of new feature behavior. The existing dependency boundary preventing extracted TUI modules from importing `tui.py` or `TuiApp` remains independently enforced.
