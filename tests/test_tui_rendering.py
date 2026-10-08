@@ -3193,5 +3193,85 @@ class TuiRenderingTests(unittest.TestCase):
                 )
 
 
+from threading import Event
+from tests.tui_app_test_support import TuiAppTestCase, FakeScreen as TuiAppFakeScreen, mixed_query
+
+class TuiRenderingIntegrationTests(TuiAppTestCase):
+    def test_active_generation_renders_ctrl_c_cancel_hint(self):
+        app = self.make_app(query=mixed_query())
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._active_operation_id = 1
+        app._screen = TuiAppFakeScreen(rows=24, columns=100)
+
+        app._render()
+
+        self.assertIn("[Ctrl+C] Cancel generation", self.rendered(app._screen))
+
+    def test_batch_list_shows_active_item_generation_percentage(self):
+        for completed, expected in ((0, "[0%]"), (2, "[50%]")):
+            with self.subTest(completed=completed):
+                app = self.make_app(query=mixed_query())
+                item_id = app._batch.open_item_id
+                app._operations.busy = True
+                app._operations.worker_operation = "initial"
+                app._operations._worker_item_id = item_id
+                app._operations._active_operation_id = 1
+                app._operations.operation_completed = completed
+                app._operations.operation_total = 4
+
+                app._handle_key("\x1b")
+                app._screen = TuiAppFakeScreen(rows=24, columns=100)
+                app._render()
+
+                self.assertIn(expected, self.rendered(app._screen))
+
+    def test_background_generation_stays_visible_in_help_with_unrelated_status(self):
+        app = self.make_app(query=mixed_query())
+        item_id = app._batch.open_item_id
+        app._operations.busy = True
+        app._operations.worker_operation = "initial"
+        app._operations._worker_item_id = item_id
+        app._operations._active_operation_id = 7
+        app._operations.operation_completed = 1
+        app._operations.operation_total = 4
+        app._operations._cancellation_event = Event()
+        app._status = info_status("Caption 2 was added.")
+
+        app._handle_key("?")
+        app._screen = TuiAppFakeScreen(rows=24, columns=100)
+        app._render()
+        rendered = self.rendered(app._screen)
+
+        self.assertIn(
+            "Generating · Caption 1 · Take 2/4 · [Ctrl+C] Cancel generation",
+            rendered,
+        )
+        self.assertIn("Status: Caption 2 was added.", rendered)
+
+    def test_help_scroll_clamp_accounts_for_status_footer_height(self):
+        app = self.make_app(query=mixed_query())
+        app._screen = TuiAppFakeScreen(rows=8, columns=32)
+        app._status = info_status(
+            "This is a long shared Status message that occupies multiple footer rows."
+        )
+        app._open_help()
+        height, width = app._screen.getmaxyx()
+        max_scroll = app._renderer.help_max_scroll(
+            height,
+            width,
+            app._status,
+        )
+        self.assertGreater(
+            max_scroll,
+            app._renderer.help_max_scroll(height, width),
+        )
+
+        app._help_scroll = 10_000
+        app._handle_key(curses.KEY_DOWN)
+
+        self.assertEqual(app._help_scroll, max_scroll)
+
+
 if __name__ == "__main__":
     unittest.main()
