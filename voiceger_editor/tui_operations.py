@@ -2,209 +2,65 @@
 
 from __future__ import annotations
 
-from contextlib import redirect_stderr, redirect_stdout
-from dataclasses import dataclass, field
-import os
 import queue
 import shutil
 import subprocess
 import sys
 from threading import Event, Thread
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Union
+from typing import TYPE_CHECKING, Any, Callable, Iterable
 
 from .caption_batch import CaptionBatch
 from .session import UtteranceSession
 from .settings import Settings
 from .tui_operation_acceptance import TuiTakeAcceptanceOwner
+from .tui_operation_contracts import (
+    BackgroundOperationProgress,
+    BatchCandidateReadyEvent,
+    BatchCandidateReplacedEffect,
+    BatchGenerationCancelledEvent,
+    BatchGenerationFailedEvent,
+    BatchGenerationProgressEvent,
+    CandidateReplacedEffect,
+    DictionaryOperationCompletedEffect,
+    DictionaryOperationCompletedEvent,
+    DiscardInitialBatchEffect,
+    FocusEffect,
+    GenerationOutcomeEffect,
+    GenerationCandidateEvent,
+    GenerationFailedEvent,
+    OperationDoneEvent,
+    OperationEffect,
+    PlayPreviewEffect,
+    PlayTakeEffect,
+    PreviewFailedEvent,
+    PreviewReadyEvent,
+    SessionPreparationCompletedEffect,
+    SessionPreparationCompletedEvent,
+    StopPlaybackEffect,
+    TakeAcceptanceCompletedEvent,
+    TakeAcceptedEffect,
+    UpdateStatusEffect,
+)
+from .tui_operation_workers import (
+    make_batch_generation_work,
+    make_dictionary_work,
+    make_generation_work,
+    make_preparation_work,
+    make_preview_work,
+)
 from .tui_operation_conflicts import TuiOperationConflictPolicy
 from .tui_operation_playback import TuiPlaybackOwner
-from .tui_status import Status, error_status, info_status
+from .tui_operation_status import (
+    generation_candidate_status,
+    generation_done_status,
+    generation_error_status,
+)
+from .tui_status import Status, error_status
 from .voiceger_adapter import VoicegerAdapter
 from .voicevox_api_models import AudioQuery
 
 if TYPE_CHECKING:
-    from .tui_dictionary_operations import DictionaryOperationIntent, DictionaryOperationRequest
-
-
-@dataclass(frozen=True)
-class UpdateStatusEffect:
-    status: Status
-    channel: str = field(default="status", compare=False)
-
-    def __init__(self, status: Status | str, *, channel: str = "status") -> None:
-        object.__setattr__(
-            self,
-            "status",
-            status if isinstance(status, Status) else info_status(status),
-        )
-        object.__setattr__(self, "channel", channel)
-
-
-@dataclass(frozen=True)
-class BackgroundOperationProgress:
-    """Stable snapshot for cross-screen Take-generation presentation."""
-
-    operation_id: int
-    operation: str
-    item_id: str | None
-    completed: int
-    total: int
-    take_number: int | None = None
-    take_completed: int = 0
-    take_total: int | None = None
-    caption_number: int | None = None
-    caption_total: int | None = None
-
-
-@dataclass(frozen=True)
-class FocusEffect:
-    focus_key: tuple[str, int | None]
-
-
-@dataclass(frozen=True)
-class PlayTakeEffect:
-    number: int
-
-
-@dataclass(frozen=True)
-class StopPlaybackEffect:
-    pass
-
-
-@dataclass(frozen=True)
-class DiscardInitialBatchEffect:
-    item_id: str | None = None
-
-
-@dataclass(frozen=True)
-class BatchCandidateReplacedEffect:
-    item_id: str
-    number: int
-
-
-@dataclass(frozen=True)
-class CandidateReplacedEffect:
-    number: int
-    item_id: str | None = None
-
-
-@dataclass(frozen=True)
-class TakeAcceptedEffect:
-    item_id: str
-    number: int
-
-
-@dataclass(frozen=True)
-class GenerationOutcomeEffect:
-    item_id: str
-    outcome: str
-
-
-@dataclass(frozen=True)
-class DictionaryOperationCompletedEffect:
-    request: DictionaryOperationRequest
-    value: Any = None
-    error: BaseException | None = None
-
-
-@dataclass(frozen=True)
-class SessionPreparationCompletedEffect:
-    session: UtteranceSession
-    rebuild: bool
-    error: BaseException | None = None
-
-
-@dataclass(frozen=True)
-class TakeAcceptanceCompletedEvent:
-    item_id: str
-    number: int
-    saved: Any | None = None
-    error: BaseException | None = None
-
-
-@dataclass(frozen=True)
-class DictionaryOperationCompletedEvent:
-    request: DictionaryOperationRequest
-    value: Any = None
-    error: BaseException | None = None
-
-
-@dataclass(frozen=True)
-class SessionPreparationCompletedEvent:
-    session: UtteranceSession
-    rebuild: bool
-    error: BaseException | None = None
-
-
-@dataclass(frozen=True)
-class PlayPreviewEffect:
-    audio: Any
-    sampling_rate: int
-
-
-@dataclass(frozen=True)
-class PreviewReadyEvent:
-    audio: Any
-    sampling_rate: int
-
-
-@dataclass(frozen=True)
-class PreviewFailedEvent:
-    error: BaseException
-
-
-@dataclass(frozen=True)
-class BatchGenerationProgressEvent:
-    item_id: str
-    caption_number: int
-    caption_total: int
-    take_number: int
-    take_total: int
-    overall_completed: int
-    overall_total: int
-
-
-@dataclass(frozen=True)
-class BatchCandidateReadyEvent:
-    item_id: str
-    caption_number: int
-    caption_total: int
-    take_number: int
-    take_total: int
-    overall_completed: int
-    overall_total: int
-    replacing_existing: bool
-
-
-@dataclass(frozen=True)
-class BatchGenerationFailedEvent:
-    item_id: str
-    caption_number: int
-    caption_total: int
-    take_number: int
-    take_total: int
-    error: BaseException
-
-
-@dataclass(frozen=True)
-class BatchGenerationCancelledEvent:
-    item_id: str
-
-
-OperationEffect = Union[
-    UpdateStatusEffect,
-    FocusEffect,
-    PlayTakeEffect,
-    PlayPreviewEffect,
-    StopPlaybackEffect,
-    DiscardInitialBatchEffect,
-    BatchCandidateReplacedEffect,
-    CandidateReplacedEffect,
-    TakeAcceptedEffect,
-    GenerationOutcomeEffect,
-    DictionaryOperationCompletedEffect,
-    SessionPreparationCompletedEffect,
-]
+    from .tui_dictionary_operations import DictionaryOperationIntent
 
 
 class TuiOperations:
@@ -305,112 +161,12 @@ class TuiOperations:
         self.cancellation_requested = False
         self._ctrl_c_cancellation_guard = True
 
-        def work() -> None:
-            overall_completed = 0
-            try:
-                with open(os.devnull, "w", encoding="utf-8") as sink:
-                    with redirect_stdout(sink), redirect_stderr(sink):
-                        for caption_number, (item, take_total) in enumerate(
-                            plan, start=1
-                        ):
-                            if cancellation_event.is_set():
-                                break
-                            iterator = None
-                            try:
-                                try:
-                                    if not item.session.is_prepared:
-                                        item.session.prepare_from_caption()
-                                    replacing_existing = item.session.has_active_batch
-                                    if replacing_existing:
-                                        values = item.session.regenerate_all_takes(
-                                            take_count=take_total
-                                        )
-                                    else:
-                                        values = item.session.generate_takes(
-                                            take_count=take_total
-                                        )
-                                    iterator = iter(values)
-                                except BaseException as exc:
-                                    self.events.put(
-                                        BatchGenerationFailedEvent(
-                                            item_id=item.item_id,
-                                            caption_number=caption_number,
-                                            caption_total=len(plan),
-                                            take_number=1,
-                                            take_total=take_total,
-                                            error=exc,
-                                        )
-                                    )
-                                    return
-
-                                for take_number in range(1, take_total + 1):
-                                    if cancellation_event.is_set():
-                                        self.events.put(
-                                            BatchGenerationCancelledEvent(
-                                                item_id=item.item_id
-                                            )
-                                        )
-                                        return
-                                    self.events.put(
-                                        BatchGenerationProgressEvent(
-                                            item_id=item.item_id,
-                                            caption_number=caption_number,
-                                            caption_total=len(plan),
-                                            take_number=take_number,
-                                            take_total=take_total,
-                                            overall_completed=overall_completed,
-                                            overall_total=overall_total,
-                                        )
-                                    )
-                                    try:
-                                        next(iterator)
-                                    except StopIteration:
-                                        self.events.put(
-                                            BatchGenerationFailedEvent(
-                                                item_id=item.item_id,
-                                                caption_number=caption_number,
-                                                caption_total=len(plan),
-                                                take_number=take_number,
-                                                take_total=take_total,
-                                                error=RuntimeError(
-                                                    "take generation ended before the requested count"
-                                                ),
-                                            )
-                                        )
-                                        return
-                                    except BaseException as exc:
-                                        self.events.put(
-                                            BatchGenerationFailedEvent(
-                                                item_id=item.item_id,
-                                                caption_number=caption_number,
-                                                caption_total=len(plan),
-                                                take_number=take_number,
-                                                take_total=take_total,
-                                                error=exc,
-                                            )
-                                        )
-                                        return
-
-                                    overall_completed += 1
-                                    self.events.put(
-                                        BatchCandidateReadyEvent(
-                                            item_id=item.item_id,
-                                            caption_number=caption_number,
-                                            caption_total=len(plan),
-                                            take_number=take_number,
-                                            take_total=take_total,
-                                            overall_completed=overall_completed,
-                                            overall_total=overall_total,
-                                            replacing_existing=replacing_existing,
-                                        )
-                                    )
-                            finally:
-                                if iterator is not None:
-                                    close = getattr(iterator, "close", None)
-                                    if callable(close):
-                                        close()
-            finally:
-                self.events.put(("done", None))
+        work = make_batch_generation_work(
+            plan,
+                        overall_total=overall_total,
+                        cancellation_event=cancellation_event,
+                        emit_event=self.events.put,
+        )
 
         self.worker = Thread(
             target=work,
@@ -555,21 +311,9 @@ class TuiOperations:
         self.operation_completed = 0
         self.operation_total = 1
 
-        def work() -> None:
-            try:
-                with open(os.devnull, "w", encoding="utf-8") as sink:
-                    with redirect_stdout(sink), redirect_stderr(sink):
-                        result = session.preview_synthesis(query_snapshot)
-                self.events.put(
-                    PreviewReadyEvent(
-                        audio=result["audio"],
-                        sampling_rate=int(result["sampling_rate"]),
-                    )
-                )
-            except BaseException as exc:
-                self.events.put(PreviewFailedEvent(exc))
-            finally:
-                self.events.put(("done", None))
+        work = make_preview_work(
+            session, query_snapshot, emit_event=self.events.put,
+        )
 
         self.worker = Thread(
             target=work,
@@ -606,26 +350,9 @@ class TuiOperations:
         self._cancellation_event = None
         self.cancellation_requested = False
 
-        def work() -> None:
-            try:
-                with open(os.devnull, "w", encoding="utf-8") as sink:
-                    with redirect_stdout(sink), redirect_stderr(sink):
-                        session.prepare_from_caption()
-            except BaseException as exc:
-                self.events.put(
-                    SessionPreparationCompletedEvent(
-                        session=session,
-                        rebuild=rebuild,
-                        error=exc,
-                    )
-                )
-            else:
-                self.events.put(
-                    SessionPreparationCompletedEvent(
-                        session=session,
-                        rebuild=rebuild,
-                    )
-                )
+        work = make_preparation_work(
+            session, rebuild=rebuild, emit_event=self.events.put,
+        )
 
         self._pending_worker = (work, "voiceger-tui-pronunciation")
         return (
@@ -656,25 +383,9 @@ class TuiOperations:
         self._cancellation_event = None
         self.cancellation_requested = False
 
-        def work() -> None:
-            try:
-                with open(os.devnull, "w", encoding="utf-8") as sink:
-                    with redirect_stdout(sink), redirect_stderr(sink):
-                        value = intent.work()
-            except BaseException as exc:
-                self.events.put(
-                    DictionaryOperationCompletedEvent(
-                        request=intent.request,
-                        error=exc,
-                    )
-                )
-            else:
-                self.events.put(
-                    DictionaryOperationCompletedEvent(
-                        request=intent.request,
-                        value=value,
-                    )
-                )
+        work = make_dictionary_work(
+            intent, emit_event=self.events.put,
+        )
 
         self._pending_worker = (work, "voiceger-tui-dictionary")
         return (UpdateStatusEffect(intent.status),)
@@ -726,21 +437,11 @@ class TuiOperations:
         if operation in {"initial", "regenerate_all"}:
             self._ctrl_c_cancellation_guard = True
 
-        def work() -> None:
-            try:
-                with open(os.devnull, "w", encoding="utf-8") as sink:
-                    with redirect_stdout(sink), redirect_stderr(sink):
-                        values = iter(make_values())
-                        while not cancellation_event.is_set():
-                            try:
-                                candidate = next(values)
-                            except StopIteration:
-                                break
-                            self.events.put(("candidate", candidate))
-            except BaseException as exc:
-                self.events.put(("error", exc))
-            finally:
-                self.events.put(("done", None))
+        work = make_generation_work(
+            make_values,
+                        cancellation_event=cancellation_event,
+                        emit_event=self.events.put,
+        )
 
         self.worker = Thread(
             target=work,
@@ -1172,23 +873,23 @@ class TuiOperations:
         exit_requested: bool,
         caption_label: Callable[[str | None], str | None],
     ) -> None:
-        kind, value = event
+        # Accept legacy tuple events from direct callers while worker builders
+        # use explicit event contracts for the single authoritative queue.
+        if isinstance(event, GenerationCandidateEvent):
+            kind, value = "candidate", event.candidate
+        elif isinstance(event, GenerationFailedEvent):
+            kind, value = "error", event.error
+        elif isinstance(event, OperationDoneEvent):
+            kind, value = "done", None
+        else:
+            kind, value = event
 
         if kind == "candidate":
             operation = self.worker_operation
             self.operation_completed += 1
-            if operation == "initial":
-                status = (
-                    f"Generating {min(self.operation_completed + 1, self.operation_total)}"
-                    f"/{self.operation_total} · {self.operation_completed} ready"
-                )
-            elif operation == "regenerate_all":
-                status = (
-                    f"Regenerating {min(self.operation_completed + 1, self.operation_total)}"
-                    f"/{self.operation_total} · {self.operation_completed} ready"
-                )
-            else:
-                status = f"Take {value.number} replacement ready."
+            status = generation_candidate_status(
+                operation, self.operation_completed, self.operation_total, value.number
+            )
             effects.append(UpdateStatusEffect(status, channel="background"))
 
             if operation == "initial":
@@ -1224,18 +925,13 @@ class TuiOperations:
 
         if kind == "error":
             self.worker_error = value
-            if self.worker_operation == "preview":
-                effects.append(
-                    UpdateStatusEffect(error_status(f"Preview failed: {value}"))
+            effects.append(
+                UpdateStatusEffect(
+                    generation_error_status(
+                        self.worker_operation, caption_label(self._worker_item_id), value
+                    )
                 )
-            else:
-                owner = caption_label(self._worker_item_id)
-                message = (
-                    f"{owner} generation failed: {value}"
-                    if owner is not None
-                    else f"Generation failed: {value}"
-                )
-                effects.append(UpdateStatusEffect(error_status(message)))
+            )
             if (
                 self.worker_operation == "initial"
                 and not self.cancellation_requested
@@ -1267,71 +963,21 @@ class TuiOperations:
         )
         cancelled = self.cancellation_requested and not finished_full_count
         self.busy = False
-        if operation == "preview":
-            status = None
-        elif operation == "batch_generate":
-            if cancelled:
-                owner_suffix = (
-                    f" at {batch_owner}" if batch_owner is not None else ""
-                )
-                status = (
-                    f"Batch generation cancelled{owner_suffix}. "
-                    f"{self.operation_completed}/{self.operation_total} "
-                    "take(s) ready."
-                )
-            elif self.worker_error is not None:
-                status = None
-            else:
-                status = (
-                    "Batch generation finished. "
-                    f"{self.operation_completed}/{self.operation_total} "
-                    "take(s) ready."
-                )
-        elif cancelled and operation == "initial":
-            ready = self.operation_completed
-            status = (
-                f"{owner} generation cancelled. {ready} take(s) ready."
-                if owner is not None
-                else f"Generation cancelled. {ready} take(s) ready."
-            )
-            if ready == 0:
-                effects.append(StopPlaybackEffect())
-                effects.append(DiscardInitialBatchEffect(self._worker_item_id))
-                self.current_take = None
-                effects.append(
-                    FocusEffect(("pronunciation", pronunciation_index))
-                )
-        elif cancelled and operation == "regenerate_all":
-            status = (
-                f"{owner} regeneration cancelled after "
-                f"{self.operation_completed} replacement(s)."
-                if owner is not None
-                else "Regeneration cancelled after "
-                f"{self.operation_completed} replacement(s)."
-            )
-        elif self.worker_error is not None:
-            status = error_status(
-                f"{owner} generation failed: {self.worker_error}"
-                if owner is not None
-                else f"Generation failed: {self.worker_error}"
-            )
-        elif operation == "initial" and self.operation_completed:
-            status = (
-                f"{owner} generation finished. "
-                f"{self.operation_completed} take(s) ready."
-                if owner is not None
-                else f"{self.operation_completed} take(s) ready."
-            )
-        elif operation in {"regenerate_one", "regenerate_all"}:
-            status = (
-                f"{owner} Take regeneration finished."
-                if owner is not None
-                else "Take regeneration finished."
-            )
-        elif not exit_requested:
-            status = "No takes were generated. Select Generate to try again."
-        else:
-            status = None
+        status = generation_done_status(
+            operation=operation,
+            owner=owner,
+            batch_owner=batch_owner,
+            completed=self.operation_completed,
+            total=self.operation_total,
+            worker_error=self.worker_error,
+            cancelled=cancelled,
+            exit_requested=exit_requested,
+        )
+        if cancelled and operation == "initial" and self.operation_completed == 0:
+            effects.append(StopPlaybackEffect())
+            effects.append(DiscardInitialBatchEffect(self._worker_item_id))
+            self.current_take = None
+            effects.append(FocusEffect(("pronunciation", pronunciation_index)))
         if status is not None:
             effects.append(UpdateStatusEffect(status))
         if (

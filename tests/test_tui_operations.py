@@ -24,6 +24,9 @@ from voiceger_editor.tui_operations import (
     DiscardInitialBatchEffect,
     FocusEffect,
     GenerationOutcomeEffect,
+    GenerationCandidateEvent,
+    GenerationFailedEvent,
+    OperationDoneEvent,
     PlayPreviewEffect,
     PlayTakeEffect,
     PreviewFailedEvent,
@@ -36,83 +39,9 @@ from voiceger_editor.tui_operations import (
 )
 from voiceger_editor.tui_status import StatusKind, error_status, warning_status
 from voiceger_editor.voicevox_api_models import AudioQuery
+from tests.tui_operation_test_support import FakeSession, candidate
 
 
-def candidate(number):
-    return SimpleNamespace(number=number, wav_path=Path(f"/tmp/take-{number}.wav"))
-
-
-class FakeSession:
-    def __init__(self, candidates=()):
-        self.candidates = list(candidates)
-        self.has_active_batch = bool(candidates)
-        self.generated = ()
-        self.generate_error = None
-        self.regenerate_all_error = None
-        self.regenerate_error = None
-        self.accept_error = None
-        self.discard_calls = 0
-        self.accept_calls = []
-        self.regenerate_calls = []
-        self.regenerate_all_calls = 0
-        self.preview_calls = []
-        self.preview_error = None
-        self.preview_result = {"audio": "preview", "sampling_rate": 22050}
-        self.accepted = SimpleNamespace(
-            wav_path=Path("/tmp/saved.wav"),
-            text_path=Path("/tmp/saved.txt"),
-        )
-
-    @property
-    def active_candidate_count(self):
-        return len(self.candidates)
-
-    def generate_takes(self):
-        if self.generate_error is not None:
-            raise self.generate_error
-
-        def values():
-            for item in self.generated:
-                self.candidates.append(item)
-                yield item
-
-        return values()
-
-    def regenerate_take(self, number):
-        self.regenerate_calls.append(number)
-        if self.regenerate_error is not None:
-            raise self.regenerate_error
-        return next(item for item in self.candidates if item.number == number)
-
-    def regenerate_all_takes(self):
-        self.regenerate_all_calls += 1
-        if self.regenerate_all_error is not None:
-            raise self.regenerate_all_error
-
-        def values():
-            for item in self.candidates:
-                yield item
-
-        return values()
-
-    def preview_synthesis(self, query):
-        self.preview_calls.append(query)
-        print("preview stdout")
-        print("preview stderr", file=sys.stderr)
-        if self.preview_error is not None:
-            raise self.preview_error
-        return self.preview_result
-
-    def discard_takes(self):
-        self.discard_calls += 1
-        self.candidates = []
-
-    def accept_take(self, number):
-        self.accept_calls.append(number)
-        if self.accept_error is not None:
-            raise self.accept_error
-        self.candidates = [item for item in self.candidates if item.number != number]
-        return self.accepted
 
 
 class TuiOperationsTests(unittest.TestCase):
@@ -191,39 +120,6 @@ class TuiOperationsTests(unittest.TestCase):
             )
         )
 
-    def test_settings_conflicts_block_synthesis_but_allow_future_take_count(self):
-        self.operations.busy = True
-        self.operations.worker_operation = "initial"
-
-        self.assertIsNone(
-            self.operations.settings_change_conflict_status(("take_count",))
-        )
-        self.assertIsNone(
-            self.operations.settings_change_conflict_status(("output_dir",))
-        )
-        conflict = self.operations.settings_change_conflict_status(("speed",))
-        self.assertIsNotNone(conflict)
-        self.assertIn("Synthesis settings cannot change", str(conflict))
-
-    def test_output_setting_changes_are_blocked_while_accepting(self):
-        self.operations.busy = True
-        self.operations.worker_operation = "accept"
-
-        for name in (
-            "output_dir",
-            "filename_template",
-            "output_format",
-            "wav_encoding",
-            "flac_encoding",
-            "mp3_bitrate",
-            "save_text",
-            "save_lab",
-        ):
-            with self.subTest(name=name):
-                conflict = self.operations.settings_change_conflict_status((name,))
-                self.assertIsNotNone(conflict)
-                self.assertIn("Output settings cannot change", str(conflict))
-
     def test_preview_worker_emits_ready_playback_effect_without_candidate_focus(self):
         session_candidate = candidate(3)
         session = FakeSession((session_candidate,))
@@ -248,7 +144,7 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(event.audio, "preview")
         self.assertEqual(event.sampling_rate, 22050)
         done_event = self.operations.events.get_nowait()
-        self.assertEqual(done_event, ("done", None))
+        self.assertEqual(done_event, OperationDoneEvent())
         self.operations.events.put(event)
         self.operations.events.put(done_event)
 
@@ -299,7 +195,7 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertIsInstance(event, PreviewReadyEvent)
         self.assertEqual(event.audio, "preview")
         self.assertEqual(event.sampling_rate, 22050)
-        self.assertEqual(self.operations.events.get_nowait(), ("done", None))
+        self.assertEqual(self.operations.events.get_nowait(), OperationDoneEvent())
 
     def test_preview_worker_failure_is_preview_specific_and_keeps_candidates(self):
         session_candidate = candidate(2)
@@ -314,7 +210,7 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertIsInstance(event, PreviewFailedEvent)
         self.assertEqual(str(event.error), "model unavailable")
         done_event = self.operations.events.get_nowait()
-        self.assertEqual(done_event, ("done", None))
+        self.assertEqual(done_event, OperationDoneEvent())
         self.operations.events.put(event)
         self.operations.events.put(done_event)
 
@@ -526,8 +422,8 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(stderr.getvalue(), "")
         self.assertEqual(worker.name, "voiceger-tui-synthesis")
         self.assertTrue(worker.daemon)
-        self.assertEqual(self.operations.events.get_nowait()[0], "candidate")
-        self.assertEqual(self.operations.events.get_nowait(), ("done", None))
+        self.assertIsInstance(self.operations.events.get_nowait(), GenerationCandidateEvent)
+        self.assertEqual(self.operations.events.get_nowait(), OperationDoneEvent())
 
     def test_worker_posts_error_and_always_posts_done(self):
         error = RuntimeError("iterator failed")
@@ -544,9 +440,9 @@ class TuiOperationsTests(unittest.TestCase):
             navigation_revision=0,
         )
         self.operations.join_worker()
-        self.assertEqual(self.operations.events.get_nowait()[0], "candidate")
-        self.assertEqual(self.operations.events.get_nowait(), ("error", error))
-        self.assertEqual(self.operations.events.get_nowait(), ("done", None))
+        self.assertIsInstance(self.operations.events.get_nowait(), GenerationCandidateEvent)
+        self.assertEqual(self.operations.events.get_nowait(), GenerationFailedEvent(error))
+        self.assertEqual(self.operations.events.get_nowait(), OperationDoneEvent())
 
     def test_initial_cancellation_finishes_in_flight_take_and_starts_no_next_take(self):
         session = FakeSession()
@@ -955,228 +851,6 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(self.operations.current_take, 1)
         self.assertFalse(self.operations.busy)
 
-    def playback_session(self):
-        return FakeSession((candidate(3),))
-
-    def assert_playback_command(self, expected):
-        session = self.playback_session()
-        process = Mock()
-        with patch("voiceger_editor.tui_operations.subprocess.Popen", return_value=process) as popen:
-            effects = self.operations.play_take(session, 3)
-        self.assertEqual(effects, (UpdateStatusEffect("Playing take 3."),))
-        self.assertEqual(popen.call_args.args[0], expected)
-        self.assertEqual(
-            popen.call_args.kwargs,
-            {
-                "stdin": subprocess.DEVNULL,
-                "stdout": subprocess.DEVNULL,
-                "stderr": subprocess.DEVNULL,
-            },
-        )
-        self.assertIs(self.operations.playback_process, process)
-        self.assertEqual(self.operations.current_take, 3)
-
-    def test_macos_prefers_afplay(self):
-        with patch("voiceger_editor.tui_operations.sys.platform", "darwin"):
-            with patch(
-                "voiceger_editor.tui_operations.shutil.which",
-                side_effect=lambda name: f"/usr/bin/{name}",
-            ):
-                self.assert_playback_command(["/usr/bin/afplay", "/tmp/take-3.wav"])
-
-    def test_macos_falls_back_to_ffplay(self):
-        with patch("voiceger_editor.tui_operations.sys.platform", "darwin"):
-            with patch(
-                "voiceger_editor.tui_operations.shutil.which",
-                side_effect=[None, "/usr/bin/ffplay"],
-            ):
-                self.assert_playback_command(
-                    [
-                        "/usr/bin/ffplay",
-                        "-nodisp",
-                        "-autoexit",
-                        "-loglevel",
-                        "error",
-                        "/tmp/take-3.wav",
-                    ]
-                )
-
-    def test_non_macos_uses_ffplay(self):
-        with patch("voiceger_editor.tui_operations.sys.platform", "linux"):
-            with patch(
-                "voiceger_editor.tui_operations.shutil.which",
-                return_value="/usr/bin/ffplay",
-            ):
-                self.assert_playback_command(
-                    [
-                        "/usr/bin/ffplay",
-                        "-nodisp",
-                        "-autoexit",
-                        "-loglevel",
-                        "error",
-                        "/tmp/take-3.wav",
-                    ]
-                )
-
-    def test_windows_uses_ffplay_executable(self):
-        player = r"C:\ffmpeg\bin\ffplay.exe"
-        with patch("voiceger_editor.tui_operations.sys.platform", "win32"):
-            with patch(
-                "voiceger_editor.tui_operations.shutil.which",
-                return_value=player,
-            ):
-                self.assert_playback_command(
-                    [
-                        player,
-                        "-nodisp",
-                        "-autoexit",
-                        "-loglevel",
-                        "error",
-                        "/tmp/take-3.wav",
-                    ]
-                )
-
-    def test_preview_playback_temp_wav_is_replaced_stopped_and_keeps_take_selection(self):
-        first_process = Mock()
-        first_process.poll.return_value = None
-        second_process = Mock()
-        second_process.poll.return_value = None
-        third_process = Mock()
-        third_process.poll.return_value = None
-        popen = Mock(side_effect=[first_process, second_process, third_process])
-        operations = TuiOperations(
-            platform=lambda: "linux",
-            which=lambda _name: "/usr/bin/ffplay",
-            popen=popen,
-        )
-        session_candidate = candidate(3)
-        session = FakeSession((session_candidate,))
-        operations.current_take = 3
-
-        first_effects = operations.play_preview([0.0] * 80, 32000)
-        first_path = Path(popen.call_args_list[0].args[0][-1])
-        first_directory = first_path.parent
-        self.assertTrue(first_path.is_file())
-        self.assertEqual(
-            first_effects,
-            (UpdateStatusEffect("Playing pronunciation Preview."),),
-        )
-        self.assertEqual(operations.current_take, 3)
-
-        operations.play_preview([0.0] * 80, 32000)
-        second_path = Path(popen.call_args_list[1].args[0][-1])
-        second_directory = second_path.parent
-        self.assertFalse(first_directory.exists())
-        self.assertTrue(second_path.is_file())
-        self.assertEqual(operations.current_take, 3)
-
-        replay = operations.play_take(session, 3)
-        self.assertEqual(replay, (UpdateStatusEffect("Playing take 3."),))
-        self.assertFalse(second_directory.exists())
-        self.assertEqual(operations.current_take, 3)
-        self.assertEqual(session.candidates, [session_candidate])
-        operations.stop_playback()
-
-    def test_missing_player_and_playback_oserror_preserve_status_text(self):
-        with patch("voiceger_editor.tui_operations.sys.platform", "win32"):
-            with patch("voiceger_editor.tui_operations.shutil.which", return_value=None):
-                self.assertEqual(
-                    self.operations.play_take(self.playback_session(), 3),
-                    (
-                        UpdateStatusEffect(
-                            error_status(
-                                "Playback on Windows requires ffplay.exe in PATH. "
-                                "Install an FFmpeg build that includes ffplay.exe and add its "
-                                "bin directory to PATH."
-                            )
-                        ),
-                    ),
-                )
-
-        with patch("voiceger_editor.tui_operations.sys.platform", "linux"):
-            with patch("voiceger_editor.tui_operations.shutil.which", return_value=None):
-                self.assertEqual(
-                    self.operations.play_take(self.playback_session(), 3),
-                    (
-                        UpdateStatusEffect(
-                            error_status(
-                                "Playback needs afplay (macOS) or ffplay (other systems)."
-                            )
-                        ),
-                    ),
-                )
-        with patch("voiceger_editor.tui_operations.sys.platform", "linux"):
-            with patch(
-                "voiceger_editor.tui_operations.shutil.which",
-                return_value="/usr/bin/ffplay",
-            ):
-                with patch(
-                    "voiceger_editor.tui_operations.subprocess.Popen",
-                    side_effect=OSError("spawn failed"),
-                ):
-                    self.assertEqual(
-                        self.operations.play_take(self.playback_session(), 3),
-                        (
-                            UpdateStatusEffect(
-                                error_status("Could not play take 3: spawn failed")
-                            ),
-                        ),
-                    )
-
-    def test_unavailable_candidate_does_not_stop_current_playback(self):
-        process = Mock()
-        self.operations.playback_process = process
-        effects = self.operations.play_take(FakeSession(), 4)
-        self.assertEqual(effects, (UpdateStatusEffect("Take 4 is not available yet."),))
-        process.terminate.assert_not_called()
-
-    def test_starting_playback_stops_and_reaps_existing_process_first(self):
-        session = self.playback_session()
-        old = Mock()
-        old.poll.return_value = None
-        self.operations.playback_process = old
-        with patch("voiceger_editor.tui_operations.sys.platform", "linux"):
-            with patch(
-                "voiceger_editor.tui_operations.shutil.which",
-                return_value="/usr/bin/ffplay",
-            ):
-                with patch(
-                    "voiceger_editor.tui_operations.subprocess.Popen",
-                    return_value=Mock(),
-                ):
-                    self.operations.play_take(session, 3)
-        old.terminate.assert_called_once_with()
-        old.wait.assert_called_once_with(timeout=0.25)
-
-    def test_stop_playback_clears_reference_terminates_and_reaps(self):
-        process = Mock()
-        process.poll.return_value = None
-        self.operations.playback_process = process
-
-        def wait(*, timeout=None):
-            self.assertIsNone(self.operations.playback_process)
-            return None
-
-        process.wait.side_effect = wait
-        self.operations.stop_playback()
-        self.assertIsNone(self.operations.playback_process)
-        process.terminate.assert_called_once_with()
-        process.wait.assert_called_once_with(timeout=0.25)
-
-    def test_stop_playback_kills_and_reaps_after_timeout(self):
-        process = Mock()
-        process.poll.return_value = None
-        process.wait.side_effect = [
-            subprocess.TimeoutExpired("ffplay", 0.25),
-            None,
-        ]
-        self.operations.playback_process = process
-        self.operations.stop_playback()
-        process.terminate.assert_called_once_with()
-        process.kill.assert_called_once_with()
-        self.assertEqual(process.wait.call_args_list[0].kwargs, {"timeout": 0.25})
-        self.assertEqual(process.wait.call_args_list[1].args, ())
-
     def test_session_preparation_waits_for_status_render_then_completes(self):
         session = SimpleNamespace(
             is_prepared=False,
@@ -1228,177 +902,6 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertFalse(self.operations.busy)
         session.prepare_from_caption.assert_not_called()
 
-    def test_candidate_acceptance_waits_for_status_render_then_completes(self):
-        session = FakeSession((candidate(3),))
-        process = Mock()
-        process.poll.return_value = None
-        self.operations.playback_process = process
-        self.operations.current_take = 3
-        started = Event()
-        release = Event()
-        original_accept = session.accept_take
-
-        def blocking_accept(number):
-            started.set()
-            if not release.wait(timeout=1):
-                raise RuntimeError("test release timeout")
-            return original_accept(number)
-
-        session.accept_take = blocking_accept
-
-        effects = self.operations.accept_take(
-            session,
-            3,
-            item_id="item-1",
-            pronunciation_index=2,
-        )
-
-        self.assertEqual(effects, (UpdateStatusEffect("Saving Take 3…"),))
-        self.assertEqual(session.accept_calls, [])
-        self.assertTrue(self.operations.busy)
-        self.assertEqual(self.operations.worker_operation, "accept")
-        self.assertEqual(self.operations.current_take, 3)
-        self.assertIsNone(self.operations.playback_process)
-        self.assertFalse(started.is_set())
-        process.terminate.assert_called_once_with()
-
-        self.operations.start_pending_worker()
-        self.assertTrue(started.wait(timeout=1))
-        self.assertEqual(self.consume(session), ())
-        self.assertTrue(self.operations.busy)
-
-        release.set()
-        self.operations.join_worker()
-        completion = self.consume(session)
-
-        self.assertEqual(session.accept_calls, [3])
-        self.assertFalse(self.operations.busy)
-        self.assertEqual(self.operations.current_take, None)
-        self.assertEqual(
-            completion,
-            (
-                TakeAcceptedEffect("item-1", 3),
-                UpdateStatusEffect("Saved saved.wav and saved.txt."),
-            ),
-        )
-
-    def test_candidate_acceptance_reports_wav_lab_and_nonfatal_warning(self):
-        session = FakeSession((candidate(3),))
-        session.accepted = SimpleNamespace(
-            wav_path=Path("/tmp/saved.wav"),
-            text_path=None,
-        )
-        start = self.operations.accept_take(
-            session,
-            3,
-            item_id="wav-item",
-            pronunciation_index=0,
-        )
-        self.assertEqual(start, (UpdateStatusEffect("Saving Take 3…"),))
-        self.operations.start_pending_worker()
-        self.operations.join_worker()
-        effects = self.consume(session)
-        self.assertEqual(
-            effects,
-            (
-                TakeAcceptedEffect("wav-item", 3),
-                UpdateStatusEffect("Saved saved.wav."),
-            ),
-        )
-
-        session = FakeSession((candidate(3),))
-        session.accepted = SimpleNamespace(
-            wav_path=Path("/tmp/saved.wav"),
-            text_path=None,
-            lab_path=Path("/tmp/saved.lab"),
-            lab_warning=None,
-        )
-        self.operations.accept_take(
-            session,
-            3,
-            item_id="lab-item",
-            pronunciation_index=0,
-        )
-        self.operations.start_pending_worker()
-        self.operations.join_worker()
-        effects = self.consume(session)
-        self.assertEqual(
-            effects[-1],
-            UpdateStatusEffect("Saved saved.wav and saved.lab."),
-        )
-
-        session = FakeSession((candidate(3),))
-        session.accepted = SimpleNamespace(
-            wav_path=Path("/tmp/saved.wav"),
-            text_path=None,
-            lab_path=None,
-            lab_warning="LAB generation failed: Julius executable not found",
-        )
-        self.operations.accept_take(
-            session,
-            3,
-            item_id="warning-item",
-            pronunciation_index=0,
-        )
-        self.operations.start_pending_worker()
-        self.operations.join_worker()
-        effects = self.consume(session)
-        self.assertEqual(
-            effects[-1],
-            UpdateStatusEffect(
-                warning_status(
-                    "Saved saved.wav. "
-                    "LAB generation failed: Julius executable not found"
-                )
-            ),
-        )
-        self.assertIs(effects[-1].status.kind, StatusKind.WARNING)
-
-    def test_candidate_acceptance_failure_preserves_candidate_and_state(self):
-        original = candidate(3)
-        session = FakeSession((original,))
-        session.accept_error = RuntimeError("save failed")
-        self.operations.current_take = 3
-
-        start = self.operations.accept_take(
-            session,
-            3,
-            item_id="item-1",
-            pronunciation_index=0,
-        )
-        self.assertEqual(start, (UpdateStatusEffect("Saving Take 3…"),))
-        self.assertEqual(session.accept_calls, [])
-
-        self.operations.start_pending_worker()
-        self.operations.join_worker()
-        effects = self.consume(session)
-
-        self.assertEqual(
-            effects,
-            (
-                UpdateStatusEffect(
-                    error_status("Take 3 was not saved: save failed")
-                ),
-            ),
-        )
-        self.assertFalse(self.operations.busy)
-        self.assertEqual(self.operations.current_take, 3)
-        self.assertEqual(session.candidates, [original])
-
-        session.accept_calls.clear()
-        self.operations.busy = True
-        self.operations.worker_operation = "initial"
-        blocked = self.operations.accept_take(
-            session,
-            3,
-            item_id="item-1",
-            pronunciation_index=0,
-        )
-        self.assertEqual(len(blocked), 1)
-        self.assertIn("Save Take 3 is unavailable", str(blocked[0].status))
-        self.assertEqual(session.accept_calls, [])
-        self.operations.busy = False
-        self.operations.worker_operation = None
 
 class BatchFakeSession:
     def __init__(
