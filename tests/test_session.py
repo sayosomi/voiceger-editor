@@ -385,7 +385,7 @@ class UtteranceSessionTests(unittest.TestCase):
                     ]
                 )
                 candidate_wav = candidate.wav_path
-                session.replace_caption("later Caption")
+                session.replace_caption("  だいすきなのだ！  ")
                 with patch(
                     "voiceger_editor.session.get_style",
                     return_value=self.style,
@@ -409,12 +409,12 @@ class UtteranceSessionTests(unittest.TestCase):
             self.assertTrue(saved.wav_path.name[:12].isdigit())
             self.assertEqual(
                 saved.wav_path.name[12:],
-                "_old-jaold-enold-end.wav",
+                "_  だいすきなのだ！  .wav",
             )
             self.assertNotIn("_Neutral_", saved.wav_path.name)
-            self.assertNotIn("later Caption", saved.wav_path.name)
+            self.assertNotIn("old-jaold-enold-end", saved.wav_path.name)
             self.assertEqual(
-                saved.text_path.read_text(encoding="utf-8"), "old-jaold-enold-end"
+                saved.text_path.read_bytes(), "  だいすきなのだ！  ".encode("utf-8")
             )
             self.assertEqual(saved.wav_path.parent, output_dir)
             self.assertTrue(session.has_active_batch)
@@ -422,6 +422,52 @@ class UtteranceSessionTests(unittest.TestCase):
             session.close()
             self.assertFalse(candidate_wav.exists())
             self.assertFalse(session.has_active_batch)
+
+    def test_accept_uses_current_caption_for_japanese_and_english_without_txt(self):
+        fake_soundfile = ModuleType("soundfile")
+        fake_soundfile.write = lambda path, _audio, _rate: Path(path).write_bytes(
+            b"generated audio"
+        )
+        fake_soundfile.info = lambda _path: SimpleNamespace(frames=1280)
+        english_query = AudioQuery(
+            accent_phrases=[],
+            voicegerSegments=[
+                VoicegerSegment(
+                    language="en",
+                    text="Spoken English",
+                    phonemes=["S", "P", "OW1", "K", "AH0", "N"],
+                )
+            ],
+        )
+        for language, query in (("ja", _query()), ("en", english_query)):
+            with self.subTest(language=language), tempfile.TemporaryDirectory() as directory:
+                session = self.make_session(caption="before Caption", query=query)
+                with patch(
+                    "voiceger_editor.session.get_style", return_value=self.style
+                ):
+                    session.replace_settings(
+                        replace(
+                            self.settings,
+                            output_dir=Path(directory),
+                            save_text=False,
+                        )
+                    )
+                before_query = session.query.model_dump()
+                with patch(
+                    "voiceger_editor.session.synthesize_audio_query",
+                    return_value={"audio": [0.0], "sampling_rate": 32000},
+                ), patch.dict("sys.modules", {"soundfile": fake_soundfile}):
+                    candidate = next(session.generate_takes())
+                    generation_source = candidate.source_text
+                    session.replace_caption("after 字幕!")
+                    saved = session.accept_take(candidate.number)
+                self.assertEqual(saved.wav_path.read_bytes(), b"generated audio")
+                self.assertTrue(saved.wav_path.name.endswith("_after 字幕!.wav"))
+                self.assertIsNone(saved.text_path)
+                self.assertEqual(session.query.model_dump(), before_query)
+                self.assertEqual(candidate.source_text, generation_source)
+                self.assertEqual(session.candidates, (candidate,))
+                session.close()
 
     def test_final_session_close_removes_real_candidate_temporary_wav(self):
         fake_soundfile = ModuleType("soundfile")
@@ -1096,6 +1142,7 @@ class UtteranceSessionTests(unittest.TestCase):
                 (
                     2,
                     {
+                        "caption": session.caption,
                         "output_dir": session.settings.output_dir,
                         "save_text": session.settings.save_text,
                         "filename_template": session.settings.filename_template,
@@ -1109,14 +1156,14 @@ class UtteranceSessionTests(unittest.TestCase):
         self.assertEqual(session.candidates, (candidate,))
         self.assertFalse(batch.closed)
 
-    def test_acceptance_uses_current_save_preferences_without_caption_provenance(self):
+    def test_acceptance_uses_current_save_preferences_and_caption(self):
         session = self.make_session(caption="old caption")
         batch = self.activate_batch(session)
         session.replace_caption("new caption")
         replacement_settings = replace(
             session.settings,
             output_dir=Path("/latest-output"),
-            filename_template="{style}_{text}",
+            filename_template="{style}_{caption}",
             save_text=False,
             output_format="flac",
             wav_encoding="pcm24",
@@ -1136,9 +1183,10 @@ class UtteranceSessionTests(unittest.TestCase):
                 (
                     2,
                     {
+                        "caption": "new caption",
                         "output_dir": Path("/latest-output"),
                         "save_text": False,
-                        "filename_template": "{style}_{text}",
+                        "filename_template": "{style}_{caption}",
                         "output_format": "flac",
                         "output_encoding": "pcm24",
                     },

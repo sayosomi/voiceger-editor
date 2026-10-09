@@ -344,6 +344,7 @@ class AcceptedTakeLabTests(unittest.TestCase):
             self.assertEqual(save_lab.call_count, 0)
             result = batch.accept(
                 1,
+                caption="visible Caption",
                 output_dir=Path("/output"),
                 save_text=True,
                 save_lab=True,
@@ -353,13 +354,13 @@ class AcceptedTakeLabTests(unittest.TestCase):
 
         save_audio.assert_called_once_with(
             wav_source=candidate_path,
-            source_text="hello.",
+            source_text="visible Caption",
             style_name="Neutral",
             output_dir=Path("/output"),
             output_format="flac",
             output_encoding="pcm24",
             save_text=True,
-            filename_template="{YYYYMMDDHHmm}_{text}",
+            filename_template="{YYYYMMDDHHmm}_{caption}",
             avoid_lab_collision=True,
         )
         self.assertEqual(save_lab.call_count, 1)
@@ -416,6 +417,7 @@ class AcceptedTakeLabTests(unittest.TestCase):
         ):
             result = batch.accept(
                 1,
+                caption="visible Caption",
                 output_dir=Path("/output"),
                 save_text=False,
                 save_lab=True,
