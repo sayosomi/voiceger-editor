@@ -26,7 +26,7 @@ class SettingsTests(unittest.TestCase):
             settings.output_dir,
             Path.home() / ".voiceger-editor" / "output",
         )
-        self.assertEqual(settings.filename_template, "{YYYYMMDDHHmm}_{text}")
+        self.assertEqual(settings.filename_template, "{YYYYMMDDHHmm}_{caption}")
         self.assertEqual(settings.output_format, "wav")
         self.assertEqual(settings.wav_encoding, "source")
         self.assertEqual(settings.flac_encoding, "pcm16")
@@ -45,7 +45,7 @@ class SettingsTests(unittest.TestCase):
             config_path = Path(directory) / "deep" / "nested" / "config.json"
             settings = Settings(
                 output_dir=Path(directory) / "生成音声",
-                filename_template="{YYYY-MM-DD}_{HHmmss}_{style}_{text}",
+                filename_template="{YYYY-MM-DD}_{HHmmss}_{style}_{caption}",
                 output_format="flac",
                 wav_encoding="pcm24",
                 flac_encoding="pcm24",
@@ -71,7 +71,7 @@ class SettingsTests(unittest.TestCase):
                 json.loads(first_contents.decode("utf-8")),
                 {
                     "output_dir": str(settings.output_dir),
-                    "filename_template": "{YYYY-MM-DD}_{HHmmss}_{style}_{text}",
+                    "filename_template": "{YYYY-MM-DD}_{HHmmss}_{style}_{caption}",
                     "output_format": "flac",
                     "wav_encoding": "pcm24",
                     "flac_encoding": "pcm24",
@@ -104,7 +104,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.top_k, 20)
         self.assertEqual(settings.top_p, 1.0)
         self.assertEqual(settings.temperature, 1.0)
-        self.assertEqual(settings.filename_template, "{YYYYMMDDHHmm}_{text}")
+        self.assertEqual(settings.filename_template, "{YYYYMMDDHHmm}_{caption}")
         self.assertEqual(settings.output_format, "wav")
         self.assertEqual(settings.wav_encoding, "source")
         self.assertEqual(settings.flac_encoding, "pcm16")
@@ -150,8 +150,9 @@ class SettingsTests(unittest.TestCase):
             {"save_text": 1},
             {"save_lab": 1},
             {"filename_template": ""},
-            {"filename_template": "{take}_{text}"},
-            {"filename_template": "{YYYYQQ}_{text}"},
+            {"filename_template": "{text}"},
+            {"filename_template": "{take}_{caption}"},
+            {"filename_template": "{YYYYQQ}_{caption}"},
             {"output_format": "ogg"},
             {"wav_encoding": "pcm32"},
             {"flac_encoding": "source"},
@@ -180,7 +181,8 @@ class SettingsTests(unittest.TestCase):
             '{"temperature": -0.01}',
             '{"save_text": "yes"}',
             '{"save_lab": "yes"}',
-            '{"filename_template": "{datetime}_{text}"}',
+            '{"filename_template": "{datetime}_{caption}"}',
+            '{"filename_template": "{text}"}',
             '{"output_format": "ogg"}',
             '{"wav_encoding": "pcm32"}',
             '{"flac_encoding": "source"}',
