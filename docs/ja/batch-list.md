@@ -116,8 +116,6 @@ BATCH LIST · 2/3 selected · 4 takes · Accepted 0/3
 
 その場合は2番目のCaptionを一度開き、発音情報の準備が完了したことを確認してから `BATCH LIST` に戻ってください。
 
-発音情報の編集方法は[発音編集](pronunciation.md)を参照してください。
-
 ### 保存手順
 
 1. `BATCH LIST` で `[W] Write batch` を開きます。

@@ -99,7 +99,7 @@ JA | [シ] コ ク
 
 ![アクセント句の区切り変更後の BATCH ITEM](images/tui/07-phrase-after.png)
 
-読みの変更など、発音編集の詳細は [発音編集](pronunciation.md) を参照してください。
+読みやアクセントの修正、発音表記のルールについては、[日本語の発音編集](japanese-pronunciation.md)を参照してください。
 
 ## 5. Take を生成
 
@@ -151,4 +151,4 @@ Esc で `BATCH LIST` に戻ります。
 
 - [BATCH LIST](batch-list.md) — Caption の追加、一括生成、バッチファイルの読み書き
 - [BATCH ITEM](batch-item.md) — Take の再生成、Caption の削除などの個別操作
-- [発音編集](pronunciation.md) — 読み・アクセント・アクセント句の詳細な編集方法
+- [日本語の発音編集](japanese-pronunciation.md) — 読み・アクセント・アクセント句の表記ルール

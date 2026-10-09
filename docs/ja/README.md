@@ -26,10 +26,10 @@ Caption を追加
   Caption の追加・管理、一括生成、バッチファイルの読み書き
 - [BATCH ITEM](<batch-item.md>)  
   Caption ごとの発音確認、Take の生成・再生・再生成・採用
-- [発音編集](<pronunciation.md>)  
-  日本語の読みとアクセント、英語の発音、日英混在文の編集
-- [ARPAbet](<arpabet.md>)  
-  ARPAbet の表記と入力例
+- [日本語の発音編集](<japanese-pronunciation.md>)  
+  日本語の読み、アクセント、発音表記のルール
+- [英語の発音編集（ARPAbet）](<arpabet.md>)  
+  英語の音素、強勢、発音編集
 - [ユーザー辞書](<dictionary.md>)  
   日本語・英語辞書の登録、編集、インポート・エクスポート
 - [設定](<settings.md>)  

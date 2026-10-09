@@ -101,8 +101,6 @@ Caption変更に合わせて読み上げ内容も変更したい場合は、該�
 
 最後の1セクションは削除できません。削除するとCaptionは維持されますが、既存のTakeはクリアされます。
 
-発音の編集方法は [発音編集](pronunciation.md) を参照してください。
-
 ## セクションとCaptionの違い
 
 Captionとセクションには、別々の文章を設定できます。
@@ -244,5 +242,6 @@ Escでキャンセルした場合、CaptionとTakeは維持されます。すで
 
 - [はじめての音声生成](tui.md) — Takeの生成・再生・採用
 - [BATCH LIST](batch-list.md) — 複数Captionの管理と一括生成
-- [発音編集](pronunciation.md) — 日本語のアクセント、英語のARPAbet、セクションの編集
+- [日本語の発音編集](japanese-pronunciation.md) — 読みとアクセントの編集
+- [英語の発音編集（ARPAbet）](arpabet.md) — 音素と強勢の編集
 - [設定](settings.md) — 音声生成設定と保存先
