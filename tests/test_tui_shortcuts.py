@@ -52,17 +52,17 @@ class TuiShortcutTests(unittest.TestCase):
             "build_confirmation": {"r": "rebuild"},
             "japanese": {
                 "p": "preview", "a": "apply", "s": "save_dictionary",
-                "d": "dictionary", "e": "edit_text",
+                "d": "dictionary", "e": "edit_text", "x": "delete_section",
                 "c": "clear", "r": "reset",
             },
             "english_word": {
                 "p": "preview", "a": "apply", "s": "save_dictionary",
-                "d": "dictionary", "e": "edit_text",
+                "d": "dictionary", "e": "edit_text", "x": "delete_section",
                 "c": "clear", "r": "reset",
             },
             "section_text": {
                 "p": "preview", "a": "apply", "r": "reset",
-                "d": "delete_section",
+                "x": "delete_section",
             },
             "add_section": {"a": "add", "c": "clear", "r": "reset"},
             "settings": {
@@ -405,14 +405,18 @@ class TuiShortcutTests(unittest.TestCase):
                         )
 
     def test_dynamic_delete_shortcut_exists_only_when_delete_is_selectable(self):
-        hidden = menu_items("section_text", {"can_delete": False})
-        visible = menu_items("section_text", {"can_delete": True})
-        self.assertNotIn("delete_section", [item.key for item in hidden])
-        self.assertIn("delete_section", [item.key for item in visible])
-        self.assertIsNone(resolve_shortcut("section_text", "d", {"can_delete": False}))
-        target = resolve_shortcut("section_text", "d", {"can_delete": True})
-        self.assertIsNotNone(target)
-        self.assertEqual(target.key, "delete_section")
+        for kind in ("japanese", "english_word", "section_text"):
+            with self.subTest(kind=kind):
+                hidden = menu_items(kind, {"can_delete": False})
+                visible = menu_items(kind, {"can_delete": True})
+                self.assertNotIn("delete_section", [item.key for item in hidden])
+                self.assertIn("delete_section", [item.key for item in visible])
+                self.assertIsNone(resolve_shortcut(kind, "x", {"can_delete": False}))
+                target = resolve_shortcut(kind, "x", {"can_delete": True})
+                self.assertIsNotNone(target)
+                self.assertEqual(target.key, "delete_section")
+                if kind == "section_text":
+                    self.assertIsNone(resolve_shortcut(kind, "d", {"can_delete": True}))
 
     def test_controller_selection_order_comes_from_shared_metadata(self):
         controller = self.make_controller()
