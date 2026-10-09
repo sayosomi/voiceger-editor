@@ -35,6 +35,16 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
             details = (
                 ConfirmationDetail("Path", str(editor.payload["path"])),
             )
+        elif editor.kind == "delete_confirmation":
+            if "target_text" in editor.payload:
+                language = (
+                    "Japanese"
+                    if editor.payload["target_language"] == "ja"
+                    else "English"
+                )
+                details = (
+                    ConfirmationDetail(f"{language} section", editor.payload["target_text"]),
+                )
         elif editor.kind == "dictionary_delete_confirmation":
             if editor.payload["language"] == "ja":
                 pronunciation = " ".join(
@@ -86,6 +96,8 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         selectable("save_dictionary")
         selectable("dictionary")
         selectable("edit_text")
+        if editor.payload.get("can_delete", False):
+            selectable("delete_section")
         selectable("clear")
         selectable("reset")
         selectable("back")
@@ -104,6 +116,8 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         selectable("save_dictionary")
         selectable("dictionary")
         selectable("edit_text")
+        if editor.payload.get("can_delete", False):
+            selectable("delete_section")
         selectable("clear")
         selectable("reset")
         selectable("back")
