@@ -685,6 +685,7 @@ class TuiTextEditorOwnerTests(EditorControllerTestCase):
                     "\n", settings=self.settings(), query=query, current_caption="Caption"
                 )
                 parent = deepcopy(controller.editor)
+                parent.selection = "delete_section"
                 controller.handle_key(
                     "x", settings=self.settings(), query=query, current_caption="Caption"
                 )
@@ -713,6 +714,7 @@ class TuiTextEditorOwnerTests(EditorControllerTestCase):
             "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
         saved_editor = deepcopy(controller.editor)
+        saved_editor.selection = "delete_section"
         self.assertNotIn(
             "d",
             [item.shortcut for item in menu_items("section_text", {"can_delete": True})],
