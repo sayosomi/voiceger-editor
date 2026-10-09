@@ -415,7 +415,8 @@ class TuiShortcutTests(unittest.TestCase):
                 target = resolve_shortcut(kind, "x", {"can_delete": True})
                 self.assertIsNotNone(target)
                 self.assertEqual(target.key, "delete_section")
-                self.assertIsNone(resolve_shortcut(kind, "d", {"can_delete": True}) if kind == "section_text" else None)
+                if kind == "section_text":
+                    self.assertIsNone(resolve_shortcut(kind, "d", {"can_delete": True}))
 
     def test_controller_selection_order_comes_from_shared_metadata(self):
         controller = self.make_controller()
