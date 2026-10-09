@@ -34,10 +34,7 @@ V EH1 R IY0
 
 また、`BATCH ITEM` では第一強勢のある母音が `[]` で囲まれて表示されます。
 
-```text
-EN | very   V [EH1] R IY0
-   | sweet  S W [IY1] T
-```
+![英単語ごとのARPAbetと強勢を表示したBATCH ITEM](images/arpabet/01-english-batch-item.png)
 
 この `[]` は画面上の表示であり、ARPAbetの入力には使用しません。
 
@@ -153,14 +150,7 @@ V EH0 R IY1
 
 例えば、`sweet` なら次のように表示されます。
 
-```text
-EDIT PRONUNCIATION
-
-Word
-  sweet
-
-▶ S W IY1 T
-```
+![sweetのARPAbetを編集するEDIT PRONUNCIATION](images/arpabet/02-english-pronunciation-editor.png)
 
 音素は半角スペースで区切って入力します。
 
