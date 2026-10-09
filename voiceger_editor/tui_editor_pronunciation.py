@@ -258,6 +258,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
         if busy or not 0 <= index < len(rows):
             return ()
         row = rows[index]
+        can_delete = query.voicegerSegments is not None and len(query.voicegerSegments) > 1
         if row.language == "ja" and row.phrase_index is not None:
             segment_index = (
                 row.model_segment_index if query.voicegerSegments is not None else None
@@ -280,6 +281,11 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                 selection="pronunciation",
                 payload={
                     "source_text": row.source_text,
+                    "section_text": (
+                        query.voicegerSegments[segment_index].text
+                        if segment_index is not None else row.source_text
+                    ),
+                    "can_delete": can_delete,
                     "canonical_pronunciation": canonical,
                     "opening_draft": canonical.replace("/", " "),
                     "segment_index": segment_index,
@@ -314,6 +320,8 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                     "group_index": row.group_index,
                     "grouping": row.grouping,
                     "label": group.label,
+                    "section_text": query.voicegerSegments[row.model_segment_index].text,
+                    "can_delete": can_delete,
                     "opening_draft": " ".join(phonemes),
                 },
             )
@@ -547,6 +555,8 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                     ),
                     busy=False,
                 )
+            if selected == "delete_section":
+                return self._host._text.open_delete_confirmation(query)
             if selected == "clear":
                 self._set_pronunciation_draft(editor, "")
                 editor.error = EMPTY_STATUS
@@ -594,6 +604,8 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                     pure_japanese_utterance_text=None,
                     busy=False,
                 )
+            if selected == "delete_section":
+                return self._host._text.open_delete_confirmation(query)
             if selected == "clear":
                 self._set_pronunciation_draft(editor, "")
                 editor.error = EMPTY_STATUS
