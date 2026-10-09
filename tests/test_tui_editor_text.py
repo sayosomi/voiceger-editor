@@ -16,6 +16,7 @@ from voiceger_editor.tui_editors import (
     UpdateStatusIntent,
 )
 from voiceger_editor.tui_input import PasteText
+from voiceger_editor.tui_shortcuts import menu_items
 from voiceger_editor.tui_rendering import _active_input_prefix
 from voiceger_editor.query_editing import japanese_pronunciation
 from voiceger_editor.pronunciation import parse_pronunciation
@@ -615,7 +616,7 @@ class TuiTextEditorOwnerTests(EditorControllerTestCase):
             query, rows, 1, origin=("pronunciation", 1), busy=False
         )
         controller.handle_key(
-            "\\n", settings=self.settings(), query=query, current_caption="Caption"
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
         self.assertIn("delete_section", controller.selection_keys())
         controller.handle_key(
@@ -651,7 +652,7 @@ class TuiTextEditorOwnerTests(EditorControllerTestCase):
             query, rows, 3, origin=("pronunciation", 3), busy=False
         )
         controller.handle_key(
-            "\\n", settings=self.settings(), query=query, current_caption="Caption"
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
         controller.handle_key(
             "x", settings=self.settings(), query=query, current_caption="Caption"
@@ -681,14 +682,14 @@ class TuiTextEditorOwnerTests(EditorControllerTestCase):
                 )
                 controller.editor.input_value = text
                 controller.handle_key(
-                    "\\n", settings=self.settings(), query=query, current_caption="Caption"
+                    "\n", settings=self.settings(), query=query, current_caption="Caption"
                 )
                 parent = deepcopy(controller.editor)
                 controller.handle_key(
                     "x", settings=self.settings(), query=query, current_caption="Caption"
                 )
                 result = controller.handle_key(
-                    "\\x1b", settings=self.settings(), query=query, current_caption="Caption"
+                    "\x1b", settings=self.settings(), query=query, current_caption="Caption"
                 )
                 self.assertEqual(controller.editor, parent)
                 self.assertEqual(controller.editor.input_value, text)
@@ -702,27 +703,26 @@ class TuiTextEditorOwnerTests(EditorControllerTestCase):
             query, rows, 0, origin=("pronunciation", 0), busy=False
         )
         controller.handle_key(
-            "\\n", settings=self.settings(), query=query, current_caption="Caption"
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
         controller.handle_key(
             "e", settings=self.settings(), query=query, current_caption="Caption"
         )
         controller.editor.input_value = "changed draft"
         controller.handle_key(
-            "\\n", settings=self.settings(), query=query, current_caption="Caption"
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
         saved_editor = deepcopy(controller.editor)
-        self.assertNotIn("d", [
-            item.shortcut for item in __import__(
-                "voiceger_editor.tui_shortcuts", fromlist=["menu_items"]
-            ).menu_items("section_text", {"can_delete": True})
-        ])
+        self.assertNotIn(
+            "d",
+            [item.shortcut for item in menu_items("section_text", {"can_delete": True})],
+        )
         controller.handle_key(
             "x", settings=self.settings(), query=query, current_caption="Caption"
         )
         self.assertEqual(controller.editor.payload["target_text"], "なのだ。")
         controller.handle_key(
-            "\\x1b", settings=self.settings(), query=query, current_caption="Caption"
+            "\x1b", settings=self.settings(), query=query, current_caption="Caption"
         )
         self.assertEqual(controller.editor, saved_editor)
         self.assertEqual(controller.editor.payload["draft"], "changed draft")
@@ -735,7 +735,7 @@ class TuiTextEditorOwnerTests(EditorControllerTestCase):
             query, rows, 0, origin=("pronunciation", 0), busy=False
         )
         controller.handle_key(
-            "\\n", settings=self.settings(), query=query, current_caption="Caption"
+            "\n", settings=self.settings(), query=query, current_caption="Caption"
         )
         changed = query.model_copy(deep=True)
         changed.voicegerSegments[0].text = "changed elsewhere"
