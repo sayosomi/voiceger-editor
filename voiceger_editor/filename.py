@@ -8,7 +8,7 @@ from typing import Optional
 
 
 _INVALID_FILENAME_CHARS = re.compile(r'[\x00-\x1f"*/:<>?\\|\x7f]')
-DEFAULT_FILENAME_TEMPLATE = "{YYYYMMDDHHmm}_{text}"
+DEFAULT_FILENAME_TEMPLATE = "{YYYYMMDDHHmm}_{caption}"
 
 _DATE_TIME_TOKEN_RENDERERS = {
     "YYYY": lambda value: f"{value.year:04d}",
@@ -103,6 +103,10 @@ def _render_template(
         if not field:
             raise FilenameTemplateError("empty '{}' field in filename template")
         if field == "text":
+            raise FilenameTemplateError(
+                "filename variable {text} is no longer supported; use {caption}"
+            )
+        if field == "caption":
             rendered.append(text)
         elif field == "style":
             rendered.append(style)
