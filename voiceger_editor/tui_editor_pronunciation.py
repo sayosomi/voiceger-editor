@@ -258,7 +258,9 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
         if busy or not 0 <= index < len(rows):
             return ()
         row = rows[index]
-        can_delete = query.voicegerSegments is not None and len(query.voicegerSegments) > 1
+        can_delete = (
+            query.voicegerSegments is not None and len(query.voicegerSegments) > 1
+        )
         if row.language == "ja" and row.phrase_index is not None:
             segment_index = (
                 row.model_segment_index if query.voicegerSegments is not None else None
@@ -556,7 +558,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                     busy=False,
                 )
             if selected == "delete_section":
-                return self._host._text.open_delete_confirmation(query)
+                return self.open_delete_confirmation(query)
             if selected == "clear":
                 self._set_pronunciation_draft(editor, "")
                 editor.error = EMPTY_STATUS
@@ -605,7 +607,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                     busy=False,
                 )
             if selected == "delete_section":
-                return self._host._text.open_delete_confirmation(query)
+                return self.open_delete_confirmation(query)
             if selected == "clear":
                 self._set_pronunciation_draft(editor, "")
                 editor.error = EMPTY_STATUS
