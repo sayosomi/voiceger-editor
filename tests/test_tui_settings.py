@@ -282,7 +282,7 @@ class TuiSettingsIntegrationTests(TuiAppTestCase):
 
             editor.selection = "filename_template"
             app._handle_key("\n")
-            editor.input_value = "{style}_{text}_{HHmmss}"
+            editor.input_value = "{style}_{caption}_{HHmmss}"
             app._handle_key("\n")
             editor.selection = "save_text"
             app._handle_key(curses.KEY_RIGHT)
@@ -295,11 +295,11 @@ class TuiSettingsIntegrationTests(TuiAppTestCase):
             app._handle_key("\n")
 
             self.assertIsNone(app._editor_controller.editor)
-            self.assertEqual(app.settings.filename_template, "{style}_{text}_{HHmmss}")
+            self.assertEqual(app.settings.filename_template, "{style}_{caption}_{HHmmss}")
             self.assertTrue(app.settings.save_text)
             self.assertTrue(app.settings.save_lab)
             saved = json.loads(app.config_path.read_text())
-            self.assertEqual(saved["filename_template"], "{style}_{text}_{HHmmss}")
+            self.assertEqual(saved["filename_template"], "{style}_{caption}_{HHmmss}")
             self.assertTrue(saved["save_text"])
             self.assertTrue(saved["save_lab"])
 

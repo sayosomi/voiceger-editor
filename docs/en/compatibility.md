@@ -211,10 +211,10 @@ Accepted TUI Takes can be saved as WAV or FLAC, or as MP3 when ffmpeg is
 available. The default basename template is:
 
 ```text
-{YYYYMMDDHHmm}_{text}
+{YYYYMMDDHHmm}_{caption}
 ```
 
-The filename template is configurable and can use `{text}`, `{style}`, and
+The filename template is configurable and can use `{caption}`, `{style}`, and
 the supported date/time tokens. The file extension comes from the selected
 Format.
 
@@ -222,7 +222,7 @@ If a final basename collides with an existing output, Voiceger Editor adds a
 collision suffix such as `-2` or `-3`. Optional `.txt` and `.lab` files
 use the same final basename.
 
-Invalid filename characters are removed. Source text is not silently shortened
+Invalid filename characters are removed. Caption text is not silently shortened
 if the filename is too long.
 
 The HTTP `/synthesis` endpoint returns WAV data directly and does not use this naming system.

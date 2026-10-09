@@ -102,7 +102,7 @@ Accepted-Take naming is controlled by **Settings -> File format & naming**.
 The default basename template is:
 
 ```text
-{YYYYMMDDHHmm}_{text}
+{YYYYMMDDHHmm}_{caption}
 ```
 
 The audio extension comes from the selected Format: WAV, FLAC, or MP3 when MP3
@@ -114,7 +114,7 @@ in [Settings](settings.md). The default template does not include Style.
 
 Characters that are invalid in filenames are removed.
 
-Voiceger Editor does not silently shorten source text if the resulting filename is too long. Saving fails with a clear filename-too-long error instead.
+Voiceger Editor does not silently shorten Caption text if the resulting filename is too long. Saving fails with a clear filename-too-long error instead.
 
 ## LAB format
 

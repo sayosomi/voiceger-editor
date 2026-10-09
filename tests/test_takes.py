@@ -478,18 +478,20 @@ class TakeBatchTests(unittest.TestCase):
             with patch(
                 "voiceger_editor.takes.save_output_audio", return_value=saved
             ) as save_output_audio:
-                result = batch.accept(2, output_dir=Path(directory), save_text=True)
+                result = batch.accept(
+                    2, caption="Accept-time Caption", output_dir=Path(directory), save_text=True
+                )
 
             self.assertIs(result, saved)
             save_output_audio.assert_called_once_with(
                 wav_source=temporary_paths[1],
-                source_text="generated source",
+                source_text="Accept-time Caption",
                 style_name="Sweet",
                 output_dir=Path(directory),
                 output_format="wav",
                 output_encoding="source",
                 save_text=True,
-                filename_template="{YYYYMMDDHHmm}_{text}",
+                filename_template="{YYYYMMDDHHmm}_{caption}",
             )
             self.assertTrue(all(path.exists() for path in temporary_paths))
             self.assertTrue(temporary_directory.exists())
@@ -512,7 +514,7 @@ class TakeBatchTests(unittest.TestCase):
                 side_effect=OSError("save failed"),
             ):
                 with self.assertRaisesRegex(OSError, "save failed"):
-                    batch.accept(1, output_dir=Path(directory), save_text=False)
+                    batch.accept(1, caption="Caption", output_dir=Path(directory), save_text=False)
 
             self.assertEqual(batch.candidates, tuple(candidates))
             self.assertTrue(all(candidate.wav_path.is_file() for candidate in candidates))
@@ -603,7 +605,7 @@ class TakeBatchTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 batch.regenerate_all()
             with self.assertRaises(RuntimeError):
-                batch.accept(1, output_dir=Path(directory), save_text=False)
+                batch.accept(1, caption="Caption", output_dir=Path(directory), save_text=False)
 
     def test_context_manager_closes_batch(self):
         with tempfile.TemporaryDirectory() as directory:

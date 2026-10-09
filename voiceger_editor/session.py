@@ -412,6 +412,7 @@ class UtteranceSession:
         else:
             output_encoding = self._settings.mp3_bitrate
         accept_kwargs = {
+            "caption": self._caption,
             "output_dir": self._settings.output_dir,
             "save_text": self._settings.save_text,
             "filename_template": self._settings.filename_template,

@@ -262,6 +262,7 @@ class TakeBatch:
         self,
         take_number: int,
         *,
+        caption: str,
         output_dir: Path,
         save_text: bool,
         save_lab: bool = False,
@@ -269,7 +270,7 @@ class TakeBatch:
         output_format: str = "wav",
         output_encoding: str = "source",
     ) -> SavedOutput:
-        """Save the selected candidate while keeping the review batch open."""
+        """Save the selected candidate with current Caption and preserve its query."""
 
         self._ensure_open()
         number = self._validate_take_number(take_number)
@@ -279,7 +280,7 @@ class TakeBatch:
 
         save_kwargs = {
             "wav_source": candidate.wav_path,
-            "source_text": candidate.source_text,
+            "source_text": caption,
             "style_name": candidate.style_name,
             "output_dir": output_dir,
             "output_format": output_format,

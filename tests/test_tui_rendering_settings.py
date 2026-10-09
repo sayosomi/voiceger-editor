@@ -107,7 +107,7 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
                     "output_format": "wav",
                     "wav_encoding": "source",
                     "flac_encoding": "pcm16",
-                    "filename_template": "{style}_{text}",
+                    "filename_template": "{style}_{caption}",
                     "save_text": True,
                     "save_lab": False,
                 },
@@ -133,14 +133,14 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
         self.assertIn("< WAV >", visible)
         self.assertIn("Encoding", visible)
         self.assertIn("< Source >", visible)
-        self.assertIn("Filename template  {style}_{text}", visible)
+        self.assertIn("Filename template  {style}_{caption}", visible)
         self.assertIn("Preview", visible)
         self.assertIn("Neutral_今日は雨.wav", visible)
         self.assertIn("[X] TXT", visible)
         self.assertIn("ON", visible)
         self.assertIn("[L] LAB", visible)
         self.assertIn("OFF", visible)
-        self.assertIn("YYYY MM DD HH mm ss · {text} {style}", visible)
+        self.assertIn("YYYY MM DD HH mm ss · {caption} {style}", visible)
         self.assertEqual(
             [key for _line, key in document if key is not None],
             [
@@ -159,7 +159,7 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
                     "output_format": "flac",
                     "wav_encoding": "float32",
                     "flac_encoding": "pcm24",
-                    "filename_template": "{text}",
+                    "filename_template": "{caption}",
                     "save_text": False,
                     "save_lab": False,
                 },
@@ -193,7 +193,7 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
                     "wav_encoding": "source",
                     "flac_encoding": "pcm16",
                     "mp3_bitrate": "256k",
-                    "filename_template": "{text}",
+                    "filename_template": "{caption}",
                     "save_text": False,
                     "save_lab": False,
                 },
@@ -234,7 +234,7 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
                     "output_format": "flac",
                     "wav_encoding": "source",
                     "flac_encoding": "pcm24",
-                    "filename_template": "{text}",
+                    "filename_template": "{caption}",
                     "save_text": False,
                     "save_lab": False,
                 },
@@ -244,8 +244,8 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
                 "filename_preview_error": "unsupported date/time token in {take}",
             },
             active_field="filename_template",
-            input_value="{take}_{text}",
-            input_cursor=len("{take}_{text}"),
+            input_value="{take}_{caption}",
+            input_cursor=len("{take}_{caption}"),
             error="",
             scroll=0,
         )
@@ -255,7 +255,7 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
             80,
         )
         visible = "\n".join(line for line, _key in document)
-        self.assertIn("▶ Filename template  {take}_{text}", visible)
+        self.assertIn("▶ Filename template  {take}_{caption}", visible)
         self.assertIn("Invalid:", visible)
         self.assertIn("unsupported date/time token", visible)
         self.assertIsNotNone(cursor_line)

@@ -255,9 +255,9 @@ def save_output_audio(
 ) -> SavedOutput:
     """Persist a candidate WAV using the selected accepted-output format.
 
-    WAV Source preserves the established acceptance path by copying candidate
-    bytes without decoding. Explicit WAV encodings, FLAC, and optional MP3 are
-    converted only for the final accepted output.
+    For accepted output, source_text is the current Caption, not the query text.
+    WAV Source copies candidate bytes without decoding; other WAV encodings,
+    FLAC, and optional MP3 convert only the final accepted output.
     """
 
     _validate_output_selection(output_format, output_encoding)

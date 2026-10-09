@@ -79,7 +79,7 @@ class OutputSaveTests(unittest.TestCase):
                     style_name="Neutral",
                     output_dir=root,
                     timestamp=datetime(2026, 10, 7, 19, 45, 23),
-                    filename_template="{YYYY-MM-DD}_{HHmmss}_{style}_{text}",
+                    filename_template="{YYYY-MM-DD}_{HHmmss}_{style}_{caption}",
                 )
 
         self.assertEqual(
