@@ -124,6 +124,10 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("save_dictionary", "Save to dictionary", "s", "action", "activate"),
         MenuItem("dictionary", "Dictionary menu", "d", "action", "activate"),
         MenuItem("edit_text", "Edit text", "e", "action", "activate"),
+        MenuItem(
+            "delete_section", "Delete section", "x", "action", "activate",
+            condition_key="can_delete",
+        ),
         MenuItem("clear", "Clear", "c", "action", "activate"),
         MenuItem("reset", "Reset", "r", "action", "activate"),
         _escape_action("back", "Back"),
@@ -141,6 +145,10 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("save_dictionary", "Save to dictionary", "s", "action", "activate"),
         MenuItem("dictionary", "Dictionary menu", "d", "action", "activate"),
         MenuItem("edit_text", "Edit text", "e", "action", "activate"),
+        MenuItem(
+            "delete_section", "Delete section", "x", "action", "activate",
+            condition_key="can_delete",
+        ),
         MenuItem("clear", "Clear", "c", "action", "activate"),
         MenuItem("reset", "Reset", "r", "action", "activate"),
         _escape_action("back", "Back"),
@@ -159,7 +167,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem(
             "delete_section",
             "Delete section",
-            "d",
+            "x",
             "action",
             "activate",
             condition_key="can_delete",
