@@ -173,7 +173,7 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
             )
             lines.append((f"{marker}{item.display_label:<14}{value}", key))
         plain()
-        plain("Tokens: YYYY MM DD HH mm ss · {text} {style}")
+        plain("Tokens: YYYY MM DD HH mm ss · {caption} {style}")
         selectable("back")
     else:
         return False

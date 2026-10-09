@@ -144,7 +144,7 @@ separately when you switch Format back and forth.
 
 ## TXT sidecar
 
-When TXT is enabled, accepting a Take saves the exact source text beside the accepted audio file.
+When TXT is enabled, accepting a Take saves the current Caption exactly (UTF-8) beside the accepted audio file, even if the synthesized utterance differs. Editing Caption after Take generation but before Accept updates the TXT and filename without regenerating audio.
 
 Example:
 
@@ -300,7 +300,7 @@ Example:
 ```json
 {
   "output_dir": "/path/to/output",
-  "filename_template": "{YYYYMMDDHHmm}_{text}",
+  "filename_template": "{YYYYMMDDHHmm}_{caption}",
   "output_format": "wav",
   "wav_encoding": "source",
   "flac_encoding": "pcm16",
@@ -321,12 +321,12 @@ Example:
 The default accepted-output basename template is:
 
 ```text
-{YYYYMMDDHHmm}_{text}
+{YYYYMMDDHHmm}_{caption}
 ```
 
 Configure it from **Settings -> File format & naming -> Filename template**. The **AUDIO OUTPUT** screen shows a live preview before the Settings draft is applied.
 
-Supported case-sensitive date/time tokens are `YYYY`, `MM`, `DD`, `HH`, `mm`, and `ss`. `MM` is the month and `mm` is the minute. Named variables are `{text}` and `{style}`.
+Supported case-sensitive date/time tokens are `YYYY`, `MM`, `DD`, `HH`, `mm`, and `ss`. `MM` is the month and `mm` is the minute. Named variables are `{caption}` (the Caption current at Accept) and `{style}`. The former `{text}` variable is no longer supported; existing custom templates using it must be edited manually.
 
 The file extension comes from Format rather than the template. A rendered basename such as `202610071945_hello` is saved with the selected extension, such as `.wav`, `.flac`, or `.mp3` when MP3 is available. TXT and LAB sidecars, when enabled, use the same final basename and collision suffix.
 
