@@ -1,4 +1,5 @@
 import curses
+from copy import deepcopy
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -604,6 +605,156 @@ class TuiTextEditorOwnerTests(EditorControllerTestCase):
         self.assertEqual(deletion.editor_kind, "delete_section")
         self.assertIsNotNone(editor)
 
+
+    def test_direct_japanese_delete_from_second_phrase_removes_entire_section(self):
+        query = direct_japanese_query()
+        original = query.model_dump()
+        controller, _provider = self.make_controller()
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 1, origin=("pronunciation", 1), busy=False
+        )
+        controller.handle_key(
+            "\\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        self.assertIn("delete_section", controller.selection_keys())
+        controller.handle_key(
+            "x", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        confirmation = controller.editor
+        self.assertEqual(confirmation.title, "DELETE SECTION?")
+        self.assertEqual(confirmation.selection, "cancel")
+        self.assertEqual(confirmation.payload["target_text"], "なのだ。")
+        self.assertEqual(confirmation.payload["target_language"], "ja")
+        intents = controller.handle_key(
+            "d", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        deletion = next(x for x in intents if isinstance(x, ReplaceQueryIntent))
+        self.assertEqual(deletion.deleted_segment_index, 0)
+        self.assertEqual(len(deletion.query.voicegerSegments), 1)
+        self.assertEqual(deletion.query.voicegerSegments[0].language, "en")
+        self.assertEqual(deletion.query.accent_phrases, [])
+        self.assertEqual(query.model_dump(), original)
+
+    def test_direct_english_delete_from_second_word_removes_entire_section(self):
+        query = mixed_query()
+        original = query.model_dump()
+        groups = {
+            "hello everyone": (
+                ("hello", ("HH", "AH1", "L", "OW2")),
+                ("everyone", ("EH1", "V", "R", "IY0")),
+            )
+        }
+        controller, _provider = self.make_controller(groups)
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 3, origin=("pronunciation", 3), busy=False
+        )
+        controller.handle_key(
+            "\\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.handle_key(
+            "x", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        confirmation = controller.editor
+        self.assertEqual(confirmation.payload["target_text"], "hello everyone")
+        self.assertEqual(confirmation.payload["target_language"], "en")
+        intents = controller.handle_key(
+            "d", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        deletion = next(x for x in intents if isinstance(x, ReplaceQueryIntent))
+        self.assertEqual(deletion.deleted_segment_index, 1)
+        self.assertIsNone(deletion.query.voicegerSegments)
+        self.assertEqual(deletion.pure_japanese_utterance_text, "明日は今日")
+        self.assertEqual(query.model_dump(), original)
+
+    def test_direct_delete_cancel_preserves_japanese_and_english_drafts(self):
+        query = direct_japanese_query()
+        controller, _provider = self.make_controller(
+            {"hello": (("hello", ("HH", "AH1")),)}
+        )
+        for index, text in ((0, "ナ' ノダ'？"), (2, "HH AH0")):
+            with self.subTest(index=index):
+                rows = controller.pronunciation_rows(query, segments(query))
+                controller.open_pronunciation_item(
+                    query, rows, index, origin=("pronunciation", index), busy=False
+                )
+                controller.editor.input_value = text
+                controller.handle_key(
+                    "\\n", settings=self.settings(), query=query, current_caption="Caption"
+                )
+                parent = deepcopy(controller.editor)
+                controller.handle_key(
+                    "x", settings=self.settings(), query=query, current_caption="Caption"
+                )
+                result = controller.handle_key(
+                    "\\x1b", settings=self.settings(), query=query, current_caption="Caption"
+                )
+                self.assertEqual(controller.editor, parent)
+                self.assertEqual(controller.editor.input_value, text)
+                self.assertFalse(any(isinstance(x, ReplaceQueryIntent) for x in result))
+
+    def test_section_text_delete_uses_x_and_preserves_unsaved_draft_on_cancel(self):
+        query = direct_japanese_query()
+        controller, _provider = self.make_controller()
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 0, origin=("pronunciation", 0), busy=False
+        )
+        controller.handle_key(
+            "\\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.handle_key(
+            "e", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        controller.editor.input_value = "changed draft"
+        controller.handle_key(
+            "\\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        saved_editor = deepcopy(controller.editor)
+        self.assertNotIn("d", [
+            item.shortcut for item in __import__(
+                "voiceger_editor.tui_shortcuts", fromlist=["menu_items"]
+            ).menu_items("section_text", {"can_delete": True})
+        ])
+        controller.handle_key(
+            "x", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        self.assertEqual(controller.editor.payload["target_text"], "なのだ。")
+        controller.handle_key(
+            "\\x1b", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        self.assertEqual(controller.editor, saved_editor)
+        self.assertEqual(controller.editor.payload["draft"], "changed draft")
+
+    def test_stale_section_is_rejected_before_and_after_confirmation(self):
+        query = direct_japanese_query()
+        controller, _provider = self.make_controller()
+        rows = controller.pronunciation_rows(query, segments(query))
+        controller.open_pronunciation_item(
+            query, rows, 0, origin=("pronunciation", 0), busy=False
+        )
+        controller.handle_key(
+            "\\n", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        changed = query.model_copy(deep=True)
+        changed.voicegerSegments[0].text = "changed elsewhere"
+        result = controller.handle_key(
+            "x", settings=self.settings(), query=changed, current_caption="Caption"
+        )
+        self.assertEqual(result, ())
+        self.assertEqual(controller.editor.kind, "japanese")
+        self.assertIn("Selected section changed", str(controller.editor.error))
+        controller.handle_key(
+            "x", settings=self.settings(), query=query, current_caption="Caption"
+        )
+        self.assertEqual(controller.editor.kind, "delete_confirmation")
+        result = controller.handle_key(
+            "d", settings=self.settings(), query=changed, current_caption="Caption"
+        )
+        self.assertFalse(any(isinstance(x, ReplaceQueryIntent) for x in result))
+        self.assertEqual(controller.editor.kind, "japanese")
+        self.assertIn("selected section changed", str(controller.editor.error))
 
 if __name__ == "__main__":
     unittest.main()
