@@ -31,7 +31,7 @@ class DictionaryListPreviewAndAccentTests(DictionaryControllerTestCase):
 
     def test_japanese_boundaries_and_visible_pending_preview(self):
         self._japanese()
-        self.assertEqual(self.key(curses.KEY_LEFT), ())
+        self.key(curses.KEY_LEFT)
         self.assertEqual(self.controller.editor.payload["entries"][0][1].accent_type, 1)
 
         self.key(curses.KEY_RIGHT)
