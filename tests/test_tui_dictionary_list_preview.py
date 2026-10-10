@@ -160,7 +160,7 @@ class DictionaryListPreviewAndAccentTests(DictionaryControllerTestCase):
 
     def test_preview_action_enter_targets_remembered_word_and_empty_is_safe(self):
         self._japanese()
-        for _ in range(3):
+        for _ in range(4):
             self.key(curses.KEY_DOWN)
         self.assertEqual(self.controller.editor.selection, "preview")
         result = self.key("\n")
