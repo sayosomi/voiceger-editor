@@ -23,6 +23,14 @@
       "reviewed_max": 50,
       "justification": "The shared operation-lifecycle facade remains the composition point for focused playback, conflict, acceptance, and worker-event owners; new responsibilities must stay in focused owners and this baseline may not silently grow.",
       "follow_up_issue": null
+    },
+    {
+      "path": "voiceger_editor/tui_rendering_dictionary.py",
+      "symbol": "build_document",
+      "metric": "function_lines",
+      "reviewed_max": 265,
+      "justification": "The Japanese/English word-list document was extracted into tui_rendering_dictionary_list.py for Issue #263. The remaining related Dictionary menu, import/review, filter, entry, and detail document dispatcher still spans 265 lines; this is a reviewed, reduced baseline, not a license to add unrelated rendering responsibilities.",
+      "follow_up_issue": null
     }
   ]
 }
