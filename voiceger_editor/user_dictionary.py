@@ -594,6 +594,31 @@ class UserDictionaryCore:
             candidate[normalized_uuid] = word
             self._commit_japanese(candidate)
 
+    def update_japanese_accents(self, accents: Mapping[str, int]) -> None:
+        """Atomically compile and commit multiple accent-only edits.
+
+        Preserve UUIDs, canonical entry order, and all other word properties.
+        """
+        if not accents:
+            return
+        with self._lock:
+            candidate = dict(self._japanese)
+            for raw_uuid, accent in accents.items():
+                word_uuid = self._parse_uuid(raw_uuid)
+                if word_uuid not in candidate:
+                    raise UserDictionaryInputError(
+                        "UUIDに該当するワードが見つかりませんでした"
+                    )
+                if isinstance(accent, bool) or not isinstance(accent, int):
+                    raise UserDictionaryInputError("invalid Japanese accent type")
+                original = candidate[word_uuid]
+                if not 0 <= accent <= original.mora_count:
+                    raise UserDictionaryInputError("invalid Japanese accent type")
+                updated = original.model_copy(deep=True)
+                updated.accent_type = accent
+                candidate[word_uuid] = updated
+            self._commit_japanese(candidate)
+
     def delete_japanese_word(self, word_uuid: str) -> None:
         normalized_uuid = self._parse_uuid(word_uuid)
         with self._lock:
