@@ -36,7 +36,7 @@ class TuiDictionaryEntryTests(DictionaryControllerTestCase):
         self.key(curses.KEY_DOWN)
         self.assertEqual(self.controller.editor.selection, "back")
         self.key(curses.KEY_UP)
-        self.assertEqual(self.controller.editor.selection, "preview")
+        self.assertEqual(self.controller.editor.selection, "add")
 
         self.key("a")
         self.assertEqual(self.controller.editor.kind, "dictionary_japanese_entry")
