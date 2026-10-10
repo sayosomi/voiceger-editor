@@ -288,6 +288,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
     "dictionary_japanese_list": (
         MenuItem("sort", "Sort", "s", "adjustable", "activate"),
         MenuItem("filter", "Filter", "f", "adjustable", "activate"),
+        MenuItem("preview", "Preview", "p", "action", "activate"),
         MenuItem("add", "Add", "a", "action", "activate"),
         MenuItem(
             "delete",
@@ -302,6 +303,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
     "dictionary_english_list": (
         MenuItem("sort", "Sort", "s", "adjustable", "activate"),
         MenuItem("filter", "Filter", "f", "adjustable", "activate"),
+        MenuItem("preview", "Preview", "p", "action", "activate"),
         MenuItem("add", "Add", "a", "action", "activate"),
         MenuItem(
             "delete",
