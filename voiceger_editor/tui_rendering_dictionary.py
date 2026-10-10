@@ -198,6 +198,10 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
                 if filter_active and total_count
                 else "  No Japanese dictionary words."
             )
+        if editor.payload.get("accent_saving"):
+            plain("  Saving accent changes…")
+        elif editor.payload.get("accent_pending"):
+            plain("  Unsaved accent changes (auto-save pending)")
         surface_column_width = _dictionary_surface_column_width(
             tuple(str(word.surface) for _word_uuid, word in entries)
         )
@@ -244,6 +248,7 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
                     f": {' · '.join(parts)}" if parts else ""
                 )
             selectable_value("filter", filter_summary)
+        selectable("preview")
         selectable("add")
         if entries:
             selectable("delete")
@@ -298,6 +303,7 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
                     else "Off"
                 ),
             )
+        selectable("preview")
         selectable("add")
         if entries:
             selectable("delete")
