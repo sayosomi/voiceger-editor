@@ -96,6 +96,54 @@ class UserDictionaryTests(unittest.TestCase):
         values.update(kwargs)
         return self.core.add_japanese_word(**values)
 
+    def test_bulk_accent_update_preserves_dictionary_and_commits_once(self):
+        first = self.add_word(surface="ずんだもん")
+        second = self.add_word(surface="きりたん", pronunciation="キリタン")
+        before = self.core.list_japanese_entries()
+        before_keys = tuple(before)
+        apply_before = len([event for event in self.backend.events if event[0] == "apply"])
+
+        self.core.update_japanese_accents({first: 1, second: 2})
+        after = self.core.list_japanese_entries()
+
+        self.assertEqual(tuple(after), before_keys)
+        self.assertEqual(after[first].accent_type, 1)
+        self.assertEqual(after[second].accent_type, 2)
+        for identity in before:
+            old_fields = before[identity].model_dump(exclude={"accent_type"})
+            new_fields = after[identity].model_dump(exclude={"accent_type"})
+            self.assertEqual(old_fields, new_fields)
+            self.assertEqual(self.backend.active[identity], after[identity])
+        apply_after = len([event for event in self.backend.events if event[0] == "apply"])
+        self.assertEqual(apply_after - apply_before, 1)
+
+        reread = UserDictionaryCore(
+            self.voiceger_root,
+            data_directory=self.data_dir,
+            openjtalk_dictionary=FakeBackend(),
+        )
+        self.assertEqual(reread.list_japanese_entries(), after)
+
+    def test_bulk_accent_update_failure_rolls_back_all_entries(self):
+        first = self.add_word()
+        second = self.add_word(surface="きりたん", pronunciation="キリタン")
+        before = self.core.list_japanese_entries()
+        before_file = self.core.japanese_path.read_bytes()
+        self.backend.fail_compile = True
+
+        with self.assertRaises(OpenJTalkDictionaryError):
+            self.core.update_japanese_accents({first: 1, second: 2})
+
+        self.assertEqual(self.core.list_japanese_entries(), before)
+        self.assertEqual(self.backend.active, before)
+        self.assertEqual(self.core.japanese_path.read_bytes(), before_file)
+
+        with self.assertRaises(UserDictionaryInputError):
+            self.core.update_japanese_accents({first: 1, second: 500})
+        with self.assertRaises(UserDictionaryInputError):
+            self.core.update_japanese_accents({first: True})
+        self.assertEqual(self.core.list_japanese_entries(), before)
+
     def test_create_list_update_delete_and_defaults(self):
         word_uuid = self.add_word()
         listed = self.core.list_japanese_entries()

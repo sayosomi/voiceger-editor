@@ -28,8 +28,8 @@
       "path": "voiceger_editor/tui_rendering_dictionary.py",
       "symbol": "build_document",
       "metric": "function_lines",
-      "reviewed_max": 385,
-      "justification": "Dictionary rendering currently builds the related menu, import, list, filter, entry, and detail documents through one focused dispatch function; the current span is reviewed but may not silently grow.",
+      "reviewed_max": 265,
+      "justification": "The Japanese/English word-list document was extracted into tui_rendering_dictionary_list.py for Issue #263. The remaining related Dictionary menu, import/review, filter, entry, and detail document dispatcher still spans 265 lines; this is a reviewed, reduced baseline, not a license to add unrelated rendering responsibilities.",
       "follow_up_issue": null
     }
   ]

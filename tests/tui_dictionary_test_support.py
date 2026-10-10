@@ -93,6 +93,13 @@ class FakeDictionaryCore:
             word_type=values["word_type"],
         )
 
+    def update_japanese_accents(self, accents):
+        from copy import deepcopy
+        for word_uuid, accent in accents.items():
+            word = deepcopy(self.japanese[word_uuid])
+            word.accent_type = accent
+            self.japanese[word_uuid] = word
+
     def delete_japanese_word(self, word_uuid):
         del self.japanese[word_uuid]
 
