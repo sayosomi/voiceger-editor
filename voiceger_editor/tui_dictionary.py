@@ -798,12 +798,12 @@ class TuiDictionaryController:
         if self._accent.has_pending:
             if self._deferred_list_key is not None:
                 self._accent.force_save()
-            return (UpdateStatusIntent(info_status("Saving newer accent changes…")),)
+            return ()
         key = self._deferred_list_key
         self._deferred_list_key = None
         if key is not None:
             return self.handle_key(key)
-        return (UpdateStatusIntent(info_status("Japanese dictionary accents saved.")),)
+        return ()
 
     def complete_operation(
         self,
