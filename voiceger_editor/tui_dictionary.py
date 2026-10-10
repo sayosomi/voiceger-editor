@@ -1069,6 +1069,54 @@ class TuiDictionaryController:
         editor.error = EMPTY_STATUS
         return (PreviewIntent(query),)
 
+    def _handle_list_prelude_key(
+        self, key: Any,
+    ) -> tuple[DictionaryControllerIntent, ...] | None:
+        """Own list-specific pending-save gate, numbered jump, and preview keys.
+
+        Return None to continue generic Dictionary key dispatch; an empty
+        tuple means this list key was consumed without any new intents.
+        """
+        editor = self.editor
+        if editor is None:
+            return None
+        if editor.kind == "dictionary_japanese_list":
+            if self._deferred_list_key is not None:
+                # Keep queued editor/delete/back navigation attached to its row.
+                return ()
+            if self._accent.has_pending and (
+                (key in _ENTER_KEYS and editor.selection != "preview")
+                or key in (_ESCAPE, "a", "x", "f", "q", "Q", "\x03")
+                or (isinstance(key, str) and key in "1234567890")
+            ):
+                self._deferred_list_key = key
+                self._accent.force_save()
+                return (UpdateStatusIntent(info_status("Saving dictionary accents before continuing…")),)
+
+        if editor.kind in {
+            "dictionary_japanese_list",
+            "dictionary_english_list",
+        }:
+            was_number_jump = self._number_jump.active
+            number_jump = self._number_jump.handle_key(
+                key,
+                item_count=len(editor.payload.get("entries", ())),
+            )
+            if number_jump.handled:
+                self._sync_number_jump_payload(editor)
+                if number_jump.warning is not None:
+                    return (UpdateStatusIntent(warning_status(number_jump.warning)),)
+                if number_jump.target_number is not None:
+                    return self._open_list_entry_number(number_jump.target_number)
+                return ()
+            if key in (" ", "p", "P"):
+                # During explicit number entry, no Preview shortcut fires.
+                if was_number_jump or self._number_jump.active:
+                    return ()
+                return self._preview_list_word()
+
+        return None
+
     def handle_key(
         self,
         key: Any,
@@ -1135,42 +1183,9 @@ class TuiDictionaryController:
                     editor.error = EMPTY_STATUS
             return ()
 
-        if editor.kind == "dictionary_japanese_list":
-            if self._deferred_list_key is not None:
-                # Keep queued editor/delete/back navigation attached to its row.
-                return ()
-            if self._accent.has_pending and (
-                (key in _ENTER_KEYS and editor.selection != "preview")
-                or key in (_ESCAPE, "a", "x", "f", "q", "Q", "\x03")
-                or (isinstance(key, str) and key in "1234567890")
-            ):
-                self._deferred_list_key = key
-                self._accent.force_save()
-                return (UpdateStatusIntent(info_status("Saving dictionary accents before continuing…")),)
-
-        if editor.kind in {
-            "dictionary_japanese_list",
-            "dictionary_english_list",
-        }:
-            was_number_jump = self._number_jump.active
-            number_jump = self._number_jump.handle_key(
-                key,
-                item_count=len(editor.payload.get("entries", ())),
-            )
-            if number_jump.handled:
-                self._sync_number_jump_payload(editor)
-                if number_jump.warning is not None:
-                    return (UpdateStatusIntent(warning_status(number_jump.warning)),)
-                if number_jump.target_number is not None:
-                    return self._open_list_entry_number(number_jump.target_number)
-                return ()
-            if key in (" ", "p", "P"):
-                # During explicit number entry, no Preview shortcut fires.
-                if was_number_jump or self._number_jump.active:
-                    return ()
-                if key == "P":
-                    return ()
-                return self._preview_list_word()
+        list_key = self._handle_list_prelude_key(key)
+        if list_key is not None:
+            return list_key
 
         if key in ("q", "Q", "\x03"):
             return (QuitIntent(),)
