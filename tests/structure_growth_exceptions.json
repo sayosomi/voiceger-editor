@@ -23,14 +23,6 @@
       "reviewed_max": 50,
       "justification": "The shared operation-lifecycle facade remains the composition point for focused playback, conflict, acceptance, and worker-event owners; new responsibilities must stay in focused owners and this baseline may not silently grow.",
       "follow_up_issue": null
-    },
-    {
-      "path": "voiceger_editor/tui_rendering_dictionary.py",
-      "symbol": "build_document",
-      "metric": "function_lines",
-      "reviewed_max": 385,
-      "justification": "Dictionary rendering currently builds the related menu, import, list, filter, entry, and detail documents through one focused dispatch function; the current span is reviewed but may not silently grow.",
-      "follow_up_issue": null
     }
   ]
 }
