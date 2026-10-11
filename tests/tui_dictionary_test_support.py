@@ -103,6 +103,13 @@ class FakeDictionaryCore:
     def delete_japanese_word(self, word_uuid):
         del self.japanese[word_uuid]
 
+    def update_english_stresses(self, updates):
+        from copy import deepcopy
+        for surface, phonemes in updates.items():
+            entry = deepcopy(self.english[surface])
+            entry.phonemes = list(phonemes)
+            self.english[surface] = entry
+
     def set_english_entry(self, surface, phonemes):
         key = surface.strip().casefold()
         self.english = {
