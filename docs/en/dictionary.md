@@ -26,15 +26,21 @@ the target number and press Enter.
 
 On a focused word row in either language, press `Space` or `P` to Preview
 without opening its editor. The `[P] Preview` action also appears in the list.
-English Preview uses the stored ARPAbet tokens; it does not change stress.
+Preview uses the currently displayed pronunciation, even before an auto-save
+completes.
 
 In the Japanese list, Left / Right moves the focused word's accent one mora at
-a time without wrapping. The displayed accent changes immediately, and changes
-are saved automatically in the background (rapid adjustments are combined).
-Preview uses the currently displayed accent, even before the save completes.
-Leaving the list or opening an editor waits until the pending save is complete.
-If saving fails, the list restores the last committed values and reports an
-error. Left / Right on Sort and Filter keep their existing meanings.
+a time without wrapping. In the English list, Left / Right moves the single
+primary ARPAbet stress (`1`) to the previous / next vowel, following BATCH
+ITEM's rule. English words with zero or multiple primary stresses, or fewer than
+two vowels, are not adjustable; the list marks adjustable pronunciations with
+angle brackets.
+
+Changes appear immediately and are automatically saved in the background;
+rapid adjustments are combined. Leaving a list or opening an editor waits until
+the pending save is complete. A save failure restores the last committed values
+and reports an error. Left / Right on Sort and Filter keep their existing
+meanings.
 
 Both lists expose `[S] Sort` and `[F] Filter`. Sort can be cycled with the
 shortcut or with Left / Right while focused. Japanese sort modes are Surface
