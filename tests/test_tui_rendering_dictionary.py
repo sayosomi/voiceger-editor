@@ -824,6 +824,46 @@ class DictionaryRenderingDocumentTests(RenderingTestCase):
         }
         self.assertEqual(surface_columns, {7})
 
+    def test_english_list_marks_primary_stress_like_batch_item(self):
+        entries = (
+            SimpleNamespace(surface="Zundamon", phonemes=("Z", "UW1", "N", "D", "AA0", "M", "OW0", "N")),
+            SimpleNamespace(surface="Moved", phonemes=("Z", "UW0", "N", "D", "AA1", "M", "OW0", "N")),
+            SimpleNamespace(surface="Last", phonemes=("Z", "UW0", "N", "D", "AA0", "M", "OW1", "N")),
+            SimpleNamespace(surface="NoPrimary", phonemes=("AH0", "OW0")),
+            SimpleNamespace(surface="DoublePrimary", phonemes=("AH1", "OW1")),
+        )
+        editor = SimpleNamespace(
+            kind="dictionary_english_list", title="ENGLISH DICTIONARY",
+            selection=("entry", 0),
+            payload={
+                "entries": entries, "sort_mode": "surface_asc",
+                "text_filter": "", "filter_enabled": False,
+                "word_type_filter": None, "visible_count": len(entries),
+                "total_count": len(entries), "can_delete": True,
+            },
+            active_field=None, input_value="", input_cursor=0,
+            error="", scroll=0,
+        )
+        document, _, _ = self.renderer.editor_document(
+            render_state(editor=editor), 100
+        )
+        rows = {
+            key[1]: line for line, key in document
+            if isinstance(key, tuple) and key[0] == "entry"
+        }
+        expected = (
+            "Z [UW1] N D AA0 M OW0 N",
+            "Z UW0 N D [AA1] M OW0 N",
+            "Z UW0 N D AA0 M [OW1] N",
+            "AH0 OW0",
+            "[AH1] [OW1]",
+        )
+        for index, pronunciation in enumerate(expected):
+            with self.subTest(index=index):
+                self.assertIn(pronunciation, rows[index])
+                self.assertNotIn("<", rows[index])
+                self.assertNotIn(">", rows[index])
+
     def test_english_dictionary_aligns_pronunciation_by_surface_display_width(self):
         entries = (
             SimpleNamespace(
