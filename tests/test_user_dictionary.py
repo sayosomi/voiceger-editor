@@ -690,6 +690,36 @@ class UserDictionaryTests(unittest.TestCase):
             compiled.close()
 
 
+    def test_inline_english_stress_updates_are_atomic_and_preserve_order(self):
+        self.core.set_english_entry("Zulu", ["Z", "UW1", "L", "UW0"])
+        self.core.set_english_entry("Alpha", ["AE1", "L", "F", "AH2"])
+        self.core.update_english_stresses({
+            "Zulu": ["Z", "UW0", "L", "UW1"],
+            "Alpha": ["AE2", "L", "F", "AH1"],
+        })
+        self.assertEqual(list(self.core.list_english_entries()), ["Zulu", "Alpha"])
+        self.assertEqual(
+            self.core.lookup_english_entry("zulu"), ["Z", "UW0", "L", "UW1"]
+        )
+        reloaded = UserDictionaryCore(
+            self.voiceger_root,
+            data_directory=self.data_dir,
+            openjtalk_dictionary=FakeBackend(),
+        )
+        self.assertEqual(
+            reloaded.lookup_english_entry("Alpha"), ["AE2", "L", "F", "AH1"]
+        )
+        with self.assertRaises(UserDictionaryInputError):
+            self.core.update_english_stresses({"missing": ["AE1"]})
+        with self.assertRaises(UserDictionaryInputError):
+            self.core.update_english_stresses({"Zulu": ["INVALID"]})
+        before = self.core.list_english_entries()
+        with patch("voiceger_editor.user_dictionary._atomic_write", side_effect=OSError("full")):
+            with self.assertRaises(Exception):
+                self.core.update_english_stresses({"Zulu": ["Z", "UW1", "L", "UW0"]})
+        self.assertEqual(self.core.list_english_entries(), before)
+        self.assertEqual(self.backend.events, [])
+
     def test_english_file_order_is_canonical_through_mutations(self):
         self.core.english_path.parent.mkdir(parents=True, exist_ok=True)
         self.core.english_path.write_text(
