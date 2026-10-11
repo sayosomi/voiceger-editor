@@ -1112,18 +1112,19 @@ class TuiDictionaryController:
         editor = self.editor
         if editor is None:
             return None
-        if editor.kind == "dictionary_japanese_list":
+        owner = self._list_save_owner(editor)
+        if owner is not None:
             if self._deferred_list_key is not None:
                 # Keep queued editor/delete/back navigation attached to its row.
                 return ()
-            if self._accent.has_pending and (
+            if owner.has_pending and (
                 (key in _ENTER_KEYS and editor.selection != "preview")
                 or key in (_ESCAPE, "a", "x", "f", "q", "Q", "\x03")
                 or (isinstance(key, str) and key in "1234567890")
             ):
                 self._deferred_list_key = key
-                self._accent.force_save()
-                return (UpdateStatusIntent(info_status("Saving dictionary accents before continuing…")),)
+                owner.force_save()
+                return (UpdateStatusIntent(info_status("Saving dictionary changes before continuing…")),)
 
         if editor.kind in {
             "dictionary_japanese_list",
@@ -1160,9 +1161,9 @@ class TuiDictionaryController:
         editor = self.editor
         if editor is None:
             return ()
+        list_save_owner = self._list_save_owner(editor)
         list_accent_operation_busy = (
-            editor.kind == "dictionary_japanese_list"
-            and self._accent.inflight is not None
+            list_save_owner is not None and list_save_owner.inflight is not None
         )
         if dictionary_operation_busy and not list_accent_operation_busy:
             if key in ("q", "Q", "\x03"):
@@ -1370,6 +1371,20 @@ class TuiDictionaryController:
                         changed=changed,
                         area="dictionary",
                         control="list_accent",
+                        direction=direction,
+                    )
+                if editor.kind == "dictionary_english_list" and (
+                    isinstance(editor.selection, tuple)
+                    and editor.selection[0] == "entry"
+                ):
+                    try:
+                        changed = self._stress.move(editor, direction)
+                    except ValueError as exc:
+                        return (UpdateStatusIntent(error_status(f"Stress was not changed: {exc}")),)
+                    return adjustment_feedback_intents(
+                        changed=changed,
+                        area="dictionary",
+                        control="list_stress",
                         direction=direction,
                     )
                 if editor.selection == "sort":
