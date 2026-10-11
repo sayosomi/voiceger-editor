@@ -392,7 +392,9 @@ class TuiOperations:
         # overwrite an unrelated foreground Status message on every debounce.
         channel = (
             "background"
-            if intent.request.operation == "save_japanese_list_accents"
+            if intent.request.operation in {
+                "save_japanese_list_accents", "save_english_list_stresses"
+            }
             else "status"
         )
         return (UpdateStatusEffect(intent.status, channel=channel),)
