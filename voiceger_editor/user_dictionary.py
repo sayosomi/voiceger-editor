@@ -711,6 +711,48 @@ class UserDictionaryCore:
             candidate[entry.surface] = entry
         return candidate
 
+    def update_english_stresses(
+        self, updates: Mapping[str, Sequence[str]],
+    ) -> None:
+        """Atomically save inline stress moves without changing surface or order."""
+
+        if not isinstance(updates, Mapping):
+            raise UserDictionaryInputError("English stress updates must be surface-keyed")
+        validated: dict[str, list[str]] = {}
+        for surface, phonemes in updates.items():
+            if not isinstance(surface, str):
+                raise UserDictionaryInputError("English dictionary surface must be a string")
+            if isinstance(phonemes, (str, bytes)) or not isinstance(phonemes, Sequence):
+                raise UserDictionaryInputError("English phonemes must be a token sequence")
+            try:
+                validated[surface] = normalize_english_phonemes(phonemes)
+            except (TypeError, ValueError) as exc:
+                raise UserDictionaryInputError(str(exc)) from exc
+        if not validated:
+            return
+
+        with self._lock:
+            candidate = dict(self._english)
+            for surface, phonemes in validated.items():
+                if surface not in candidate:
+                    raise UserDictionaryInputError(
+                        f"English dictionary word no longer exists: {surface}"
+                    )
+                entry = candidate[surface]
+                candidate[surface] = EnglishUserDictionaryEntry(
+                    surface=entry.surface,
+                    phonemes=phonemes,
+                )
+            if candidate == self._english:
+                return
+            try:
+                _atomic_write(self.english_path, self._serialize_english(candidate))
+            except Exception as exc:
+                raise UserDictionaryStorageError(
+                    "English dictionary stresses could not be persisted"
+                ) from exc
+            self._english = candidate
+
     def set_english_entry(
         self,
         surface: str,
