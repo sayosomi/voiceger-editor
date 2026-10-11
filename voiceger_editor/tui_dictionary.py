@@ -1119,8 +1119,11 @@ class TuiDictionaryController:
                 return ()
             if owner.has_pending and (
                 (key in _ENTER_KEYS and editor.selection != "preview")
-                or key in (_ESCAPE, "a", "x", "f", "q", "Q", "\x03")
-                or (isinstance(key, str) and key in "1234567890")
+                or key in (_ESCAPE, "\x03")
+                or (isinstance(key, str) and (
+                    key.lower() in {"a", "x", "f", "q"}
+                    or key in "1234567890"
+                ))
             ):
                 self._deferred_list_key = key
                 owner.force_save()
