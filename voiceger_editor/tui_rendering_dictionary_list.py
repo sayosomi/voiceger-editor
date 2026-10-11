@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from .english_stress import english_phonemes_to_editor_state
 from .pronunciation import parse_pronunciation
-from .tui_display import _adjustable_value, _display_width, _japanese_mora_tokens
+from .tui_display import _display_width, _japanese_mora_tokens, format_english_phonemes
 from .tui_rendering_editor_common import EditorDocumentBuilder
-from .tui_rendering_shared import _numbered_shortcut_token, adjustment_press_direction
+from .tui_rendering_shared import _numbered_shortcut_token
 from .tui_shortcuts import menu_item
 
 
@@ -158,15 +157,7 @@ def build_dictionary_list_document(builder: EditorDocumentBuilder) -> bool:
         for index, entry in enumerate(entries):
             key = ("entry", index)
             number_token = _numbered_shortcut_token(index + 1, len(entries))
-            phonemes = " ".join(entry.phonemes)
-            state = english_phonemes_to_editor_state(entry.phonemes)
-            if len(state.primary_stress_vowel_positions) == 1 and len(state.vowel_stresses) > 1:
-                phonemes = _adjustable_value(
-                    phonemes,
-                    adjustment_press_direction(
-                        builder.state, "dictionary", "list_stress"
-                    ) if editor.selection == key else None,
-                )
+            phonemes = format_english_phonemes(entry.phonemes)
             wrapped_selectable_text(
                 key,
                 _dictionary_list_row(
