@@ -1150,6 +1150,23 @@ class TuiDictionaryController:
                 if was_number_jump or self._number_jump.active:
                     return ()
                 return self._preview_list_word()
+            if (
+                editor.kind == "dictionary_english_list"
+                and key in (curses.KEY_LEFT, curses.KEY_RIGHT)
+                and isinstance(editor.selection, tuple)
+                and editor.selection[0] == "entry"
+            ):
+                direction = -1 if key == curses.KEY_LEFT else 1
+                try:
+                    changed = self._stress.move(editor, direction)
+                except ValueError as exc:
+                    return (UpdateStatusIntent(error_status(f"Stress was not changed: {exc}")),)
+                return adjustment_feedback_intents(
+                    changed=changed,
+                    area="dictionary",
+                    control="list_stress",
+                    direction=direction,
+                )
 
         return None
 
@@ -1374,20 +1391,6 @@ class TuiDictionaryController:
                         changed=changed,
                         area="dictionary",
                         control="list_accent",
-                        direction=direction,
-                    )
-                if editor.kind == "dictionary_english_list" and (
-                    isinstance(editor.selection, tuple)
-                    and editor.selection[0] == "entry"
-                ):
-                    try:
-                        changed = self._stress.move(editor, direction)
-                    except ValueError as exc:
-                        return (UpdateStatusIntent(error_status(f"Stress was not changed: {exc}")),)
-                    return adjustment_feedback_intents(
-                        changed=changed,
-                        area="dictionary",
-                        control="list_stress",
                         direction=direction,
                     )
                 if editor.selection == "sort":
