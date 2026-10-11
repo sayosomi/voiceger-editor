@@ -15,6 +15,7 @@ DictionaryOperationIdentity = Literal[
     "generate_english_pronunciation",
     "save_japanese",
     "save_japanese_list_accents",
+    "save_english_list_stresses",
     "save_english",
     "delete_japanese",
     "delete_english",
