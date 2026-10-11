@@ -43,6 +43,7 @@ from .tui_dictionary_entry import (
     _reading_morae,
 )
 from .tui_dictionary_accent import JapaneseListAccentOwner
+from .tui_dictionary_stress import EnglishListStressOwner
 from .tui_dictionary_import import DictionaryImportOwner
 from .tui_dictionary_operations import (
     DictionaryLanguage,
@@ -91,6 +92,7 @@ class TuiDictionaryController:
         self._output_dir = output_dir or (lambda: Path("."))
         self._list_state = DictionaryListStateOwner(core)
         self._accent = JapaneseListAccentOwner(core)
+        self._stress = EnglishListStressOwner(core)
         self._deferred_list_key: Any | None = None
         self._number_jump = NumberedListJump()
         self._import_owner = DictionaryImportOwner(
@@ -227,33 +229,53 @@ class TuiDictionaryController:
         else:
             self.editor = parent
 
+    def _list_save_owner(self, editor: EditorState | None = None):
+        editor = self.editor if editor is None else editor
+        if editor is None:
+            return None
+        if editor.kind == "dictionary_japanese_list":
+            return self._accent
+        if editor.kind == "dictionary_english_list":
+            return self._stress
+        return None
+
     @property
     def has_unsaved_list_accents(self) -> bool:
-        return self._accent.has_pending
+        """Existing TuiApp API covers both languages' pending list edits."""
+        return self._accent.has_pending or self._stress.has_pending
 
     def defer_quit_for_accents(self) -> tuple[EditorIntent, ...]:
-        """Request a save before quitting; completion resumes Quit."""
-        if not self._accent.has_pending:
+        """Request a pending list save before quitting; completion resumes Quit."""
+        if not self.has_unsaved_list_accents:
             return (QuitIntent(),)
+        owner = self._list_save_owner()
+        if owner is None:
+            return (UpdateStatusIntent(error_status("Cannot quit while dictionary edits are pending.")),)
         self._deferred_list_key = "q"
-        self._accent.force_save()
-        return (UpdateStatusIntent(info_status("Saving dictionary accents before quitting…")),)
+        owner.force_save()
+        return (UpdateStatusIntent(info_status("Saving dictionary changes before quitting…")),)
 
     def pending_accent_commit(
         self, *, operation_busy: bool, now: float | None = None
     ) -> tuple[DictionaryControllerIntent, ...]:
         editor = self.editor
-        if editor is None:
+        owner = self._list_save_owner(editor)
+        if owner is None or editor is None:
             return ()
-        request = self._accent.begin(editor, operation_busy=operation_busy, now=now)
+        request = owner.begin(editor, operation_busy=operation_busy, now=now)
         return (request,) if request is not None else ()
 
     def _list_payload(self, view: DictionaryListView) -> dict[str, Any]:
         is_japanese = view.word_type_filter is not None
         return {
-            "entries": self._accent.overlay(view.entries) if is_japanese else view.entries,
+            "entries": (
+                self._accent.overlay(view.entries)
+                if is_japanese else self._stress.overlay(view.entries)
+            ),
             "accent_pending": is_japanese and self._accent.has_pending,
             "accent_saving": is_japanese and self._accent.inflight is not None,
+            "stress_pending": not is_japanese and self._stress.has_pending,
+            "stress_saving": not is_japanese and self._stress.inflight is not None,
             "entry_ids": view.identities,
             "entry_index": view.focused_index,
             "sort_mode": view.sort_mode,
@@ -777,27 +799,33 @@ class TuiDictionaryController:
         return ()
 
     def _complete_list_accent_operation(
-        self, error: BaseException | None,
+        self, error: BaseException | None, *, language: DictionaryLanguage = "ja",
     ) -> tuple[DictionaryControllerIntent, ...]:
-        self._accent.complete(error)
+        owner = self._accent if language == "ja" else self._stress
+        owner.complete(error)
         editor = self.editor
-        if editor is not None and editor.kind == "dictionary_japanese_list":
+        expected = "dictionary_japanese_list" if language == "ja" else "dictionary_english_list"
+        if editor is not None and editor.kind == expected:
             previous_selection = editor.selection
             self._remember_list_focus(editor)
-            self.editor = self._japanese_list_state()
+            self.editor = (
+                self._japanese_list_state()
+                if language == "ja" else self._english_list_state()
+            )
             if isinstance(previous_selection, str):
                 self.editor.selection = previous_selection
         if error is not None:
             self._deferred_list_key = None
+            label = "Japanese dictionary accents" if language == "ja" else "English dictionary stresses"
             return (
                 UpdateStatusIntent(error_status(
-                    f"Japanese dictionary accents were not saved; restored previous values: {error}"
+                    f"{label} were not saved; restored previous values: {error}"
                 )),
                 ClearAdjustmentFeedbackIntent(),
             )
-        if self._accent.has_pending:
+        if owner.has_pending:
             if self._deferred_list_key is not None:
-                self._accent.force_save()
+                owner.force_save()
             return ()
         key = self._deferred_list_key
         self._deferred_list_key = None
@@ -813,8 +841,12 @@ class TuiDictionaryController:
     ) -> tuple[DictionaryControllerIntent, ...]:
         """Route worker results to the owner of the originating Dictionary flow."""
 
-        if request.operation == "save_japanese_list_accents":
-            return self._complete_list_accent_operation(error)
+        if request.operation in {
+            "save_japanese_list_accents", "save_english_list_stresses"
+        }:
+            return self._complete_list_accent_operation(
+                error, language="ja" if request.language == "ja" else "en"
+            )
 
         editor = self.editor
         if editor is not request.originating_editor:
