@@ -141,7 +141,7 @@ class DictionaryListPreviewAndAccentTests(DictionaryControllerTestCase):
         self.assertEqual(self.key(" "), ())
         self.assertEqual(self.key("p"), ())
 
-    def test_english_preview_is_read_only_and_left_right_does_not_adjust(self):
+    def test_english_preview_and_optimistic_inline_stress(self):
         self.core.english["hello"] = en_word(
             "hello", ["HH", "AH0", "L", "OW1"]
         )
@@ -155,8 +155,13 @@ class DictionaryListPreviewAndAccentTests(DictionaryControllerTestCase):
             self.assertEqual(segments[0].text, "hello")
             self.assertEqual(list(segments[0].phonemes), ["HH", "AH0", "L", "OW1"])
             self.assertEqual(self.controller.editor.selection, ("entry", 0))
-        self.key(curses.KEY_RIGHT)
+        self.key(curses.KEY_LEFT)
+        # The visible edit is optimistic; the committed dictionary is unchanged.
         self.assertEqual(self.core.list_english_entries(), before)
+        self.assertEqual(
+            self.controller.editor.payload["entries"][0].phonemes,
+            ["HH", "AH1", "L", "OW0"],
+        )
 
     def test_preview_action_enter_targets_remembered_word_and_empty_is_safe(self):
         self._japanese()

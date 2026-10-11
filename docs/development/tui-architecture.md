@@ -55,7 +55,9 @@ Keyboard interaction and presentation conventions are documented separately in [
 | `voiceger_editor/tui_rendering_settings.py` | Settings and Audio Output Settings document construction. |
 | `voiceger_editor/tui_rendering_dictionary.py` | Dictionary menu/import/filter/entry/detail document construction and delegation to its focused word-list renderer. |
 | `voiceger_editor/tui_rendering_dictionary_list.py` | Japanese/English Dictionary word-list rendering, preview action placement, pending-accent save presentation, list row layout/formatting, and list sort labels. |
-| `voiceger_editor/tui_dictionary_accent.py` | Japanese Dictionary word-list inline accent adjustments, optimistic pending overlay, debounce/coalescing, immutable save snapshots, and completion reconciliation; persistence is delegated to UserDictionaryCore. |
+| `voiceger_editor/tui_dictionary_accent.py` | Japanese Dictionary word-list mora-bounded inline accent adjustments and optimistic visible overlay; persistence is delegated to UserDictionaryCore. |
+| `voiceger_editor/tui_dictionary_stress.py` | English Dictionary word-list vowel-bounded primary stress adjustments using the existing ARPAbet stress helpers and optimistic visible overlay; persistence is delegated to UserDictionaryCore. |
+| `voiceger_editor/tui_dictionary_inline_edits.py` | Shared Japanese/English Dictionary list debounce/coalescing, pending edit snapshots, serialization through the existing Dictionary worker, and completion reconciliation / rollback. |
 | `voiceger_editor/tui_display.py` | Pure display-cell width; wrapping and truncation; cursor movement across wrapped input; phoneme and display-formatting helpers. |
 
 ## Dependency direction

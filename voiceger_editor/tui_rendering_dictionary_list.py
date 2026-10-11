@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Sequence
 
 from .pronunciation import parse_pronunciation
-from .tui_display import _display_width, _japanese_mora_tokens
+from .tui_display import _display_width, _japanese_mora_tokens, format_english_phonemes
 from .tui_rendering_editor_common import EditorDocumentBuilder
 from .tui_rendering_shared import _numbered_shortcut_token
 from .tui_shortcuts import menu_item
@@ -147,18 +147,23 @@ def build_dictionary_list_document(builder: EditorDocumentBuilder) -> bool:
                 if filter_active and total_count
                 else "  No English dictionary words."
             )
+        if editor.payload.get("stress_saving"):
+            plain("  Saving stress changes…")
+        elif editor.payload.get("stress_pending"):
+            plain("  Unsaved stress changes (auto-save pending)")
         surface_column_width = _dictionary_surface_column_width(
             tuple(str(entry.surface) for entry in entries)
         )
         for index, entry in enumerate(entries):
             key = ("entry", index)
             number_token = _numbered_shortcut_token(index + 1, len(entries))
+            phonemes = format_english_phonemes(entry.phonemes)
             wrapped_selectable_text(
                 key,
                 _dictionary_list_row(
                     number_token,
                     str(entry.surface),
-                    " ".join(entry.phonemes),
+                    phonemes,
                     surface_column_width,
                 ),
             )
