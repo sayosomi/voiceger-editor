@@ -141,7 +141,7 @@ class DictionaryListPreviewAndAccentTests(DictionaryControllerTestCase):
         self.assertEqual(self.key(" "), ())
         self.assertEqual(self.key("p"), ())
 
-    def test_english_preview_is_read_only_and_left_right_does_not_adjust(self):
+    def test_english_preview_and_optimistic_inline_stress(self):
         self.core.english["hello"] = en_word(
             "hello", ["HH", "AH0", "L", "OW1"]
         )
