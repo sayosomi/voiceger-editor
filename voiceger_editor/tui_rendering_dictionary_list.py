@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Sequence
 
+from .english_stress import english_phonemes_to_editor_state
 from .pronunciation import parse_pronunciation
-from .tui_display import _display_width, _japanese_mora_tokens
+from .tui_display import _adjustable_value, _display_width, _japanese_mora_tokens
 from .tui_rendering_editor_common import EditorDocumentBuilder
-from .tui_rendering_shared import _numbered_shortcut_token
+from .tui_rendering_shared import _numbered_shortcut_token, adjustment_press_direction
 from .tui_shortcuts import menu_item
 
 
@@ -147,18 +148,31 @@ def build_dictionary_list_document(builder: EditorDocumentBuilder) -> bool:
                 if filter_active and total_count
                 else "  No English dictionary words."
             )
+        if editor.payload.get("stress_saving"):
+            plain("  Saving stress changes…")
+        elif editor.payload.get("stress_pending"):
+            plain("  Unsaved stress changes (auto-save pending)")
         surface_column_width = _dictionary_surface_column_width(
             tuple(str(entry.surface) for entry in entries)
         )
         for index, entry in enumerate(entries):
             key = ("entry", index)
             number_token = _numbered_shortcut_token(index + 1, len(entries))
+            phonemes = " ".join(entry.phonemes)
+            state = english_phonemes_to_editor_state(entry.phonemes)
+            if len(state.primary_stress_vowel_positions) == 1 and len(state.vowel_stresses) > 1:
+                phonemes = _adjustable_value(
+                    phonemes,
+                    adjustment_press_direction(
+                        builder.state, "dictionary", "list_stress"
+                    ) if editor.selection == key else None,
+                )
             wrapped_selectable_text(
                 key,
                 _dictionary_list_row(
                     number_token,
                     str(entry.surface),
-                    " ".join(entry.phonemes),
+                    phonemes,
                     surface_column_width,
                 ),
             )
