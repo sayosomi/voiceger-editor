@@ -32,9 +32,10 @@ completes.
 In the Japanese list, Left / Right moves the focused word's accent one mora at
 a time without wrapping. In the English list, Left / Right moves the single
 primary ARPAbet stress (`1`) to the previous / next vowel, following BATCH
-ITEM's rule. English words with zero or multiple primary stresses, or fewer than
-two vowels, are not adjustable; the list marks adjustable pronunciations with
-angle brackets.
+ITEM's rule. The primary-stressed vowel is enclosed in square brackets,
+as on BATCH ITEM (for example, `Z [UW1] N D AA0 M OW0 N`). The brackets
+follow the primary stress when it moves. English words with zero or multiple
+primary stresses, or fewer than two vowels, are not adjustable.
 
 Changes appear immediately and are automatically saved in the background;
 rapid adjustments are combined. Leaving a list or opening an editor waits until
