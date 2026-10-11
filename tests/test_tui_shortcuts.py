@@ -87,10 +87,10 @@ class TuiShortcutTests(unittest.TestCase):
             "dictionary_import_japanese_detail": {},
             "dictionary_import_english_detail": {},
             "dictionary_japanese_list": {
-                "s": "sort", "f": "filter", "a": "add", "x": "delete",
+                "s": "sort", "f": "filter", "p": "preview", "a": "add", "x": "delete",
             },
             "dictionary_english_list": {
-                "s": "sort", "f": "filter", "a": "add", "x": "delete",
+                "s": "sort", "f": "filter", "p": "preview", "a": "add", "x": "delete",
             },
             "dictionary_sort": {},
             "dictionary_japanese_filter": {"a": "apply", "c": "clear"},

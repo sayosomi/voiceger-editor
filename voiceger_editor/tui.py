@@ -396,6 +396,11 @@ class TuiApp:
         )
 
     def _activate_quit(self) -> None:
+        if self._dictionary_controller.has_unsaved_list_accents:
+            self._dispatch_editor_intents(
+                self._dictionary_controller.defer_quit_for_accents()
+            )
+            return
         self._help_controller.close()
         self._exit_requested = True
         self._dispatch_operation_effects(self._operations.request_shutdown())
@@ -629,6 +634,11 @@ class TuiApp:
             batch=self._batch.batch,
         )
         self._dispatch_operation_effects(effects)
+        self._dispatch_editor_intents(
+            self._dictionary_controller.pending_accent_commit(
+                operation_busy=self._operations.busy
+            )
+        )
 
     def _dispatch_operation_effects(
         self,

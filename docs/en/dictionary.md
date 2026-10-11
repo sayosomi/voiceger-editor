@@ -24,6 +24,18 @@ elsewhere in the TUI. Keys `1` through `9` open the matching visible word
 directly. With 10 or more visible words, `0` opens explicit number entry; type
 the target number and press Enter.
 
+On a focused word row in either language, press `Space` or `P` to Preview
+without opening its editor. The `[P] Preview` action also appears in the list.
+English Preview uses the stored ARPAbet tokens; it does not change stress.
+
+In the Japanese list, Left / Right moves the focused word's accent one mora at
+a time without wrapping. The displayed accent changes immediately, and changes
+are saved automatically in the background (rapid adjustments are combined).
+Preview uses the currently displayed accent, even before the save completes.
+Leaving the list or opening an editor waits until the pending save is complete.
+If saving fails, the list restores the last committed values and reports an
+error. Left / Right on Sort and Filter keep their existing meanings.
+
 Both lists expose `[S] Sort` and `[F] Filter`. Sort can be cycled with the
 shortcut or with Left / Right while focused. Japanese sort modes are Surface
 ascending/descending, Word type, Priority ascending/descending, and Added

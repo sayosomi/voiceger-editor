@@ -388,7 +388,14 @@ class TuiOperations:
         )
 
         self._pending_worker = (work, "voiceger-tui-dictionary")
-        return (UpdateStatusEffect(intent.status),)
+        # Inline list autosave has its own visible progress row; do not
+        # overwrite an unrelated foreground Status message on every debounce.
+        channel = (
+            "background"
+            if intent.request.operation == "save_japanese_list_accents"
+            else "status"
+        )
+        return (UpdateStatusEffect(intent.status, channel=channel),)
 
     def start_pending_worker(self) -> None:
         """Start work deferred until its in-progress Status has been rendered."""
