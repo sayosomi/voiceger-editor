@@ -272,6 +272,7 @@ class TuiDictionaryController:
                 self._accent.overlay(view.entries)
                 if is_japanese else self._stress.overlay(view.entries)
             ),
+            "pitch_events": self._accent.pitch_events() if is_japanese else {},
             "accent_pending": is_japanese and self._accent.has_pending,
             "accent_saving": is_japanese and self._accent.inflight is not None,
             "stress_pending": not is_japanese and self._stress.has_pending,
@@ -1097,9 +1098,10 @@ class TuiDictionaryController:
             return ()
         try:
             if editor.kind == "dictionary_japanese_list":
-                _identity, word = entries[index]
+                identity, word = entries[index]
                 query = _japanese_preview_query(
-                    _reading_morae(word.pronunciation), int(word.accent_type)
+                    _reading_morae(word.pronunciation), int(word.accent_type),
+                    editor.payload.get("pitch_events", {}).get(identity, ()),
                 )
             else:
                 word = entries[index]
@@ -1253,6 +1255,12 @@ class TuiDictionaryController:
             return (QuitIntent(),)
         if key == "?":
             return (OpenHelpIntent(),)
+        if (
+            editor.kind == "dictionary_japanese_entry"
+            and editor.selection == "pronunciation"
+            and key in {"m", "+", "-"}
+        ):
+            return self._entry_owner.change_japanese_peak(key)
 
         if editor.kind in {
             "dictionary_japanese_entry",
