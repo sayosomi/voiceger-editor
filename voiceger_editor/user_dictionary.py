@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -18,6 +19,11 @@ from uuid import UUID, uuid4
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from .english_stress import normalize_english_phonemes
+from .japanese_pitch_metadata import (
+    METADATA_FILENAME, normalize_word_pitch_events, parse_pitch_metadata,
+    serialize_pitch_metadata,
+)
+from .pronunciation import PitchEvent
 from .openjtalk_dictionary import (
     OpenJTalkDictionary,
     OpenJTalkDictionaryError,
@@ -332,11 +338,15 @@ class UserDictionaryCore:
             raise ValueError(
                 "adapter dictionary files must be stored outside Voiceger"
             )
+        self.japanese_pitch_path = self.data_directory / METADATA_FILENAME
+        self.japanese_journal_path = self.data_directory / "user_dict.pending.json"
+        self._recover_japanese_transaction()
         self.openjtalk_dictionary = openjtalk_dictionary or OpenJTalkDictionary(
             self.voiceger_root
         )
         self._lock = RLock()
         self._japanese = self._load_japanese()
+        self._pitch_events = self._load_japanese_pitch_events()
         self._english = self._load_english()
 
     def _read_json_object(self, path: Path) -> dict[str, Any]:
@@ -376,6 +386,108 @@ class UserDictionaryCore:
                 "Japanese dictionary file contains invalid data"
             ) from exc
         return result
+
+    def _recover_japanese_transaction(self) -> None:
+        """Recover the previous complete pair if interrupted between file writes."""
+        journal = self.japanese_journal_path
+        if not journal.exists():
+            return
+        try:
+            data = json.loads(
+                journal.read_text(encoding="utf-8"),
+                object_pairs_hook=_reject_duplicate_keys,
+            )
+            if not isinstance(data, dict) or set(data) != {"version", "files"}:
+                raise ValueError("invalid recovery journal shape")
+            if type(data["version"]) is not int or data["version"] != 1:
+                raise ValueError("unsupported recovery journal version")
+            files = data["files"]
+            if not isinstance(files, list) or len(files) != 2:
+                raise ValueError("invalid recovery files")
+            for value, path in zip(files, (self.japanese_path, self.japanese_pitch_path)):
+                if value is not None and not isinstance(value, str):
+                    raise ValueError("invalid recovery bytes")
+                if value is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    _atomic_write(path, base64.b64decode(value, validate=True))
+            journal.unlink()
+        except Exception as exc:
+            raise UserDictionaryStorageError(
+                "Japanese dictionary recovery journal could not be applied"
+            ) from exc
+
+    @staticmethod
+    def _word_morae(word: UserDictWord) -> tuple[str, ...]:
+        return tuple(_MORA_PATTERN.findall(word.pronunciation))
+
+    def _load_japanese_pitch_events(self) -> dict[str, tuple[PitchEvent, ...]]:
+        if not self.japanese_pitch_path.exists():
+            return {}
+        try:
+            raw = self._read_json_object(self.japanese_pitch_path)
+            return parse_pitch_metadata(
+                raw, self._japanese, self._serialize_japanese(self._japanese),
+                self._word_morae,
+            )
+        except (ValueError, TypeError, KeyError) as exc:
+            raise UserDictionaryStorageError(
+                "Japanese pitch metadata is invalid or does not match the dictionary"
+            ) from exc
+
+    def list_japanese_pitch_events(self) -> dict[str, tuple[PitchEvent, ...]]:
+        """Get immutable multi-peak sequences by stable Japanese word UUID."""
+        with self._lock:
+            return dict(self._pitch_events)
+
+    def get_japanese_pitch_events(self, word_uuid: str) -> tuple[PitchEvent, ...]:
+        normalized_uuid = self._parse_uuid(word_uuid)
+        with self._lock:
+            if normalized_uuid not in self._japanese:
+                raise UserDictionaryInputError("UUIDに該当するワードが見つかりませんでした")
+            return self._pitch_events.get(normalized_uuid, ())
+
+    def _persist_japanese_pair(
+        self,
+        candidate: Mapping[str, UserDictWord],
+        events: Mapping[str, tuple[PitchEvent, ...]],
+    ) -> None:
+        """Journal prior bytes so a partial two-file write is recoverable."""
+        base = self._serialize_japanese(candidate)
+        if not (events or self._pitch_events):
+            _atomic_write(self.japanese_path, base)
+            return
+        metadata = serialize_pitch_metadata(candidate, events, base) if events else None
+        files = (self.japanese_path, self.japanese_pitch_path)
+        previous = tuple(path.read_bytes() if path.exists() else None for path in files)
+        journal = {
+            "version": 1,
+            "files": [
+                None if value is None else base64.b64encode(value).decode("ascii")
+                for value in previous
+            ],
+        }
+        _atomic_write(
+            self.japanese_journal_path,
+            (json.dumps(journal) + "\n").encode("utf-8"),
+        )
+        try:
+            _atomic_write(self.japanese_path, base)
+            if metadata is None:
+                self.japanese_pitch_path.unlink(missing_ok=True)
+            else:
+                _atomic_write(self.japanese_pitch_path, metadata)
+            self.japanese_journal_path.unlink()
+        except Exception as exc:
+            try:
+                self._recover_japanese_transaction()
+            except UserDictionaryStorageError as rollback_error:
+                raise UserDictionaryStorageError(
+                    "Japanese dictionary pair could not be restored; recovery journal retained"
+                ) from rollback_error
+            raise UserDictionaryStorageError(
+                "Japanese dictionary pair could not be persisted"
+            ) from exc
 
     def _load_english(self) -> dict[str, EnglishUserDictionaryEntry]:
         raw = self._read_json_object(self.english_path)
@@ -485,8 +597,59 @@ class UserDictionaryCore:
         except (ValueError, TypeError, ValidationError) as exc:
             raise UserDictionaryInputError(str(exc)) from exc
 
-    def _commit_japanese(self, candidate: dict[str, UserDictWord]) -> None:
+    def _commit_japanese(
+        self,
+        candidate: dict[str, UserDictWord],
+        candidate_metadata: Mapping[str, Sequence[PitchEvent | Mapping[str, Any]]] | None = None,
+    ) -> None:
+        if candidate_metadata is None:
+            # Edits to an old multi-peak reading require an explicit replacement
+            # rather than silently discarding previously saved pitch events.
+            for word_uuid, events in self._pitch_events.items():
+                word = candidate.get(word_uuid)
+                previous = self._japanese[word_uuid]
+                if word is not None and (
+                    word.pronunciation != previous.pronunciation
+                    or word.accent_type != previous.accent_type
+                ):
+                    raise UserDictionaryInputError(
+                        "Japanese multi-peak word requires explicit pitch events when editing pronunciation/accent"
+                    )
+            candidate_metadata = {
+                key: value for key, value in self._pitch_events.items()
+                if key in candidate
+            }
+        normalized: dict[str, tuple[PitchEvent, ...]] = {}
+        try:
+            for word_uuid, events in candidate_metadata.items():
+                if word_uuid not in candidate:
+                    raise ValueError("unknown Japanese pitch metadata UUID")
+                parsed = normalize_word_pitch_events(
+                    candidate[word_uuid], events,
+                    self._word_morae(candidate[word_uuid]),
+                )
+                if parsed:
+                    normalized[word_uuid] = parsed
+        except (ValueError, TypeError, KeyError) as exc:
+            raise UserDictionaryInputError("invalid Japanese pitch metadata") from exc
+        if candidate == self._japanese and normalized == self._pitch_events:
+            return
         if candidate == self._japanese:
+            try:
+                if normalized:
+                    _atomic_write(
+                        self.japanese_pitch_path,
+                        serialize_pitch_metadata(
+                            candidate, normalized, self._serialize_japanese(candidate),
+                        ),
+                    )
+                else:
+                    self.japanese_pitch_path.unlink(missing_ok=True)
+            except OSError as exc:
+                raise UserDictionaryStorageError(
+                    "Japanese pitch metadata could not be persisted"
+                ) from exc
+            self._pitch_events = normalized
             return
         try:
             with OPENJTALK_LOCK:
@@ -498,7 +661,7 @@ class UserDictionaryCore:
                 )
                 previous = self.openjtalk_dictionary.activate_entries(candidate)
                 try:
-                    _atomic_write(self.japanese_path, self._serialize_japanese(candidate))
+                    self._persist_japanese_pair(candidate, normalized)
                 except Exception as persist_error:
                     current = self.openjtalk_dictionary.snapshot()
                     try:
@@ -515,6 +678,7 @@ class UserDictionaryCore:
                         "Japanese dictionary could not be persisted"
                     ) from persist_error
                 self._japanese = candidate
+                self._pitch_events = normalized
                 self.openjtalk_dictionary.commit(previous)
         except (UserDictionaryInputError, UserDictionaryStorageError, OpenJTalkDictionaryError):
             raise
@@ -522,6 +686,24 @@ class UserDictionaryCore:
             raise OpenJTalkDictionaryError(
                 "Japanese dictionary compilation or application failed"
             ) from exc
+
+    def update_japanese_pitch_events(
+        self,
+        word_uuid: str,
+        events: Sequence[PitchEvent | Mapping[str, Any]],
+    ) -> None:
+        """Add/replace/remove the extra peaks without recompiling the word CSV."""
+        normalized_uuid = self._parse_uuid(word_uuid)
+        with self._lock:
+            if normalized_uuid not in self._japanese:
+                raise UserDictionaryInputError("UUIDに該当するワードが見つかりませんでした")
+            candidate = dict(self._pitch_events)
+            candidate[normalized_uuid] = events
+            self._commit_japanese(dict(self._japanese), candidate)
+
+    def delete_japanese_pitch_events(self, word_uuid: str) -> None:
+        """Remove extra peaks, leaving the canonical word and accent untouched."""
+        self.update_japanese_pitch_events(word_uuid, ())
 
     def add_japanese_word(
         self,
@@ -531,6 +713,7 @@ class UserDictionaryCore:
         accent_type: int,
         word_type: JapaneseWordType | str | None = None,
         priority: int | None = None,
+        pitch_events: Sequence[PitchEvent | Mapping[str, Any]] = (),
     ) -> str:
         word = self._create_word(
             surface=surface,
@@ -548,7 +731,10 @@ class UserDictionaryCore:
             word_uuid = str(uuid4())
             candidate = dict(self._japanese)
             candidate[word_uuid] = word
-            self._commit_japanese(candidate)
+            metadata = dict(self._pitch_events)
+            if pitch_events:
+                metadata[word_uuid] = pitch_events
+            self._commit_japanese(candidate, metadata)
         return word_uuid
 
     @staticmethod
@@ -567,6 +753,7 @@ class UserDictionaryCore:
         accent_type: int,
         word_type: JapaneseWordType | str | None = None,
         priority: int | None = None,
+        pitch_events: Sequence[PitchEvent | Mapping[str, Any]] | None = None,
     ) -> None:
         normalized_uuid = self._parse_uuid(word_uuid)
         word = self._create_word(
@@ -592,17 +779,20 @@ class UserDictionaryCore:
                 )
             candidate = dict(self._japanese)
             candidate[normalized_uuid] = word
-            self._commit_japanese(candidate)
+            if pitch_events is None:
+                self._commit_japanese(candidate)
+            else:
+                metadata = dict(self._pitch_events)
+                metadata[normalized_uuid] = pitch_events
+                self._commit_japanese(candidate, metadata)
 
     def update_japanese_accents(self, accents: Mapping[str, int]) -> None:
-        """Atomically compile and commit multiple accent-only edits.
-
-        Preserve UUIDs, canonical entry order, and all other word properties.
-        """
+        """Atomically update first accent falls without dropping extra peaks."""
         if not accents:
             return
         with self._lock:
             candidate = dict(self._japanese)
+            metadata = dict(self._pitch_events)
             for raw_uuid, accent in accents.items():
                 word_uuid = self._parse_uuid(raw_uuid)
                 if word_uuid not in candidate:
@@ -617,7 +807,22 @@ class UserDictionaryCore:
                 updated = original.model_copy(deep=True)
                 updated.accent_type = accent
                 candidate[word_uuid] = updated
-            self._commit_japanese(candidate)
+                if word_uuid in metadata and accent != original.accent_type:
+                    old_events = metadata[word_uuid]
+                    first_fall = next(
+                        i for i, event in enumerate(old_events) if event.symbol == "]"
+                    )
+                    adjusted = list(old_events)
+                    try:
+                        adjusted[first_fall] = PitchEvent(accent, "]")
+                        metadata[word_uuid] = normalize_word_pitch_events(
+                            updated, adjusted, self._word_morae(updated),
+                        )
+                    except ValueError as exc:
+                        raise UserDictionaryInputError(
+                            "accent change conflicts with other Japanese pitch events"
+                        ) from exc
+            self._commit_japanese(candidate, metadata)
 
     def delete_japanese_word(self, word_uuid: str) -> None:
         normalized_uuid = self._parse_uuid(word_uuid)
@@ -635,6 +840,7 @@ class UserDictionaryCore:
         entries: Mapping[str, UserDictWord | Mapping[str, Any]],
         *,
         override: bool = False,
+        pitch_events: Mapping[str, Sequence[PitchEvent | Mapping[str, Any]]] | None = None,
     ) -> None:
         if not isinstance(entries, Mapping):
             raise UserDictionaryInputError("import data must be a UUID-keyed object")
@@ -659,12 +865,33 @@ class UserDictionaryCore:
         except (ValueError, TypeError, ValidationError) as exc:
             raise UserDictionaryInputError(str(exc)) from exc
 
+        incoming_metadata: dict[str, Sequence[PitchEvent | Mapping[str, Any]]] = {}
+        if pitch_events is not None:
+            if not isinstance(pitch_events, Mapping):
+                raise UserDictionaryInputError("pitch metadata must be UUID-keyed")
+            for raw_uuid, events in pitch_events.items():
+                word_uuid = self._parse_uuid(raw_uuid)
+                if word_uuid in incoming_metadata or word_uuid not in imported:
+                    raise UserDictionaryInputError("invalid imported pitch metadata UUID")
+                incoming_metadata[word_uuid] = events
+
         with self._lock:
             candidate = dict(self._japanese)
+            metadata = dict(self._pitch_events)
             for word_uuid, word in imported.items():
                 if override or word_uuid not in candidate:
+                    previous_word = candidate.get(word_uuid)
                     candidate[word_uuid] = word
-            self._commit_japanese(candidate)
+                    if pitch_events is not None:
+                        metadata.pop(word_uuid, None)
+                        if word_uuid in incoming_metadata:
+                            metadata[word_uuid] = incoming_metadata[word_uuid]
+                    elif previous_word is not None and (
+                        previous_word.pronunciation != word.pronunciation
+                        or previous_word.accent_type != word.accent_type
+                    ):
+                        metadata.pop(word_uuid, None)
+            self._commit_japanese(candidate, metadata)
 
     @staticmethod
     def _english_key(surface: str) -> str:

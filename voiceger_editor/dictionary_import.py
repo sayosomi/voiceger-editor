@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 import json
+import re
 from pathlib import Path
 from typing import Any, Union
 from uuid import UUID
@@ -13,6 +14,8 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from .openjtalk_dictionary import expand_word_type, validate_imported_pos
+from .japanese_pitch_metadata import parse_pitch_metadata
+from .pronunciation import PitchEvent
 from .user_dictionary import (
     EnglishUserDictionaryEntry,
     JapaneseWordType,
@@ -21,6 +24,7 @@ from .user_dictionary import (
     UserDictionaryInputError,
     classify_japanese_entry,
     japanese_logical_identity,
+    serialize_japanese_dictionary,
 )
 
 
@@ -47,6 +51,8 @@ class ParsedDictionaryImport:
     source_path: Path
     japanese_entries: tuple[tuple[str, UserDictWord], ...] = ()
     english_entries: tuple[EnglishUserDictionaryEntry, ...] = ()
+    japanese_pitch_events: tuple[tuple[str, tuple[PitchEvent, ...]], ...] = ()
+    native_pitch_metadata: bool = False
 
 
 @dataclass(frozen=True)
@@ -188,12 +194,48 @@ def _parse_english(
 
 
 def load_dictionary_import(path: str | Path) -> ParsedDictionaryImport:
-    """Read, detect, and fully validate one supported dictionary file."""
-
+    """Read one legacy dictionary or a declared three-file native backup."""
     source_path, raw = _read_json_object(path)
     values = list(raw.values())
+    native = re.fullmatch(
+        r"\d{12}_user_dict_with_pitch_events(?:-\d+)?\.json",
+        source_path.name,
+    )
+    if native and not all(isinstance(value, Mapping) for value in values):
+        raise DictionaryImportError("native pitch backup must contain Japanese words")
     if all(isinstance(value, Mapping) for value in values):
-        return _parse_japanese(source_path, raw)
+        parsed = _parse_japanese(source_path, raw)
+        if native is None:
+            return parsed
+        sidecar_path = source_path.with_name(
+            source_path.name.replace(
+                "_user_dict_with_pitch_events", "_user_dict_pitch_events", 1
+            )
+        )
+        if not sidecar_path.is_file():
+            raise DictionaryImportError(
+                "native backup declares pitch metadata but accompanying file is missing"
+            )
+        try:
+            metadata_path, metadata_raw = _read_json_object(sidecar_path)
+            del metadata_path
+            words = dict(parsed.japanese_entries)
+            from .user_dictionary import _MORA_PATTERN
+            events = parse_pitch_metadata(
+                metadata_raw, words, serialize_japanese_dictionary(words),
+                lambda word: tuple(_MORA_PATTERN.findall(word.pronunciation)),
+            )
+        except (DictionaryImportError, ValueError, TypeError, KeyError) as exc:
+            raise DictionaryImportError(
+                "native Japanese pitch metadata is incomplete or invalid"
+            ) from exc
+        return ParsedDictionaryImport(
+            format=parsed.format,
+            source_path=source_path,
+            japanese_entries=parsed.japanese_entries,
+            japanese_pitch_events=tuple(events.items()),
+            native_pitch_metadata=True,
+        )
     if all(isinstance(value, list) for value in values):
         return _parse_english(source_path, raw)
     raise DictionaryImportError("unsupported or mixed dictionary import shape")
@@ -237,7 +279,14 @@ class JapaneseDictionaryImportReview:
         self,
         base_entries: Mapping[str, UserDictWord],
         entries: Sequence[tuple[str, UserDictWord]],
+        *,
+        base_pitch_events: Mapping[str, tuple[PitchEvent, ...]] | None = None,
+        incoming_pitch_events: Mapping[str, tuple[PitchEvent, ...]] | None = None,
+        native_pitch_metadata: bool = False,
     ) -> None:
+        self._base_pitch_events = dict(base_pitch_events or {})
+        self._incoming_pitch_events = dict(incoming_pitch_events or {})
+        self._native_pitch_metadata = native_pitch_metadata
         self._base_entries = {
             word_uuid: word.model_copy(deep=True)
             for word_uuid, word in base_entries.items()
@@ -299,6 +348,13 @@ class JapaneseDictionaryImportReview:
             raise DictionaryImportError(str(exc)) from exc
 
         relation = DictionaryImportRelation(classification.relation.value)
+        if (
+            self._native_pitch_metadata
+            and relation is DictionaryImportRelation.EXACT
+            and self._incoming_pitch_events.get(candidate.source_uuid, ())
+                != self._base_pitch_events.get(classification.existing_uuid, ())
+        ):
+            relation = DictionaryImportRelation.CONFLICT
         if (
             relation is DictionaryImportRelation.NEW
             and candidate.source_uuid in self._base_entries
@@ -378,8 +434,15 @@ class JapaneseDictionaryImportReview:
             raise DictionaryImportError(
                 "Japanese dictionary changed after import review was prepared"
             )
+        if self._native_pitch_metadata and (
+            core.list_japanese_pitch_events() != self._base_pitch_events
+        ):
+            raise DictionaryImportError(
+                "Japanese pitch metadata changed after import review was prepared"
+            )
 
         selected: dict[str, UserDictWord] = {}
+        selected_events: dict[str, tuple[PitchEvent, ...]] = {}
         imported = 0
         replaced = 0
         for candidate in self._candidates:
@@ -397,8 +460,17 @@ class JapaneseDictionaryImportReview:
                 target_uuid = candidate.source_uuid
                 imported += 1
             selected[target_uuid] = candidate.incoming.model_copy(deep=True)
+            if candidate.source_uuid in self._incoming_pitch_events:
+                selected_events[target_uuid] = self._incoming_pitch_events[
+                    candidate.source_uuid
+                ]
 
-        core.import_japanese(selected, override=True)
+        if self._native_pitch_metadata:
+            core.import_japanese(
+                selected, override=True, pitch_events=selected_events,
+            )
+        else:
+            core.import_japanese(selected, override=True)
         self._committed = True
         return DictionaryImportCommitResult(
             imported=imported,
@@ -536,6 +608,12 @@ def plan_dictionary_import(
         return JapaneseDictionaryImportReview(
             core.list_japanese_entries(),
             parsed.japanese_entries,
+            base_pitch_events=(
+                core.list_japanese_pitch_events()
+                if parsed.native_pitch_metadata else None
+            ),
+            incoming_pitch_events=dict(parsed.japanese_pitch_events),
+            native_pitch_metadata=parsed.native_pitch_metadata,
         )
     if parsed.format is DictionaryImportFormat.ENGLISH:
         return EnglishDictionaryImportReview(

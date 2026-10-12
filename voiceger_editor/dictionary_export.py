@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
+from .japanese_pitch_metadata import serialize_pitch_metadata
+
 from .user_dictionary import (
     UserDictionaryCore,
     serialize_english_dictionary,
@@ -19,6 +21,7 @@ class DictionaryExportResult:
     """Paths created by one dictionary export operation."""
 
     paths: tuple[Path, ...]
+    lossy_pitch_event_uuids: tuple[str, ...] = ()
 
 
 def _timestamp_prefix(timestamp: datetime | None) -> str:
@@ -85,15 +88,24 @@ def export_voiceger_editor_dictionaries(
 ) -> DictionaryExportResult:
     """Export native Japanese and English dictionaries as one paired operation."""
 
-    japanese = serialize_japanese_dictionary(core.list_japanese_entries())
+    words = core.list_japanese_entries()
+    japanese = serialize_japanese_dictionary(words)
     english = serialize_english_dictionary(core.list_english_entries())
+    events = getattr(core, "list_japanese_pitch_events", lambda: {})()
+    payloads = (
+        ("user_dict", japanese),
+        ("english_user_dict", english),
+    )
+    if events:
+        payloads = (
+            ("user_dict_with_pitch_events", japanese),
+            ("english_user_dict", english),
+            ("user_dict_pitch_events", serialize_pitch_metadata(words, events, japanese)),
+        )
     return _export_payloads(
         output_dir=output_dir,
         timestamp=timestamp,
-        payloads=(
-            ("user_dict", japanese),
-            ("english_user_dict", english),
-        ),
+        payloads=payloads,
     )
 
 
@@ -106,8 +118,13 @@ def export_voicevox_dictionary(
     """Export the Japanese dictionary in VOICEVOX-compatible form."""
 
     japanese = serialize_japanese_dictionary(core.list_japanese_entries())
-    return _export_payloads(
+    result = _export_payloads(
         output_dir=output_dir,
         timestamp=timestamp,
         payloads=(("voicevox_user_dict", japanese),),
+    )
+    events = getattr(core, "list_japanese_pitch_events", lambda: {})()
+    return DictionaryExportResult(
+        paths=result.paths,
+        lossy_pitch_event_uuids=tuple(events),
     )

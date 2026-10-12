@@ -875,8 +875,17 @@ class TuiDictionaryController:
 
         editor.error = EMPTY_STATUS
         filenames = ", ".join(path.name for path in value.paths)
+        lossy = getattr(value, "lossy_pitch_event_uuids", ())
+        if lossy:
+            outcome = warning_status(
+                f"VOICEVOX export complete: {filenames}. {len(lossy)} word(s) "
+                "have extra pitch peaks that VOICEVOX cannot import; "
+                "use Voiceger Editor native export for a lossless backup."
+            )
+        else:
+            outcome = f"Dictionary export complete: {filenames}"
         return (
-            UpdateStatusIntent(f"Dictionary export complete: {filenames}"),
+            UpdateStatusIntent(outcome),
             ClearAdjustmentFeedbackIntent(),
         )
 

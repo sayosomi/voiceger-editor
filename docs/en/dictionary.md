@@ -226,6 +226,32 @@ UUID-keyed expanded UserDictWord JSON shape used for Japanese import:
 
 The English dictionary is not included in VOICEVOX export.
 
+When Japanese words have additional pitch events, native export writes three
+separate JSON files with a shared collision suffix:
+
+    YYYYMMDDHHMM_user_dict_with_pitch_events.json
+    YYYYMMDDHHMM_english_user_dict.json
+    YYYYMMDDHHMM_user_dict_pitch_events.json
+
+The first file remains ordinary VOICEVOX-compatible Japanese JSON. Its
+with_pitch_events filename declares that the accompanying pitch-events file
+is required. Importing this Japanese file automatically loads and validates
+the sidecar. An incomplete or mismatched backup is rejected before changes.
+Keep all three files together. Older two-file native exports and standalone
+VOICEVOX JSON files remain supported.
+
+Local Voiceger Editor pitch events live in user_dict_pitch_events.json next to
+user_dict.json. The version-1 sidecar is keyed by stable word UUID and stores
+the reading, mora count and the ordered afterMora/symbol events. It includes
+the SHA-256 digest of the canonical Japanese dictionary bytes. The normal
+Japanese JSON and OpenJTalk CSV never carry extra pitch events.
+
+VOICEVOX export always contains only standard Japanese JSON with one accent
+per word. Additional peaks are not transferable to VOICEVOX and will be lost
+on import there. Use native export for lossless Voiceger Editor backup.
+The export core reports affected UUIDs for frontend warning display.
+
+
 Exports are written to the current Settings.output_dir, the same configured
 output directory used for accepted audio. Existing files are never overwritten.
 If a name already exists, Voiceger Editor adds -2, -3, and so on before the
