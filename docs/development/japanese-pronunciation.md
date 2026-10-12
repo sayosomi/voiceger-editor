@@ -32,7 +32,9 @@ The editable kana notation follows the core VOICEVOX / AquesTalk-style accent ru
 Rules in the supported subset:
 
 - `'` follows the mora selected as the accent position.
-- Every accent phrase contains exactly one `'`.
+- Legacy single-peak phrases contain exactly one `'`.
+- Adapter-only multi-peak phrases use explicit `[` (rise) and `]` (fall) markers **after complete morae**, with no `'` inside that phrase. Their events must alternate, begin after mora 1, occur at distinct non-final mora boundaries, and agree with the first standard fall/accent.
+- Markers inside a small-kana digraph, mixed `'` / `[` / `]` syntax, or malformed sequences are rejected.
 - `/` separates adjacent accent phrases when no punctuation appears between them.
 - `。`, `、`, `？`, `！`, and `…` are ordered pronunciation items and may appear between phrases or at the end.
 - ASCII `.`, `,`, `?`, and `!` are accepted while editing and canonicalized to `。`, `、`, `？`, and `！`.
@@ -50,7 +52,11 @@ Examples:
 デ'モ、ホント'ウ…    -> comma and ellipsis remain in sequence
 ```
 
-The internal `accent` value is 1-based and matches the mora immediately before `'`. Internally, `Pronunciation` stores an ordered sequence of `AccentPhrase` and `PronunciationPunctuation` items; punctuation is not modeled as only a final sentence terminator.
+The internal `accent` value is 1-based and matches the mora immediately before `'` for legacy input. For multi-peak phrases, it is the index of the **first fall** (the VOICEVOX-compatible projection). Internally, `Pronunciation` stores an ordered sequence of `AccentPhrase` and `PronunciationPunctuation` items. An `AccentPhrase` optionally carries an immutable ordered tuple of `PitchEvent(after_mora, symbol)` values; these are not phrase separators or punctuation.
+
+For example, `ス[タ]ック[チャ]ンヲ/ツク'ッタ/ノダ'！` produces `s u [ t a ] cl k u [ ch a ] N o # ts u [ k u ] cl t a # n o [ d a !` at the Japanese G2P hook. The second rise/fall does **not** introduce `#`; the two existing `/` boundaries still do. Legacy `スタ'ックチャンヲ/ツク'ッタ/ノダ'！` retains its previous token stream. `ー` repeats the previous vowel, `ッ` maps to its own mora, and small kana stays attached to the preceding base kana.
+
+This explicit notation is a shared-core representation; editor/Dictionary UI adoption and word matching belong to later Issues (#274–#276). Spaces and `/` retain their existing real-boundary semantics.
 
 ## 3. Public API model
 
@@ -86,7 +92,23 @@ The adapter also emits optional `pronunciationPunctuation` metadata. Each entry 
 }
 ```
 
-`kana` remains the readable canonical representation. Synthesis reconstructs pronunciation from `accent_phrases` plus punctuation metadata. Queries created before this metadata existed still use the legacy final-terminator fallback.
+`kana` remains the **VOICEVOX-compatible legacy projection** (one `'` per real accent phrase), even when extra peaks exist. Synthesis reconstructs pronunciation from `accent_phrases`, optional `pronunciationPitchEvents`, and punctuation metadata. The adapter-specific `pronunciationPitchEvents` array is omitted for legacy queries; when present it carries the **complete, ordered event sequence** for affected phrases only, not an alteration of the standard `accent` field:
+
+```json
+{
+  "accentPhraseIndex": 0,
+  "events": [
+    {"afterMora": 1, "symbol": "["},
+    {"afterMora": 2, "symbol": "]"},
+    {"afterMora": 4, "symbol": "["},
+    {"afterMora": 5, "symbol": "]"}
+  ]
+}
+```
+
+Indexes in `pronunciationPitchEvents` are **global** across `accent_phrases`, including mixed Japanese-English queries. They are converted to local segment indexes only when constructing per-segment pronunciation; persisted JSON/session snapshots retain global indexes. Malformed, duplicated, out-of-range, unordered, or accent-inconsistent events are rejected instead of being ignored. Editing/removing Japanese phrases shifts or clears only the affected event records. Legacy accent-move operations reject an affected multi-peak phrase instead of silently collapsing its events.
+
+Queries created before the punctuation metadata existed still use the legacy final-terminator fallback. Adapter-unaware VOICEVOX consumers may ignore the extension and continue using single-accent `accent_phrases` and `kana` (without the extra events). This is a deliberate, lossy compatibility projection; native adapter query/session JSON preserves the extension losslessly.
 
 For Japanese-English mixed input, `voicegerSegments` is additionally present to preserve the English text and map Japanese sections to the corresponding `accent_phrases`. Japanese segments carry their own `pronunciationPunctuation` metadata so punctuation stays attached to the Japanese sequence.
 
