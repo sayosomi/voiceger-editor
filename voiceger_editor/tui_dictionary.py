@@ -40,6 +40,7 @@ from .tui_dictionary_entry import (
     DictionaryEntryOwner,
     _english_preview_query,
     _japanese_preview_query,
+    _katakana_notation,
     _reading_morae,
 )
 from .tui_dictionary_accent import JapaneseListAccentOwner
@@ -705,6 +706,8 @@ class TuiDictionaryController:
         name = editor.active_field
         value = editor.input_value
         try:
+            if editor.kind == "dictionary_japanese_pronunciation" and name == "pronunciation":
+                editor.input_value = _katakana_notation(value)
             if (
                 editor.kind
                 in {
