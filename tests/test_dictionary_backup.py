@@ -214,13 +214,10 @@ class BackupTests(unittest.TestCase):
         invalid_manifest = {"version": 2, "members": {
             name: hashlib.sha256(data).hexdigest() for name, data in members.items()
         }}
-        cases = [
-            self._rewrite(members, manifest=invalid_manifest),
-        ]
-        # Overwrite the test path for each case rather than retaining two paths
-        # that point to the same file.
+        version_path = self.root / "version.zip"
+        version_path.write_bytes(self._rewrite(members, manifest=invalid_manifest).read_bytes())
+        cases = [version_path]
         for name, change in [
-            ("wrong_hash", {**members, "english_user_dict.json": b"{}\n"}),
             ("missing", {"user_dict.json": members["user_dict.json"]}),
             ("traversal", {**members, "../x": b"bad"}),
         ]:
@@ -228,6 +225,18 @@ class BackupTests(unittest.TestCase):
             malformed = self._rewrite(change)
             path.write_bytes(malformed.read_bytes())
             cases.append(path)
+        wrong_digest = {
+            "version": 1,
+            "members": {
+                name: hashlib.sha256(data).hexdigest() for name, data in members.items()
+            },
+        }
+        wrong_digest["members"]["english_user_dict.json"] = "0" * 64
+        wrong_path = self.root / "wrong_hash.zip"
+        wrong_path.write_bytes(
+            self._rewrite(members, manifest=wrong_digest).read_bytes()
+        )
+        cases.append(wrong_path)
         before = self.target.list_japanese_entries()
         for path in cases:
             with self.subTest(name=path.name):
