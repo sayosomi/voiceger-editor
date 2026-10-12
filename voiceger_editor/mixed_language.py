@@ -264,6 +264,9 @@ def build_mixed_synthesis_plan(query: AudioQuery) -> MixedSynthesisPlan:
             segment_phrases,
             punctuation=segment.pronunciationPunctuation,
             terminator=resolve_japanese_segment_terminator(segment),
+            pitch_events=pitch_events_for_range(
+                query.pronunciationPitchEvents, start, len(segment_phrases)
+            ),
         )
         japanese_overrides.append(
             (
