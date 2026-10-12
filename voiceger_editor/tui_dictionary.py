@@ -728,7 +728,7 @@ class TuiDictionaryController:
         self, editor: EditorState, key: Any, *, screen_width: int,
     ) -> tuple[DictionaryControllerIntent, ...]:
         """Own active text editing, completion, and one-level cancel handling."""
-            if key in _ENTER_KEYS:
+        if key in _ENTER_KEYS:
             return self._finish_field()
         if key == _ESCAPE:
             if editor.kind in {
