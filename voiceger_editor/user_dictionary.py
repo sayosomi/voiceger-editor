@@ -571,6 +571,28 @@ class UserDictionaryCore:
     ) -> bytes:
         return serialize_english_dictionary(entries)
 
+    def native_dictionary_backup_snapshot(
+        self,
+    ) -> tuple[
+        dict[str, UserDictWord],
+        dict[str, EnglishUserDictionaryEntry],
+        dict[str, tuple[PitchEvent, ...]],
+    ]:
+        """Take one coherent detached backup snapshot under the dictionary lock."""
+
+        with self._lock:
+            return (
+                {
+                    uuid: word.model_copy(deep=True)
+                    for uuid, word in self._japanese.items()
+                },
+                {
+                    surface: entry.model_copy(deep=True)
+                    for surface, entry in self._english.items()
+                },
+                dict(self._pitch_events),
+            )
+
     def list_japanese_entries(self) -> dict[str, UserDictWord]:
         with self._lock:
             return {
