@@ -126,7 +126,7 @@ Editable kana:
 POST /accent_phrases?text=キョ'ーワ/アメデスネ'。&speaker=3&is_kana=true
 ```
 
-This provides the VOICEVOX-style path for converting AquesTalk-style notation back into structured accent phrases.
+This provides the VOICEVOX-style path for converting **legacy single-accent** AquesTalk-style notation back into structured accent phrases. Because this endpoint returns only the standard accent-phrase list, it rejects explicit multi-peak bracket notation instead of silently dropping pitch events. To transport additional peaks, use the optional `AudioQuery.pronunciationPitchEvents` extension with `/synthesis`.
 
 ### POST /synthesis
 
