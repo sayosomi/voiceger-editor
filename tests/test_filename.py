@@ -14,27 +14,30 @@ from voiceger_editor.filename import (
 class FileNameTests(unittest.TestCase):
     timestamp = datetime(2026, 10, 7, 19, 45, 23)
 
-    def test_default_template_preserves_existing_minute_resolution_name(self):
-        self.assertEqual(DEFAULT_FILENAME_TEMPLATE, "{YYYYMMDDHHmm}_{caption}")
+    def test_default_template_includes_style_at_minute_resolution(self):
+        self.assertEqual(DEFAULT_FILENAME_TEMPLATE, "{YYYYMMDDHHmm}_{style}_{caption}")
         self.assertEqual(
             build_output_filename(
                 text="今日はhelloと言うよ。",
+                style="Neutral",
                 timestamp=self.timestamp,
             ),
-            "202610071945_今日はhelloと言うよ。.wav",
+            "202610071945_Neutral_今日はhelloと言うよ。.wav",
         )
 
     def test_default_template_ignores_seconds(self):
         source = "同じ分です。"
         first = build_output_filename(
             text=source,
+            style="Neutral",
             timestamp=datetime(2026, 10, 1, 20, 45, 0),
         )
         second = build_output_filename(
             text=source,
+            style="Neutral",
             timestamp=datetime(2026, 10, 1, 20, 45, 59),
         )
-        self.assertEqual(first, "202610012045_同じ分です。.wav")
+        self.assertEqual(first, "202610012045_Neutral_同じ分です。.wav")
         self.assertEqual(second, first)
 
     def test_supported_date_time_tokens_and_named_variables_render_together(self):
@@ -108,11 +111,12 @@ class FileNameTests(unittest.TestCase):
         source = "12345678901とても長い発話です。"
         result = build_output_filename(
             text=source,
+            style="Neutral",
             timestamp=datetime(2026, 9, 27, 17, 55, 6),
         )
         self.assertEqual(
             result,
-            f"202609271755_{source}.wav",
+            f"202609271755_Neutral_{source}.wav",
         )
         self.assertNotIn("…", result)
 
