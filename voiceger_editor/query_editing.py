@@ -27,6 +27,7 @@ from .voicevox_query import (
     pronunciation_punctuation,
     pronunciation_to_accent_phrases,
     pronunciation_pitch_events,
+    pronunciation_to_legacy_kana,
     pitch_events_for_range,
 )
 
@@ -262,7 +263,7 @@ def replace_japanese_pronunciation(
         parsed = _parse_replacement(pronunciation)
         updated = query.model_copy(deep=True)
         updated.accent_phrases = pronunciation_to_accent_phrases(parsed)
-        updated.kana = format_pronunciation(parsed)
+        updated.kana = pronunciation_to_legacy_kana(parsed)
         updated.pronunciationPunctuation = pronunciation_punctuation(parsed)
         updated.pronunciationPitchEvents = pronunciation_pitch_events(parsed)
         return updated
@@ -348,7 +349,7 @@ def japanese_preview_query(
         updated.pronunciationPitchEvents, start, count
     )
     preview.voicegerSegments = None
-    preview.kana = format_pronunciation(pronunciation_value)
+    preview.kana = pronunciation_to_legacy_kana(pronunciation_value)
     preview.pronunciationPunctuation = pronunciation_punctuation(
         pronunciation_value
     )
@@ -372,7 +373,7 @@ def replace_japanese_section_text(
 
     if segment is None:
         updated.accent_phrases = replacement_phrases
-        updated.kana = format_pronunciation(pronunciation)
+        updated.kana = pronunciation_to_legacy_kana(pronunciation)
         updated.pronunciationPunctuation = pronunciation_punctuation(
             pronunciation
         )
@@ -440,7 +441,7 @@ def _isolated_japanese_segment_query(
         query.pronunciationPitchEvents, start, count
     )
     preview.voicegerSegments = None
-    preview.kana = format_pronunciation(pronunciation)
+    preview.kana = pronunciation_to_legacy_kana(pronunciation)
     preview.pronunciationPunctuation = pronunciation_punctuation(pronunciation)
     return preview
 
@@ -668,7 +669,7 @@ def delete_utterance_section(
             pitch_events=updated.pronunciationPitchEvents,
         )
         updated.voicegerSegments = None
-        updated.kana = format_pronunciation(pronunciation)
+        updated.kana = pronunciation_to_legacy_kana(pronunciation)
         updated.pronunciationPunctuation = pronunciation_punctuation(
             pronunciation
         )
@@ -701,7 +702,7 @@ def _refresh_pure_japanese_kana(query: AudioQuery) -> None:
         terminator=_pure_japanese_terminator(query),
         pitch_events=query.pronunciationPitchEvents,
     )
-    query.kana = format_pronunciation(pronunciation)
+    query.kana = pronunciation_to_legacy_kana(pronunciation)
 
 
 def move_japanese_accent(
