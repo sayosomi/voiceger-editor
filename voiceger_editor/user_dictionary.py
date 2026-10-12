@@ -340,6 +340,8 @@ class UserDictionaryCore:
             )
         self.japanese_pitch_path = self.data_directory / METADATA_FILENAME
         self.japanese_journal_path = self.data_directory / "user_dict.pending.json"
+        self.backup_journal_path = self.data_directory / "dictionaries.pending.json"
+        self._recover_backup_transaction()
         self._recover_japanese_transaction()
         self.openjtalk_dictionary = openjtalk_dictionary or OpenJTalkDictionary(
             self.voiceger_root
@@ -386,6 +388,45 @@ class UserDictionaryCore:
                 "Japanese dictionary file contains invalid data"
             ) from exc
         return result
+
+    def _recover_backup_transaction(self) -> None:
+        """Complete rollback after an interrupted three-file dictionary operation."""
+
+        journal = self.backup_journal_path
+        if not journal.exists():
+            return
+        try:
+            data = json.loads(
+                journal.read_text(encoding="utf-8"),
+                object_pairs_hook=_reject_duplicate_keys,
+            )
+            if not isinstance(data, dict) or set(data) != {"version", "files"}:
+                raise ValueError("invalid dictionary backup journal")
+            if type(data["version"]) is not int or data["version"] != 1:
+                raise ValueError("invalid dictionary backup journal version")
+            files = data["files"]
+            if not isinstance(files, list) or len(files) != 3:
+                raise ValueError("invalid dictionary backup journal members")
+            decoded: list[bytes | None] = []
+            for value in files:
+                if value is not None and not isinstance(value, str):
+                    raise ValueError("invalid dictionary backup journal bytes")
+                decoded.append(
+                    None if value is None else base64.b64decode(value, validate=True)
+                )
+            paths = (
+                self.japanese_path, self.english_path, self.japanese_pitch_path
+            )
+            for path, previous in zip(paths, decoded):
+                if previous is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    _atomic_write(path, previous)
+            journal.unlink()
+        except Exception as exc:
+            raise UserDictionaryStorageError(
+                "dictionary backup recovery journal could not be applied"
+            ) from exc
 
     def _recover_japanese_transaction(self) -> None:
         """Recover the previous complete pair if interrupted between file writes."""
@@ -902,6 +943,156 @@ class UserDictionaryCore:
                     ):
                         metadata.pop(word_uuid, None)
             self._commit_japanese(candidate, metadata)
+
+    def apply_dictionary_snapshot(
+        self,
+        japanese: Mapping[str, UserDictWord],
+        english: Mapping[str, EnglishUserDictionaryEntry],
+        pitch_events: Mapping[str, Sequence[PitchEvent | Mapping[str, Any]]],
+        *,
+        expected_japanese: Mapping[str, UserDictWord],
+        expected_english: Mapping[str, EnglishUserDictionaryEntry],
+        expected_pitch_events: Mapping[str, tuple[PitchEvent, ...]],
+    ) -> None:
+        """Commit Japanese, English and pitch data together with crash recovery.
+
+        Validate and stage every replacement before activating or writing anything.
+        A journal covers all three persistent files; OpenJTalk state is restored
+        on failure and in-memory snapshots change only after persistence succeeds.
+        """
+        prepared_japanese: dict[str, UserDictWord] = {}
+        prepared_english: dict[str, EnglishUserDictionaryEntry] = {}
+        identities: set[tuple[str, JapaneseWordType]] = set()
+        english_identities: set[str] = set()
+        prepared_events: dict[str, tuple[PitchEvent, ...]] = {}
+        try:
+            for raw_uuid, value in japanese.items():
+                uuid = self._parse_uuid(raw_uuid)
+                word = UserDictWord.model_validate(
+                    value.model_dump(mode="python") if isinstance(value, UserDictWord) else value
+                )
+                validate_imported_pos(word.model_dump())
+                identity = japanese_logical_identity(word)
+                if uuid in prepared_japanese or identity in identities:
+                    raise ValueError("duplicate Japanese backup entry")
+                prepared_japanese[uuid] = word
+                identities.add(identity)
+            for surface, value in english.items():
+                entry = EnglishUserDictionaryEntry.model_validate(
+                    value.model_dump(mode="python")
+                    if isinstance(value, EnglishUserDictionaryEntry) else value
+                )
+                key = self._english_key(surface)
+                if surface != entry.surface or key in english_identities:
+                    raise ValueError("duplicate or mismatched English backup entry")
+                english_identities.add(key)
+                prepared_english[surface] = entry
+            for raw_uuid, values in pitch_events.items():
+                uuid = self._parse_uuid(raw_uuid)
+                if uuid not in prepared_japanese or uuid in prepared_events:
+                    raise ValueError("orphaned or duplicate Japanese backup pitch events")
+                word = prepared_japanese[uuid]
+                normalized = normalize_word_pitch_events(
+                    word, values, self._word_morae(word)
+                )
+                if not normalized:
+                    raise ValueError("empty Japanese backup pitch events")
+                prepared_events[uuid] = normalized
+        except (TypeError, ValueError, ValidationError) as exc:
+            raise UserDictionaryInputError("invalid combined dictionary snapshot") from exc
+
+        with self._lock, OPENJTALK_LOCK:
+            if (
+                list(self._japanese.items()) != list(expected_japanese.items())
+                or list(self._english.items()) != list(expected_english.items())
+                or self._pitch_events != expected_pitch_events
+            ):
+                raise UserDictionaryInputError(
+                    "dictionary changed after backup review was prepared"
+                )
+            if (
+                list(self._japanese.items()) == list(prepared_japanese.items())
+                and list(self._english.items()) == list(prepared_english.items())
+                and self._pitch_events == prepared_events
+            ):
+                return
+
+            japanese_changed = list(self._japanese.items()) != list(
+                prepared_japanese.items()
+            )
+            previous_runtime = None
+            if japanese_changed:
+                self.openjtalk_dictionary.ensure_active(
+                    self._japanese, force=True
+                )
+                previous_runtime = self.openjtalk_dictionary.activate_entries(
+                    prepared_japanese
+                )
+
+            paths = (
+                self.japanese_path, self.english_path, self.japanese_pitch_path
+            )
+            try:
+                previous_bytes = [
+                    path.read_bytes() if path.exists() else None for path in paths
+                ]
+                base = serialize_japanese_dictionary(prepared_japanese)
+                metadata = (
+                    serialize_pitch_metadata(prepared_japanese, prepared_events, base)
+                    if prepared_events else None
+                )
+                journal = {
+                    "version": 1,
+                    "files": [
+                        None if value is None
+                        else base64.b64encode(value).decode("ascii")
+                        for value in previous_bytes
+                    ],
+                }
+                _atomic_write(
+                    self.backup_journal_path,
+                    (json.dumps(journal) + "\n").encode("utf-8"),
+                )
+                _atomic_write(self.japanese_path, base)
+                _atomic_write(
+                    self.english_path,
+                    serialize_english_dictionary(prepared_english),
+                )
+                if metadata is None:
+                    self.japanese_pitch_path.unlink(missing_ok=True)
+                else:
+                    _atomic_write(self.japanese_pitch_path, metadata)
+                self.backup_journal_path.unlink()
+            except Exception as exc:
+                try:
+                    self._recover_backup_transaction()
+                except UserDictionaryStorageError as rollback_error:
+                    raise UserDictionaryStorageError(
+                        "combined dictionary backup failed; recovery journal retained"
+                    ) from rollback_error
+                finally:
+                    if previous_runtime is not None:
+                        current = self.openjtalk_dictionary.snapshot()
+                        try:
+                            self.openjtalk_dictionary.restore(previous_runtime)
+                        except Exception as restore_error:
+                            raise UserDictionaryStorageError(
+                                "combined dictionary backup rollback could not restore OpenJTalk"
+                            ) from restore_error
+                        if (
+                            current.compilation is not None
+                            and current.compilation is not previous_runtime.compilation
+                        ):
+                            current.compilation.close()
+                raise UserDictionaryStorageError(
+                    "combined dictionary backup could not be persisted"
+                ) from exc
+
+            self._japanese = prepared_japanese
+            self._english = prepared_english
+            self._pitch_events = prepared_events
+            if previous_runtime is not None:
+                self.openjtalk_dictionary.commit(previous_runtime)
 
     @staticmethod
     def _english_key(surface: str) -> str:
