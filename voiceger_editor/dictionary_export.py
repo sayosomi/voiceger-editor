@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
+from .japanese_pitch_metadata import serialize_pitch_metadata
+
 from .user_dictionary import (
     UserDictionaryCore,
     serialize_english_dictionary,
@@ -19,6 +21,7 @@ class DictionaryExportResult:
     """Paths created by one dictionary export operation."""
 
     paths: tuple[Path, ...]
+    lossy_pitch_event_uuids: tuple[str, ...] = ()
 
 
 def _timestamp_prefix(timestamp: datetime | None) -> str:
