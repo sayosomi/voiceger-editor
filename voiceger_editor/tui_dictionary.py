@@ -724,6 +724,48 @@ class TuiDictionaryController:
         editor.error = EMPTY_STATUS
         return (UpdateStatusIntent(""),)
 
+    def _handle_active_field_key(
+        self, editor: EditorState, key: Any, *, screen_width: int,
+    ) -> tuple[DictionaryControllerIntent, ...]:
+        """Own active text editing, completion, and one-level cancel handling."""
+            if key in _ENTER_KEYS:
+            return self._finish_field()
+        if key == _ESCAPE:
+            if editor.kind in {
+                "dictionary_japanese_filter",
+                "dictionary_english_filter",
+            }:
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            if editor.kind == "dictionary_import_path":
+                self._import_owner._clear_import_state()
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            if editor.kind == "dictionary_japanese_pronunciation":
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            return self._entry_owner._back_from_entry()
+        input_width = 1
+        if key in (curses.KEY_UP, curses.KEY_DOWN):
+            prefix = self._input_prefix(editor)
+            input_width = max(
+                1,
+                screen_width - 1 - _display_width(prefix),
+            )
+        edit = apply_text_edit_key(
+            editor.input_value,
+            editor.input_cursor,
+            key,
+            input_width=input_width,
+        )
+        if edit.handled:
+            editor.input_value = edit.value
+            editor.input_cursor = edit.cursor
+            if edit.edit_attempted:
+                editor.error = EMPTY_STATUS
+        return ()
+
+
     def _move_dynamic_selection(self, delta: int) -> tuple[EditorIntent, ...]:
         editor = self.editor
         if editor is None:
@@ -1248,42 +1290,9 @@ class TuiDictionaryController:
             )
 
         if editor.active_field is not None:
-            if key in _ENTER_KEYS:
-                return self._finish_field()
-            if key == _ESCAPE:
-                if editor.kind in {
-                    "dictionary_japanese_filter",
-                    "dictionary_english_filter",
-                }:
-                    self._restore_parent()
-                    return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
-                if editor.kind == "dictionary_import_path":
-                    self._import_owner._clear_import_state()
-                    self._restore_parent()
-                    return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
-                if editor.kind == "dictionary_japanese_pronunciation":
-                    self._restore_parent()
-                    return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
-                return self._entry_owner._back_from_entry()
-            input_width = 1
-            if key in (curses.KEY_UP, curses.KEY_DOWN):
-                prefix = self._input_prefix(editor)
-                input_width = max(
-                    1,
-                    screen_width - 1 - _display_width(prefix),
-                )
-            edit = apply_text_edit_key(
-                editor.input_value,
-                editor.input_cursor,
-                key,
-                input_width=input_width,
+            return self._handle_active_field_key(
+                editor, key, screen_width=screen_width,
             )
-            if edit.handled:
-                editor.input_value = edit.value
-                editor.input_cursor = edit.cursor
-                if edit.edit_attempted:
-                    editor.error = EMPTY_STATUS
-            return ()
 
         list_key = self._handle_list_prelude_key(key)
         if list_key is not None:
