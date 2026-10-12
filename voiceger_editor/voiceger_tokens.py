@@ -72,6 +72,11 @@ def accent_phrase_to_voiceger_tokens(
 
     tokens: list[str] = []
     mora_count = len(phrase.morae)
+    explicit_events = (
+        {event.after_mora: event.symbol for event in phrase.pitch_events}
+        if phrase.pitch_events is not None
+        else None
+    )
 
     for mora_index, mora in enumerate(phrase.morae, start=1):
         if mora == "ー":
@@ -89,6 +94,13 @@ def accent_phrase_to_voiceger_tokens(
                 )
 
         tokens.extend(phones)
+
+        if explicit_events is not None:
+            # A separate internal pitch event never introduces a phrase '#'.
+            marker = explicit_events.get(mora_index)
+            if marker is not None:
+                tokens.append(marker)
+            continue
 
         # Mirrors the pitch-event shape produced by Voiceger's OpenJTalk path:
         # - atamadaka (accent=1): fall after mora 1;
