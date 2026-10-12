@@ -7,6 +7,7 @@ from typing import List, Optional, Sequence, Tuple
 from .pronunciation import (
     AccentPhrase as CoreAccentPhrase,
     Pronunciation,
+    PitchEvent,
     PronunciationPunctuation as CorePronunciationPunctuation,
     format_pronunciation,
 )
@@ -16,6 +17,8 @@ from .voicevox_api_models import (
     AudioQuery,
     Mora,
     PronunciationPunctuation,
+    JapanesePitchEvent,
+    PronunciationPitchEvents,
 )
 
 
@@ -114,17 +117,68 @@ def pronunciation_punctuation(
     return result
 
 
+def pronunciation_pitch_events(
+    value: Pronunciation,
+) -> Optional[List[PronunciationPitchEvents]]:
+    """Serialize explicit internal events, omitting extension for legacy input."""
+
+    records: List[PronunciationPitchEvents] = []
+    for index, phrase in enumerate(value.phrases):
+        if phrase.pitch_events is not None:
+            records.append(
+                PronunciationPitchEvents(
+                    accentPhraseIndex=index,
+                    events=[
+                        JapanesePitchEvent(
+                            afterMora=event.after_mora,
+                            symbol=event.symbol,
+                        )
+                        for event in phrase.pitch_events
+                    ],
+                )
+            )
+    return records or None
+
+
+def pitch_events_for_range(
+    records: Optional[Sequence[PronunciationPitchEvents]],
+    start: int,
+    count: int,
+) -> Optional[List[PronunciationPitchEvents]]:
+    """Slice global query metadata to a segment's relative phrase indices."""
+
+    selected = [
+        record.model_copy(update={"accentPhraseIndex": record.accentPhraseIndex - start}, deep=True)
+        for record in (records or ())
+        if start <= record.accentPhraseIndex < start + count
+    ]
+    return selected or None
+
+
 def accent_phrases_to_pronunciation(
     accent_phrases: Sequence[AccentPhrase],
     *,
     punctuation: Optional[Sequence[PronunciationPunctuation]] = None,
     terminator: Optional[str] = None,
+    pitch_events: Optional[Sequence[PronunciationPitchEvents]] = None,
 ) -> Pronunciation:
     if not accent_phrases:
         raise ValueError("accent_phrases must not be empty")
 
+    events_by_phrase: dict[int, tuple[PitchEvent, ...]] = {}
+    previous_index = -1
+    for record in pitch_events or ():
+        index = record.accentPhraseIndex
+        if index <= previous_index or index >= len(accent_phrases):
+            raise ValueError("pitch event phrase indices must be unique, ordered and in range")
+        previous_index = index
+        events_by_phrase[index] = tuple(
+            PitchEvent(event.afterMora, event.symbol)
+            for event in record.events
+        )
+
     core_phrases: list[CoreAccentPhrase] = []
-    for phrase in accent_phrases:
+    for index, phrase in enumerate(accent_phrases):
         morae = tuple(mora.text for mora in phrase.moras)
         if not morae:
             raise ValueError("accent phrase must contain at least one mora")
@@ -132,6 +186,7 @@ def accent_phrases_to_pronunciation(
             CoreAccentPhrase(
                 morae=morae,
                 accent=phrase.accent,
+                pitch_events=events_by_phrase.get(index),
             )
         )
 
@@ -182,4 +237,5 @@ def build_audio_query(
         outputStereo=False,
         kana=format_pronunciation(pronunciation),
         pronunciationPunctuation=pronunciation_punctuation(pronunciation),
+        pronunciationPitchEvents=pronunciation_pitch_events(pronunciation),
     )
