@@ -68,6 +68,8 @@ def pronunciation_to_spoken_text(value: Pronunciation) -> str:
 def resolve_pronunciation(
     text: str,
     pronunciation: Optional[str] = None,
+    *,
+    pitch_words: Any | None = None,
 ) -> tuple[str, Pronunciation, str]:
     """Resolve target text and pronunciation without loading Voiceger."""
 
@@ -76,7 +78,8 @@ def resolve_pronunciation(
     synthesis_text = source if trailing is not None else source + "。"
 
     if pronunciation is None:
-        parsed = text_to_pronunciation(synthesis_text)
+        parsed = (text_to_pronunciation(synthesis_text, pitch_words=pitch_words)
+                  if pitch_words else text_to_pronunciation(synthesis_text))
     else:
         parsed = parse_pronunciation(pronunciation)
         if parsed.trailing_punctuation is None:
@@ -402,6 +405,8 @@ class VoicegerAdapter:
         synthesis_text, parsed, resolved = resolve_pronunciation(
             source_text,
             pronunciation,
+            pitch_words=(self.user_dictionary.japanese_multi_peak_snapshot()
+                         if pronunciation is None else None),
         )
         tokens = pronunciation_to_voiceger_tokens(parsed)
 

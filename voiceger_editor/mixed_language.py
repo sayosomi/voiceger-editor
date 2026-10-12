@@ -17,6 +17,7 @@ from .voicevox_query import (
     build_audio_query,
     pronunciation_punctuation,
     pronunciation_to_accent_phrases,
+    pronunciation_pitch_events,
     pitch_events_for_range,
 )
 
@@ -91,6 +92,14 @@ def detect_language_segments(
     return result
 
 
+def japanese_dictionary_pitch_options(adapter: Any) -> dict[str, Any]:
+    """Opt in to dictionary peaks only when the adapter has an actual snapshot."""
+    dictionary = getattr(adapter, "user_dictionary", None)
+    snapshot = getattr(dictionary, "japanese_multi_peak_snapshot", None)
+    words = snapshot() if callable(snapshot) else {}
+    return {"japanese_pitch_words": words} if words else {}
+
+
 def is_pure_japanese(segments: Sequence[DetectedSegment]) -> bool:
     return bool(segments) and all(segment.language == "ja" for segment in segments)
 
@@ -119,12 +128,18 @@ def build_mixed_audio_query(
     segments: Optional[Sequence[DetectedSegment]] = None,
     english_g2p: Optional[Callable[[str], Sequence[str]]] = None,
     output_sampling_rate: int = 32000,
+    japanese_pitch_words: dict[str, tuple[Any, Sequence[Any]]] | None = None,
 ) -> AudioQuery:
     """Build AudioQuery plus voicegerSegments for mixed-language input."""
 
     detected = list(segments or detect_language_segments(text))
+
+    def prepare_japanese(value: str) -> Pronunciation:
+        if japanese_pitch_words:
+            return text_to_pronunciation(value, pitch_words=japanese_pitch_words)
+        return text_to_pronunciation(value)
     if is_pure_japanese(detected):
-        pronunciation = text_to_pronunciation(text)
+        pronunciation = prepare_japanese(text)
         return build_audio_query(
             pronunciation=pronunciation,
             output_sampling_rate=output_sampling_rate,
@@ -138,13 +153,19 @@ def build_mixed_audio_query(
 
     accent_phrases = []
     extension_segments: List[VoicegerSegment] = []
+    pitch_records = []
 
     for segment in detected:
         if segment.language == "ja":
-            pronunciation = text_to_pronunciation(segment.text)
+            pronunciation = prepare_japanese(segment.text)
             phrases = pronunciation_to_accent_phrases(pronunciation)
             start = len(accent_phrases)
             accent_phrases.extend(phrases)
+            for record in pronunciation_pitch_events(pronunciation) or ():
+                pitch_records.append(record.model_copy(
+                    update={"accentPhraseIndex": start + record.accentPhraseIndex},
+                    deep=True,
+                ))
             extension_segments.append(
                 VoicegerSegment(
                     language="ja",
@@ -194,6 +215,7 @@ def build_mixed_audio_query(
         outputStereo=False,
         kana=None,
         voicegerSegments=extension_segments,
+        pronunciationPitchEvents=pitch_records or None,
     )
 
 

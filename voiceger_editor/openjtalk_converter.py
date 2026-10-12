@@ -18,6 +18,12 @@ from .pronunciation import (
     format_pronunciation,
 )
 from .runtime_locks import OPENJTALK_LOCK
+from .japanese_dictionary_pitch_matching import (
+    PitchWordMatch, build_matched_phrase, match_pitch_words,
+)
+import logging
+
+_LOG = logging.getLogger(__name__)
 
 
 _SMALL_KANA = frozenset("ァィゥェォャュョヮぁぃぅぇぉゃゅょゎ")
@@ -78,57 +84,78 @@ def _phrase_from_nodes(nodes: Sequence[Mapping[str, Any]]) -> AccentPhrase:
 
 def frontend_features_to_pronunciation(
     features: Sequence[Mapping[str, Any]],
+    *,
+    pitch_words: Mapping[str, tuple[Any, Sequence[Any]]] | None = None,
 ) -> Pronunciation:
-    """Convert pyopenjtalk.run_frontend() features to Pronunciation.
+    """Convert frontend nodes and apply only safely aligned dictionary peaks."""
+    active = list(match_pitch_words(features, pitch_words)) if pitch_words else []
 
-    Non-symbol nodes are grouped into accent phrases using chain_flag:
-    chain_flag == 1 continues the previous accent phrase; any other value
-    starts a new one. Supported symbol nodes end the current phrase and are
-    preserved at their original position in canonical editable form.
-    """
+    while True:
+        items: list[AccentPhrase | PronunciationPunctuation] = []
+        current: list[tuple[int, Mapping[str, Any]]] = []
+        unsafe: list[PitchWordMatch] = []
 
-    items: list[AccentPhrase | PronunciationPunctuation] = []
-    current: list[Mapping[str, Any]] = []
-
-    def flush() -> None:
-        nonlocal current
-        if current:
-            items.append(_phrase_from_nodes(current))
+        def flush() -> None:
+            nonlocal current
+            if not current:
+                return
+            span_start = current[0][0]
+            span_end = current[-1][0] + 1
+            inside = [
+                match for match in active
+                if span_start <= match.start and match.end <= span_end
+            ]
+            if inside:
+                try:
+                    items.append(build_matched_phrase(current, inside))
+                except ValueError:
+                    unsafe.extend(inside)
+            else:
+                items.append(_phrase_from_nodes([node for _, node in current]))
             current = []
 
-    for node in features:
-        pos = node.get("pos")
-        if pos == "記号":
-            flush()
-            symbol = node.get("string")
-            punctuation = (
-                canonicalize_punctuation(symbol)
-                if isinstance(symbol, str)
-                else None
+        for index, node in enumerate(features):
+            if node.get("pos") == "記号":
+                flush()
+                symbol = node.get("string")
+                punctuation = (
+                    canonicalize_punctuation(symbol)
+                    if isinstance(symbol, str)
+                    else None
+                )
+                if punctuation is not None:
+                    items.append(PronunciationPunctuation(punctuation))
+                continue
+
+            internal_boundary = any(
+                match.start < index < match.end for match in active
             )
-            if punctuation is not None:
-                items.append(PronunciationPunctuation(punctuation))
+            if current and node.get("chain_flag") != 1 and not internal_boundary:
+                flush()
+            current.append((index, node))
+
+        flush()
+        if unsafe:
+            for match in unsafe:
+                _LOG.warning(
+                    "Skipping unsafe Japanese dictionary pitch match for UUID %s",
+                    match.word_uuid,
+                )
+            active = [match for match in active if match not in unsafe]
             continue
 
-        chain_flag = node.get("chain_flag")
-        if current and chain_flag != 1:
-            flush()
-        current.append(node)
-
-    flush()
-
-    if not any(isinstance(item, AccentPhrase) for item in items):
-        raise OpenJTalkConversionError(
-            "OpenJTalk produced no pronounceable accent phrases"
-        )
-
-    return Pronunciation(items=tuple(items))
+        if not any(isinstance(item, AccentPhrase) for item in items):
+            raise OpenJTalkConversionError(
+                "OpenJTalk produced no pronounceable accent phrases"
+            )
+        return Pronunciation(items=tuple(items))
 
 
 def text_to_pronunciation(
     text: str,
     *,
     run_frontend: Callable[[str], Sequence[Mapping[str, Any]]] | None = None,
+    pitch_words: Mapping[str, tuple[Any, Sequence[Any]]] | None = None,
 ) -> Pronunciation:
     """Analyze Japanese text with pyopenjtalk and return Pronunciation.
 
@@ -148,7 +175,7 @@ def text_to_pronunciation(
 
     with OPENJTALK_LOCK:
         features = run_frontend(text)
-    return frontend_features_to_pronunciation(features)
+    return frontend_features_to_pronunciation(features, pitch_words=pitch_words)
 
 
 def text_to_pronunciation_string(

@@ -6,7 +6,7 @@ from copy import deepcopy
 import json
 from typing import Any, Iterator
 
-from .mixed_language import build_mixed_audio_query
+from .mixed_language import build_mixed_audio_query, japanese_dictionary_pitch_options
 from .output import SavedOutput
 from .settings import Settings
 from .styles import VoicegerStyle, get_style
@@ -144,6 +144,7 @@ class UtteranceSession:
             caption,
             english_g2p=adapter.english_phonemes,
             output_sampling_rate=32000,
+            **japanese_dictionary_pitch_options(adapter),
         )
         _validate_query(query)
         return cls(
@@ -259,6 +260,7 @@ class UtteranceSession:
             self._caption,
             english_g2p=self._adapter.english_phonemes,
             output_sampling_rate=32000,
+            **japanese_dictionary_pitch_options(self._adapter),
         )
         _validate_query(replacement_query)
         replacement_query = deepcopy(replacement_query)

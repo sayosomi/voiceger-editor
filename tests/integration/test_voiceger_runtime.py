@@ -9,7 +9,7 @@ from voiceger_editor.mixed_language import (
     DetectedSegment,
     build_mixed_audio_query,
 )
-from voiceger_editor.pronunciation import parse_pronunciation
+from voiceger_editor.pronunciation import PitchEvent, parse_pronunciation
 from voiceger_editor.query_editing import (
     append_english_section,
     delete_utterance_section,
@@ -27,6 +27,8 @@ from voiceger_editor.synthesis import synthesize_audio_query
 from voiceger_editor.voiceger_adapter import VoicegerAdapter
 from voiceger_editor.user_dictionary import UserDictionaryCore
 from voiceger_editor.openjtalk_converter import text_to_pronunciation
+from voiceger_editor.voiceger_tokens import pronunciation_to_voiceger_tokens
+from voiceger_editor.voicevox_query import accent_phrases_to_pronunciation
 from voiceger_editor.runtime_locks import OPENJTALK_LOCK
 from voiceger_editor.voicevox_query import build_audio_query
 
@@ -441,6 +443,64 @@ class VoicegerIntegrationTests(unittest.TestCase):
         self.assertIsNone(pure.voicegerSegments)
         self.assertEqual(pure_text, japanese_text)
         self.assert_full_synthesis_succeeds(pure)
+
+    def test_priority_five_split_dictionary_word_keeps_internal_peaks(self):
+        """Issue #274: real default-priority morphology and synthesis."""
+        import pyopenjtalk
+
+        adapter = VoicegerAdapter(voiceger_root=self.voiceger_root)
+        caption = "スタックチャンを作ったのだ！"
+        events = (
+            PitchEvent(1, "["), PitchEvent(2, "]"),
+            PitchEvent(4, "["), PitchEvent(5, "]"),
+        )
+        scratch = Path(__file__).resolve().parents[2] / "scratch" / "issue274-e2e"
+        scratch.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(prefix="voiceger-adapter-274-", dir=scratch) as temporary:
+            adapter.user_dictionary = UserDictionaryCore(
+                self.voiceger_root, data_directory=Path(temporary),
+            )
+            uuid = adapter.user_dictionary.add_japanese_word(
+                surface="スタックチャン", pronunciation="スタックチャン",
+                accent_type=2, priority=5, pitch_events=events,
+            )
+            self.assertEqual(
+                adapter.user_dictionary.list_japanese_entries()[uuid].priority, 5
+            )
+            adapter.ensure_japanese_dictionary_active()
+            with OPENJTALK_LOCK:
+                nodes = pyopenjtalk.run_frontend(caption)
+            surfaces = [node["string"] for node in nodes]
+            self.assertTrue(any(
+                surfaces[index:index + 2] == ["スタック", "チャン"]
+                for index in range(len(surfaces) - 1)
+            ), surfaces)
+
+            session = UtteranceSession.from_caption(
+                adapter=adapter, caption=caption, settings=Settings(style_id=3),
+            )
+            session.prepare_from_caption()
+            query = session.query
+            self.assertIsNone(query.voicegerSegments)
+            self.assertEqual(
+                [(item.accentPhraseIndex, [
+                    (event.afterMora, event.symbol) for event in item.events
+                ]) for item in query.pronunciationPitchEvents],
+                [(0, [(1, "["), (2, "]"), (4, "["), (5, "]")])],
+            )
+            parsed = accent_phrases_to_pronunciation(
+                query.accent_phrases, punctuation=query.pronunciationPunctuation,
+                pitch_events=query.pronunciationPitchEvents,
+            )
+            tokens = pronunciation_to_voiceger_tokens(parsed)
+            self.assertEqual(tokens[:16], [
+                "s", "u", "[", "t", "a", "]", "cl", "k", "u",
+                "[", "ch", "a", "]", "N", "o", "#",
+            ])
+            result = synthesize_audio_query(
+                adapter=adapter, query=query, style=self.style
+            )
+            self.assertGreater(len(result["audio"]), 3200)
 
     def test_user_dictionary_live_reload_survives_voiceger_runtime_loading(self):
         adapter = VoicegerAdapter(voiceger_root=self.voiceger_root)
