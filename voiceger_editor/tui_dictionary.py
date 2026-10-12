@@ -790,7 +790,7 @@ class TuiDictionaryController:
                 [item.key for item in menu_items(editor.kind, editor.payload)]
             )
             return ()
-        if editor.kind == "dictionary_import_review":
+        if editor.kind in {"dictionary_import_review", "dictionary_restore_review"}:
             entries = tuple(editor.payload["items"])
             entry_keys = [("import_entry", index) for index in range(len(entries))]
             action_keys = [item.key for item in menu_items(editor.kind, editor.payload)]
@@ -798,6 +798,7 @@ class TuiDictionaryController:
             return ()
         if editor.kind in {
             "dictionary_import_japanese_detail",
+            "dictionary_restore_japanese_detail",
             "dictionary_import_english_detail",
         }:
             apply_movement(
@@ -953,6 +954,13 @@ class TuiDictionaryController:
                     "path",
                     str(self.editor.payload["path"]),
                 )
+            elif selected == "restore":
+                self._stack.append(deepcopy(editor))
+                self._import_owner._clear_import_state()
+                self.editor = self._import_owner._import_path_state(restore=True)
+                return self._begin_field(
+                    "path", str(self.editor.payload["path"]),
+                )
             elif selected == "export":
                 self._stack.append(deepcopy(editor))
                 self.editor = self._export_state()
@@ -965,6 +973,23 @@ class TuiDictionaryController:
             if selected == "voiceger":
                 return self._export_dictionary("voiceger")
             if selected == "voicevox":
+                peaks = getattr(self.core, "list_japanese_pitch_events", lambda: {})()
+                if peaks:
+                    self._stack.append(deepcopy(editor))
+                    self.editor = EditorState(
+                        kind="dictionary_voicevox_loss_confirmation",
+                        title="VOICEVOX EXPORT WARNING",
+                        origin=("dictionary", None),
+                        selection="cancel",
+                        payload={
+                            "warning": (
+                                f"{len(peaks)} Japanese word(s) have additional pitch "
+                                "events. VOICEVOX JSON cannot include these peaks. "
+                                "Export anyway?"
+                            ),
+                        },
+                    )
+                    return (UpdateStatusIntent(""),)
                 return self._export_dictionary("voicevox")
             if selected == "back":
                 self._restore_parent()
@@ -981,6 +1006,37 @@ class TuiDictionaryController:
             if selected == "back":
                 self._import_owner._clear_import_state()
                 self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            return ()
+        if editor.kind == "dictionary_voicevox_loss_confirmation":
+            if selected == "cancel":
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            if selected == "export":
+                self._restore_parent()
+                return self._export_dictionary("voicevox")
+            return ()
+        if editor.kind == "dictionary_restore_confirmation":
+            if selected == "cancel":
+                self.editor = self._import_owner._import_review_state(action="cancel")
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            if selected == "restore":
+                return self._import_owner._commit_dictionary_import(confirmed=True)
+            return ()
+        if editor.kind == "dictionary_restore_review":
+            if selected == "restore":
+                self.editor = self._import_owner._restore_confirmation_state()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            if selected == "cancel":
+                self._import_owner._clear_import_state()
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            if (
+                isinstance(selected, tuple)
+                and selected[0] == "import_entry"
+                and isinstance(selected[1], int)
+            ):
+                self.editor = self._import_owner._import_detail_state(selected[1])
                 return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
             return ()
         if editor.kind == "dictionary_import_review":
@@ -1002,6 +1058,7 @@ class TuiDictionaryController:
             return ()
         if editor.kind in {
             "dictionary_import_japanese_detail",
+            "dictionary_restore_japanese_detail",
             "dictionary_import_english_detail",
         }:
             if selected == "back":
@@ -1328,6 +1385,8 @@ class TuiDictionaryController:
         if editor.kind in {
             "dictionary_delete_confirmation",
             "dictionary_discard_confirmation",
+            "dictionary_restore_confirmation",
+            "dictionary_voicevox_loss_confirmation",
         }:
             interaction = handle_confirmation_key(
                 editor.kind,
@@ -1367,7 +1426,9 @@ class TuiDictionaryController:
             "dictionary_export",
             "dictionary_import_path",
             "dictionary_import_review",
+            "dictionary_restore_review",
             "dictionary_import_japanese_detail",
+            "dictionary_restore_japanese_detail",
             "dictionary_import_english_detail",
         }:
             shortcut = resolve_shortcut(editor.kind, key, editor.payload)
@@ -1411,12 +1472,14 @@ class TuiDictionaryController:
                 return self._entry_owner._back_from_entry()
             if editor.kind in {
                 "dictionary_import_japanese_detail",
+                "dictionary_restore_japanese_detail",
                 "dictionary_import_english_detail",
             }:
                 return self._import_owner._back_from_import_detail()
             if editor.kind in {
                 "dictionary_import_path",
                 "dictionary_import_review",
+                "dictionary_restore_review",
             }:
                 self._import_owner._clear_import_state()
             self._restore_parent()
