@@ -102,6 +102,11 @@ class MultiPeakTests(unittest.TestCase):
             (PitchEvent(1, "]"), PitchEvent(3, "[")),
         )
         self.assertEqual(format_pronunciation(parse_pronunciation(source)), source)
+        # A final closing bracket is also valid for a low-initial two-peak word.
+        self.assertEqual(
+            format_pronunciation(parse_pronunciation("ス[タ]ク[ア]")),
+            "ス[タ]ク[ア]",
+        )
         tokens = pronunciation_to_voiceger_tokens(
             parse_pronunciation(source), mora_g2p=fake_g2p,
         )
@@ -163,7 +168,7 @@ class MultiPeakTests(unittest.TestCase):
         for text in (
             "ス[タ]", "ス[タ]ク'", "ス'タ[ク]ア", "ス[[タ]ク[ア]",
             "ス[タ]]ク[ア]", "スタ[ク]ア[メ]", "ス[タ[ク]ア",
-            "ス[タ]キ[ョ]ア", "ス[タ]ク[ア]", "ス[タ]ク[ア]メ[",
+            "ス[タ]キ[ョ]ア", "ス[タ]ク[ア]メ[",
             "ス[タ]ク[ア]/", "ス[タ]ク[ア]メ]",
         ):
             with self.subTest(text=text), self.assertRaises(PronunciationSyntaxError):
