@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from .pronunciation import AccentPhrase, PitchEvent
+from .pronunciation import (
+    AccentPhrase, PitchEvent, Pronunciation, format_pronunciation,
+)
 from .tui_display import _japanese_mora_tokens
 
 
@@ -17,11 +19,8 @@ def format_dictionary_pitch(
 ) -> str:
     if not events:
         return " ".join(_japanese_mora_tokens(morae, accent or len(morae)))
-    markers = {event.after_mora: event.symbol for event in events}
-    return "".join(
-        f"{mora}{markers.get(index, '')}"
-        for index, mora in enumerate(morae, start=1)
-    )
+    phrase = AccentPhrase(tuple(morae), accent, tuple(events))
+    return format_pronunciation(Pronunciation(phrases=(phrase,)))
 
 
 def move_pitch_marker(

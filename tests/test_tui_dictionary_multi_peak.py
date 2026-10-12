@@ -29,6 +29,24 @@ class JapaneseDictionaryMultiPeakTests(DictionaryControllerTestCase):
         self.assertEqual(visible, MULTI)
         self.assertNotIn("/", visible)
 
+    def test_initial_high_and_final_high_render_as_bracketed_spans(self):
+        initial_high = parse_pronunciation("[シ]コク[メ]タン").phrases[0]
+        last_high = parse_pronunciation("[シ]コク[メタン]").phrases[0]
+        self.assertEqual(
+            format_dictionary_pitch(
+                initial_high.morae, initial_high.accent,
+                initial_high.pitch_events or (),
+            ),
+            "[シ]コク[メ]タン",
+        )
+        self.assertEqual(
+            format_dictionary_pitch(
+                last_high.morae, last_high.accent,
+                last_high.pitch_events or (),
+            ),
+            "[シ]コク[メタン]",
+        )
+
     def test_quick_save_roundtrip_preserves_extra_events_and_default_priority(self):
         editor = self._open_quick()
         self.assertEqual(editor.payload["pitch_events"], EVENTS)

@@ -10,6 +10,8 @@ Rules:
 - `'` follows the mora selected as the accent position;
 - legacy phrases contain exactly one `'`; multi-peak phrases use explicit
   `[` (rise) and `]` (fall) markers after complete morae instead;
+- an initial `[` marks an initially high pitch and a final `]` closes a
+  high span; these optional boundary delimiters do not emit pitch events;
 - `/` separates adjacent accent phrases without explicit punctuation;
 - supported punctuation is preserved in sequence and rendered canonically.
 
@@ -83,8 +85,15 @@ class AccentPhrase:
             events = self.pitch_events
             if not isinstance(events, tuple):
                 raise ValueError("pitch events must be an immutable tuple")
-            if len(events) < 3:
-                raise ValueError("multi-peak phrases require at least three pitch events")
+            if len(events) < 3 and not (
+                len(events) == 2
+                and events[0].symbol == "]"
+                and events[1].symbol == "["
+            ):
+                raise ValueError(
+                    "multi-peak phrases require three pitch events, or "
+                    "an initial fall followed by a final rise"
+                )
             previous = 0
             previous_symbol = None
             for event in events:
@@ -221,12 +230,20 @@ def _parse_phrase(source: str) -> AccentPhrase:
     if not source:
         raise PronunciationSyntaxError("empty accent phrase")
 
+    # The optional opening/closing brackets describe the high region at the
+    # phrase boundaries. They are not Voiceger rise/fall events at mora 0/N.
+    initial_high = source.startswith("[")
+    final_close = source.endswith("]")
+    body = source[1:] if initial_high else source
+    if final_close:
+        body = body[:-1]
+
     morae: list[str] = []
     accent: int | None = None
     events: list[PitchEvent] = []
     marker_just_seen = False
 
-    for ch in source:
+    for ch in body:
         if ch in {"'", "[", "]"}:
             if not morae:
                 raise PronunciationSyntaxError("accent marker must follow a mora")
@@ -272,6 +289,14 @@ def _parse_phrase(source: str) -> AccentPhrase:
             raise PronunciationSyntaxError(
                 "explicit pitch marker cannot follow the final mora"
             )
+        if initial_high and events[0].symbol != "]":
+            raise PronunciationSyntaxError(
+                "initial high bracket requires a fall after the first mora"
+            )
+        if final_close and events[-1].symbol != "[":
+            raise PronunciationSyntaxError(
+                "final closing bracket requires a preceding rise"
+            )
         first_fall = next(
             (event.after_mora for event in events if event.symbol == "]"),
             len(morae),
@@ -281,6 +306,10 @@ def _parse_phrase(source: str) -> AccentPhrase:
         except ValueError as exc:
             raise PronunciationSyntaxError(str(exc)) from exc
 
+    if initial_high or final_close:
+        raise PronunciationSyntaxError(
+            "pitch boundaries require a valid explicit multi-peak phrase"
+        )
     if accent is None:
         raise PronunciationSyntaxError(
             "every legacy accent phrase must contain exactly one accent marker"
@@ -357,6 +386,8 @@ def _format_phrase(phrase: AccentPhrase) -> str:
         if phrase.pitch_events is not None
         else None
     )
+    if event_by_mora is not None and phrase.pitch_events[0].symbol == "]":
+        parts.append("[")  # The phrase begins high; no mora-zero event.
     for index, mora in enumerate(phrase.morae, start=1):
         parts.append(mora)
         if event_by_mora is not None:
@@ -364,6 +395,8 @@ def _format_phrase(phrase: AccentPhrase) -> str:
                 parts.append(event_by_mora[index])
         elif phrase.accent == index:
             parts.append("'")
+    if event_by_mora is not None and phrase.pitch_events[-1].symbol == "[":
+        parts.append("]")  # The high region reaches the phrase end.
     return "".join(parts)
 
 

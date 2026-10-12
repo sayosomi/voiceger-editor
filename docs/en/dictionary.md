@@ -101,7 +101,11 @@ and behavior. For multiple peaks, use explicit `[` rise and `]` fall
 markers, for example `ス[タ]ック[チャ]ン`. Both rise and fall positions
 are typed directly: no new notation, special marker-selection shortcut,
 or automatic conversion is required. Markers must follow complete morae;
-`チャ` is one mora.
+`チャ` is one mora. An optional leading `[` makes an initially high
+mora explicit (`[シ]コク[メ]タン` equals `シ]コク[メ]タン`). A trailing
+`]` may close a high span continuing through the final mora, for example
+`[シ]コク[メタン]`. These edge delimiters are accepted and displayed, but
+do not add extra pitch events or phrase boundaries.
 
 Dictionary readings remain a single accent phrase. A slash `/` splits
 phrases and is not valid within one dictionary word. Additional pitch

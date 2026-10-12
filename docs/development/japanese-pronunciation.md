@@ -34,6 +34,8 @@ Rules in the supported subset:
 - `'` follows the mora selected as the accent position.
 - Legacy single-peak phrases contain exactly one `'`.
 - Adapter-only multi-peak phrases use explicit `[` (rise) and `]` (fall) markers **after complete morae**, with no `'` inside that phrase. Their events must alternate, begin after mora 1, occur at distinct non-final mora boundaries, and agree with the first standard fall/accent.
+- For legibility, an optional leading `[` indicates that the first mora is already high; an optional trailing `]` closes a high range reaching the final mora. These phrase-edge delimiters are not emitted as Voiceger pitch events at positions 0 or N. A first-event fall implies initial high even without the leading delimiter, and a last-event rise implies final high even without a trailing delimiter. The canonical multi-peak formatter includes these visual delimiters.
+- In addition to sequences of three or more real events, a two-event sequence consisting of a first-mora fall followed by a later rise is valid: two high spans, the second continuing to the end. Two-event rise/fall patterns remain single-peak syntax and are not an explicit multi-peak record; the existing `'` notation remains unchanged.
 - Markers inside a small-kana digraph, mixed `'` / `[` / `]` syntax, or malformed sequences are rejected.
 - `/` separates adjacent accent phrases when no punctuation appears between them.
 - `。`, `、`, `？`, `！`, and `…` are ordered pronunciation items and may appear between phrases or at the end.

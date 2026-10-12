@@ -53,7 +53,7 @@ class PronunciationPitchEvents(BaseModel):
     """Adapter extension for one phrase's complete multi-peak event sequence."""
 
     accentPhraseIndex: int = Field(ge=0)
-    events: List[JapanesePitchEvent] = Field(min_length=3)
+    events: List[JapanesePitchEvent] = Field(min_length=2)
 
 
 class VoicegerSegment(BaseModel):
