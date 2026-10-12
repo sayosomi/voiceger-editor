@@ -560,6 +560,18 @@ class DictionaryEntryOwner:
             )
         return ()
 
+    def try_handle_peak_key(
+        self, editor: EditorState, key: Any,
+    ) -> tuple[EditorIntent, ...] | None:
+        """Own Japanese pronunciation marker shortcuts, never generic list navigation."""
+        if (
+            editor.kind != "dictionary_japanese_entry"
+            or editor.selection != "pronunciation"
+            or key not in {"m", "+", "-"}
+        ):
+            return None
+        return self.change_japanese_peak(key)
+
     def change_japanese_peak(self, key: str) -> tuple[EditorIntent, ...]:
         editor = self.editor
         if editor is None or editor.kind != "dictionary_japanese_entry" or editor.selection != "pronunciation":
