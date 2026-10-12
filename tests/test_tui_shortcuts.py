@@ -74,7 +74,7 @@ class TuiShortcutTests(unittest.TestCase):
             },
             "audio_output_settings": {"x": "save_text", "l": "save_lab"},
             "dictionary_menu": {
-                "j": "japanese", "e": "english", "i": "import", "x": "export",
+                "j": "japanese", "e": "english", "i": "import", "r": "restore", "x": "export",
             },
             "batch_recipe_read_path": {"f": "path", "r": "read"},
             "batch_recipe_write_path": {"f": "output", "w": "write"},
@@ -84,6 +84,10 @@ class TuiShortcutTests(unittest.TestCase):
             "dictionary_import_review": {
                 "i": "import_selected", "c": "clear_selection",
             },
+            "dictionary_restore_review": {"r": "restore"},
+            "dictionary_restore_confirmation": {"r": "restore"},
+            "dictionary_voicevox_loss_confirmation": {"e": "export"},
+            "dictionary_restore_japanese_detail": {},
             "dictionary_import_japanese_detail": {},
             "dictionary_import_english_detail": {},
             "dictionary_japanese_list": {
