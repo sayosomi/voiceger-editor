@@ -338,7 +338,7 @@ def japanese_preview_query(
         punctuation=segment.pronunciationPunctuation,
         terminator=resolve_japanese_segment_terminator(segment),
         pitch_events=pitch_events_for_range(
-            query.pronunciationPitchEvents, start, count
+            updated.pronunciationPitchEvents, start, count
         ),
     )
 
