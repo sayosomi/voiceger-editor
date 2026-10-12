@@ -158,7 +158,10 @@ class BatchItemMultiPeakTests(EditorControllerTestCase):
         controller.editor.input_value = changed
         controller.editor.active_field = None
         controller.editor.selection = "save_dictionary"
-        saved = controller.activate_selection(query)
+        saved = controller.handle_key(
+            "\n", settings=self.settings(), query=query,
+            current_caption="四国めたん",
+        )
         self.assertEqual(len(saved), 1)
         self.assertIsInstance(saved[0], SaveToDictionaryIntent)
         self.assertEqual(saved[0].pronunciation, changed)
