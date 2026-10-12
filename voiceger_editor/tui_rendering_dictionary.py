@@ -8,9 +8,9 @@ from .pronunciation import parse_pronunciation
 from .tui_display import (
     _adjustable_value,
     _display_width,
-    _japanese_mora_tokens,
     _truncate_display,
 )
+from .tui_dictionary_pitch import format_dictionary_pitch
 from .tui_rendering_editor_common import EditorDocumentBuilder
 from .tui_rendering_dictionary_list import (
     _DICTIONARY_SORT_LABELS,
@@ -202,11 +202,9 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         plain()
         for index, (_word_uuid, word) in enumerate(editor.payload["matches"]):
             parsed = parse_pronunciation(word.pronunciation + "'")
-            display = " ".join(
-                _japanese_mora_tokens(
-                    parsed.phrases[0].morae,
-                    word.accent_type or len(parsed.phrases[0].morae),
-                )
+            display = format_dictionary_pitch(
+                parsed.phrases[0].morae, word.accent_type,
+                editor.payload.get("pitch_events_by_uuid", {}).get(_word_uuid, ()),
             )
             key = ("entry", index)
             wrapped_selectable_text(key, f"{word.surface}      {display}")
@@ -225,14 +223,24 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         if editor.active_field == "pronunciation":
             input_field("pronunciation", "▶ Pronunciation  ")
         else:
-            display = " ".join(
-                _japanese_mora_tokens(
-                    editor.payload["moras"],
-                    editor.payload["accent"] or len(editor.payload["moras"]),
-                )
+            display = format_dictionary_pitch(
+                editor.payload["moras"],
+                editor.payload["accent"],
+                editor.payload.get("pitch_events", ()),
             )
             marker = "▶ " if editor.selection == "pronunciation" else "  "
             lines.append((f"{marker}Pronunciation  {display}", "pronunciation"))
+            if editor.selection == "pronunciation":
+                events = editor.payload.get("pitch_events", ())
+                if events:
+                    cursor = editor.payload.get("pitch_cursor", 1)
+                    current = events[cursor]
+                    plain(
+                        f"  Marker {cursor + 1}/{len(events)}: {current.symbol} after mora "
+                        f"{current.after_mora}. M select · Left/Right move"
+                    )
+                plain("  [+] Add peak · [-] Remove selected peak · Enter edit reading")
+                plain("  [ and ] navigate dictionary words; / is a real phrase boundary.")
         marker = "▶ " if editor.selection == "word_type" else "  "
         lines.append(
             (
