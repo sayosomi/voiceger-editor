@@ -173,8 +173,20 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
             )
             lines.append((f"{marker}{item.display_label:<14}{value}", key))
         plain()
-        plain("Tokens: YYYY MM DD HH mm ss · {caption} {style}")
         selectable("back")
+        if (
+            editor.selection == "filename_template"
+            or editor.active_field == "filename_template"
+        ):
+            plain()
+            wrap("  ", "Hint: {caption} Caption   {style} Voice style")
+            hint_indent = "        " if width >= 20 else "  "
+            for hint_line in (
+                "Date/time tokens (inside {...}):",
+                "YYYY Year   MM Month   DD Day",
+                "HH Hour     mm Minute  ss Second",
+            ):
+                wrap(hint_indent, hint_line)
     else:
         return False
     return True
