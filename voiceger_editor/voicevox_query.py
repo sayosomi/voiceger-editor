@@ -117,6 +117,17 @@ def pronunciation_punctuation(
     return result
 
 
+def pronunciation_to_legacy_kana(value: Pronunciation) -> str:
+    """Project the adapter's extra peaks to standard single-accent kana."""
+
+    items = tuple(
+        CoreAccentPhrase(item.morae, item.accent)
+        if isinstance(item, CoreAccentPhrase) else item
+        for item in value.items
+    )
+    return format_pronunciation(Pronunciation(items=items))
+
+
 def pronunciation_pitch_events(
     value: Pronunciation,
 ) -> Optional[List[PronunciationPitchEvents]]:
@@ -235,7 +246,7 @@ def build_audio_query(
         pauseLengthScale=1,
         outputSamplingRate=output_sampling_rate,
         outputStereo=False,
-        kana=format_pronunciation(pronunciation),
+        kana=pronunciation_to_legacy_kana(pronunciation),
         pronunciationPunctuation=pronunciation_punctuation(pronunciation),
         pronunciationPitchEvents=pronunciation_pitch_events(pronunciation),
     )
