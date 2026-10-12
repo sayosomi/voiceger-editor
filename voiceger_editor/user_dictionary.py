@@ -787,14 +787,12 @@ class UserDictionaryCore:
                 self._commit_japanese(candidate, metadata)
 
     def update_japanese_accents(self, accents: Mapping[str, int]) -> None:
-        """Atomically compile and commit multiple accent-only edits.
-
-        Preserve UUIDs, canonical entry order, and all other word properties.
-        """
+        """Atomically update first accent falls without dropping extra peaks."""
         if not accents:
             return
         with self._lock:
             candidate = dict(self._japanese)
+            metadata = dict(self._pitch_events)
             for raw_uuid, accent in accents.items():
                 word_uuid = self._parse_uuid(raw_uuid)
                 if word_uuid not in candidate:
@@ -809,18 +807,22 @@ class UserDictionaryCore:
                 updated = original.model_copy(deep=True)
                 updated.accent_type = accent
                 candidate[word_uuid] = updated
-                if word_uuid in self._pitch_events and accent != original.accent_type:
-                    current_events = self._pitch_events[word_uuid]
+                if word_uuid in metadata and accent != original.accent_type:
+                    old_events = metadata[word_uuid]
                     first_fall = next(
-                        index for index, event in enumerate(current_events)
-                        if event.symbol == "]"
+                        i for i, event in enumerate(old_events) if event.symbol == "]"
                     )
-                    adjusted = list(current_events)
-                    adjusted[first_fall] = PitchEvent(accent, "]")
-                    if "metadata" not in locals():
-                        metadata = dict(self._pitch_events)
-                    metadata[word_uuid] = tuple(adjusted)
-            self._commit_japanese(candidate, locals().get("metadata"))
+                    adjusted = list(old_events)
+                    try:
+                        adjusted[first_fall] = PitchEvent(accent, "]")
+                        metadata[word_uuid] = normalize_word_pitch_events(
+                            updated, adjusted, self._word_morae(updated),
+                        )
+                    except ValueError as exc:
+                        raise UserDictionaryInputError(
+                            "accent change conflicts with other Japanese pitch events"
+                        ) from exc
+            self._commit_japanese(candidate, metadata)
 
     def delete_japanese_word(self, word_uuid: str) -> None:
         normalized_uuid = self._parse_uuid(word_uuid)
