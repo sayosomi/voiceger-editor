@@ -8,7 +8,8 @@ Rules:
 
 - kana represent the spoken reading;
 - `'` follows the mora selected as the accent position;
-- every accent phrase must contain exactly one `'`;
+- legacy phrases contain exactly one `'`; multi-peak phrases use explicit
+  `[` (rise) and `]` (fall) markers after complete morae instead;
 - `/` separates adjacent accent phrases without explicit punctuation;
 - supported punctuation is preserved in sequence and rendered canonically.
 
@@ -48,6 +49,20 @@ class PronunciationSyntaxError(ValueError):
 
 
 @dataclass(frozen=True)
+class PitchEvent:
+    """A Voiceger pitch symbol immediately after a 1-based mora index."""
+
+    after_mora: int
+    symbol: str
+
+    def __post_init__(self) -> None:
+        if type(self.after_mora) is not int or self.after_mora < 1:
+            raise ValueError("pitch event must follow a positive mora index")
+        if self.symbol not in {"[", "]"}:
+            raise ValueError("pitch event symbol must be '[' or ']'")    
+
+
+@dataclass(frozen=True)
 class AccentPhrase:
     """One accent phrase.
 
@@ -57,12 +72,36 @@ class AccentPhrase:
 
     morae: tuple[str, ...]
     accent: int
+    pitch_events: tuple[PitchEvent, ...] | None = None
 
     def __post_init__(self) -> None:
         if not self.morae:
             raise ValueError("accent phrase must contain at least one mora")
-        if not (1 <= self.accent <= len(self.morae)):
+        if type(self.accent) is not int or not (1 <= self.accent <= len(self.morae)):
             raise ValueError("accent must point to a mora in the phrase")
+        if self.pitch_events is not None:
+            events = self.pitch_events
+            if len(events) < 3:
+                raise ValueError("multi-peak phrases require at least three pitch events")
+            previous = 0
+            previous_symbol = None
+            for event in events:
+                if not isinstance(event, PitchEvent):
+                    raise ValueError("pitch events must be PitchEvent values")
+                if not previous < event.after_mora < len(self.morae):
+                    raise ValueError("pitch events must follow ordered, non-final morae")
+                if previous == 0 and event.after_mora != 1:
+                    raise ValueError("the initial pitch event must follow mora 1")
+                if previous_symbol == event.symbol:
+                    raise ValueError("pitch rise/fall events must alternate")
+                previous = event.after_mora
+                previous_symbol = event.symbol
+            expected_accent = next(
+                (event.after_mora for event in events if event.symbol == "]"),
+                len(self.morae),
+            )
+            if self.accent != expected_accent:
+                raise ValueError("legacy accent must match the first pitch fall")
 
     @property
     def reading(self) -> str:
@@ -182,19 +221,27 @@ def _parse_phrase(source: str) -> AccentPhrase:
 
     morae: list[str] = []
     accent: int | None = None
+    events: list[PitchEvent] = []
     marker_just_seen = False
 
     for ch in source:
-        if ch == "'":
-            if accent is not None:
-                raise PronunciationSyntaxError(
-                    "an accent phrase must contain exactly one accent marker"
-                )
+        if ch in {"'", "[", "]"}:
             if not morae:
-                raise PronunciationSyntaxError(
-                    "accent marker must follow a mora"
-                )
-            accent = len(morae)
+                raise PronunciationSyntaxError("accent marker must follow a mora")
+            if marker_just_seen:
+                raise PronunciationSyntaxError("adjacent pitch markers are not allowed")
+            if ch == "'":
+                if accent is not None or events:
+                    raise PronunciationSyntaxError(
+                        "legacy accent and explicit pitch markers cannot be mixed"
+                    )
+                accent = len(morae)
+            else:
+                if accent is not None:
+                    raise PronunciationSyntaxError(
+                        "legacy accent and explicit pitch markers cannot be mixed"
+                    )
+                events.append(PitchEvent(len(morae), ch))
             marker_just_seen = True
             continue
 
@@ -210,18 +257,31 @@ def _parse_phrase(source: str) -> AccentPhrase:
                 )
             if marker_just_seen:
                 raise PronunciationSyntaxError(
-                    "accent marker must follow the complete mora "
+                    "pitch marker must follow the complete mora "
                     "(for example きゃ', not き'ゃ)"
                 )
             morae[-1] += ch
         else:
             morae.append(ch)
-
         marker_just_seen = False
+
+    if events:
+        if marker_just_seen:
+            raise PronunciationSyntaxError(
+                "explicit pitch marker cannot follow the final mora"
+            )
+        first_fall = next(
+            (event.after_mora for event in events if event.symbol == "]"),
+            len(morae),
+        )
+        try:
+            return AccentPhrase(tuple(morae), first_fall, tuple(events))
+        except ValueError as exc:
+            raise PronunciationSyntaxError(str(exc)) from exc
 
     if accent is None:
         raise PronunciationSyntaxError(
-            "every accent phrase must contain exactly one accent marker"
+            "every legacy accent phrase must contain exactly one accent marker"
         )
 
     return AccentPhrase(tuple(morae), accent)
@@ -290,9 +350,17 @@ def parse_pronunciation(source: str) -> Pronunciation:
 
 def _format_phrase(phrase: AccentPhrase) -> str:
     parts: list[str] = []
+    event_by_mora = (
+        {event.after_mora: event.symbol for event in phrase.pitch_events}
+        if phrase.pitch_events is not None
+        else None
+    )
     for index, mora in enumerate(phrase.morae, start=1):
         parts.append(mora)
-        if phrase.accent == index:
+        if event_by_mora is not None:
+            if index in event_by_mora:
+                parts.append(event_by_mora[index])
+        elif phrase.accent == index:
             parts.append("'")
     return "".join(parts)
 
