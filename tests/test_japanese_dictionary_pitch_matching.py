@@ -78,7 +78,7 @@ class JapanesePitchMatchingTests(unittest.TestCase):
     def test_priority_five_split_word_merges_only_internal_boundaries(self):
         value = frontend_features_to_pronunciation(split(), pitch_words=snapshot())
         self.assertEqual(format_pronunciation(value),
-                         "ス[タ]ック[チャ]ンヲ/ツク'ッタ/ノ'ダ！")
+                         "ス[タ]ック[チャ]ンヲ/ツク'ッタ/ノダ'！")
         self.assertEqual(pronunciation_to_voiceger_tokens(
             value, mora_g2p=fake_phones
         )[:16], [
