@@ -7,10 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable, Literal, Sequence, Union
 
-from .dictionary_export import (
-    export_voiceger_editor_dictionaries,
-    export_voicevox_dictionary,
-)
+from .tui_dictionary_export import DictionaryExportOwner
 
 from .tui_adjustments import step_cyclic
 from .tui_confirmation import handle_confirmation_key
@@ -90,6 +87,7 @@ class TuiDictionaryController:
         self._japanese_pronunciation = japanese_pronunciation
         self._english_word_groups = english_word_groups
         self._output_dir = output_dir or (lambda: Path("."))
+        self._export_owner = DictionaryExportOwner(core, self._output_dir)
         self._list_state = DictionaryListStateOwner(core)
         self._accent = JapaneseListAccentOwner(core)
         self._stress = EnglishListStressOwner(core)
@@ -143,52 +141,6 @@ class TuiDictionaryController:
                 "japanese_count": len(self.core.list_japanese_entries()),
                 "english_count": len(self.core.list_english_entries()),
             },
-        )
-
-    @staticmethod
-    def _export_state() -> EditorState:
-        return EditorState(
-            kind="dictionary_export",
-            title="EXPORT DICTIONARY",
-            origin=("dictionary", None),
-            selection="voiceger",
-            payload={},
-        )
-
-    def _export_dictionary(
-        self,
-        target: Literal["voiceger", "voicevox"],
-    ) -> tuple[DictionaryControllerIntent, ...]:
-        editor = self.editor
-        if editor is None:
-            return ()
-
-        core = self.core
-        output_dir = Path(self._output_dir())
-        if target == "voiceger":
-            operation: DictionaryOperationIdentity = "export_voiceger_editor"
-            status = "Exporting Voiceger Editor dictionaries…"
-
-            def work() -> Any:
-                return export_voiceger_editor_dictionaries(core, output_dir)
-        else:
-            operation = "export_voicevox"
-            status = "Exporting VOICEVOX dictionary…"
-
-            def work() -> Any:
-                return export_voicevox_dictionary(core, output_dir)
-
-        request = dictionary_operation_request(
-            editor,
-            operation=operation,
-            language=None,
-        )
-        return (
-            DictionaryOperationIntent(
-                request,
-                info_status(status),
-                work,
-            ),
         )
 
     def open_quick_save_japanese(
@@ -914,25 +866,7 @@ class TuiDictionaryController:
             return self._entry_owner.complete_operation(request, value, error)
 
         assert editor is not None
-        if error is not None:
-            editor.error = error_status(f"Dictionary export was not completed: {error}")
-            return (UpdateStatusIntent(editor.error),)
-
-        editor.error = EMPTY_STATUS
-        filenames = ", ".join(path.name for path in value.paths)
-        lossy = getattr(value, "lossy_pitch_event_uuids", ())
-        if lossy:
-            outcome = warning_status(
-                f"VOICEVOX export complete: {filenames}. {len(lossy)} word(s) "
-                "have extra pitch peaks that VOICEVOX cannot import; "
-                "use Voiceger Editor native export for a lossless backup."
-            )
-        else:
-            outcome = f"Dictionary export complete: {filenames}"
-        return (
-            UpdateStatusIntent(outcome),
-            ClearAdjustmentFeedbackIntent(),
-        )
+        return self._export_owner.complete(editor, value, error)
 
     def _activate(self) -> tuple[DictionaryControllerIntent, ...]:
         editor = self.editor
@@ -963,7 +897,7 @@ class TuiDictionaryController:
                 )
             elif selected == "export":
                 self._stack.append(deepcopy(editor))
-                self.editor = self._export_state()
+                self.editor = self._export_owner.export_state()
             elif selected == "back":
                 self._restore_parent()
             return (UpdateStatusIntent(""),)
@@ -971,26 +905,14 @@ class TuiDictionaryController:
             if selected == "output":
                 return (BeginOutputPathEditIntent("dictionary_export"),)
             if selected == "voiceger":
-                return self._export_dictionary("voiceger")
+                return self._export_owner.start(editor, "voiceger")
             if selected == "voicevox":
-                peaks = getattr(self.core, "list_japanese_pitch_events", lambda: {})()
-                if peaks:
+                warning = self._export_owner.voicevox_warning()
+                if warning is not None:
                     self._stack.append(deepcopy(editor))
-                    self.editor = EditorState(
-                        kind="dictionary_voicevox_loss_confirmation",
-                        title="VOICEVOX EXPORT WARNING",
-                        origin=("dictionary", None),
-                        selection="cancel",
-                        payload={
-                            "warning": (
-                                f"{len(peaks)} Japanese word(s) have additional pitch "
-                                "events. VOICEVOX JSON cannot include these peaks. "
-                                "Export anyway?"
-                            ),
-                        },
-                    )
+                    self.editor = warning
                     return (UpdateStatusIntent(""),)
-                return self._export_dictionary("voicevox")
+                return self._export_owner.start(editor, "voicevox")
             if selected == "back":
                 self._restore_parent()
                 return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
@@ -1014,7 +936,8 @@ class TuiDictionaryController:
                 return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
             if selected == "export":
                 self._restore_parent()
-                return self._export_dictionary("voicevox")
+                assert self.editor is not None
+                return self._export_owner.start(self.editor, "voicevox")
             return ()
         if editor.kind == "dictionary_restore_confirmation":
             if selected == "cancel":
