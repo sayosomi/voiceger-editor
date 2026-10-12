@@ -123,6 +123,7 @@ class JapaneseMultiPeakDictionaryTests(unittest.TestCase):
         with self.assertRaises(UserDictionaryInputError):
             self.core.update_japanese_accents({word_uuid: 4})
         self.assertEqual(self.core.get_japanese_pitch_events(word_uuid), expected)
+        self.core.update_japanese_accents({word_uuid: 2})
         self.core.update_japanese_pitch_events(word_uuid, EVENTS)
         self.core.delete_japanese_pitch_events(word_uuid)
         self.assertEqual(self.core.get_japanese_pitch_events(word_uuid), ())
