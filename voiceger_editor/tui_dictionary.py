@@ -742,7 +742,7 @@ class TuiDictionaryController:
                 [item.key for item in menu_items(editor.kind, editor.payload)]
             )
             return ()
-        if editor.kind in {"dictionary_import_review", "dictionary_restore_review"}:
+        if editor.kind == "dictionary_import_review":
             entries = tuple(editor.payload["items"])
             entry_keys = [("import_entry", index) for index in range(len(entries))]
             action_keys = [item.key for item in menu_items(editor.kind, editor.payload)]
@@ -750,7 +750,6 @@ class TuiDictionaryController:
             return ()
         if editor.kind in {
             "dictionary_import_japanese_detail",
-            "dictionary_restore_japanese_detail",
             "dictionary_import_english_detail",
         }:
             apply_movement(
@@ -888,13 +887,6 @@ class TuiDictionaryController:
                     "path",
                     str(self.editor.payload["path"]),
                 )
-            elif selected == "restore":
-                self._stack.append(deepcopy(editor))
-                self._import_owner._clear_import_state()
-                self.editor = self._import_owner._import_path_state(restore=True)
-                return self._begin_field(
-                    "path", str(self.editor.payload["path"]),
-                )
             elif selected == "export":
                 self._stack.append(deepcopy(editor))
                 self.editor = self._export_owner.export_state()
@@ -939,10 +931,6 @@ class TuiDictionaryController:
                 assert self.editor is not None
                 return self._export_owner.start(self.editor, "voicevox")
             return ()
-        if editor.kind in {"dictionary_restore_confirmation", "dictionary_restore_review"}:
-            return self._import_owner.activate_restore(
-                restore_parent=self._restore_parent
-            )
         if editor.kind == "dictionary_import_review":
             if selected == "import_selected":
                 return self._import_owner._commit_dictionary_import()
@@ -962,7 +950,6 @@ class TuiDictionaryController:
             return ()
         if editor.kind in {
             "dictionary_import_japanese_detail",
-            "dictionary_restore_japanese_detail",
             "dictionary_import_english_detail",
         }:
             if selected == "back":
@@ -1289,7 +1276,6 @@ class TuiDictionaryController:
         if editor.kind in {
             "dictionary_delete_confirmation",
             "dictionary_discard_confirmation",
-            "dictionary_restore_confirmation",
             "dictionary_voicevox_loss_confirmation",
         }:
             interaction = handle_confirmation_key(
@@ -1330,9 +1316,7 @@ class TuiDictionaryController:
             "dictionary_export",
             "dictionary_import_path",
             "dictionary_import_review",
-            "dictionary_restore_review",
             "dictionary_import_japanese_detail",
-            "dictionary_restore_japanese_detail",
             "dictionary_import_english_detail",
         }:
             shortcut = resolve_shortcut(editor.kind, key, editor.payload)
@@ -1376,15 +1360,13 @@ class TuiDictionaryController:
                 return self._entry_owner._back_from_entry()
             if editor.kind in {
                 "dictionary_import_japanese_detail",
-                "dictionary_restore_japanese_detail",
-                "dictionary_import_english_detail",
+                    "dictionary_import_english_detail",
             }:
                 return self._import_owner._back_from_import_detail()
             if editor.kind in {
                 "dictionary_import_path",
                 "dictionary_import_review",
-                "dictionary_restore_review",
-            }:
+                }:
                 self._import_owner._clear_import_state()
             self._restore_parent()
             return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())

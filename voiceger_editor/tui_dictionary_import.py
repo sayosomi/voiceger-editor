@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Callable, Union
 
-from .dictionary_backup import DictionaryBackupReview, prepare_dictionary_backup
+from .dictionary_backup import DictionaryBackupReview
 from .dictionary_import import (
     DictionaryImportFormat,
     DictionaryImportReview,
@@ -75,18 +75,13 @@ class DictionaryImportOwner:
         path = str(Path(self._output_dir()))
         return path if path.endswith(os.sep) else path + os.sep
 
-    def _import_path_state(
-        self, path: str | None = None, *, restore: bool = False
-    ) -> EditorState:
+    def _import_path_state(self, path: str | None = None) -> EditorState:
         return EditorState(
             kind="dictionary_import_path",
-            title="RESTORE BACKUP" if restore else "IMPORT DICTIONARY",
+            title="IMPORT DICTIONARY",
             origin=("dictionary", None),
             selection="path",
-            payload={
-                "path": self._default_input_path() if path is None else path,
-                "restore": restore,
-            },
+            payload={"path": self._default_input_path() if path is None else path},
         )
 
     @staticmethod
@@ -109,7 +104,6 @@ class DictionaryImportOwner:
             raise RuntimeError("dictionary import review is not available")
         items = tuple(review.items)
         is_backup = isinstance(review, DictionaryBackupReview)
-        restoring = is_backup and review.restore
         word_type_labels = tuple(
             _japanese_word_type_label(japanese_word_type(item.incoming))
             if hasattr(item, "source_uuid") else ""
@@ -118,8 +112,6 @@ class DictionaryImportOwner:
         selection: str | tuple[str, int | None]
         if action is not None:
             selection = action
-        elif restoring:
-            selection = "cancel"
         elif items:
             index = 0
             if preferred_identity is not None:
@@ -136,8 +128,8 @@ class DictionaryImportOwner:
         else:
             selection = "import_selected"
         return EditorState(
-            kind="dictionary_restore_review" if restoring else "dictionary_import_review",
-            title="RESTORE BACKUP" if restoring else "IMPORT DICTIONARY",
+            kind="dictionary_import_review",
+            title="IMPORT DICTIONARY",
             origin=("dictionary", None),
             selection=selection,
             payload={
@@ -149,10 +141,7 @@ class DictionaryImportOwner:
                 "exact_duplicate_count": review.exact_duplicate_count,
                 "review_count": len(items),
                 "paired_backup": is_backup,
-                "restore": restoring,
                 "language_counts": review.language_counts if is_backup else None,
-                "deleted_japanese": review.deleted_japanese if restoring else (),
-                "deleted_english": review.deleted_english if restoring else (),
             },
         )
 
@@ -171,18 +160,10 @@ class DictionaryImportOwner:
                 None if item.existing is None else japanese_word_type(item.existing)
             )
             return EditorState(
-                kind=(
-                    "dictionary_restore_japanese_detail"
-                    if isinstance(review, DictionaryBackupReview) and review.restore
-                    else "dictionary_import_japanese_detail"
-                ),
-                title="RESTORE JAPANESE WORD" if isinstance(review, DictionaryBackupReview) and review.restore else "IMPORT JAPANESE WORD",
+                kind="dictionary_import_japanese_detail",
+                title="IMPORT JAPANESE WORD",
                 origin=("dictionary", None),
-                selection=(
-                    "back"
-                    if isinstance(review, DictionaryBackupReview) and review.restore
-                    else "word_type"
-                ),
+                selection="word_type",
                 payload={
                     "identity": identity,
                     "item_index": index,
@@ -209,60 +190,6 @@ class DictionaryImportOwner:
             },
         )
 
-    def activate_restore(
-        self, *, restore_parent: Callable[[], None]
-    ) -> tuple[DictionaryImportIntent, ...]:
-        """Own separate restore review and destructive confirmation actions."""
-
-        editor = self.editor
-        if editor is None:
-            return ()
-        selected = editor.selection
-        if editor.kind == "dictionary_restore_confirmation":
-            if selected == "cancel":
-                self.editor = self._import_review_state(action="cancel")
-                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
-            if selected == "restore":
-                return self._commit_dictionary_import(confirmed=True)
-        if editor.kind == "dictionary_restore_review":
-            if selected == "restore":
-                self.editor = self._restore_confirmation_state()
-                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
-            if selected == "cancel":
-                self._clear_import_state()
-                restore_parent()
-                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
-            if (
-                isinstance(selected, tuple)
-                and selected[0] == "import_entry"
-                and isinstance(selected[1], int)
-            ):
-                self.editor = self._import_detail_state(selected[1])
-                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
-        return ()
-
-    def _restore_confirmation_state(self) -> EditorState:
-        review = self._import_review
-        if not isinstance(review, DictionaryBackupReview) or not review.restore:
-            raise RuntimeError("no validated complete backup to restore")
-        ja, en = review.language_counts
-        return EditorState(
-            kind="dictionary_restore_confirmation",
-            title="REPLACE ALL DICTIONARIES",
-            origin=("dictionary", None),
-            selection="cancel",
-            payload={
-                "warning": (
-                    "Replace both local dictionaries with this backup? "
-                    f"Backup: {ja} Japanese and {en} English. "
-                    f"Delete {len(review.deleted_japanese)} local Japanese "
-                    f"and {len(review.deleted_english)} local English words absent "
-                    "from the backup. This action cannot be undone unless you "
-                    "have another backup."
-                ),
-            },
-        )
-
     def _load_dictionary_import(self) -> tuple[DictionaryImportIntent, ...]:
         editor = self.editor
         assert editor is not None
@@ -272,11 +199,8 @@ class DictionaryImportOwner:
             return ()
         editor.error = EMPTY_STATUS
         core = self.core
-        restoring = bool(editor.payload.get("restore", False))
 
         def work() -> DictionaryImportReview:
-            if restoring:
-                return prepare_dictionary_backup(path, core, restore=True)
             return prepare_dictionary_import(path, core)
 
         request = dictionary_operation_request(
@@ -292,15 +216,11 @@ class DictionaryImportOwner:
             ),
         )
 
-    def _commit_dictionary_import(
-        self, *, confirmed: bool = False
-    ) -> tuple[DictionaryImportIntent, ...]:
+    def _commit_dictionary_import(self) -> tuple[DictionaryImportIntent, ...]:
         editor = self.editor
         review = self._import_review
         if editor is None or review is None:
             return ()
-        if isinstance(review, DictionaryBackupReview) and review.restore and not confirmed:
-            raise RuntimeError("full restore was requested without confirmation")
         language: DictionaryLanguage | None = (
             "ja" if review.format is DictionaryImportFormat.JAPANESE else
             "en" if review.format is DictionaryImportFormat.ENGLISH else None
@@ -309,7 +229,7 @@ class DictionaryImportOwner:
 
         def work() -> Any:
             if isinstance(review, DictionaryBackupReview):
-                return review.commit(core, confirmed=confirmed)
+                return review.commit(core)
             return review.commit(core)
 
         request = dictionary_operation_request(
@@ -320,10 +240,7 @@ class DictionaryImportOwner:
         return (
             DictionaryOperationIntent(
                 request,
-                info_status(
-                    "Restoring complete dictionary backup…"
-                    if confirmed else "Importing selected dictionary words…"
-                ),
+                info_status("Importing selected dictionary words…"),
                 work,
             ),
         )
@@ -473,15 +390,11 @@ class DictionaryImportOwner:
             )
 
         result = value
-        restoring = isinstance(self._import_review, DictionaryBackupReview) and self._import_review.restore
-        counts = self._import_review.language_counts if restoring else None
         if self._stack and self._stack[-1].kind == "dictionary_menu":
             self._stack.pop()
         self._clear_import_state()
         self.editor = self._menu_state()
         outcome = (
-            f"Dictionary backup restored: {counts[0]} Japanese, {counts[1]} English."
-            if counts else
             "Dictionary import complete: "
             f"{result.imported} imported, "
             f"{result.replaced} replaced, "

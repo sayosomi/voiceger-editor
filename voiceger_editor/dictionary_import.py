@@ -36,7 +36,6 @@ class DictionaryImportFormat(str, Enum):
     JAPANESE = "japanese"
     ENGLISH = "english"
     BACKUP = "backup"
-    RESTORE = "restore"
 
 
 class DictionaryImportRelation(str, Enum):
@@ -611,7 +610,7 @@ def plan_dictionary_import(
 
     from .dictionary_backup import ParsedDictionaryBackup, DictionaryBackupReview
     if isinstance(parsed, ParsedDictionaryBackup):
-        return DictionaryBackupReview(parsed, core, restore=False)
+        return DictionaryBackupReview(parsed, core)
     if parsed.format is DictionaryImportFormat.JAPANESE:
         return JapaneseDictionaryImportReview(
             core.list_japanese_entries(),

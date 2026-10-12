@@ -213,25 +213,6 @@ The Import path starts at `Settings.output_dir`, but changing an import
 file path never changes that setting. Invalid files are rejected before
 local dictionary data is changed.
 
-## Restore a complete backup (Replace all)
-
-Choose **Restore backup (Replace all)** from the Dictionary menu and select
-a native Voiceger Editor ZIP backup. Standalone JSON cannot perform a full
-restore.
-
-Restore shows Japanese and English word counts, differences that can be
-inspected with Enter, and a list of local words absent from the backup that
-will be deleted. Select **Review complete — Replace all** to open the
-separate confirmation. The confirmation defaults to **[Esc] Cancel**.
-Only **Replace all** proceeds.
-
-Full restore removes local dictionary entries not in the backup and restores
-the ZIP's original Japanese UUIDs, dictionary order, English dictionary,
-and Japanese pitch events. It does not merge or preserve additional local
-entries. The three stored files are updated as one recoverable operation,
-including rollback after a write failure or interrupted write sequence.
-Make a separate native backup first if you need to keep local-only words.
-
 ## Export a dictionary
 
 Choose **Export dictionary** from the top-level Dictionary screen.

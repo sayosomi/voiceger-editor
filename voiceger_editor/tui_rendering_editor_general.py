@@ -27,7 +27,6 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         "batch_recipe_replace_confirmation",
         "dictionary_delete_confirmation",
         "dictionary_discard_confirmation",
-        "dictionary_restore_confirmation",
         "dictionary_voicevox_loss_confirmation",
         "delete_confirmation",
         "clear_candidates_confirmation",

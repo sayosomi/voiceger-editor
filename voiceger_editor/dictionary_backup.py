@@ -1,4 +1,4 @@
-"""Bounded native ZIP dictionary backup, review, and all-language planning."""
+"""Bounded native ZIP dictionary backup and selective two-language Merge."""
 
 from __future__ import annotations
 
@@ -17,9 +17,7 @@ from .dictionary_import import (
     DictionaryImportFormat,
     DictionaryImportRelation,
     EnglishDictionaryImportReview,
-    EnglishImportReviewItem,
     JapaneseDictionaryImportReview,
-    JapaneseImportReviewItem,
     _parse_english,
     _parse_japanese,
     _reject_duplicate_keys,
@@ -30,7 +28,6 @@ from .user_dictionary import (
     EnglishUserDictionaryEntry,
     UserDictWord,
     UserDictionaryCore,
-    japanese_logical_identity,
     _MORA_PATTERN,
     serialize_english_dictionary,
     serialize_japanese_dictionary,
@@ -63,7 +60,7 @@ def _json_object(data: bytes, label: str) -> dict[str, Any]:
 
 
 def load_dictionary_backup(path: str | Path) -> ParsedDictionaryBackup:
-    """Validate the whole archive before constructing any import/restore review."""
+    """Validate the entire ZIP before constructing a Merge review."""
 
     source = Path(path).expanduser()
     try:
@@ -156,13 +153,10 @@ def serialize_pitch_metadata_for_backup(words, events, japanese):
 
 
 class DictionaryBackupReview:
-    """Paired-language selectable merge or explicitly confirmed full restore."""
+    """Selectable Japanese/English Merge; never delete local-only words."""
 
-    def __init__(self, parsed: ParsedDictionaryBackup, core: UserDictionaryCore, *, restore: bool) -> None:
-        self.format = (
-            DictionaryImportFormat.RESTORE if restore else DictionaryImportFormat.BACKUP
-        )
-        self.restore = restore
+    def __init__(self, parsed: ParsedDictionaryBackup, core: UserDictionaryCore) -> None:
+        self.format = DictionaryImportFormat.BACKUP
         self.source_path = parsed.source_path
         self._base_japanese = core.list_japanese_entries()
         self._base_english = core.list_english_entries()
@@ -172,106 +166,19 @@ class DictionaryBackupReview:
             entry.surface: entry.model_copy(deep=True) for entry in parsed.english_entries
         }
         self._incoming_pitch = dict(parsed.pitch_events)
-        self._restore_items: tuple[
-            JapaneseImportReviewItem | EnglishImportReviewItem, ...
-        ] = ()
-        self._restore_exact = 0
-        self.japanese: JapaneseDictionaryImportReview | None = None
-        self.english: EnglishDictionaryImportReview | None = None
-        if restore:
-            # Replace-all does not use merge's UUID collision invariant: an
-            # unrelated local word may own the same UUID as the backup.
-            self._build_restore_review()
-        else:
-            self.japanese = JapaneseDictionaryImportReview(
-                self._base_japanese,
-                parsed.japanese_entries,
-                base_pitch_events=self._base_pitch,
-                incoming_pitch_events=self._incoming_pitch,
-                native_pitch_metadata=True,
-            )
-            self.english = EnglishDictionaryImportReview(
-                self._base_english,
-                parsed.english_entries,
-            )
+        self.japanese = JapaneseDictionaryImportReview(
+            self._base_japanese, parsed.japanese_entries,
+            base_pitch_events=self._base_pitch,
+            incoming_pitch_events=self._incoming_pitch,
+            native_pitch_metadata=True,
+        )
+        self.english = EnglishDictionaryImportReview(
+            self._base_english, parsed.english_entries,
+        )
         self._committed = False
-
-    def _build_restore_review(self) -> None:
-        """Show incoming differences without imposing Merge-only identity rules."""
-
-        items: list[JapaneseImportReviewItem | EnglishImportReviewItem] = []
-        existing_by_identity = {
-            japanese_logical_identity(word): (uuid, word)
-            for uuid, word in self._base_japanese.items()
-        }
-        exact = 0
-        for uuid, word in self._incoming_japanese.items():
-            match = (
-                (uuid, self._base_japanese[uuid])
-                if uuid in self._base_japanese
-                else existing_by_identity.get(japanese_logical_identity(word))
-            )
-            if match is None:
-                relation = DictionaryImportRelation.NEW
-                existing_uuid = None
-                existing_word = None
-            else:
-                existing_uuid, existing_word = match
-                relation = (
-                    DictionaryImportRelation.EXACT
-                    if (
-                        uuid == existing_uuid
-                        and existing_word == word
-                        and self._base_pitch.get(uuid, ()) == self._incoming_pitch.get(uuid, ())
-                    )
-                    else DictionaryImportRelation.CONFLICT
-                )
-            if relation is DictionaryImportRelation.EXACT:
-                exact += 1
-                continue
-            items.append(JapaneseImportReviewItem(
-                source_uuid=uuid,
-                incoming=word.model_copy(deep=True),
-                relation=relation,
-                selected=False,
-                existing_uuid=existing_uuid,
-                existing=existing_word.model_copy(deep=True) if existing_word else None,
-            ))
-        english_by_key = {
-            surface.strip().casefold(): (surface, entry)
-            for surface, entry in self._base_english.items()
-        }
-        for surface, entry in self._incoming_english.items():
-            match = english_by_key.get(surface.strip().casefold())
-            if match is None:
-                relation = DictionaryImportRelation.NEW
-                existing_surface = None
-                existing_entry = None
-            else:
-                existing_surface, existing_entry = match
-                relation = (
-                    DictionaryImportRelation.EXACT
-                    if existing_surface == surface and existing_entry == entry
-                    else DictionaryImportRelation.CONFLICT
-                )
-            if relation is DictionaryImportRelation.EXACT:
-                exact += 1
-                continue
-            items.append(EnglishImportReviewItem(
-                incoming=entry.model_copy(deep=True),
-                relation=relation,
-                selected=False,
-                existing_surface=existing_surface,
-                existing=existing_entry.model_copy(deep=True) if existing_entry else None,
-            ))
-        self._restore_items = tuple(items)
-        self._restore_exact = exact
 
     @property
     def items(self):
-        if self.restore:
-            return self._restore_items
-        assert self.japanese is not None and self.english is not None
         return (*self.japanese.items, *self.english.items)
 
     @property
@@ -280,52 +187,22 @@ class DictionaryBackupReview:
 
     @property
     def exact_duplicate_count(self) -> int:
-        if self.restore:
-            return self._restore_exact
-        assert self.japanese is not None and self.english is not None
         return self.japanese.exact_duplicate_count + self.english.exact_duplicate_count
 
     @property
     def language_counts(self) -> tuple[int, int]:
         return len(self._incoming_japanese), len(self._incoming_english)
 
-    @property
-    def deleted_japanese(self) -> tuple[str, ...]:
-        if not self.restore:
-            return ()
-        return tuple(
-            word.surface
-            for uuid, word in self._base_japanese.items()
-            if uuid not in self._incoming_japanese
-        )
-
-    @property
-    def deleted_english(self) -> tuple[str, ...]:
-        if not self.restore:
-            return ()
-        return tuple(
-            surface for surface in self._base_english
-            if surface not in self._incoming_english
-        )
-
     def set_selected(self, identity: str, selected: bool, *, language: str) -> None:
-        if self.restore:
-            raise DictionaryImportError("full restore is not selectable")
         if language == "ja":
-            assert self.japanese is not None
             self.japanese.set_selected(identity, selected)
         else:
-            assert self.english is not None
             self.english.set_selected(identity, selected)
 
     def set_word_type(self, uuid: str, word_type) -> None:
-        if self.restore:
-            raise DictionaryImportError("word type cannot be changed in full restore")
-        assert self.japanese is not None
         self.japanese.set_word_type(uuid, word_type)
 
     def _merged_snapshot(self):
-        assert self.japanese is not None and self.english is not None
         japanese = dict(self._base_japanese)
         english = dict(self._base_english)
         pitch = dict(self._base_pitch)
@@ -371,22 +248,10 @@ class DictionaryBackupReview:
             skipped=self.total_count - imported - replaced,
         )
 
-    def commit(self, core: UserDictionaryCore, *, confirmed: bool = False) -> DictionaryImportCommitResult:
+    def commit(self, core: UserDictionaryCore) -> DictionaryImportCommitResult:
         if self._committed:
             raise DictionaryImportError("dictionary backup review was already committed")
-        if self.restore:
-            if not confirmed:
-                raise DictionaryImportError("full restore requires explicit confirmation")
-            japanese = dict(self._incoming_japanese)
-            english = dict(self._incoming_english)
-            pitch = dict(self._incoming_pitch)
-            result = DictionaryImportCommitResult(
-                imported=len(japanese) + len(english),
-                replaced=0,
-                skipped=0,
-            )
-        else:
-            japanese, english, pitch, result = self._merged_snapshot()
+        japanese, english, pitch, result = self._merged_snapshot()
         core.apply_dictionary_snapshot(
             japanese,
             english,
@@ -400,6 +265,6 @@ class DictionaryBackupReview:
 
 
 def prepare_dictionary_backup(
-    path: str | Path, core: UserDictionaryCore, *, restore: bool = False
+    path: str | Path, core: UserDictionaryCore
 ) -> DictionaryBackupReview:
-    return DictionaryBackupReview(load_dictionary_backup(path), core, restore=restore)
+    return DictionaryBackupReview(load_dictionary_backup(path), core)

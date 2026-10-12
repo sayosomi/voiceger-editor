@@ -89,53 +89,6 @@ class BackupTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_complete_restore_preserves_original_ids_order_and_pitch(self):
-        local_uuid = self.target.add_japanese_word(
-            surface="ローカル", pronunciation="ローカル", accent_type=0
-        )
-        self.target.add_english_entry("OnlyLocal", ["OW1", "N", "L", "IY0"])
-        review = prepare_dictionary_backup(self.archive, self.target, restore=True)
-        self.assertIs(review.format, DictionaryImportFormat.RESTORE)
-        self.assertIn("ローカル", review.deleted_japanese)
-        self.assertIn("OnlyLocal", review.deleted_english)
-        with self.assertRaisesRegex(DictionaryImportError, "confirmation"):
-            review.commit(self.target)
-        self.assertIn(local_uuid, self.target.list_japanese_entries())
-        review.commit(self.target, confirmed=True)
-        self.assertEqual(
-            list(self.target.list_japanese_entries()),
-            list(self.source.list_japanese_entries()),
-        )
-        self.assertEqual(
-            list(self.target.list_english_entries()),
-            list(self.source.list_english_entries()),
-        )
-        self.assertEqual(
-            self.target.list_japanese_pitch_events(),
-            self.source.list_japanese_pitch_events(),
-        )
-        self.assertNotIn(local_uuid, self.target.list_japanese_entries())
-        self.assertFalse(self.target.backup_journal_path.exists())
-
-    def test_full_restore_does_not_reject_an_unrelated_local_uuid_collision(self):
-        unrelated = self.target._create_word(
-            surface="異なる", pronunciation="コトナル", accent_type=0,
-            word_type=None, priority=5,
-        )
-        self.target.import_japanese({self.source_uuid: unrelated}, override=True)
-        review = prepare_dictionary_backup(self.archive, self.target, restore=True)
-        collision = next(
-            item for item in review.items
-            if getattr(item, "source_uuid", None) == self.source_uuid
-        )
-        self.assertEqual(collision.relation.value, "conflict")
-        self.assertEqual(collision.existing.surface, "異なる")
-        review.commit(self.target, confirmed=True)
-        self.assertEqual(
-            self.target.list_japanese_entries()[self.source_uuid].surface,
-            "スタックチャン",
-        )
-
     def test_merge_keeps_local_words_and_accepts_selected_cross_language_conflicts(self):
         local_uuid = self.target.add_japanese_word(
             surface="ローカル", pronunciation="ローカル", accent_type=0
@@ -169,7 +122,7 @@ class BackupTests(unittest.TestCase):
             surface="残す", pronunciation="ノコス", accent_type=0
         )
         self.target.add_english_entry("Local", ["L", "OW1", "K", "AH0", "L"])
-        review = prepare_dictionary_backup(self.archive, self.target, restore=True)
+        review = prepare_dictionary_backup(self.archive, self.target)
         before_japanese = self.target.list_japanese_entries()
         before_english = self.target.list_english_entries()
         before_pitch = self.target.list_japanese_pitch_events()
@@ -191,7 +144,7 @@ class BackupTests(unittest.TestCase):
 
         with patch("voiceger_editor.user_dictionary._atomic_write", side_effect=fail_once):
             with self.assertRaises(UserDictionaryStorageError):
-                review.commit(self.target, confirmed=True)
+                review.commit(self.target)
 
         self.assertTrue(injected)
         self.assertEqual(self.target.list_japanese_entries(), before_japanese)

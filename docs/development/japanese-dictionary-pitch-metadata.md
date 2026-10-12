@@ -82,11 +82,10 @@ canonical JSON, and matching pitch metadata before producing a review.
 
 Native **Merge** reviews Japanese/English changes in one combined flow:
 new entries are selected, conflicts are opt-in, exact duplicates are
-skipped, and local-only entries are retained. Native **Replace all**
-requires a separate user action, shows both-language impact and local
-deletions, defaults to Cancel, and requires an explicit confirmation.
-Both operations update the canonical Japanese dictionary, English
-dictionary, and pitch sidecar as one journaled, recoverable operation.
+skipped, and local-only entries are retained. There is no destructive
+full-replacement restore action. Selected Merge changes update the
+canonical Japanese dictionary, English dictionary, and pitch sidecar
+as one journaled, recoverable operation.
 The `dictionaries.pending.json` journal stores the previous optional
 bytes of all three files; startup recovery restores them if an operation
 was interrupted. The existing `user_dict.pending.json` journal still

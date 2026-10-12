@@ -253,7 +253,6 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("japanese", "Japanese", "j", "action", "activate"),
         MenuItem("english", "English", "e", "action", "activate"),
         MenuItem("import", "Import dictionary (Merge)", "i", "action", "activate"),
-        MenuItem("restore", "Restore backup (Replace all)", "r", "action", "activate"),
         MenuItem("export", "Export dictionary", "x", "action", "activate"),
         _escape_action("back", "Back"),
     ),
@@ -273,20 +272,9 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("clear_selection", "Clear selection", "c", "action", "activate"),
         _escape_action("back", "Back"),
     ),
-    "dictionary_restore_review": (
-        MenuItem("restore", "Review complete — Replace all", "r", "action", "activate"),
-        _escape_action("cancel", "Cancel"),
-    ),
-    "dictionary_restore_confirmation": (
-        MenuItem("restore", "Replace all", "r", "action", "activate"),
-        _escape_action("cancel", "Cancel"),
-    ),
     "dictionary_voicevox_loss_confirmation": (
         MenuItem("export", "Export without extra peaks", "e", "action", "activate"),
         _escape_action("cancel", "Cancel"),
-    ),
-    "dictionary_restore_japanese_detail": (
-        _escape_action("back", "Back"),
     ),
     "dictionary_import_japanese_detail": (
         MenuItem(

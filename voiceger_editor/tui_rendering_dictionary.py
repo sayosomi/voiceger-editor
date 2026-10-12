@@ -54,7 +54,6 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
             count = editor.payload[count_name]
             lines.append((f"{marker}{item.display_label:<18}{count} words", key))
         selectable("import")
-        selectable("restore")
         selectable("export")
         plain()
         selectable("back")
@@ -71,7 +70,7 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         selectable("back")
     elif editor.kind == "dictionary_import_path":
         plain()
-        plain("Backup ZIP path" if editor.payload.get("restore") else "File path")
+        plain("File path")
         path_input_field()
         plain()
         selectable("review")
