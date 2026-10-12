@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 import json
+import re
 from pathlib import Path
 from typing import Any, Union
 from uuid import UUID
@@ -13,6 +14,8 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from .openjtalk_dictionary import expand_word_type, validate_imported_pos
+from .japanese_pitch_metadata import parse_pitch_metadata
+from .pronunciation import PitchEvent
 from .user_dictionary import (
     EnglishUserDictionaryEntry,
     JapaneseWordType,
@@ -21,6 +24,7 @@ from .user_dictionary import (
     UserDictionaryInputError,
     classify_japanese_entry,
     japanese_logical_identity,
+    serialize_japanese_dictionary,
 )
 
 
@@ -46,6 +50,8 @@ class ParsedDictionaryImport:
     format: DictionaryImportFormat
     source_path: Path
     japanese_entries: tuple[tuple[str, UserDictWord], ...] = ()
+    japanese_pitch_events: tuple[tuple[str, tuple[PitchEvent, ...]], ...] = ()
+    native_pitch_metadata: bool = False
     english_entries: tuple[EnglishUserDictionaryEntry, ...] = ()
 
 
@@ -188,12 +194,48 @@ def _parse_english(
 
 
 def load_dictionary_import(path: str | Path) -> ParsedDictionaryImport:
-    """Read, detect, and fully validate one supported dictionary file."""
-
+    """Read one legacy dictionary or a declared three-file native backup."""
     source_path, raw = _read_json_object(path)
     values = list(raw.values())
+    native = re.fullmatch(
+        r"\d{12}_user_dict_with_pitch_events(?:-\d+)?\.json",
+        source_path.name,
+    )
+    if native and not all(isinstance(value, Mapping) for value in values):
+        raise DictionaryImportError("native pitch backup must contain Japanese words")
     if all(isinstance(value, Mapping) for value in values):
-        return _parse_japanese(source_path, raw)
+        parsed = _parse_japanese(source_path, raw)
+        if native is None:
+            return parsed
+        sidecar_path = source_path.with_name(
+            source_path.name.replace(
+                "_user_dict_with_pitch_events", "_user_dict_pitch_events", 1
+            )
+        )
+        if not sidecar_path.is_file():
+            raise DictionaryImportError(
+                "native backup declares pitch metadata but accompanying file is missing"
+            )
+        try:
+            metadata_path, metadata_raw = _read_json_object(sidecar_path)
+            del metadata_path
+            words = dict(parsed.japanese_entries)
+            from .user_dictionary import _MORA_PATTERN
+            events = parse_pitch_metadata(
+                metadata_raw, words, serialize_japanese_dictionary(words),
+                lambda word: tuple(_MORA_PATTERN.findall(word.pronunciation)),
+            )
+        except (DictionaryImportError, ValueError, TypeError, KeyError) as exc:
+            raise DictionaryImportError(
+                "native Japanese pitch metadata is incomplete or invalid"
+            ) from exc
+        return ParsedDictionaryImport(
+            format=parsed.format,
+            source_path=source_path,
+            japanese_entries=parsed.japanese_entries,
+            japanese_pitch_events=tuple(events.items()),
+            native_pitch_metadata=True,
+        )
     if all(isinstance(value, list) for value in values):
         return _parse_english(source_path, raw)
     raise DictionaryImportError("unsupported or mixed dictionary import shape")
