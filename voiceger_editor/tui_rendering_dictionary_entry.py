@@ -34,18 +34,19 @@ def build_japanese_dictionary_entry(builder: EditorDocumentBuilder) -> bool:
             editor.payload.get("pitch_events", ()),
         )
         marker = "▶ " if editor.selection == "pronunciation" else "  "
-        lines.append((f"{marker}Pronunciation  {display}", "pronunciation"))
+        wrap(marker + "Pronunciation  ", display, "pronunciation")
         if editor.selection == "pronunciation":
             events = editor.payload.get("pitch_events", ())
             if events:
                 cursor = editor.payload.get("pitch_cursor", 1)
                 current = events[cursor]
-                plain(
-                    f"  Marker {cursor + 1}/{len(events)}: {current.symbol} after mora "
-                    f"{current.after_mora}. M select · Left/Right move"
+                wrap(
+                    "  ",
+                    f"Marker {cursor + 1}/{len(events)}: {current.symbol} after mora "
+                    f"{current.after_mora}. M select · Left/Right move",
                 )
-            plain("  [+] Add peak · [-] Remove selected peak · Enter edit reading")
-            plain("  [ and ] navigate dictionary words; / is a real phrase boundary.")
+            wrap("  ", "[+] Add peak · [-] Remove selected peak · Enter edit reading")
+            wrap("  ", "[ and ] navigate dictionary words; / is a real phrase boundary.")
     marker = "▶ " if editor.selection == "word_type" else "  "
     lines.append(
         (
