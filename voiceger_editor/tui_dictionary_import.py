@@ -178,7 +178,11 @@ class DictionaryImportOwner:
                 ),
                 title="RESTORE JAPANESE WORD" if isinstance(review, DictionaryBackupReview) and review.restore else "IMPORT JAPANESE WORD",
                 origin=("dictionary", None),
-                selection="word_type",
+                selection=(
+                    "back"
+                    if isinstance(review, DictionaryBackupReview) and review.restore
+                    else "word_type"
+                ),
                 payload={
                     "identity": identity,
                     "item_index": index,
