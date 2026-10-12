@@ -583,7 +583,7 @@ class TuiSettingsEditorOwnerTests(EditorControllerTestCase):
                 "speed": "1.2",
                 "take_count": "6",
                 "output_dir": "/tmp/opening-output",
-                "filename_template": "{YYYYMMDDHHmm}_{caption}",
+                "filename_template": "{YYYYMMDDHHmm}_{style}_{caption}",
                 "output_format": "wav",
                 "wav_encoding": "source",
                 "flac_encoding": "pcm16",
