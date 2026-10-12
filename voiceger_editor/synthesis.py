@@ -203,6 +203,7 @@ def synthesize_audio_query(
         query.accent_phrases,
         punctuation=query.pronunciationPunctuation,
         terminator=_query_terminator(query),
+        pitch_events=query.pronunciationPitchEvents,
     )
     resolved_pronunciation = format_pronunciation(pronunciation)
     synthesis_text = pronunciation_to_spoken_text(pronunciation)
