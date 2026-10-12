@@ -26,7 +26,7 @@ class SettingsTests(unittest.TestCase):
             settings.output_dir,
             Path.home() / ".voiceger-editor" / "output",
         )
-        self.assertEqual(settings.filename_template, "{YYYYMMDDHHmm}_{caption}")
+        self.assertEqual(settings.filename_template, "{YYYYMMDDHHmm}_{style}_{caption}")
         self.assertEqual(settings.output_format, "wav")
         self.assertEqual(settings.wav_encoding, "source")
         self.assertEqual(settings.flac_encoding, "pcm16")
@@ -104,11 +104,27 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.top_k, 20)
         self.assertEqual(settings.top_p, 1.0)
         self.assertEqual(settings.temperature, 1.0)
-        self.assertEqual(settings.filename_template, "{YYYYMMDDHHmm}_{caption}")
+        self.assertEqual(settings.filename_template, "{YYYYMMDDHHmm}_{style}_{caption}")
         self.assertEqual(settings.output_format, "wav")
         self.assertEqual(settings.wav_encoding, "source")
         self.assertEqual(settings.flac_encoding, "pcm16")
         self.assertEqual(settings.mp3_bitrate, "192k")
+
+    def test_explicitly_saved_previous_default_template_is_preserved(self):
+        previous_default = "{YYYYMMDDHHmm}_{caption}"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            path.write_text(
+                json.dumps({"filename_template": previous_default}),
+                encoding="utf-8",
+            )
+            settings = load_settings(path)
+            self.assertEqual(settings.filename_template, previous_default)
+            save_settings(settings, path)
+            self.assertEqual(
+                json.loads(path.read_text(encoding="utf-8"))["filename_template"],
+                previous_default,
+            )
 
     def test_custom_config_path_can_be_loaded_and_saved(self):
         with tempfile.TemporaryDirectory() as directory:

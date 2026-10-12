@@ -491,7 +491,7 @@ class TakeBatchTests(unittest.TestCase):
                 output_format="wav",
                 output_encoding="source",
                 save_text=True,
-                filename_template="{YYYYMMDDHHmm}_{caption}",
+                filename_template="{YYYYMMDDHHmm}_{style}_{caption}",
             )
             self.assertTrue(all(path.exists() for path in temporary_paths))
             self.assertTrue(temporary_directory.exists())

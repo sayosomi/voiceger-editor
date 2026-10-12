@@ -149,8 +149,8 @@ When TXT is enabled, accepting a Take saves the current Caption exactly (UTF-8) 
 Example:
 
 ```text
-202610020307_今日は雨なのだ。.wav
-202610020307_今日は雨なのだ。.txt
+202610020307_Neutral_今日は雨なのだ。.wav
+202610020307_Neutral_今日は雨なのだ。.txt
 ```
 
 ## LAB sidecar
@@ -300,7 +300,7 @@ Example:
 ```json
 {
   "output_dir": "/path/to/output",
-  "filename_template": "{YYYYMMDDHHmm}_{caption}",
+  "filename_template": "{YYYYMMDDHHmm}_{style}_{caption}",
   "output_format": "wav",
   "wav_encoding": "source",
   "flac_encoding": "pcm16",
@@ -321,14 +321,14 @@ Example:
 The default accepted-output basename template is:
 
 ```text
-{YYYYMMDDHHmm}_{caption}
+{YYYYMMDDHHmm}_{style}_{caption}
 ```
 
 Configure it from **Settings -> File format & naming -> Filename template**. The **AUDIO OUTPUT** screen shows a live preview before the Settings draft is applied.
 
 Supported case-sensitive date/time tokens are `YYYY`, `MM`, `DD`, `HH`, `mm`, and `ss`. `MM` is the month and `mm` is the minute. Named variables are `{caption}` (the Caption current at Accept) and `{style}`. The former `{text}` variable is no longer supported; existing custom templates using it must be edited manually.
 
-The file extension comes from Format rather than the template. A rendered basename such as `202610071945_hello` is saved with the selected extension, such as `.wav`, `.flac`, or `.mp3` when MP3 is available. TXT and LAB sidecars, when enabled, use the same final basename and collision suffix.
+The file extension comes from Format rather than the template. A rendered basename such as `202610071945_Neutral_hello` is saved with the selected extension, such as `.wav`, `.flac`, or `.mp3` when MP3 is available. TXT and LAB sidecars, when enabled, use the same final basename and collision suffix.
 
 Unknown variables and unsupported date/time tokens are rejected before the Settings draft can be saved.
 

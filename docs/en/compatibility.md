@@ -211,7 +211,7 @@ Accepted TUI Takes can be saved as WAV or FLAC, or as MP3 when ffmpeg is
 available. The default basename template is:
 
 ```text
-{YYYYMMDDHHmm}_{caption}
+{YYYYMMDDHHmm}_{style}_{caption}
 ```
 
 The filename template is configurable and can use `{caption}`, `{style}`, and
