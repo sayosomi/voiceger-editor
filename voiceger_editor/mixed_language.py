@@ -17,6 +17,7 @@ from .voicevox_query import (
     build_audio_query,
     pronunciation_punctuation,
     pronunciation_to_accent_phrases,
+    pitch_events_for_range,
 )
 
 
@@ -213,6 +214,13 @@ def build_mixed_synthesis_plan(query: AudioQuery) -> MixedSynthesisPlan:
     if not query.voicegerSegments:
         raise ValueError("voicegerSegments are required for mixed synthesis")
 
+    if query.pronunciationPitchEvents:
+        # Validate all global extension records before segment slicing, so
+        # out-of-range or orphaned metadata cannot be silently discarded.
+        accent_phrases_to_pronunciation(
+            query.accent_phrases, pitch_events=query.pronunciationPitchEvents
+        )
+
     synthesis_text = "".join(
         segment.text for segment in query.voicegerSegments
     )
@@ -263,6 +271,9 @@ def build_mixed_synthesis_plan(query: AudioQuery) -> MixedSynthesisPlan:
             segment_phrases,
             punctuation=segment.pronunciationPunctuation,
             terminator=resolve_japanese_segment_terminator(segment),
+            pitch_events=pitch_events_for_range(
+                query.pronunciationPitchEvents, start, len(segment_phrases)
+            ),
         )
         japanese_overrides.append(
             (
