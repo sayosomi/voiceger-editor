@@ -93,10 +93,15 @@ def export_voiceger_editor_dictionaries(
 ) -> DictionaryExportResult:
     """Atomically publish one versioned, checksummed native ZIP backup."""
 
-    words = core.list_japanese_entries()
+    if hasattr(core, "native_dictionary_backup_snapshot"):
+        words, english_words, events = core.native_dictionary_backup_snapshot()
+    else:
+        # Support duck-typed dictionary cores used by client integrations.
+        words = core.list_japanese_entries()
+        english_words = core.list_english_entries()
+        events = getattr(core, "list_japanese_pitch_events", lambda: {})()
     japanese = serialize_japanese_dictionary(words)
-    english = serialize_english_dictionary(core.list_english_entries())
-    events = getattr(core, "list_japanese_pitch_events", lambda: {})()
+    english = serialize_english_dictionary(english_words)
     members = {
         "user_dict.json": japanese,
         "english_user_dict.json": english,
