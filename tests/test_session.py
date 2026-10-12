@@ -409,9 +409,9 @@ class UtteranceSessionTests(unittest.TestCase):
             self.assertTrue(saved.wav_path.name[:12].isdigit())
             self.assertEqual(
                 saved.wav_path.name[12:],
-                "_  だいすきなのだ！  .wav",
+                "_Neutral_  だいすきなのだ！  .wav",
             )
-            self.assertNotIn("_Neutral_", saved.wav_path.name)
+            self.assertIn("_Neutral_", saved.wav_path.name)
             self.assertNotIn("old-jaold-enold-end", saved.wav_path.name)
             self.assertEqual(
                 saved.text_path.read_bytes(), "  だいすきなのだ！  ".encode("utf-8")
