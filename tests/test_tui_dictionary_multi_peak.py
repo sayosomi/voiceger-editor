@@ -199,6 +199,68 @@ class JapaneseDictionaryMultiPeakTests(DictionaryControllerTestCase):
         self.finish_operation(self.key("s"))
         self.assertEqual(next(iter(self.core.japanese.values())).accent_type, 3)
 
+    def test_hiragana_in_detailed_dictionary_reading_normalizes_on_enter(self):
+        parent = self._open_quick("[シ]コク[メ]タン", surface="四国めたん")
+        parent.selection = "pronunciation"
+        self.key("\\n")
+        detail = self.controller.editor
+        detail.input_value = "[し]コク[めタン]"
+        self.key("\\n")
+        self.assertEqual(detail.input_value, "[シ]コク[メタン]")
+        self.assertEqual(detail.input_original, "[シ]コク[メタン]")
+        detail.selection = "preview"
+        (preview,) = self.key("\\n")
+        self.assertIsInstance(preview, PreviewIntent)
+        self.assertEqual(
+            tuple(m.text for m in preview.query.accent_phrases[0].moras),
+            ("シ", "コ", "ク", "メ", "タ", "ン"),
+        )
+        self.assertEqual(
+            [(event.afterMora, event.symbol)
+             for event in preview.query.pronunciationPitchEvents[0].events],
+            [(1, "]"), (3, "[")],
+        )
+        detail.selection = "apply"
+        self.key("\\n")
+        entry = self.controller.editor
+        self.assertEqual(entry.payload["pronunciation"], "シコクメタン")
+        self.assertEqual(
+            entry.payload["pitch_events"],
+            parse_pronunciation("[シ]コク[メタン]").phrases[0].pitch_events,
+        )
+        self.finish_operation(self.key("s"))
+        identity, word = next(iter(self.core.japanese.items()))
+        self.assertEqual(word.surface, "四国めたん")
+        self.assertEqual(word.pronunciation, "シコクメタン")
+        self.assertEqual(word.priority, 5)
+        self.assertEqual(self.core.get_japanese_pitch_events(identity),
+                         entry.payload["pitch_events"])
+
+    def test_hiragana_in_quick_save_and_small_kana_keep_pitch_events(self):
+        editor = self._open_quick("す[た]っく[ちゃ]ん")
+        self.assertEqual(editor.payload["pronunciation"], "スタックチャン")
+        self.assertEqual(editor.payload["moras"],
+                         ("ス", "タ", "ッ", "ク", "チャ", "ン"))
+        self.assertEqual(editor.payload["pitch_events"], EVENTS)
+        self.finish_operation(self.key("s"))
+        identity, word = next(iter(self.core.japanese.items()))
+        self.assertEqual(word.pronunciation, "スタックチャン")
+        self.assertEqual(self.core.get_japanese_pitch_events(identity), EVENTS)
+
+    def test_single_accent_hiragana_entry_normalizes_without_changing_surface(self):
+        editor = self._open_quick("あ'め", surface="雨")
+        editor.selection = "pronunciation"
+        self.key("\\n")
+        detail = self.controller.editor
+        self.assertEqual(detail.input_value, "ア'メ")
+        self.key("\\n")
+        detail.selection = "apply"
+        self.key("\\n")
+        self.finish_operation(self.key("s"))
+        word = next(iter(self.core.japanese.values()))
+        self.assertEqual((word.surface, word.pronunciation, word.accent_type),
+                         ("雨", "アメ", 1))
+
 
 if __name__ == "__main__":
     import unittest
