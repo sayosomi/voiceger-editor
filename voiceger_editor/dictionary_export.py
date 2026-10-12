@@ -88,15 +88,24 @@ def export_voiceger_editor_dictionaries(
 ) -> DictionaryExportResult:
     """Export native Japanese and English dictionaries as one paired operation."""
 
-    japanese = serialize_japanese_dictionary(core.list_japanese_entries())
+    words = core.list_japanese_entries()
+    japanese = serialize_japanese_dictionary(words)
     english = serialize_english_dictionary(core.list_english_entries())
+    events = getattr(core, "list_japanese_pitch_events", lambda: {})()
+    payloads = (
+        ("user_dict", japanese),
+        ("english_user_dict", english),
+    )
+    if events:
+        payloads = (
+            ("user_dict_with_pitch_events", japanese),
+            ("english_user_dict", english),
+            ("user_dict_pitch_events", serialize_pitch_metadata(words, events, japanese)),
+        )
     return _export_payloads(
         output_dir=output_dir,
         timestamp=timestamp,
-        payloads=(
-            ("user_dict", japanese),
-            ("english_user_dict", english),
-        ),
+        payloads=payloads,
     )
 
 
