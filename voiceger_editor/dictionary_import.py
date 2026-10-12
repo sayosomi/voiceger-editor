@@ -279,7 +279,14 @@ class JapaneseDictionaryImportReview:
         self,
         base_entries: Mapping[str, UserDictWord],
         entries: Sequence[tuple[str, UserDictWord]],
+        *,
+        base_pitch_events: Mapping[str, tuple[PitchEvent, ...]] | None = None,
+        incoming_pitch_events: Mapping[str, tuple[PitchEvent, ...]] | None = None,
+        native_pitch_metadata: bool = False,
     ) -> None:
+        self._base_pitch_events = dict(base_pitch_events or {})
+        self._incoming_pitch_events = dict(incoming_pitch_events or {})
+        self._native_pitch_metadata = native_pitch_metadata
         self._base_entries = {
             word_uuid: word.model_copy(deep=True)
             for word_uuid, word in base_entries.items()
@@ -341,6 +348,13 @@ class JapaneseDictionaryImportReview:
             raise DictionaryImportError(str(exc)) from exc
 
         relation = DictionaryImportRelation(classification.relation.value)
+        if (
+            self._native_pitch_metadata
+            and relation is DictionaryImportRelation.EXACT
+            and self._incoming_pitch_events.get(candidate.source_uuid, ())
+                != self._base_pitch_events.get(classification.existing_uuid, ())
+        ):
+            relation = DictionaryImportRelation.CONFLICT
         if (
             relation is DictionaryImportRelation.NEW
             and candidate.source_uuid in self._base_entries
@@ -420,8 +434,15 @@ class JapaneseDictionaryImportReview:
             raise DictionaryImportError(
                 "Japanese dictionary changed after import review was prepared"
             )
+        if self._native_pitch_metadata and (
+            core.list_japanese_pitch_events() != self._base_pitch_events
+        ):
+            raise DictionaryImportError(
+                "Japanese pitch metadata changed after import review was prepared"
+            )
 
         selected: dict[str, UserDictWord] = {}
+        selected_events: dict[str, tuple[PitchEvent, ...]] = {}
         imported = 0
         replaced = 0
         for candidate in self._candidates:
@@ -439,8 +460,17 @@ class JapaneseDictionaryImportReview:
                 target_uuid = candidate.source_uuid
                 imported += 1
             selected[target_uuid] = candidate.incoming.model_copy(deep=True)
+            if candidate.source_uuid in self._incoming_pitch_events:
+                selected_events[target_uuid] = self._incoming_pitch_events[
+                    candidate.source_uuid
+                ]
 
-        core.import_japanese(selected, override=True)
+        if self._native_pitch_metadata:
+            core.import_japanese(
+                selected, override=True, pitch_events=selected_events,
+            )
+        else:
+            core.import_japanese(selected, override=True)
         self._committed = True
         return DictionaryImportCommitResult(
             imported=imported,
@@ -578,6 +608,12 @@ def plan_dictionary_import(
         return JapaneseDictionaryImportReview(
             core.list_japanese_entries(),
             parsed.japanese_entries,
+            base_pitch_events=(
+                core.list_japanese_pitch_events()
+                if parsed.native_pitch_metadata else None
+            ),
+            incoming_pitch_events=dict(parsed.japanese_pitch_events),
+            native_pitch_metadata=parsed.native_pitch_metadata,
         )
     if parsed.format is DictionaryImportFormat.ENGLISH:
         return EnglishDictionaryImportReview(
