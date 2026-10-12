@@ -8,7 +8,7 @@ from typing import Optional
 
 
 _INVALID_FILENAME_CHARS = re.compile(r'[\x00-\x1f"*/:<>?\\|\x7f]')
-DEFAULT_FILENAME_TEMPLATE = "{YYYYMMDDHHmm}_{caption}"
+DEFAULT_FILENAME_TEMPLATE = "{YYYYMMDDHHmm}_{style}_{caption}"
 
 _DATE_TIME_TOKEN_RENDERERS = {
     "YYYY": lambda value: f"{value.year:04d}",
