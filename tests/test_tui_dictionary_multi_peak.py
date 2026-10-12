@@ -64,11 +64,11 @@ class JapaneseDictionaryMultiPeakTests(DictionaryControllerTestCase):
         self.key("m")
         self.assertEqual(editor.payload["pitch_cursor"], 2)
         self.key(curses.KEY_LEFT)
-        # This rise cannot collide with the existing fall.
+        self.assertEqual(editor.payload["pitch_events"][2], PitchEvent(3, "["))
+        self.key(curses.KEY_RIGHT)
         self.assertEqual(editor.payload["pitch_events"], EVENTS)
         self.key(curses.KEY_RIGHT)
-        self.assertEqual(editor.payload["pitch_events"][2], PitchEvent(5, "["))
-        self.key(curses.KEY_LEFT)
+        # The rise cannot collide with the following fall.
         self.assertEqual(editor.payload["pitch_events"], EVENTS)
         self.assertEqual(self.key("["), ())  # Existing word navigator is not a peak key.
         self.assertEqual(editor.payload["pitch_events"], EVENTS)
@@ -145,9 +145,15 @@ class JapaneseDictionaryMultiPeakTests(DictionaryControllerTestCase):
         self.assertIsInstance(preview, PreviewIntent)
         self.assertEqual(len(preview.query.pronunciationPitchEvents[0].events), 4)
         self.key(curses.KEY_RIGHT)
-        # Moving first fall to a collision is not allowed.
-        self.assertEqual(editor.payload["entries"][0][1].accent_type, 2)
-        self.assertFalse(self.controller.has_unsaved_list_accents)
+        self.assertEqual(editor.payload["entries"][0][1].accent_type, 3)
+        self.assertEqual(editor.payload["pitch_events"]["first"][1], EVENTS[1])
+        # The optimistic overlay is reconstructed when the list is refreshed.
+        refreshed = self.controller._list_payload(self.controller._list_state.japanese_view())
+        self.assertEqual(refreshed["pitch_events"]["first"][1], PitchEvent(3, "]"))
+        self.key(curses.KEY_RIGHT)
+        # Moving first fall across a second rise is not allowed.
+        self.assertEqual(editor.payload["entries"][0][1].accent_type, 3)
+        self.assertTrue(self.controller.has_unsaved_list_accents)
 
     def test_legacy_single_accent_has_no_extra_events(self):
         editor = self._open_quick("ズン'ダモン", surface="ずんだもん")
