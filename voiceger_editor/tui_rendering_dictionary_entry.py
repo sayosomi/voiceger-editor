@@ -25,28 +25,13 @@ def build_japanese_dictionary_entry(builder: EditorDocumentBuilder) -> bool:
         wrap(marker + "Surface        ", editor.payload["surface"], "surface")
     selectable("generate_pronunciation")
     plain()
-    if editor.active_field == "pronunciation":
-        input_field("pronunciation", "▶ Pronunciation  ")
-    else:
-        display = format_dictionary_pitch(
-            editor.payload["moras"],
-            editor.payload["accent"],
-            editor.payload.get("pitch_events", ()),
-        )
-        marker = "▶ " if editor.selection == "pronunciation" else "  "
-        wrap(marker + "Pronunciation  ", display, "pronunciation")
-        if editor.selection == "pronunciation":
-            events = editor.payload.get("pitch_events", ())
-            if events:
-                cursor = editor.payload.get("pitch_cursor", 1)
-                current = events[cursor]
-                wrap(
-                    "  ",
-                    f"Marker {cursor + 1}/{len(events)}: {current.symbol} after mora "
-                    f"{current.after_mora}. M select · Left/Right move",
-                )
-            wrap("  ", "[+] Add peak · [-] Remove selected peak · Enter edit reading")
-            wrap("  ", "[ and ] navigate dictionary words; / is a real phrase boundary.")
+    display = format_dictionary_pitch(
+        editor.payload["moras"],
+        editor.payload["accent"],
+        editor.payload.get("pitch_events", ()),
+    )
+    marker = "▶ " if editor.selection == "pronunciation" else "  "
+    wrap(marker + "Pronunciation  ", display, "pronunciation")
     marker = "▶ " if editor.selection == "word_type" else "  "
     lines.append(
         (
@@ -70,4 +55,20 @@ def build_japanese_dictionary_entry(builder: EditorDocumentBuilder) -> bool:
     plain()
     selectable("dictionary")
     selectable("back")
+    return True
+
+def build_japanese_dictionary_pronunciation(builder: EditorDocumentBuilder) -> bool:
+    """Reuse the BATCH ITEM pronunciation editor layout for Dictionary text edits."""
+    editor = builder.editor
+    builder.plain()
+    builder.plain("Source")
+    builder.wrap("  ", str(editor.payload["source_text"]))
+    builder.plain()
+    builder.input_field(
+        "pronunciation",
+        "▶ " if editor.selection == "pronunciation" else "  ",
+    )
+    builder.plain()
+    for key in ("preview", "apply", "clear", "reset", "back"):
+        builder.selectable(key)
     return True

@@ -3,9 +3,7 @@
 import curses
 
 from voiceger_editor.pronunciation import PitchEvent, parse_pronunciation
-from voiceger_editor.tui_dictionary_pitch import (
-    append_pitch_peak, format_dictionary_pitch, move_pitch_marker, remove_pitch_peak,
-)
+from voiceger_editor.tui_dictionary_pitch import format_dictionary_pitch
 from voiceger_editor.tui_editors import PreviewIntent
 from voiceger_editor.tui_status import StatusKind
 from tests.tui_dictionary_test_support import DictionaryControllerTestCase, ja_word
@@ -28,7 +26,7 @@ class JapaneseDictionaryMultiPeakTests(DictionaryControllerTestCase):
         visible = format_dictionary_pitch(phrase.morae, phrase.accent, EVENTS)
         self.assertEqual(visible.count("["), 2)
         self.assertEqual(visible.count("]"), 2)
-        self.assertIn("(2 peaks, one phrase)", visible)
+        self.assertEqual(visible, MULTI)
         self.assertNotIn("/", visible)
 
     def test_quick_save_roundtrip_preserves_extra_events_and_default_priority(self):
@@ -57,45 +55,66 @@ class JapaneseDictionaryMultiPeakTests(DictionaryControllerTestCase):
         self.assertEqual(self.controller.editor.payload["pitch_events"], EVENTS)
         self.assertFalse(self.controller._entry_owner._is_dirty(self.controller.editor))
 
-    def test_move_add_remove_marker_and_preserve_navigation_shortcuts(self):
-        editor = self._open_quick()
-        editor.selection = "pronunciation"
-        self.assertEqual(editor.payload["pitch_cursor"], 1)
-        self.key("m")
-        self.assertEqual(editor.payload["pitch_cursor"], 2)
-        self.key(curses.KEY_LEFT)
-        self.assertEqual(editor.payload["pitch_events"][2], PitchEvent(3, "["))
-        self.key(curses.KEY_RIGHT)
-        self.assertEqual(editor.payload["pitch_events"], EVENTS)
-        self.key(curses.KEY_RIGHT)
-        # The rise cannot collide with the following fall.
-        self.assertEqual(editor.payload["pitch_events"], EVENTS)
-        self.assertEqual(self.key("["), ())  # Existing word navigator is not a peak key.
-        self.assertEqual(editor.payload["pitch_events"], EVENTS)
-        self.key("-")
-        self.assertEqual(editor.payload["pitch_events"], ())
-        self.assertEqual(editor.payload["accent"], 2)
-        self.key("+")
-        self.assertEqual(len(editor.payload["pitch_events"]), 4)
-        self.assertEqual(editor.payload["pitch_events"][0], PitchEvent(1, "["))
-        self.assertEqual(editor.payload["pitch_events"][1], PitchEvent(2, "]"))
-        self.key(curses.KEY_LEFT)
-        self.assertEqual(editor.payload["accent"], 2)
+    def test_multi_peak_detail_text_edit_preview_apply(self):
+        entry = self._open_quick()
+        entry.selection = "pronunciation"
+        self.key("\n")
+        detail = self.controller.editor
+        self.assertEqual(detail.kind, "dictionary_japanese_pronunciation")
+        self.assertEqual(detail.input_value, MULTI)
 
-    def test_edit_field_shows_all_peaks_and_failed_validation_retains_draft(self):
-        editor = self._open_quick()
-        editor.selection = "pronunciation"
+        changed = "ス[タ]ッ[クチャ]ン"
+        detail.input_value = changed
+        self.key("\n")  # Finish typing; no change to the parent until Apply.
+        detail.selection = "preview"
+        (preview,) = self.key("\n")
+        self.assertIsInstance(preview, PreviewIntent)
+        self.assertEqual(
+            [(e.afterMora, e.symbol)
+             for e in preview.query.pronunciationPitchEvents[0].events],
+            [(1, "["), (2, "]"), (3, "["), (5, "]")],
+        )
+        detail.selection = "apply"
         self.key("\n")
-        self.assertEqual(editor.input_value, MULTI)
-        editor.input_value = "ス[タ]/ック[チャ]ン"
+        self.assertEqual(self.controller.editor.kind, "dictionary_japanese_entry")
+        self.assertEqual(
+            self.controller.editor.payload["pitch_events"],
+            parse_pronunciation(changed).phrases[0].pitch_events,
+        )
+        self.assertEqual(
+            self.controller.editor.payload["pronunciation"], "スタックチャン",
+        )
+
+    def test_invalid_detail_apply_keeps_draft_and_back_discards(self):
+        entry = self._open_quick()
+        entry.selection = "pronunciation"
         self.key("\n")
-        self.assertIsNotNone(editor.active_field)
-        self.assertEqual(editor.payload["pitch_events"], EVENTS)
-        self.assertEqual(editor.error.kind, StatusKind.ERROR)
-        editor.input_value = MULTI
+        detail = self.controller.editor
+        detail.input_value = "ス[タ]/ック[チャ]ン"
         self.key("\n")
-        self.assertIsNone(editor.active_field)
-        self.assertEqual(editor.payload["pitch_events"], EVENTS)
+        detail.selection = "apply"
+        self.assertEqual(self.key("\n"), ())
+        self.assertIs(self.controller.editor, detail)
+        self.assertEqual(detail.error.kind, StatusKind.ERROR)
+        self.assertEqual(detail.input_value, "ス[タ]/ック[チャ]ン")
+        detail.selection = "reset"
+        self.key("\n")
+        self.assertEqual(detail.input_value, MULTI)
+        self.key("\x1b")
+        self.assertEqual(self.controller.editor.kind, "dictionary_japanese_entry")
+        self.assertEqual(self.controller.editor.payload["pitch_events"], EVENTS)
+
+    def test_single_accent_uses_legacy_notation_in_detail(self):
+        entry = self._open_quick("ズン'ダモン", surface="ずんだもん")
+        entry.selection = "pronunciation"
+        self.key("\n")
+        detail = self.controller.editor
+        self.assertEqual(detail.input_value, "ズン'ダモン")
+        self.key("\n")
+        detail.selection = "apply"
+        self.key("\n")
+        self.assertEqual(self.controller.editor.payload["accent"], 2)
+        self.assertEqual(self.controller.editor.payload["pitch_events"], ())
 
     def test_existing_multi_peak_is_not_lost_on_plain_open_save_or_failed_save(self):
         self.core.japanese["existing"] = ja_word("スタックチャン", "スタックチャン", 2)
@@ -134,7 +153,7 @@ class JapaneseDictionaryMultiPeakTests(DictionaryControllerTestCase):
         self.assertEqual(self.core.get_japanese_pitch_events("second"), EVENTS)
         self.assertNotIn("first", self.core.pitch_events)
 
-    def test_list_preview_uses_events_and_pending_first_fall(self):
+    def test_list_multi_peak_has_no_inline_left_right_editing(self):
         self.core.japanese["first"] = ja_word("スタックチャン", "スタックチャン", 2)
         self.core.pitch_events["first"] = EVENTS
         self.controller.open_menu()
@@ -145,21 +164,10 @@ class JapaneseDictionaryMultiPeakTests(DictionaryControllerTestCase):
         self.assertIsInstance(preview, PreviewIntent)
         self.assertEqual(len(preview.query.pronunciationPitchEvents[0].events), 4)
         self.key(curses.KEY_RIGHT)
-        self.assertEqual(editor.payload["entries"][0][1].accent_type, 3)
-        self.assertEqual(editor.payload["pitch_events"]["first"][1], PitchEvent(3, "]"))
-        (pending_preview,) = self.key("p")
-        self.assertEqual(pending_preview.query.accent_phrases[0].accent, 3)
-        self.assertEqual(
-            pending_preview.query.pronunciationPitchEvents[0].events[1].afterMora,
-            3,
-        )
-        # The optimistic overlay is reconstructed when the list is refreshed.
-        refreshed = self.controller._list_payload(self.controller._list_state.japanese_view())
-        self.assertEqual(refreshed["pitch_events"]["first"][1], PitchEvent(3, "]"))
-        self.key(curses.KEY_RIGHT)
-        # Moving first fall across a second rise is not allowed.
-        self.assertEqual(editor.payload["entries"][0][1].accent_type, 3)
-        self.assertTrue(self.controller.has_unsaved_list_accents)
+        self.key(curses.KEY_LEFT)
+        self.assertEqual(editor.payload["entries"][0][1].accent_type, 2)
+        self.assertEqual(editor.payload["pitch_events"]["first"], EVENTS)
+        self.assertFalse(self.controller.has_unsaved_list_accents)
 
     def test_legacy_single_accent_has_no_extra_events(self):
         editor = self._open_quick("ズン'ダモン", surface="ずんだもん")

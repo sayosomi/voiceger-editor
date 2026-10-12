@@ -163,7 +163,7 @@ def adjustment_press_direction(
 def _active_input_prefix(editor: EditorRenderState) -> str:
     if editor.kind == "caption":
         return "▶ "
-    if editor.kind == "japanese":
+    if editor.kind in {"japanese", "dictionary_japanese_pronunciation"}:
         return "▶ "
     if editor.kind == "english_word":
         return "▶ "

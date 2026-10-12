@@ -18,12 +18,10 @@ def format_dictionary_pitch(
     if not events:
         return " ".join(_japanese_mora_tokens(morae, accent or len(morae)))
     markers = {event.after_mora: event.symbol for event in events}
-    body = " ".join(
+    return "".join(
         f"{mora}{markers.get(index, '')}"
         for index, mora in enumerate(morae, start=1)
     )
-    peaks = sum(event.symbol == "]" for event in events)
-    return f"{body}  ({peaks} peaks, one phrase)"
 
 
 def move_pitch_marker(

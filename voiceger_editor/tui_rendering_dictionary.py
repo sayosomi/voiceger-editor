@@ -12,7 +12,10 @@ from .tui_display import (
 )
 from .tui_dictionary_pitch import format_dictionary_pitch
 from .tui_rendering_editor_common import EditorDocumentBuilder
-from .tui_rendering_dictionary_entry import build_japanese_dictionary_entry
+from .tui_rendering_dictionary_entry import (
+    build_japanese_dictionary_entry,
+    build_japanese_dictionary_pronunciation,
+)
 from .tui_rendering_dictionary_list import (
     _DICTIONARY_SORT_LABELS,
     _dictionary_list_row,
@@ -214,6 +217,8 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         plain(menu_item(editor.kind, "back", editor.payload).display_label)
     elif editor.kind == "dictionary_japanese_entry":
         return build_japanese_dictionary_entry(builder)
+    elif editor.kind == "dictionary_japanese_pronunciation":
+        return build_japanese_dictionary_pronunciation(builder)
     elif editor.kind == "dictionary_english_entry":
         plain()
         if editor.active_field == "surface":

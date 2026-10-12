@@ -66,6 +66,9 @@ class JapaneseListAccentOwner(DictionaryListAutoSaveOwner):
         if not 0 <= index < len(entries):
             return False
         identity, word = entries[index]
+        if self.pitch_events().get(identity, ()):
+            # Multiple pitch events cannot be adjusted safely from the list.
+            return False
         mora_count = len(_reading_morae(word.pronunciation))
         if not mora_count:
             return False
@@ -73,18 +76,6 @@ class JapaneseListAccentOwner(DictionaryListAutoSaveOwner):
         target = min(mora_count, max(1, current_visual + (-1 if direction < 0 else 1)))
         if target == current_visual:
             return False
-        events = self.pitch_events().get(identity, ())
-        if events:
-            updated_events = list(events)
-            first_fall = next(
-                index for index, event in enumerate(updated_events)
-                if event.symbol == "]"
-            )
-            updated_events[first_fall] = PitchEvent(target, "]")
-            try:
-                AccentPhrase(tuple(_reading_morae(word.pronunciation)), target, tuple(updated_events))
-            except ValueError:
-                return False
         updated = deepcopy(word)
         updated.accent_type = target
         entries[index] = (identity, updated)

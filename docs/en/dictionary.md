@@ -29,16 +29,17 @@ without opening its editor. The `[P] Preview` action also appears in the list.
 Preview uses the currently displayed pronunciation, even before an auto-save
 completes.
 
-In the Japanese list, Left / Right moves the focused word's first accent fall one
-mora at a time without wrapping. For multi-peak words, the other internal pitch
-events remain in place; movement stops where it would cross another event.
-Multi-peak rows show the complete `[` / `]` sequence and the number of peaks
-within **one** accent phrase. Open the entry to adjust an individual marker. In the English list, Left / Right moves the single
-primary ARPAbet stress (`1`) to the previous / next vowel, following BATCH
-ITEM's rule. The primary-stressed vowel is enclosed in square brackets,
-as on BATCH ITEM (for example, `Z [UW1] N D AA0 M OW0 N`). The brackets
-follow the primary stress when it moves. English words with zero or multiple
-primary stresses, or fewer than two vowels, are not adjustable.
+In the Japanese list, Left / Right moves a **single-accent** word's accent
+one mora at a time without wrapping. For **multi-peak** words, Left / Right
+does nothing: edit the complete sequence in the detailed pronunciation editor.
+Multi-peak words display the compact `[` (rise) / `]` (fall) notation
+used during text editing, without extra mora spaces or a peak-count suffix.
+
+In the English list, Left / Right moves the single primary ARPAbet stress
+(`1`) to the previous / next vowel, following BATCH ITEM's rule. The
+primary-stressed vowel is enclosed in square brackets, as on BATCH ITEM
+(for example, `Z [UW1] N D AA0 M OW0 N`). English words with zero or
+multiple primary stresses, or fewer than two vowels, are not adjustable.
 
 Changes appear immediately and are automatically saved in the background;
 rapid adjustments are combined. Leaving a list or opening an editor waits until
@@ -85,40 +86,35 @@ Example:
 Japanese dictionary pronunciation is stored as katakana within one accent phrase.
 A word may have multiple pitch-accent peaks without splitting that phrase.
 
-Generate a pronunciation from Surface or enter the reading manually. On the
-focused Pronunciation row, the following keys operate without a mouse:
+Generate a pronunciation from Surface, then select the Pronunciation row.
+For a single-accent word, Left / Right moves the accent one mora at a time.
+For multi-peak words, Left / Right does not modify the reading.
 
-- Left / Right moves the current accent marker one mora without wrapping.
-- `M` selects the next movable pitch marker of a multi-peak word.
-- `+` appends a new rise/fall peak where there is enough room.
-- `-` removes the selected additional peak (the first peak stays).
-- Enter edits the reading. For multi-peak words, the editable text includes
-  every `[` and `]` marker; changes are validated before applying.
-- `[` / `]` still navigate between dictionary entries, **not** pitch markers.
+Press Enter on Pronunciation to open **EDIT PRONUNCIATION**, using the
+same direct text-editing layout as BATCH ITEM. Edit the string, then select
+**Preview** to listen, **Apply** to accept the draft back into the Dictionary
+entry, **Clear** or **Reset** as needed, or **Esc** to return without applying.
+Save the dictionary word separately in the parent entry.
 
-Single-accent readings keep the existing `ア'メ` / `アメ'` notation
-and Left / Right behavior. A multi-peak reading, for example,
-`ス[タ]ック[チャ]ン`, contains two internal rise/fall pairs and **no**
-accent-phrase boundary. In this notation, `[` is a pitch rise and `]`
-is a pitch fall immediately after the preceding mora. Slash `/` represents a
-real phrase boundary in the broader pronunciation syntax and is not accepted
-inside one dictionary word. Spaces are not internal pitch boundaries.
+Single-accent words retain their existing notation (`ア'メ` / `アメ'`)
+and behavior. For multiple peaks, use explicit `[` rise and `]` fall
+markers, for example `ス[タ]ック[チャ]ン`. Both rise and fall positions
+are typed directly: no new notation, special marker-selection shortcut,
+or automatic conversion is required. Markers must follow complete morae;
+`チャ` is one mora.
 
-The dictionary list, duplicate-word selection, and entry editor display every
-saved event; `(2 peaks, one phrase)` distinguishes these entries from single
-accents. The first fall remains the standard VOICEVOX `accent_type`, while
-the additional events live in Voiceger Editor's separate metadata. Preview
-uses the entire selected event sequence, even before a list auto-save completes.
+Dictionary readings remain a single accent phrase. A slash `/` splits
+phrases and is not valid within one dictionary word. Additional pitch
+events live in Voiceger Editor metadata, while the first fall stays in the
+VOICEVOX-compatible `accent_type`. Preview, Save, and Quick Save preserve
+every pitch event, and existing single-accent words are not upgraded
+automatically.
 
-Select Preview to listen before saving. Saving a multi-peak word preserves its
-events, word UUID, and selected Priority (default 5). Existing single-accent
-words are not upgraded automatically. A rejected reading or failed save leaves
-the entry draft available for correction.
-
-See [Pronunciation](pronunciation.md) for general phrase separators and
-[Compatibility](compatibility.md) for the distinction between VOICEVOX and
-Voiceger Editor-specific pitch data. See the export/import instructions below
-for lossless native backups.
+Select Preview to listen before saving. New entries default to Priority 5.
+Invalid text or failed saves keep a retryable draft. See
+[Pronunciation](pronunciation.md) for general phrase separators,
+[Compatibility](compatibility.md) for VOICEVOX limitations, and the
+export/import instructions below for lossless backups.
 
 ### Word type
 
