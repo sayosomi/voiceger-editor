@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -18,6 +19,11 @@ from uuid import UUID, uuid4
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from .english_stress import normalize_english_phonemes
+from .japanese_pitch_metadata import (
+    METADATA_FILENAME, normalize_word_pitch_events, parse_pitch_metadata,
+    serialize_pitch_metadata,
+)
+from .pronunciation import PitchEvent
 from .openjtalk_dictionary import (
     OpenJTalkDictionary,
     OpenJTalkDictionaryError,
@@ -332,11 +338,15 @@ class UserDictionaryCore:
             raise ValueError(
                 "adapter dictionary files must be stored outside Voiceger"
             )
+        self.japanese_pitch_path = self.data_directory / METADATA_FILENAME
+        self.japanese_journal_path = self.data_directory / "user_dict.pending.json"
+        self._recover_japanese_transaction()
         self.openjtalk_dictionary = openjtalk_dictionary or OpenJTalkDictionary(
             self.voiceger_root
         )
         self._lock = RLock()
         self._japanese = self._load_japanese()
+        self._pitch_events = self._load_japanese_pitch_events()
         self._english = self._load_english()
 
     def _read_json_object(self, path: Path) -> dict[str, Any]:
@@ -376,6 +386,108 @@ class UserDictionaryCore:
                 "Japanese dictionary file contains invalid data"
             ) from exc
         return result
+
+    def _recover_japanese_transaction(self) -> None:
+        """Recover the previous complete pair if interrupted between file writes."""
+        journal = self.japanese_journal_path
+        if not journal.exists():
+            return
+        try:
+            data = json.loads(
+                journal.read_text(encoding="utf-8"),
+                object_pairs_hook=_reject_duplicate_keys,
+            )
+            if not isinstance(data, dict) or set(data) != {"version", "files"}:
+                raise ValueError("invalid recovery journal shape")
+            if type(data["version"]) is not int or data["version"] != 1:
+                raise ValueError("unsupported recovery journal version")
+            files = data["files"]
+            if not isinstance(files, list) or len(files) != 2:
+                raise ValueError("invalid recovery files")
+            for value, path in zip(files, (self.japanese_path, self.japanese_pitch_path)):
+                if value is not None and not isinstance(value, str):
+                    raise ValueError("invalid recovery bytes")
+                if value is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    _atomic_write(path, base64.b64decode(value, validate=True))
+            journal.unlink()
+        except Exception as exc:
+            raise UserDictionaryStorageError(
+                "Japanese dictionary recovery journal could not be applied"
+            ) from exc
+
+    @staticmethod
+    def _word_morae(word: UserDictWord) -> tuple[str, ...]:
+        return tuple(_MORA_PATTERN.findall(word.pronunciation))
+
+    def _load_japanese_pitch_events(self) -> dict[str, tuple[PitchEvent, ...]]:
+        if not self.japanese_pitch_path.exists():
+            return {}
+        try:
+            raw = self._read_json_object(self.japanese_pitch_path)
+            return parse_pitch_metadata(
+                raw, self._japanese, self._serialize_japanese(self._japanese),
+                self._word_morae,
+            )
+        except (ValueError, TypeError, KeyError) as exc:
+            raise UserDictionaryStorageError(
+                "Japanese pitch metadata is invalid or does not match the dictionary"
+            ) from exc
+
+    def list_japanese_pitch_events(self) -> dict[str, tuple[PitchEvent, ...]]:
+        """Get immutable multi-peak sequences by stable Japanese word UUID."""
+        with self._lock:
+            return dict(self._pitch_events)
+
+    def get_japanese_pitch_events(self, word_uuid: str) -> tuple[PitchEvent, ...]:
+        normalized_uuid = self._parse_uuid(word_uuid)
+        with self._lock:
+            if normalized_uuid not in self._japanese:
+                raise UserDictionaryInputError("UUIDに該当するワードが見つかりませんでした")
+            return self._pitch_events.get(normalized_uuid, ())
+
+    def _persist_japanese_pair(
+        self,
+        candidate: Mapping[str, UserDictWord],
+        events: Mapping[str, tuple[PitchEvent, ...]],
+    ) -> None:
+        """Journal prior bytes so a partial two-file write is recoverable."""
+        base = self._serialize_japanese(candidate)
+        if not (events or self._pitch_events):
+            _atomic_write(self.japanese_path, base)
+            return
+        metadata = serialize_pitch_metadata(candidate, events, base) if events else None
+        files = (self.japanese_path, self.japanese_pitch_path)
+        previous = tuple(path.read_bytes() if path.exists() else None for path in files)
+        journal = {
+            "version": 1,
+            "files": [
+                None if value is None else base64.b64encode(value).decode("ascii")
+                for value in previous
+            ],
+        }
+        _atomic_write(
+            self.japanese_journal_path,
+            (json.dumps(journal) + "\n").encode("utf-8"),
+        )
+        try:
+            _atomic_write(self.japanese_path, base)
+            if metadata is None:
+                self.japanese_pitch_path.unlink(missing_ok=True)
+            else:
+                _atomic_write(self.japanese_pitch_path, metadata)
+            self.japanese_journal_path.unlink()
+        except Exception as exc:
+            try:
+                self._recover_japanese_transaction()
+            except UserDictionaryStorageError as rollback_error:
+                raise UserDictionaryStorageError(
+                    "Japanese dictionary pair could not be restored; recovery journal retained"
+                ) from rollback_error
+            raise UserDictionaryStorageError(
+                "Japanese dictionary pair could not be persisted"
+            ) from exc
 
     def _load_english(self) -> dict[str, EnglishUserDictionaryEntry]:
         raw = self._read_json_object(self.english_path)
