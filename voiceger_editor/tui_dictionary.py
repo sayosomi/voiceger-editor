@@ -1255,12 +1255,9 @@ class TuiDictionaryController:
             return (QuitIntent(),)
         if key == "?":
             return (OpenHelpIntent(),)
-        if (
-            editor.kind == "dictionary_japanese_entry"
-            and editor.selection == "pronunciation"
-            and key in {"m", "+", "-"}
-        ):
-            return self._entry_owner.change_japanese_peak(key)
+        peak_handled = self._entry_owner.try_handle_peak_key(editor, key)
+        if peak_handled is not None:
+            return peak_handled
 
         if editor.kind in {
             "dictionary_japanese_entry",
