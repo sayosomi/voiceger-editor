@@ -878,7 +878,7 @@ class TuiDictionaryController:
         lossy = getattr(value, "lossy_pitch_event_uuids", ())
         if lossy:
             outcome = warning_status(
-                f"VOICEVOX export complete: {filenames}. Warning: {len(lossy)} word(s) "
+                f"VOICEVOX export complete: {filenames}. {len(lossy)} word(s) "
                 "have extra pitch peaks that VOICEVOX cannot import; "
                 "use Voiceger Editor native export for a lossless backup."
             )
