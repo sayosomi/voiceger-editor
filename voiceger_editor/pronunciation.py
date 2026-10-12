@@ -58,8 +58,8 @@ class PitchEvent:
     def __post_init__(self) -> None:
         if type(self.after_mora) is not int or self.after_mora < 1:
             raise ValueError("pitch event must follow a positive mora index")
-        if self.symbol not in {"[", "]"}:
-            raise ValueError("pitch event symbol must be '[' or ']'")    
+        if type(self.symbol) is not str or self.symbol not in {"[", "]"}:
+            raise ValueError("pitch event symbol must be '[' or ']'")
 
 
 @dataclass(frozen=True)
@@ -81,6 +81,8 @@ class AccentPhrase:
             raise ValueError("accent must point to a mora in the phrase")
         if self.pitch_events is not None:
             events = self.pitch_events
+            if not isinstance(events, tuple):
+                raise ValueError("pitch events must be an immutable tuple")
             if len(events) < 3:
                 raise ValueError("multi-peak phrases require at least three pitch events")
             previous = 0
