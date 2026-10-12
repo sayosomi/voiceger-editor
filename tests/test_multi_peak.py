@@ -76,7 +76,7 @@ class MultiPeakTests(unittest.TestCase):
         self.assertEqual(format_pronunciation(parsed), MULTI)
 
     def test_multiple_real_boundaries_and_punctuation_remain_distinct(self):
-        text = "ア[メ]ア[メ]、ツク'ッタ/ノダ'！"
+        text = "ア[メ]ア[メ]ア、ツク'ッタ/ノダ'！"
         self.assertEqual(format_pronunciation(parse_pronunciation(text)), text)
         self.assertEqual(
             pronunciation_to_voiceger_tokens(
