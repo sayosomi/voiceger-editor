@@ -214,6 +214,13 @@ def build_mixed_synthesis_plan(query: AudioQuery) -> MixedSynthesisPlan:
     if not query.voicegerSegments:
         raise ValueError("voicegerSegments are required for mixed synthesis")
 
+    if query.pronunciationPitchEvents:
+        # Validate all global extension records before segment slicing, so
+        # out-of-range or orphaned metadata cannot be silently discarded.
+        accent_phrases_to_pronunciation(
+            query.accent_phrases, pitch_events=query.pronunciationPitchEvents
+        )
+
     synthesis_text = "".join(
         segment.text for segment in query.voicegerSegments
     )
