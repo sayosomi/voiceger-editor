@@ -205,6 +205,38 @@ class DictionaryImportOwner:
             },
         )
 
+    def activate_restore(
+        self, *, restore_parent: Callable[[], None]
+    ) -> tuple[DictionaryImportIntent, ...]:
+        """Own separate restore review and destructive confirmation actions."""
+
+        editor = self.editor
+        if editor is None:
+            return ()
+        selected = editor.selection
+        if editor.kind == "dictionary_restore_confirmation":
+            if selected == "cancel":
+                self.editor = self._import_review_state(action="cancel")
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            if selected == "restore":
+                return self._commit_dictionary_import(confirmed=True)
+        if editor.kind == "dictionary_restore_review":
+            if selected == "restore":
+                self.editor = self._restore_confirmation_state()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            if selected == "cancel":
+                self._clear_import_state()
+                restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            if (
+                isinstance(selected, tuple)
+                and selected[0] == "import_entry"
+                and isinstance(selected[1], int)
+            ):
+                self.editor = self._import_detail_state(selected[1])
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+        return ()
+
     def _restore_confirmation_state(self) -> EditorState:
         review = self._import_review
         if not isinstance(review, DictionaryBackupReview) or not review.restore:
