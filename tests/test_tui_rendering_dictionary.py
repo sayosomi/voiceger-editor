@@ -324,7 +324,7 @@ class DictionaryRenderingDocumentTests(RenderingTestCase):
             render_state(editor=editor), 80
         )
 
-        self.assertIn(("▶ [I] Import dictionary", "import"), document)
+        self.assertIn(("▶ [I] Import dictionary (Merge)", "import"), document)
 
     def test_dictionary_import_review_is_compact_and_marks_conflicts_after_checkbox(self):
         items = (
