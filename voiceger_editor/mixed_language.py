@@ -17,6 +17,7 @@ from .voicevox_query import (
     build_audio_query,
     pronunciation_punctuation,
     pronunciation_to_accent_phrases,
+    pitch_events_for_range,
 )
 
 
