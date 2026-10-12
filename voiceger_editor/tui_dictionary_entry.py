@@ -12,7 +12,10 @@ from .english_stress import (
     normalize_english_phonemes,
 )
 from .openjtalk_dictionary import expand_word_type, normalize_surface
-from .pronunciation import AccentPhrase as CoreAccentPhrase, PitchEvent, parse_pronunciation
+from .pronunciation import (
+    AccentPhrase as CoreAccentPhrase, PitchEvent, Pronunciation,
+    format_pronunciation, parse_pronunciation,
+)
 from .tui_dictionary_pitch import append_pitch_peak, move_pitch_marker, remove_pitch_peak
 from .tui_adjustments import step_bounded, step_cyclic
 from .tui_dictionary_list import DictionaryListStateOwner
@@ -355,6 +358,19 @@ class DictionaryEntryOwner:
                 "can_delete": original_surface is not None,
             },
         )
+
+    @staticmethod
+    def japanese_editable_reading(editor: EditorState) -> str:
+        """Show complete explicit multi-peak events on Enter, not just the base reading."""
+        events = tuple(editor.payload["pitch_events"])
+        if not events:
+            return str(editor.payload["pronunciation"])
+        phrase = CoreAccentPhrase(
+            tuple(editor.payload["moras"]),
+            int(editor.payload["accent"]),
+            events,
+        )
+        return format_pronunciation(Pronunciation(phrases=(phrase,)))
 
     def _entry_snapshot(self, editor: EditorState) -> tuple[Any, ...]:
         if editor.kind == "dictionary_japanese_entry":
