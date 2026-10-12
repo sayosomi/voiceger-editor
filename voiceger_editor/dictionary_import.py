@@ -50,9 +50,9 @@ class ParsedDictionaryImport:
     format: DictionaryImportFormat
     source_path: Path
     japanese_entries: tuple[tuple[str, UserDictWord], ...] = ()
+    english_entries: tuple[EnglishUserDictionaryEntry, ...] = ()
     japanese_pitch_events: tuple[tuple[str, tuple[PitchEvent, ...]], ...] = ()
     native_pitch_metadata: bool = False
-    english_entries: tuple[EnglishUserDictionaryEntry, ...] = ()
 
 
 @dataclass(frozen=True)
