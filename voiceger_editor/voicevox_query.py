@@ -10,6 +10,7 @@ from .pronunciation import (
     PitchEvent,
     PronunciationPunctuation as CorePronunciationPunctuation,
     format_pronunciation,
+    parse_pronunciation,
 )
 from .runtime_locks import OPENJTALK_LOCK
 from .voicevox_api_models import (
@@ -159,7 +160,9 @@ def pitch_events_for_range(
     """Slice global query metadata to a segment's relative phrase indices."""
 
     selected = [
-        record.model_copy(update={"accentPhraseIndex": record.accentPhraseIndex - start}, deep=True)
+        record.model_copy(
+            update={"accentPhraseIndex": record.accentPhraseIndex - start}, deep=True
+        )
         for record in (records or ())
         if start <= record.accentPhraseIndex < start + count
     ]
@@ -181,7 +184,9 @@ def accent_phrases_to_pronunciation(
     for record in pitch_events or ():
         index = record.accentPhraseIndex
         if index <= previous_index or index >= len(accent_phrases):
-            raise ValueError("pitch event phrase indices must be unique, ordered and in range")
+            raise ValueError(
+                "pitch event phrase indices must be unique, ordered and in range"
+            )
         previous_index = index
         events_by_phrase[index] = tuple(
             PitchEvent(event.afterMora, event.symbol)
@@ -193,13 +198,20 @@ def accent_phrases_to_pronunciation(
         morae = tuple(mora.text for mora in phrase.moras)
         if not morae:
             raise ValueError("accent phrase must contain at least one mora")
-        core_phrases.append(
-            CoreAccentPhrase(
-                morae=morae,
-                accent=phrase.accent,
-                pitch_events=events_by_phrase.get(index),
-            )
+        core = CoreAccentPhrase(
+            morae=morae,
+            accent=phrase.accent,
+            pitch_events=events_by_phrase.get(index),
         )
+        if core.pitch_events is not None:
+            # Query mora records may be edited independently. Reparse the
+            # explicit event notation to detect split digraphs/misalignment.
+            checked = parse_pronunciation(
+                format_pronunciation(Pronunciation(phrases=(core,)))
+            ).phrases[0]
+            if checked.morae != morae:
+                raise ValueError("pitch events are not aligned to complete morae")
+        core_phrases.append(core)
 
     if punctuation is None:
         return Pronunciation(tuple(core_phrases), terminator=terminator)
