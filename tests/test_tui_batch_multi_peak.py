@@ -178,7 +178,11 @@ class BatchItemMultiPeakTests(EditorControllerTestCase):
             self.assertIsInstance(preview[0], PreviewIntent)
             self.assertEqual(japanese_pronunciation(preview[0].query), changed)
             self.assertEqual(japanese_pronunciation(query), "[シ]コク[メ]タン。")
-            applied = controller.apply_pronunciation(query)
+            controller.editor.selection = "apply"
+            applied = controller.handle_key(
+                "\n", settings=self.settings(), query=query,
+                current_caption="四国めたん",
+            )
         replacement = next(item for item in applied
                            if isinstance(item, ReplaceQueryIntent))
         self.assertEqual(japanese_pronunciation(replacement.query), changed)
