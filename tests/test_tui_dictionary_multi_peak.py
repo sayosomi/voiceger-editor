@@ -202,14 +202,14 @@ class JapaneseDictionaryMultiPeakTests(DictionaryControllerTestCase):
     def test_hiragana_in_detailed_dictionary_reading_normalizes_on_enter(self):
         parent = self._open_quick("[シ]コク[メ]タン", surface="四国めたん")
         parent.selection = "pronunciation"
-        self.key("\\n")
+        self.key("\n")
         detail = self.controller.editor
         detail.input_value = "[し]コク[めタン]"
-        self.key("\\n")
+        self.key("\n")
         self.assertEqual(detail.input_value, "[シ]コク[メタン]")
         self.assertEqual(detail.input_original, "[シ]コク[メタン]")
         detail.selection = "preview"
-        (preview,) = self.key("\\n")
+        (preview,) = self.key("\n")
         self.assertIsInstance(preview, PreviewIntent)
         self.assertEqual(
             tuple(m.text for m in preview.query.accent_phrases[0].moras),
@@ -221,7 +221,7 @@ class JapaneseDictionaryMultiPeakTests(DictionaryControllerTestCase):
             [(1, "]"), (3, "[")],
         )
         detail.selection = "apply"
-        self.key("\\n")
+        self.key("\n")
         entry = self.controller.editor
         self.assertEqual(entry.payload["pronunciation"], "シコクメタン")
         self.assertEqual(
@@ -250,12 +250,12 @@ class JapaneseDictionaryMultiPeakTests(DictionaryControllerTestCase):
     def test_single_accent_hiragana_entry_normalizes_without_changing_surface(self):
         editor = self._open_quick("あ'め", surface="雨")
         editor.selection = "pronunciation"
-        self.key("\\n")
+        self.key("\n")
         detail = self.controller.editor
         self.assertEqual(detail.input_value, "ア'メ")
-        self.key("\\n")
+        self.key("\n")
         detail.selection = "apply"
-        self.key("\\n")
+        self.key("\n")
         self.finish_operation(self.key("s"))
         word = next(iter(self.core.japanese.values()))
         self.assertEqual((word.surface, word.pronunciation, word.accent_type),
