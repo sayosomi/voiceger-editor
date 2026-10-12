@@ -55,6 +55,7 @@ Keyboard interaction and presentation conventions are documented separately in [
 | `voiceger_editor/tui_rendering_editor_general.py` | General editor-family documents: confirmations, Caption/pronunciation editors, batch-recipe path screens, and section text/add flows. |
 | `voiceger_editor/tui_rendering_settings.py` | Settings and Audio Output Settings document construction. |
 | `voiceger_editor/tui_rendering_dictionary.py` | Dictionary menu/import/filter/detail document dispatch and delegation to focused entry/word-list renderers. |
+| `voiceger_editor/tui_rendering_dictionary_import.py` | Dictionary Import and complete ZIP Restore review and word-detail documents, including paired-language summaries and deletion impact. |
 | `voiceger_editor/tui_rendering_dictionary_entry.py` | Japanese Dictionary entry fields and dedicated EDIT PRONUNCIATION text-editor rendering, delegated by Dictionary document dispatch. |
 | `voiceger_editor/tui_rendering_dictionary_list.py` | Japanese/English Dictionary word-list rendering, preview action placement, pending-accent save presentation, list row layout/formatting, and list sort labels. |
 | `voiceger_editor/tui_dictionary_accent.py` | Japanese Dictionary word-list mora-bounded inline accent adjustments and optimistic visible overlay; persistence is delegated to UserDictionaryCore. |
