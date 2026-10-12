@@ -51,7 +51,7 @@ class TuiDictionaryExportTests(unittest.TestCase):
     def test_top_level_export_and_export_screen_use_declared_vertical_navigation(self):
         self.assertEqual(
             [item.key for item in menu_items("dictionary_menu")],
-            ["japanese", "english", "import", "restore", "export", "back"],
+            ["japanese", "english", "import", "export", "back"],
         )
         self.open_export()
         self.assertEqual(
