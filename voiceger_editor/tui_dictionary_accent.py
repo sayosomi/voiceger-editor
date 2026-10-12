@@ -90,4 +90,5 @@ class JapaneseListAccentOwner(DictionaryListAutoSaveOwner):
         entries[index] = (identity, updated)
         editor.payload["entries"] = tuple(entries)
         self.mark_changed(editor, identity, target)
+        editor.payload["pitch_events"] = self.pitch_events()
         return True
