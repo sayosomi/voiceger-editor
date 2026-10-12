@@ -6,6 +6,7 @@ from copy import deepcopy
 from typing import Any, Mapping, Sequence
 
 from .tui_dictionary_entry import _reading_morae
+from .pronunciation import AccentPhrase, PitchEvent
 from .tui_dictionary_inline_edits import DictionaryListAutoSaveOwner
 from .tui_editors import EditorState
 
@@ -22,6 +23,23 @@ class JapaneseListAccentOwner(DictionaryListAutoSaveOwner):
 
     def persist(self, snapshot: Mapping[str, Any]) -> None:
         self.core.update_japanese_accents(snapshot)
+
+    def pitch_events(self) -> dict[str, tuple[PitchEvent, ...]]:
+        """Return committed events overlaid with pending first-fall adjustments."""
+        result = (
+            self.core.list_japanese_pitch_events()
+            if hasattr(self.core, "list_japanese_pitch_events") else {}
+        )
+        for identity, accent in self.pending.items():
+            if identity not in result:
+                continue
+            events = list(result[identity])
+            first_fall = next(
+                index for index, event in enumerate(events) if event.symbol == "]"
+            )
+            events[first_fall] = PitchEvent(accent, "]")
+            result[identity] = tuple(events)
+        return result
 
     def overlay(
         self, entries: Sequence[tuple[str, Any]]
@@ -55,6 +73,18 @@ class JapaneseListAccentOwner(DictionaryListAutoSaveOwner):
         target = min(mora_count, max(1, current_visual + (-1 if direction < 0 else 1)))
         if target == current_visual:
             return False
+        events = self.pitch_events().get(identity, ())
+        if events:
+            updated_events = list(events)
+            first_fall = next(
+                index for index, event in enumerate(updated_events)
+                if event.symbol == "]"
+            )
+            updated_events[first_fall] = PitchEvent(target, "]")
+            try:
+                AccentPhrase(tuple(_reading_morae(word.pronunciation)), target, tuple(updated_events))
+            except ValueError:
+                return False
         updated = deepcopy(word)
         updated.accent_type = target
         entries[index] = (identity, updated)
