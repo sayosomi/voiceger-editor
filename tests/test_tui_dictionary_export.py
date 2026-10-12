@@ -150,6 +150,19 @@ class TuiDictionaryExportTests(unittest.TestCase):
         )
         self.assertIs(completion[0].status.kind, StatusKind.ERROR)
 
+    def test_voicevox_export_warns_when_extra_peaks_are_lost(self):
+        self.open_export()
+        self.controller.handle_key(curses.KEY_DOWN)
+        operation = self.operation(self.controller.handle_key("v"))
+        result = DictionaryExportResult(
+            paths=(Path("/first-output/voicevox_user_dict.json"),),
+            lossy_pitch_event_uuids=("11111111-1111-4111-8111-111111111111",),
+        )
+        completion = self.controller.complete_operation(operation.request, result)
+        self.assertIs(completion[0].status.kind, StatusKind.WARNING)
+        self.assertIn("VOICEVOX cannot import", completion[0].status)
+        self.assertIn("lossless backup", completion[0].status)
+
     def test_renderer_labels_voicevox_as_japanese_dictionary_only(self):
         self.open_export()
         editor = SimpleNamespace(
