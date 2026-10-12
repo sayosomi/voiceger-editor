@@ -118,8 +118,13 @@ def export_voicevox_dictionary(
     """Export the Japanese dictionary in VOICEVOX-compatible form."""
 
     japanese = serialize_japanese_dictionary(core.list_japanese_entries())
-    return _export_payloads(
+    result = _export_payloads(
         output_dir=output_dir,
         timestamp=timestamp,
         payloads=(("voicevox_user_dict", japanese),),
+    )
+    events = getattr(core, "list_japanese_pitch_events", lambda: {})()
+    return DictionaryExportResult(
+        paths=result.paths,
+        lossy_pitch_event_uuids=tuple(events),
     )
