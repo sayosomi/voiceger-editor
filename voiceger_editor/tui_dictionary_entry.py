@@ -187,6 +187,11 @@ class DictionaryEntryOwner:
                     "moras": phrase.morae,
                     "accent": phrase.accent,
                     "pitch_events": phrase.pitch_events or (),
+                    "pitch_events_by_uuid": {
+                        identity: tuple(self.core.get_japanese_pitch_events(identity))
+                        if hasattr(self.core, "get_japanese_pitch_events") else ()
+                        for identity, _word in matches
+                    },
                     "matches": tuple(matches),
                 },
             )
