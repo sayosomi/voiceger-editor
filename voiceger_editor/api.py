@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from ._version import __version__
 from .api_english_dictionary import build_english_dictionary_router
-from .mixed_language import build_mixed_audio_query
+from .mixed_language import build_mixed_audio_query, japanese_dictionary_pitch_options
 from .openjtalk_converter import OpenJTalkConversionError
 from .openjtalk_dictionary import OpenJTalkDictionaryError
 from .pronunciation import (
@@ -161,6 +161,7 @@ def audio_query(
             text,
             english_g2p=adapter.english_phonemes,
             output_sampling_rate=32000,
+            **japanese_dictionary_pitch_options(adapter),
         )
     except OpenJTalkDictionaryError as exc:
         raise HTTPException(

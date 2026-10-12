@@ -91,6 +91,14 @@ def detect_language_segments(
     return result
 
 
+def japanese_dictionary_pitch_options(adapter: Any) -> dict[str, Any]:
+    """Opt in to dictionary peaks only when the adapter has an actual snapshot."""
+    dictionary = getattr(adapter, "user_dictionary", None)
+    snapshot = getattr(dictionary, "japanese_multi_peak_snapshot", None)
+    words = snapshot() if callable(snapshot) else {}
+    return {"japanese_pitch_words": words} if words else {}
+
+
 def is_pure_japanese(segments: Sequence[DetectedSegment]) -> bool:
     return bool(segments) and all(segment.language == "ja" for segment in segments)
 

@@ -447,6 +447,16 @@ class UserDictionaryCore:
                 raise UserDictionaryInputError("UUIDに該当するワードが見つかりませんでした")
             return self._pitch_events.get(normalized_uuid, ())
 
+    def japanese_multi_peak_snapshot(
+        self,
+    ) -> dict[str, tuple[UserDictWord, tuple[PitchEvent, ...]]]:
+        """Return an atomic, detached snapshot of words with extra pitch events."""
+        with self._lock:
+            return {
+                word_uuid: (self._japanese[word_uuid].model_copy(deep=True), events)
+                for word_uuid, events in self._pitch_events.items()
+            }
+
     def _persist_japanese_pair(
         self,
         candidate: Mapping[str, UserDictWord],
