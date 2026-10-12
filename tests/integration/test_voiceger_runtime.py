@@ -454,7 +454,9 @@ class VoicegerIntegrationTests(unittest.TestCase):
             PitchEvent(1, "["), PitchEvent(2, "]"),
             PitchEvent(4, "["), PitchEvent(5, "]"),
         )
-        with TemporaryDirectory(prefix="voiceger-adapter-274-") as temporary:
+        scratch = Path(__file__).resolve().parents[2] / "scratch" / "issue274-e2e"
+        scratch.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(prefix="voiceger-adapter-274-", dir=scratch) as temporary:
             adapter.user_dictionary = UserDictionaryCore(
                 self.voiceger_root, data_directory=Path(temporary),
             )
