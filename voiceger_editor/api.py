@@ -184,6 +184,11 @@ def accent_phrases(
     try:
         if is_kana:
             parsed = parse_pronunciation(text)
+            if any(phrase.pitch_events is not None for phrase in parsed.phrases):
+                raise ValueError(
+                    "/accent_phrases cannot return adapter-specific multi-peak "
+                    "events; use AudioQuery.pronunciationPitchEvents"
+                )
         else:
             get_adapter().ensure_japanese_dictionary_active()
             return build_mixed_audio_query(text).accent_phrases
