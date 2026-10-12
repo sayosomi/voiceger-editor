@@ -84,6 +84,9 @@ Example:
 ### Pronunciation and accent
 
 Japanese dictionary pronunciation is stored as katakana within one accent phrase.
+Hiragana typed in the Pronunciation editor is automatically converted to
+katakana when editing finishes; pitch markers remain in place. Surface keeps
+its original spelling, including hiragana.
 A word may have multiple pitch-accent peaks without splitting that phrase.
 
 Generate a pronunciation from Surface, then select the Pronunciation row.
