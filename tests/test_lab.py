@@ -360,7 +360,7 @@ class AcceptedTakeLabTests(unittest.TestCase):
             output_format="flac",
             output_encoding="pcm24",
             save_text=True,
-            filename_template="{YYYYMMDDHHmm}_{caption}",
+            filename_template="{YYYYMMDDHHmm}_{style}_{caption}",
             avoid_lab_collision=True,
         )
         self.assertEqual(save_lab.call_count, 1)
