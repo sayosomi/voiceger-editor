@@ -146,7 +146,13 @@ class JapaneseDictionaryMultiPeakTests(DictionaryControllerTestCase):
         self.assertEqual(len(preview.query.pronunciationPitchEvents[0].events), 4)
         self.key(curses.KEY_RIGHT)
         self.assertEqual(editor.payload["entries"][0][1].accent_type, 3)
-        self.assertEqual(editor.payload["pitch_events"]["first"][1], EVENTS[1])
+        self.assertEqual(editor.payload["pitch_events"]["first"][1], PitchEvent(3, "]"))
+        (pending_preview,) = self.key("p")
+        self.assertEqual(pending_preview.query.accent_phrases[0].accent, 3)
+        self.assertEqual(
+            pending_preview.query.pronunciationPitchEvents[0].events[1].afterMora,
+            3,
+        )
         # The optimistic overlay is reconstructed when the list is refreshed.
         refreshed = self.controller._list_payload(self.controller._list_state.japanese_view())
         self.assertEqual(refreshed["pitch_events"]["first"][1], PitchEvent(3, "]"))
