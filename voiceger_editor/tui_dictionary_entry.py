@@ -379,16 +379,29 @@ class DictionaryEntryOwner:
                 if editor.active_field == "surface"
                 else editor.payload["surface"]
             )
-            pronunciation = (
-                editor.input_value
-                if editor.active_field == "pronunciation"
-                else editor.payload["pronunciation"]
-            )
+            pronunciation = editor.payload["pronunciation"]
+            accent = editor.payload["accent"]
+            events = editor.payload["pitch_events"]
+            if editor.active_field == "pronunciation":
+                value = editor.input_value
+                if any(marker in value for marker in ("'", "[", "]")):
+                    try:
+                        parsed = parse_pronunciation(value)
+                        if len(parsed.phrases) != 1:
+                            raise ValueError("multiple accent phrases")
+                        phrase = parsed.phrases[0]
+                        pronunciation = phrase.reading
+                        accent = phrase.accent
+                        events = phrase.pitch_events or ()
+                    except ValueError:
+                        pronunciation = value  # Keep an invalid draft visibly dirty.
+                else:
+                    pronunciation = value
             return (
                 surface,
                 pronunciation,
-                editor.payload["accent"],
-                editor.payload["pitch_events"],
+                accent,
+                events,
                 editor.payload["word_type"],
                 editor.payload["priority"],
             )
