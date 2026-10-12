@@ -16,6 +16,7 @@ from voiceger_editor.pronunciation import (
 from voiceger_editor.query_editing import (
     japanese_pronunciation,
     japanese_preview_query,
+    delete_utterance_section,
     move_japanese_accent,
     replace_japanese_pronunciation,
     replace_japanese_section_text,
@@ -137,6 +138,7 @@ class MultiPeakTests(unittest.TestCase):
         )}):
             query = build_audio_query(pronunciation=parse_pronunciation(MULTI))
             dump = query.model_dump(mode="json")
+            self.assertEqual(dump["kana"], LEGACY)
             self.assertEqual(dump["accent_phrases"][0]["accent"], 2)
             self.assertNotIn("voicegerPitchEvents", dump["accent_phrases"][0])
             self.assertEqual(dump["pronunciationPitchEvents"][0], {
@@ -183,6 +185,34 @@ class MultiPeakTests(unittest.TestCase):
                 accent_phrases_to_pronunciation(
                     query.accent_phrases, pitch_events=records
                 )
+
+    def test_misaligned_query_mora_is_rejected(self):
+        with patch.dict(sys.modules, {"pyopenjtalk": SimpleNamespace(
+            g2p=lambda mora, *, kana, join: fake_g2p(mora)
+        )}):
+            query = build_audio_query(pronunciation=parse_pronunciation(MULTI))
+        broken = query.model_copy(deep=True)
+        broken.accent_phrases[0].moras[4].text = "チ"
+        broken.accent_phrases[0].moras.insert(
+            5, broken.accent_phrases[0].moras[4].model_copy(
+                update={"text": "ャ"}
+            )
+        )
+        with self.assertRaises(ValueError):
+            accent_phrases_to_pronunciation(
+                broken.accent_phrases,
+                pitch_events=broken.pronunciationPitchEvents,
+            )
+
+    def test_accent_phrases_endpoint_rejects_lossy_extended_notation(self):
+        from fastapi import HTTPException
+        from voiceger_editor.api import accent_phrases
+
+        with patch("voiceger_editor.api._resolve_style"):
+            with self.assertRaises(HTTPException) as context:
+                accent_phrases(text=MULTI, speaker=3, is_kana=True)
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertIn("cannot return", context.exception.detail)
 
     def test_mixed_query_preserves_global_indices_and_english(self):
         with patch.dict(sys.modules, {"pyopenjtalk": SimpleNamespace(
@@ -233,6 +263,26 @@ class MultiPeakTests(unittest.TestCase):
                 move_japanese_accent(
                     edited, accent_phrase_index=0, direction=1, segment_index=0
                 )
+            after_delete, pure_text = delete_utterance_section(
+                query, segment_index=0
+            )
+            self.assertIsNone(pure_text)
+            self.assertEqual(after_delete.voicegerSegments[1].accentPhraseStart, 0)
+            self.assertEqual(
+                after_delete.pronunciationPitchEvents[0].accentPhraseIndex, 0
+            )
+            self.assertEqual(
+                japanese_pronunciation(after_delete, segment_index=1),
+                "ス[タ]ック[チャ]ンヲ/ノダ'！",
+            )
+            broken = query.model_copy(deep=True)
+            broken.pronunciationPitchEvents.append(
+                broken.pronunciationPitchEvents[0].model_copy(
+                    update={"accentPhraseIndex": 100}
+                )
+            )
+            with self.assertRaises(ValueError):
+                build_mixed_synthesis_plan(broken)
 
 
 if __name__ == "__main__":
