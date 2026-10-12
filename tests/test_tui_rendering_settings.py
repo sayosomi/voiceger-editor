@@ -1,10 +1,11 @@
 from pathlib import Path
-from tests.tui_rendering_test_support import RenderingTestCase, render_state
+from tests.tui_rendering_test_support import FakeScreen, RenderingTestCase, render_state
 
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from voiceger_editor.tui_display import _display_width
 from voiceger_editor.tui_rendering_editor_common import EditorDocumentBuilder
 from voiceger_editor.tui_rendering_settings import build_document
 
@@ -140,7 +141,8 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
         self.assertIn("ON", visible)
         self.assertIn("[L] LAB", visible)
         self.assertIn("OFF", visible)
-        self.assertIn("YYYY MM DD HH mm ss · {caption} {style}", visible)
+        self.assertNotIn("Tokens:", visible)
+        self.assertNotIn("Hint:", visible)
         self.assertEqual(
             [key for _line, key in document if key is not None],
             [
@@ -148,6 +150,107 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
                 "save_text", "save_lab", "back",
             ],
         )
+
+    def test_audio_output_filename_hint_follows_focus_and_is_not_selectable(self):
+        editor = SimpleNamespace(
+            kind="audio_output_settings",
+            title="AUDIO OUTPUT",
+            selection="output_format",
+            payload={
+                "draft_settings": {
+                    "output_format": "wav",
+                    "wav_encoding": "source",
+                    "filename_template": "{caption}",
+                    "save_text": False,
+                    "save_lab": True,
+                },
+                "filename_preview": "sample.wav",
+                "filename_preview_error": "",
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+        state = render_state(editor=editor)
+
+        for selection in (
+            "output_format", "output_encoding", "save_text", "save_lab", "back",
+        ):
+            with self.subTest(selection=selection):
+                editor.selection = selection
+                document, _, _ = self.renderer.editor_document(state, 80)
+                visible = "\n".join(line for line, _key in document)
+                self.assertNotIn("Tokens:", visible)
+                self.assertNotIn("Hint:", visible)
+                self.assertNotIn("Date/time tokens", visible)
+
+        editor.selection = "filename_template"
+        document, _, _ = self.renderer.editor_document(state, 80)
+        visible = "\n".join(line for line, _key in document)
+        for explanation in (
+            "Hint: {caption} Caption   {style} Voice style",
+            "Date/time tokens (inside {...}):",
+            "YYYY Year   MM Month   DD Day",
+            "HH Hour     mm Minute  ss Second",
+        ):
+            self.assertIn(explanation, visible)
+        self.assertNotIn("Tokens:", visible)
+        self.assertEqual(
+            [key for _line, key in document if key is not None],
+            [
+                "output_format", "output_encoding", "filename_template",
+                "save_text", "save_lab", "back",
+            ],
+        )
+        hint_start = next(
+            index for index, (line, _) in enumerate(document) if "Hint:" in line
+        )
+        self.assertTrue(all(key is None for _line, key in document[hint_start:]))
+
+    def test_audio_output_hint_wraps_without_moving_edit_cursor(self):
+        editor = SimpleNamespace(
+            kind="audio_output_settings",
+            title="AUDIO OUTPUT",
+            selection="filename_template",
+            payload={
+                "draft_settings": {
+                    "output_format": "mp3",
+                    "mp3_bitrate": "192k",
+                    "filename_template": "{caption}",
+                    "save_text": False,
+                    "save_lab": False,
+                },
+                "filename_preview": "",
+                "filename_preview_error": "unsupported token",
+            },
+            active_field="filename_template",
+            input_value="{caption}" * 8,
+            input_cursor=len("{caption}" * 8),
+            error="",
+            scroll=0,
+        )
+        width = 24
+        state = render_state(editor=editor)
+        document, cursor_line, cursor_column = self.renderer.editor_document(state, width)
+        hint_start = next(
+            index for index, (line, _) in enumerate(document) if "Hint:" in line
+        )
+        hint_lines = document[hint_start:]
+        self.assertGreater(len(hint_lines), 4)
+        self.assertTrue(all(key is None for _line, key in hint_lines))
+        self.assertTrue(
+            all(_display_width(line) <= width - 1 for line, _key in hint_lines)
+        )
+        self.assertTrue(0 <= cursor_line < hint_start)
+        self.assertTrue(0 <= cursor_column < width)
+
+        screen = FakeScreen(rows=18, columns=width)
+        self.renderer.render_editor(screen, state, 18, width)
+        self.assertIsNotNone(screen.cursor)
+        self.assertTrue(1 <= screen.cursor[0] < 18)
+        self.assertTrue(0 <= screen.cursor[1] < width)
 
     def test_audio_output_renders_flac_specific_encoding(self):
         editor = SimpleNamespace(
@@ -258,6 +361,8 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
         self.assertIn("▶ Filename template  {take}_{caption}", visible)
         self.assertIn("Invalid:", visible)
         self.assertIn("unsupported date/time token", visible)
+        self.assertIn("Hint: {caption} Caption   {style} Voice style", visible)
+        self.assertIn("Date/time tokens (inside {...}):", visible)
         self.assertIsNotNone(cursor_line)
 
     def test_settings_style_display_falls_back_to_id_when_unresolved(self):
