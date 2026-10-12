@@ -8,10 +8,14 @@ from .pronunciation import parse_pronunciation
 from .tui_display import (
     _adjustable_value,
     _display_width,
-    _japanese_mora_tokens,
     _truncate_display,
 )
+from .tui_dictionary_pitch import format_dictionary_pitch
 from .tui_rendering_editor_common import EditorDocumentBuilder
+from .tui_rendering_dictionary_entry import (
+    build_japanese_dictionary_entry,
+    build_japanese_dictionary_pronunciation,
+)
 from .tui_rendering_dictionary_list import (
     _DICTIONARY_SORT_LABELS,
     _dictionary_list_row,
@@ -202,11 +206,9 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         plain()
         for index, (_word_uuid, word) in enumerate(editor.payload["matches"]):
             parsed = parse_pronunciation(word.pronunciation + "'")
-            display = " ".join(
-                _japanese_mora_tokens(
-                    parsed.phrases[0].morae,
-                    word.accent_type or len(parsed.phrases[0].morae),
-                )
+            display = format_dictionary_pitch(
+                parsed.phrases[0].morae, word.accent_type,
+                editor.payload.get("pitch_events_by_uuid", {}).get(_word_uuid, ()),
             )
             key = ("entry", index)
             wrapped_selectable_text(key, f"{word.surface}      {display}")
@@ -214,48 +216,9 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         plain("Enter Open")
         plain(menu_item(editor.kind, "back", editor.payload).display_label)
     elif editor.kind == "dictionary_japanese_entry":
-        plain()
-        if editor.active_field == "surface":
-            input_field("surface", "▶ Surface        ")
-        else:
-            marker = "▶ " if editor.selection == "surface" else "  "
-            wrap(marker + "Surface        ", editor.payload["surface"], "surface")
-        selectable("generate_pronunciation")
-        plain()
-        if editor.active_field == "pronunciation":
-            input_field("pronunciation", "▶ Pronunciation  ")
-        else:
-            display = " ".join(
-                _japanese_mora_tokens(
-                    editor.payload["moras"],
-                    editor.payload["accent"] or len(editor.payload["moras"]),
-                )
-            )
-            marker = "▶ " if editor.selection == "pronunciation" else "  "
-            lines.append((f"{marker}Pronunciation  {display}", "pronunciation"))
-        marker = "▶ " if editor.selection == "word_type" else "  "
-        lines.append(
-            (
-                f"{marker}Word type      {_adjustable_value(str(editor.payload['word_type_label']), adjustment_press_direction(state, 'dictionary', 'word_type'))}",
-                "word_type",
-            )
-        )
-        marker = "▶ " if editor.selection == "priority" else "  "
-        lines.append(
-            (
-                f"{marker}Priority       {_adjustable_value(str(editor.payload['priority']), adjustment_press_direction(state, 'dictionary', 'priority'))}",
-                "priority",
-            )
-        )
-        plain()
-        selectable("preview")
-        selectable("save")
-        if editor.payload.get("can_delete"):
-            plain()
-            selectable("delete")
-        plain()
-        selectable("dictionary")
-        selectable("back")
+        return build_japanese_dictionary_entry(builder)
+    elif editor.kind == "dictionary_japanese_pronunciation":
+        return build_japanese_dictionary_pronunciation(builder)
     elif editor.kind == "dictionary_english_entry":
         plain()
         if editor.active_field == "surface":

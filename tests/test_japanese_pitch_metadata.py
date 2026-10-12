@@ -13,7 +13,7 @@ from voiceger_editor.dictionary_import import (
     DictionaryImportError, DictionaryImportRelation, prepare_dictionary_import,
 )
 from voiceger_editor.openjtalk_dictionary import render_word_csv
-from voiceger_editor.pronunciation import PitchEvent
+from voiceger_editor.pronunciation import AccentPhrase, PitchEvent, Pronunciation, format_pronunciation, parse_pronunciation
 from voiceger_editor.user_dictionary import (
     UserDictionaryCore, UserDictionaryInputError, UserDictionaryStorageError,
 )
@@ -106,6 +106,27 @@ class JapaneseMultiPeakDictionaryTests(unittest.TestCase):
         sidecar = json.loads(self.core.japanese_pitch_path.read_text(encoding="utf-8"))
         self.assertEqual(sidecar["version"], 1)
         self.assertEqual(list(sidecar["entries"]), [word_uuid])
+
+    def test_boundary_brackets_survive_dictionary_restart_without_fake_falls(self):
+        phrase = parse_pronunciation("[シ]コク[メタン]").phrases[0]
+        identity = self.core.add_japanese_word(
+            surface="四国めたん", pronunciation=phrase.reading,
+            accent_type=phrase.accent,
+            pitch_events=phrase.pitch_events,
+        )
+        loaded = self.restart()
+        restored = loaded.get_japanese_pitch_events(identity)
+        self.assertEqual(restored, phrase.pitch_events)
+        word = loaded.list_japanese_entries()[identity]
+        self.assertEqual(word.accent_type, 1)
+        self.assertEqual(
+            format_pronunciation(Pronunciation(phrases=(
+                AccentPhrase(
+                    tuple(phrase.morae), word.accent_type, tuple(restored),
+                ),
+            ))),
+            "[シ]コク[メタン]",
+        )
 
     def test_crud_validation_accent_edit_and_deletion(self):
         word_uuid = self.add_multi()

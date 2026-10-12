@@ -36,6 +36,7 @@ SOUND = {
     "チャ": ["ch", "a"], "ン": ["N"], "ヲ": ["o"], "ツ": ["ts", "u"],
     "ノ": ["n", "o"], "ダ": ["d", "a"], "ア": ["a"], "メ": ["m", "e"],
     "キョ": ["ky", "o"], "ワ": ["w", "a"], "ト": ["t", "o"],
+    "シ": ["sh", "i"], "コ": ["k", "o"],
     "ホ": ["h", "o"], "カ": ["k", "a"], "リ": ["r", "i"],
 }
 LEGACY_TOKENS = [
@@ -76,6 +77,64 @@ class MultiPeakTests(unittest.TestCase):
         )
         self.assertEqual(format_pronunciation(parsed), MULTI)
 
+    def test_initial_high_and_final_close_are_visual_boundaries_only(self):
+        legacy = parse_pronunciation("シ]コク[メ]タン")
+        bracketed = parse_pronunciation("[シ]コク[メ]タン")
+        self.assertEqual(legacy.phrases[0], bracketed.phrases[0])
+        self.assertEqual(
+            bracketed.phrases[0].pitch_events,
+            (PitchEvent(1, "]"), PitchEvent(3, "["), PitchEvent(4, "]")),
+        )
+        self.assertEqual(format_pronunciation(legacy), "[シ]コク[メ]タン")
+        with patch.dict(sys.modules, {"pyopenjtalk": SimpleNamespace(
+            g2p=lambda mora, *, kana, join: fake_g2p(mora)
+        )}):
+            a = build_audio_query(pronunciation=legacy)
+            b = build_audio_query(pronunciation=bracketed)
+            self.assertEqual(a.model_dump(mode="json"), b.model_dump(mode="json"))
+
+    def test_final_close_does_not_emit_a_fall_or_change_dictionary_accent(self):
+        source = "[シ]コク[メタン]"
+        phrase = parse_pronunciation(source).phrases[0]
+        self.assertEqual(phrase.accent, 1)
+        self.assertEqual(
+            phrase.pitch_events,
+            (PitchEvent(1, "]"), PitchEvent(3, "[")),
+        )
+        self.assertEqual(format_pronunciation(parse_pronunciation(source)), source)
+        # A final closing bracket is also valid for a low-initial two-peak word.
+        self.assertEqual(
+            format_pronunciation(parse_pronunciation("ス[タ]ク[ア]")),
+            "ス[タ]ク[ア]",
+        )
+        tokens = pronunciation_to_voiceger_tokens(
+            parse_pronunciation(source), mora_g2p=fake_g2p,
+        )
+        self.assertEqual(tokens.count("]"), 1)
+        self.assertEqual(tokens.count("["), 1)
+        self.assertEqual(tokens[-1], "N")
+        with patch.dict(sys.modules, {"pyopenjtalk": SimpleNamespace(
+            g2p=lambda mora, *, kana, join: fake_g2p(mora)
+        )}):
+            query = build_audio_query(pronunciation=parse_pronunciation(source))
+            rebuilt = accent_phrases_to_pronunciation(
+                query.accent_phrases,
+                pitch_events=query.pronunciationPitchEvents,
+            )
+        self.assertEqual(format_pronunciation(rebuilt), source)
+
+    def test_reject_inconsistent_boundary_brackets(self):
+        invalid = (
+            "[ス[タ]ック[チャ]ン",  # initially high, but first event rises
+            "シ]コク[メ]タン]",  # already low at the final boundary
+            "[シ]コク[メ]タン]",  # redundant closing bracket
+            "[シ]コク[メタン']",  # legacy and explicit markers mixed
+        )
+        for text in invalid:
+            with self.subTest(text=text):
+                with self.assertRaises(PronunciationSyntaxError):
+                    parse_pronunciation(text)
+
     def test_multiple_real_boundaries_and_punctuation_remain_distinct(self):
         text = "ア[メ]ア[メ]ア、ツク'ッタ/ノダ'！"
         self.assertEqual(format_pronunciation(parse_pronunciation(text)), text)
@@ -109,7 +168,7 @@ class MultiPeakTests(unittest.TestCase):
         for text in (
             "ス[タ]", "ス[タ]ク'", "ス'タ[ク]ア", "ス[[タ]ク[ア]",
             "ス[タ]]ク[ア]", "スタ[ク]ア[メ]", "ス[タ[ク]ア",
-            "ス[タ]キ[ョ]ア", "ス[タ]ク[ア]", "ス[タ]ク[ア]メ[",
+            "ス[タ]キ[ョ]ア", "ス[タ]ク[ア]メ[",
             "ス[タ]ク[ア]/", "ス[タ]ク[ア]メ]",
         ):
             with self.subTest(text=text), self.assertRaises(PronunciationSyntaxError):

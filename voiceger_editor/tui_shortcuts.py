@@ -352,6 +352,17 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
     "dictionary_japanese_duplicates": (
         _escape_action("back", "Back"),
     ),
+    "dictionary_japanese_pronunciation": (
+        MenuItem(
+            "pronunciation", "Pronunciation", None, "editable",
+            no_shortcut_reason="Enter edits the pronunciation field.",
+        ),
+        MenuItem("preview", "Preview", "p", "action", "activate"),
+        MenuItem("apply", "Apply", "a", "action", "activate"),
+        MenuItem("clear", "Clear", "c", "action", "activate"),
+        MenuItem("reset", "Reset", "r", "action", "activate"),
+        _escape_action("back", "Back"),
+    ),
     "dictionary_japanese_entry": (
         MenuItem(
             "surface",
@@ -372,7 +383,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
             "Pronunciation",
             None,
             "adjustable",
-            no_shortcut_reason="Enter edits reading; Left/Right moves accent.",
+            no_shortcut_reason="Enter opens the pronunciation editor; Left/Right moves a single accent.",
         ),
         MenuItem(
             "word_type",

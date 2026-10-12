@@ -40,7 +40,10 @@ The digest covers the exact bytes output by
 Every `entries` key is a stable word UUID from the base JSON. `reading`
 matches its `pronunciation`; `moraCount` matches its `mora_count`.
 Events follow 1-based mora positions, use alternating rise (`[`) and fall
-(`]`) markers and must pass `AccentPhrase` validation. The first fall must
+(`]`) markers and must pass `AccentPhrase` validation. A two-event
+first-fall-then-rise shape is valid for an initially high word whose final
+high span reaches the end. Optional leading `[` and trailing `]` in the
+human-readable notation are delimiters, not stored events. The first fall must
 equal canonical `accent_type`; further falls live only in the sidecar.
 Empty `entries` are represented by **absence** of the sidecar.
 

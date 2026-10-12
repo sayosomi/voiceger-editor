@@ -272,6 +272,7 @@ class TuiDictionaryController:
                 self._accent.overlay(view.entries)
                 if is_japanese else self._stress.overlay(view.entries)
             ),
+            "pitch_events": self._accent.pitch_events() if is_japanese else {},
             "accent_pending": is_japanese and self._accent.has_pending,
             "accent_saving": is_japanese and self._accent.inflight is not None,
             "stress_pending": not is_japanese and self._stress.has_pending,
@@ -723,6 +724,48 @@ class TuiDictionaryController:
         editor.error = EMPTY_STATUS
         return (UpdateStatusIntent(""),)
 
+    def _handle_active_field_key(
+        self, editor: EditorState, key: Any, *, screen_width: int,
+    ) -> tuple[DictionaryControllerIntent, ...]:
+        """Own active text editing, completion, and one-level cancel handling."""
+        if key in _ENTER_KEYS:
+            return self._finish_field()
+        if key == _ESCAPE:
+            if editor.kind in {
+                "dictionary_japanese_filter",
+                "dictionary_english_filter",
+            }:
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            if editor.kind == "dictionary_import_path":
+                self._import_owner._clear_import_state()
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            if editor.kind == "dictionary_japanese_pronunciation":
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            return self._entry_owner._back_from_entry()
+        input_width = 1
+        if key in (curses.KEY_UP, curses.KEY_DOWN):
+            prefix = self._input_prefix(editor)
+            input_width = max(
+                1,
+                screen_width - 1 - _display_width(prefix),
+            )
+        edit = apply_text_edit_key(
+            editor.input_value,
+            editor.input_cursor,
+            key,
+            input_width=input_width,
+        )
+        if edit.handled:
+            editor.input_value = edit.value
+            editor.input_cursor = edit.cursor
+            if edit.edit_attempted:
+                editor.error = EMPTY_STATUS
+        return ()
+
+
     def _move_dynamic_selection(self, delta: int) -> tuple[EditorIntent, ...]:
         editor = self.editor
         if editor is None:
@@ -736,6 +779,7 @@ class TuiDictionaryController:
         if editor.kind in {
             "dictionary_menu",
             "dictionary_export",
+            "dictionary_japanese_pronunciation",
         }:
             apply_movement(
                 [item.key for item in menu_items(editor.kind, editor.payload)]
@@ -1027,13 +1071,46 @@ class TuiDictionaryController:
             if isinstance(selected, tuple) and selected[0] == "entry":
                 self._entry_owner.select_duplicate_entry(editor, selected[1])
                 return ()
+        if editor.kind == "dictionary_japanese_pronunciation":
+            if selected == "pronunciation":
+                return self._begin_field("pronunciation", editor.input_value)
+            if selected == "preview":
+                return self._entry_owner.preview_japanese_detail(
+                    self._stack[-1], editor,
+                )
+            if selected == "apply":
+                if not self._entry_owner.apply_japanese_detail(
+                    self._stack[-1], editor,
+                ):
+                    return ()
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            if selected in {"clear", "reset"}:
+                return self._begin_field(
+                    "pronunciation",
+                    "" if selected == "clear" else editor.payload["opening_draft"],
+                )
+            if selected == "back":
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            return ()
         if editor.kind == "dictionary_japanese_entry":
             if selected == "surface":
                 return self._begin_field("surface", editor.payload["surface"])
             if selected == "pronunciation":
-                return self._begin_field(
-                    "pronunciation", editor.payload["pronunciation"]
+                draft = self._entry_owner.japanese_editable_reading(editor)
+                self._stack.append(deepcopy(editor))
+                self.editor = EditorState(
+                    kind="dictionary_japanese_pronunciation",
+                    title="EDIT PRONUNCIATION",
+                    origin=("dictionary", None),
+                    selection="pronunciation",
+                    payload={
+                        "source_text": str(editor.payload["surface"]),
+                        "opening_draft": draft,
+                    },
                 )
+                return self._begin_field("pronunciation", draft)
             if selected == "generate_pronunciation":
                 return self._entry_owner._generate_pronunciation()
             if selected == "preview":
@@ -1097,9 +1174,10 @@ class TuiDictionaryController:
             return ()
         try:
             if editor.kind == "dictionary_japanese_list":
-                _identity, word = entries[index]
+                identity, word = entries[index]
                 query = _japanese_preview_query(
-                    _reading_morae(word.pronunciation), int(word.accent_type)
+                    _reading_morae(word.pronunciation), int(word.accent_type),
+                    editor.payload.get("pitch_events", {}).get(identity, ()),
                 )
             else:
                 word = entries[index]
@@ -1201,6 +1279,7 @@ class TuiDictionaryController:
                 return (OpenHelpIntent(),)
             return ()
         if preview_busy and editor.kind in {
+            "dictionary_japanese_pronunciation",
             "dictionary_japanese_entry",
             "dictionary_english_entry",
         }:
@@ -1211,39 +1290,9 @@ class TuiDictionaryController:
             )
 
         if editor.active_field is not None:
-            if key in _ENTER_KEYS:
-                return self._finish_field()
-            if key == _ESCAPE:
-                if editor.kind in {
-                    "dictionary_japanese_filter",
-                    "dictionary_english_filter",
-                }:
-                    self._restore_parent()
-                    return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
-                if editor.kind == "dictionary_import_path":
-                    self._import_owner._clear_import_state()
-                    self._restore_parent()
-                    return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
-                return self._entry_owner._back_from_entry()
-            input_width = 1
-            if key in (curses.KEY_UP, curses.KEY_DOWN):
-                prefix = self._input_prefix(editor)
-                input_width = max(
-                    1,
-                    screen_width - 1 - _display_width(prefix),
-                )
-            edit = apply_text_edit_key(
-                editor.input_value,
-                editor.input_cursor,
-                key,
-                input_width=input_width,
+            return self._handle_active_field_key(
+                editor, key, screen_width=screen_width,
             )
-            if edit.handled:
-                editor.input_value = edit.value
-                editor.input_cursor = edit.cursor
-                if edit.edit_attempted:
-                    editor.error = EMPTY_STATUS
-            return ()
 
         list_key = self._handle_list_prelude_key(key)
         if list_key is not None:
@@ -1253,7 +1302,6 @@ class TuiDictionaryController:
             return (QuitIntent(),)
         if key == "?":
             return (OpenHelpIntent(),)
-
         if editor.kind in {
             "dictionary_japanese_entry",
             "dictionary_english_entry",
@@ -1310,6 +1358,7 @@ class TuiDictionaryController:
                 )
 
         if editor.kind in {
+            "dictionary_japanese_pronunciation",
             "dictionary_japanese_entry",
             "dictionary_english_entry",
             "dictionary_japanese_filter",
@@ -1352,6 +1401,9 @@ class TuiDictionaryController:
                 return (UpdateStatusIntent(""),)
 
         if key == _ESCAPE:
+            if editor.kind == "dictionary_japanese_pronunciation":
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
             if editor.kind in {
                 "dictionary_japanese_entry",
                 "dictionary_english_entry",

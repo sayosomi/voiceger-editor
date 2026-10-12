@@ -29,13 +29,17 @@ without opening its editor. The `[P] Preview` action also appears in the list.
 Preview uses the currently displayed pronunciation, even before an auto-save
 completes.
 
-In the Japanese list, Left / Right moves the focused word's accent one mora at
-a time without wrapping. In the English list, Left / Right moves the single
-primary ARPAbet stress (`1`) to the previous / next vowel, following BATCH
-ITEM's rule. The primary-stressed vowel is enclosed in square brackets,
-as on BATCH ITEM (for example, `Z [UW1] N D AA0 M OW0 N`). The brackets
-follow the primary stress when it moves. English words with zero or multiple
-primary stresses, or fewer than two vowels, are not adjustable.
+In the Japanese list, Left / Right moves a **single-accent** word's accent
+one mora at a time without wrapping. For **multi-peak** words, Left / Right
+does nothing: edit the complete sequence in the detailed pronunciation editor.
+Multi-peak words display the compact `[` (rise) / `]` (fall) notation
+used during text editing, without extra mora spaces or a peak-count suffix.
+
+In the English list, Left / Right moves the single primary ARPAbet stress
+(`1`) to the previous / next vowel, following BATCH ITEM's rule. The
+primary-stressed vowel is enclosed in square brackets, as on BATCH ITEM
+(for example, `Z [UW1] N D AA0 M OW0 N`). English words with zero or
+multiple primary stresses, or fewer than two vowels, are not adjustable.
 
 Changes appear immediately and are automatically saved in the background;
 rapid adjustments are combined. Leaving a list or opening an editor waits until
@@ -79,30 +83,42 @@ Example:
 
 ### Pronunciation and accent
 
-Japanese dictionary pronunciation is stored as katakana with one accent phrase.
+Japanese dictionary pronunciation is stored as katakana within one accent phrase.
+A word may have multiple pitch-accent peaks without splitting that phrase.
 
-You can generate a pronunciation from the Surface and then edit it.
+Generate a pronunciation from Surface, then select the Pronunciation row.
+For a single-accent word, Left / Right moves the accent one mora at a time.
+For multi-peak words, Left / Right does not modify the reading.
 
-On the Pronunciation row:
+Press Enter on Pronunciation to open **EDIT PRONUNCIATION**, using the
+same direct text-editing layout as BATCH ITEM. Edit the string, then select
+**Preview** to listen, **Apply** to accept the draft back into the Dictionary
+entry, **Clear** or **Reset** as needed, or **Esc** to return without applying.
+Save the dictionary word separately in the parent entry.
 
-- Left / Right moves the accent;
-- Enter edits the reading directly.
+Single-accent words retain their existing notation (`ア'メ` / `アメ'`)
+and behavior. For multiple peaks, use explicit `[` rise and `]` fall
+markers, for example `ス[タ]ック[チャ]ン`. Both rise and fall positions
+are typed directly: no new notation, special marker-selection shortcut,
+or automatic conversion is required. Markers must follow complete morae;
+`チャ` is one mora. An optional leading `[` makes an initially high
+mora explicit (`[シ]コク[メ]タン` equals `シ]コク[メ]タン`). A trailing
+`]` may close a high span continuing through the final mora, for example
+`[シ]コク[メタン]`. These edge delimiters are accepted and displayed, but
+do not add extra pitch events or phrase boundaries.
 
-Example:
+Dictionary readings remain a single accent phrase. A slash `/` splits
+phrases and is not valid within one dictionary word. Additional pitch
+events live in Voiceger Editor metadata, while the first fall stays in the
+VOICEVOX-compatible `accent_type`. Preview, Save, and Quick Save preserve
+every pitch event, and existing single-accent words are not upgraded
+automatically.
 
-```text
-ア'メ
-```
-
-and:
-
-```text
-アメ'
-```
-
-represent different accent positions.
-
-Use Preview to listen before saving.
+Select Preview to listen before saving. New entries default to Priority 5.
+Invalid text or failed saves keep a retryable draft. See
+[Pronunciation](pronunciation.md) for general phrase separators,
+[Compatibility](compatibility.md) for VOICEVOX limitations, and the
+export/import instructions below for lossless backups.
 
 ### Word type
 

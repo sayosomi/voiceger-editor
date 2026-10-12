@@ -12,7 +12,10 @@ from .english_stress import (
     normalize_english_phonemes,
 )
 from .openjtalk_dictionary import expand_word_type, normalize_surface
-from .pronunciation import parse_pronunciation
+from .pronunciation import (
+    AccentPhrase as CoreAccentPhrase, PitchEvent, Pronunciation,
+    format_pronunciation, parse_pronunciation,
+)
 from .tui_adjustments import step_bounded, step_cyclic
 from .tui_dictionary_list import DictionaryListStateOwner
 from .tui_dictionary_operations import (
@@ -38,7 +41,10 @@ from .tui_selection import move_clamped_selection
 from .tui_shortcuts import menu_items
 from .tui_status import EMPTY_STATUS, error_status, info_status
 from .user_dictionary import JapaneseWordType, UserDictionaryCore
-from .voicevox_api_models import AccentPhrase, AudioQuery, Mora, VoicegerSegment
+from .voicevox_api_models import (
+    AccentPhrase, AudioQuery, JapanesePitchEvent, Mora,
+    PronunciationPitchEvents, VoicegerSegment,
+)
 
 
 DictionaryEntryIntent = Union[EditorIntent, DictionaryOperationIntent]
@@ -60,10 +66,14 @@ def _word_type_for_context(context_id: int) -> JapaneseWordType:
     raise ValueError(f"Unsupported Japanese dictionary word type context: {context_id}")
 
 
-def _japanese_preview_query(morae: Sequence[str], accent: int) -> AudioQuery:
+def _japanese_preview_query(
+    morae: Sequence[str], accent: int, events: Sequence[PitchEvent] = (),
+) -> AudioQuery:
     if not morae:
         raise ValueError("Japanese pronunciation must not be empty")
     preview_accent = accent if accent > 0 else len(morae)
+    if events:
+        CoreAccentPhrase(tuple(morae), preview_accent, tuple(events))
     return AudioQuery(
         accent_phrases=[
             AccentPhrase(
@@ -72,6 +82,12 @@ def _japanese_preview_query(morae: Sequence[str], accent: int) -> AudioQuery:
             )
         ],
         kana=None,
+        pronunciationPitchEvents=[
+            PronunciationPitchEvents(
+                accentPhraseIndex=0,
+                events=[JapanesePitchEvent(afterMora=e.after_mora, symbol=e.symbol) for e in events],
+            )
+        ] if events else None,
     )
 
 
@@ -172,6 +188,12 @@ class DictionaryEntryOwner:
                     "pronunciation": reading,
                     "moras": phrase.morae,
                     "accent": phrase.accent,
+                    "pitch_events": phrase.pitch_events or (),
+                    "pitch_events_by_uuid": {
+                        identity: tuple(self.core.get_japanese_pitch_events(identity))
+                        if hasattr(self.core, "get_japanese_pitch_events") else ()
+                        for identity, _word in matches
+                    },
                     "matches": tuple(matches),
                 },
             )
@@ -186,6 +208,7 @@ class DictionaryEntryOwner:
             pronunciation=reading,
             moras=phrase.morae,
             accent=phrase.accent,
+            pitch_events=phrase.pitch_events or (),
             quick_save=True,
         )
         return (UpdateStatusIntent(""),)
@@ -232,6 +255,7 @@ class DictionaryEntryOwner:
         pronunciation: str | None = None,
         moras: Sequence[str] | None = None,
         accent: int | None = None,
+        pitch_events: Sequence[PitchEvent] | None = None,
         quick_save: bool = False,
         entry_index: int | None = None,
         entry_total: int | None = None,
@@ -256,11 +280,20 @@ class DictionaryEntryOwner:
             selected_accent = word.accent_type if accent is None else accent
             word_type = _word_type_for_context(word.context_id)
             priority = word.priority
+        selected_events = (
+            tuple(pitch_events) if pitch_events is not None else
+            tuple(self.core.get_japanese_pitch_events(word_uuid))
+            if word_uuid is not None and hasattr(self.core, "get_japanese_pitch_events")
+            else ()
+        )
+        if selected_events:
+            CoreAccentPhrase(selected_moras, selected_accent, selected_events)
 
         opening = (
             selected_surface,
             selected_pronunciation,
             selected_accent,
+            selected_events,
             word_type,
             priority,
         )
@@ -279,6 +312,7 @@ class DictionaryEntryOwner:
                 "pronunciation": selected_pronunciation,
                 "moras": selected_moras,
                 "accent": selected_accent,
+                "pitch_events": selected_events,
                 "word_type": word_type,
                 "word_type_label": _japanese_word_type_label(word_type),
                 "priority": priority,
@@ -323,6 +357,81 @@ class DictionaryEntryOwner:
             },
         )
 
+    @staticmethod
+    def japanese_editable_reading(editor: EditorState) -> str:
+        """Use the established single-accent or explicit multi-peak text notation."""
+        moras = tuple(editor.payload["moras"])
+        if not moras:
+            return str(editor.payload["pronunciation"])
+        events = tuple(editor.payload["pitch_events"])
+        accent = int(editor.payload["accent"]) or len(moras)
+        phrase = CoreAccentPhrase(
+            moras, accent, events if events else None,
+        )
+        return format_pronunciation(Pronunciation(phrases=(phrase,)))
+
+    @staticmethod
+    def _parse_japanese_detail_draft(
+        parent: EditorState, detail: EditorState,
+    ) -> tuple[str, tuple[str, ...], int, tuple[PitchEvent, ...]]:
+        """Parse one dictionary phrase without discarding an unchanged legacy zero accent."""
+        value = detail.input_value
+        if value == detail.payload["opening_draft"] and parent.payload["moras"]:
+            return (
+                str(parent.payload["pronunciation"]),
+                tuple(parent.payload["moras"]),
+                int(parent.payload["accent"]),
+                tuple(parent.payload["pitch_events"]),
+            )
+        if any(marker in value for marker in ("'", "[", "]")):
+            parsed = parse_pronunciation(value)
+            if len(parsed.items) != 1 or len(parsed.phrases) != 1:
+                raise ValueError("Dictionary reading must be one accent phrase.")
+            phrase = parsed.phrases[0]
+            return (
+                phrase.reading, phrase.morae, phrase.accent,
+                phrase.pitch_events or (),
+            )
+        moras = _reading_morae(value)
+        accent = min(int(parent.payload["accent"]), len(moras))
+        events = tuple(parent.payload["pitch_events"])
+        if events:
+            CoreAccentPhrase(moras, accent, events)
+        return value, moras, accent, events
+
+    def preview_japanese_detail(
+        self, parent: EditorState, detail: EditorState,
+    ) -> tuple[EditorIntent, ...]:
+        try:
+            _reading, moras, accent, events = self._parse_japanese_detail_draft(
+                parent, detail,
+            )
+            query = _japanese_preview_query(moras, accent, events)
+        except Exception as exc:
+            detail.error = error_status(f"Preview failed: {exc}")
+            return ()
+        detail.error = EMPTY_STATUS
+        return (PreviewIntent(query),)
+
+    def apply_japanese_detail(
+        self, parent: EditorState, detail: EditorState,
+    ) -> bool:
+        try:
+            reading, moras, accent, events = self._parse_japanese_detail_draft(
+                parent, detail,
+            )
+        except Exception as exc:
+            detail.error = error_status(f"Pronunciation was not changed: {exc}")
+            return False
+        parent.payload["pronunciation"] = reading
+        parent.payload["moras"] = moras
+        parent.payload["accent"] = accent
+        parent.payload["pitch_events"] = events
+        parent.selection = "pronunciation"
+        parent.error = EMPTY_STATUS
+        detail.error = EMPTY_STATUS
+        return True
+
     def _entry_snapshot(self, editor: EditorState) -> tuple[Any, ...]:
         if editor.kind == "dictionary_japanese_entry":
             surface = (
@@ -330,15 +439,29 @@ class DictionaryEntryOwner:
                 if editor.active_field == "surface"
                 else editor.payload["surface"]
             )
-            pronunciation = (
-                editor.input_value
-                if editor.active_field == "pronunciation"
-                else editor.payload["pronunciation"]
-            )
+            pronunciation = editor.payload["pronunciation"]
+            accent = editor.payload["accent"]
+            events = editor.payload["pitch_events"]
+            if editor.active_field == "pronunciation":
+                value = editor.input_value
+                if any(marker in value for marker in ("'", "[", "]")):
+                    try:
+                        parsed = parse_pronunciation(value)
+                        if len(parsed.phrases) != 1:
+                            raise ValueError("multiple accent phrases")
+                        phrase = parsed.phrases[0]
+                        pronunciation = phrase.reading
+                        accent = phrase.accent
+                        events = phrase.pitch_events or ()
+                    except ValueError:
+                        pronunciation = value  # Keep an invalid draft visibly dirty.
+                else:
+                    pronunciation = value
             return (
                 surface,
                 pronunciation,
-                editor.payload["accent"],
+                accent,
+                events,
                 editor.payload["word_type"],
                 editor.payload["priority"],
             )
@@ -393,12 +516,26 @@ class DictionaryEntryOwner:
                         and not editor.payload["pronunciation"]
                     )
                 elif name == "pronunciation":
-                    moras = _reading_morae(value)
-                    editor.payload["pronunciation"] = value
-                    editor.payload["moras"] = moras
-                    accent = editor.payload["accent"]
-                    if accent > len(moras):
-                        editor.payload["accent"] = len(moras)
+                    if any(marker in value for marker in ("'", "[", "]")):
+                        parsed = parse_pronunciation(value)
+                        if len(parsed.phrases) != 1:
+                            raise ValueError("Dictionary reading must be one accent phrase.")
+                        phrase = parsed.phrases[0]
+                        moras = phrase.morae
+                        accent = phrase.accent
+                        events = phrase.pitch_events or ()
+                        reading = phrase.reading
+                    else:
+                        moras = _reading_morae(value)
+                        accent = min(editor.payload["accent"], len(moras))
+                        events = editor.payload["pitch_events"]
+                        reading = value
+                        if events:
+                            CoreAccentPhrase(tuple(moras), accent, tuple(events))
+                    editor.payload["pronunciation"] = reading
+                    editor.payload["moras"] = tuple(moras)
+                    editor.payload["accent"] = accent
+                    editor.payload["pitch_events"] = tuple(events)
             elif editor.kind == "dictionary_english_entry":
                 if name == "surface":
                     editor.payload["surface"] = value
@@ -436,15 +573,14 @@ class DictionaryEntryOwner:
         editor = self.editor
         assert editor is not None
         if editor.selection == "pronunciation":
+            if editor.payload["pitch_events"]:
+                return ()
             count = len(editor.payload["moras"])
             if not count:
                 return ()
-            accent = editor.payload["accent"]
-            visual_accent = count if accent == 0 else accent
-            if direction < 0:
-                updated = max(1, visual_accent - 1)
-            else:
-                updated = min(count, visual_accent + 1)
+            accent = int(editor.payload["accent"])
+            current = accent or count
+            updated = min(count, max(1, current + (-1 if direction < 0 else 1)))
             if updated != accent:
                 editor.payload["accent"] = updated
             return ()
@@ -576,6 +712,7 @@ class DictionaryEntryOwner:
                 query = _japanese_preview_query(
                     editor.payload["moras"],
                     editor.payload["accent"],
+                    editor.payload["pitch_events"],
                 )
             else:
                 query = _english_preview_query(
@@ -603,6 +740,7 @@ class DictionaryEntryOwner:
             word_uuid = editor.payload["word_uuid"]
             pronunciation = str(editor.payload["pronunciation"])
             accent_type = int(editor.payload["accent"])
+            pitch_events = tuple(editor.payload["pitch_events"])
             word_type = editor.payload["word_type"]
             priority = int(editor.payload["priority"])
             core = self.core
@@ -613,6 +751,7 @@ class DictionaryEntryOwner:
                         surface=surface,
                         pronunciation=pronunciation,
                         accent_type=accent_type,
+                        pitch_events=pitch_events,
                         word_type=word_type,
                         priority=priority,
                     )
@@ -625,6 +764,7 @@ class DictionaryEntryOwner:
                         surface=surface,
                         pronunciation=pronunciation,
                         accent_type=accent_type,
+                        pitch_events=pitch_events,
                         word_type=word_type,
                         priority=priority,
                     )
@@ -953,6 +1093,7 @@ class DictionaryEntryOwner:
             pronunciation=editor.payload["pronunciation"],
             moras=editor.payload["moras"],
             accent=editor.payload["accent"],
+            pitch_events=editor.payload["pitch_events"],
             quick_save=True,
         )
 
@@ -996,6 +1137,7 @@ class DictionaryEntryOwner:
             editor.payload["pronunciation"] = reading
             editor.payload["moras"] = tuple(moras)
             editor.payload["accent"] = accent
+            editor.payload["pitch_events"] = ()
             message = "Pronunciation generated from Surface."
         elif request.operation == "generate_english_pronunciation":
             editor.payload["phonemes"] = tuple(value)

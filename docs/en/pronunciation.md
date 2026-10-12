@@ -17,6 +17,15 @@ Example:
 
 The apostrophe `'` is placed immediately after the accented mora.
 
+For multi-peak readings, use `[` for a rise and `]` for a fall after a complete mora. To make the high spans easier to see, you can additionally enclose an initially high mora with a leading `[` or a final high span with a trailing `]`. These optional edge brackets do not add sound or pitch events. Examples:
+
+```text
+シ]コク[メ]タン      → [シ]コク[メ]タン
+[シ]コク[メタン]     → the last high span continues to the end
+```
+
+The single-accent `'` notation is unchanged. Multi-peak input is serialized with the optional high-span edge brackets for legibility.
+
 Examples:
 
 ```text

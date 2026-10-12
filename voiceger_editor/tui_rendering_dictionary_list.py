@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Sequence
 
 from .pronunciation import parse_pronunciation
-from .tui_display import _display_width, _japanese_mora_tokens, format_english_phonemes
+from .tui_display import _display_width, format_english_phonemes
+from .tui_dictionary_pitch import format_dictionary_pitch
 from .tui_rendering_editor_common import EditorDocumentBuilder
 from .tui_rendering_shared import _numbered_shortcut_token
 from .tui_shortcuts import menu_item
@@ -86,11 +87,10 @@ def build_dictionary_list_document(builder: EditorDocumentBuilder) -> bool:
         )
         for index, (_word_uuid, word) in enumerate(entries):
             parsed = parse_pronunciation(word.pronunciation + "'")
-            display = " ".join(
-                _japanese_mora_tokens(
-                    parsed.phrases[0].morae,
-                    word.accent_type or len(parsed.phrases[0].morae),
-                )
+            display = format_dictionary_pitch(
+                parsed.phrases[0].morae,
+                word.accent_type,
+                editor.payload.get("pitch_events", {}).get(_word_uuid, ()),
             )
             key = ("entry", index)
             number_token = _numbered_shortcut_token(index + 1, len(entries))
