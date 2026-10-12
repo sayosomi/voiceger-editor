@@ -180,99 +180,97 @@ Then:
 
 English dictionary matching ignores letter case.
 
-## Import a dictionary
+## Import a dictionary (Merge)
 
-Choose **Import dictionary** from the top-level Dictionary screen, enter the JSON
-file path, and open the review.
+Choose **Import dictionary (Merge)** from the Dictionary menu. Enter the path
+to a native ZIP backup or an older JSON dictionary file, then select
+**Review file**.
 
-Supported files are detected from their contents rather than the filename:
+Native ZIP backups include Japanese, English, and optional additional
+Japanese pitch events. Both languages are reviewed together. New entries
+start selected; conflicts start unselected; exact duplicates are omitted
+from the review list and counted. A selected conflict replaces the matching
+logical entry without deleting unrelated local words. Review each word with
+Enter, toggle its selection using Space, then choose **Import selected**.
 
-- Japanese VOICEVOX user dictionaries using the UUID-keyed expanded
-  `UserDictWord` JSON format;
-- Japanese dictionaries exported by Voiceger Editor in the same format;
-- Voiceger Editor English dictionaries using
-  `{"surface": ["ARPABET", "TOKENS"]}`.
+Japanese review details show Surface, Pronunciation, Accent, Word type, and
+Priority. For Merge, only Japanese Word type is adjustable; changing it
+updates conflict detection. English details are read-only. Local words not
+selected for replacement remain intact. Changes for both languages and all
+selected pitch events are committed as one recoverable operation.
 
-Japanese VOICEVOX dictionaries do not need conversion before import.
+Standalone JSON remains supported:
 
-The review list omits exact duplicates and counts them as already existing.
-New entries start selected. Conflicting entries start unselected and are marked
-with `!` immediately after the checkbox. Use Space to select or deselect the
-focused entry, Enter to inspect its details, **Import selected** to commit the
-current selection, or **Clear selection** to deselect all review entries.
+- Japanese VOICEVOX-style UUID-keyed `UserDictWord` JSON;
+- earlier Voiceger Editor Japanese JSON, including the declared three-file
+  pitch-metadata backup (select its `user_dict_with_pitch_events` file with
+  the matching pitch-events sidecar in the same folder);
+- Voiceger Editor English JSON (`{"surface": ["ARPABET", "TOKENS"]}`).
 
-Japanese import detail shows Surface, Pronunciation, Accent, Word type, and
-Priority. Only Word type can be changed during import review; Left / Right
-changes it and immediately recalculates whether that entry is new, conflicting,
-or an exact duplicate. Pronunciation, Accent, and Priority are read-only.
-English import detail is entirely read-only.
+Standalone JSON files still import only their respective language. Their
+existing preview, conflict resolution, and commit behavior is unchanged.
+The Import path starts at `Settings.output_dir`, but changing an import
+file path never changes that setting. Invalid files are rejected before
+local dictionary data is changed.
 
-When a selected Japanese conflict replaces an existing logical entry, the
-existing UUID and its canonical position are preserved. Newly imported entries
-are appended in input-file order. The import is committed as one logical
-operation and reports imported, replaced, and skipped counts when complete.
+## Restore a complete backup (Replace all)
 
-The Import File path starts at the saved Output directory for convenience.
-It is an input-only path: changing it does not change `Settings.output_dir`.
+Choose **Restore backup (Replace all)** from the Dictionary menu and select
+a native Voiceger Editor ZIP backup. Standalone JSON cannot perform a full
+restore.
 
-Invalid or unsupported input is rejected before the active dictionary is
-changed. Back exits the import workflow without committing the review.
+Restore shows Japanese and English word counts, differences that can be
+inspected with Enter, and a list of local words absent from the backup that
+will be deleted. Select **Review complete — Replace all** to open the
+separate confirmation. The confirmation defaults to **[Esc] Cancel**.
+Only **Replace all** proceeds.
+
+Full restore removes local dictionary entries not in the backup and restores
+the ZIP's original Japanese UUIDs, dictionary order, English dictionary,
+and Japanese pitch events. It does not merge or preserve additional local
+entries. The three stored files are updated as one recoverable operation,
+including rollback after a write failure or interrupted write sequence.
+Make a separate native backup first if you need to keep local-only words.
 
 ## Export a dictionary
 
 Choose **Export dictionary** from the top-level Dictionary screen.
+The Export screen shows the current shared output directory as
+**[F] Output**. Press F or Enter while the row is selected to change
+`Settings.output_dir` in place.
 
-The Export screen shows the shared saved output directory as **[F] Output**.
-Select that row and press Enter, or press **F**, to edit
-`Settings.output_dir` in place without leaving Export.
+**Voiceger Editor** writes one complete native backup:
 
-**Voiceger Editor** export writes the current dictionaries as two separate
-native JSON files:
+    YYYYMMDDHHMM_voiceger_editor_dictionary.zip
 
-    YYYYMMDDHHMM_user_dict.json
-    YYYYMMDDHHMM_english_user_dict.json
+The archive contains `manifest.json` (version 1, member names, SHA-256
+checksums), unchanged canonical `user_dict.json`, unchanged
+`english_user_dict.json`, and optional unchanged
+`user_dict_pitch_events.json` for additional Japanese pitch events.
+All files are checked as a complete set on import. Damaged, unsupported,
+incomplete or unsafe archives are rejected without changing the dictionary.
+A completed ZIP is published without overwriting an existing file; a
+collision adds `-2`, `-3`, and so on before `.zip`.
 
-There is no combined bundle format. The Japanese and English files preserve
-their canonical dictionary order.
-
-**VOICEVOX** export writes the Japanese dictionary only, using the same
-UUID-keyed expanded UserDictWord JSON shape used for Japanese import:
+**VOICEVOX** writes only the standard Japanese single-accent JSON:
 
     YYYYMMDDHHMM_voicevox_user_dict.json
 
-The English dictionary is not included in VOICEVOX export.
+VOICEVOX exports never include English words or additional Japanese pitch
+events. If additional pitch peaks exist, a warning appears **before**
+export; cancellation leaves no export file. Confirming creates the normal
+single-accent VOICEVOX JSON. Choose the native ZIP backup to preserve every
+pitch event.
 
-When Japanese words have additional pitch events, native export writes three
-separate JSON files with a shared collision suffix:
+Additional Japanese pitch events are stored locally in
+`user_dict_pitch_events.json` beside `user_dict.json`. The version-1
+pitch sidecar is UUID-keyed, includes reading and mora alignment, and binds
+to the exact canonical Japanese dictionary bytes with a SHA-256 checksum.
+Neither VOICEVOX JSON nor OpenJTalk CSV contains the extra events.
 
-    YYYYMMDDHHMM_user_dict_with_pitch_events.json
-    YYYYMMDDHHMM_english_user_dict.json
-    YYYYMMDDHHMM_user_dict_pitch_events.json
-
-The first file remains ordinary VOICEVOX-compatible Japanese JSON. Its
-with_pitch_events filename declares that the accompanying pitch-events file
-is required. Importing this Japanese file automatically loads and validates
-the sidecar. An incomplete or mismatched backup is rejected before changes.
-Keep all three files together. Older two-file native exports and standalone
-VOICEVOX JSON files remain supported.
-
-Local Voiceger Editor pitch events live in user_dict_pitch_events.json next to
-user_dict.json. The version-1 sidecar is keyed by stable word UUID and stores
-the reading, mora count and the ordered afterMora/symbol events. It includes
-the SHA-256 digest of the canonical Japanese dictionary bytes. The normal
-Japanese JSON and OpenJTalk CSV never carry extra pitch events.
-
-VOICEVOX export always contains only standard Japanese JSON with one accent
-per word. Additional peaks are not transferable to VOICEVOX and will be lost
-on import there. Use native export for lossless Voiceger Editor backup.
-The export core reports affected UUIDs for frontend warning display.
-
-
-Exports are written to the current Settings.output_dir, the same configured
-output directory used for accepted audio. Existing files are never overwritten.
-If a name already exists, Voiceger Editor adds -2, -3, and so on before the
-.json extension. A paired Voiceger Editor export always uses the same suffix
-for both files.
+Native ZIP backups replace the older two- or three-JSON export format,
+but already-exported standalone JSON and the three-file native pitch
+backup remain importable. They are not complete ZIP backups.
 
 ## Save from a pronunciation editor
 
