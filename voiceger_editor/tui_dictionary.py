@@ -1033,7 +1033,7 @@ class TuiDictionaryController:
                 return self._begin_field("surface", editor.payload["surface"])
             if selected == "pronunciation":
                 return self._begin_field(
-                    "pronunciation", editor.payload["pronunciation"]
+                    "pronunciation", self._entry_owner.japanese_editable_reading(editor)
                 )
             if selected == "generate_pronunciation":
                 return self._entry_owner._generate_pronunciation()
