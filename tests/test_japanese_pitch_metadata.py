@@ -174,7 +174,7 @@ class JapaneseMultiPeakDictionaryTests(unittest.TestCase):
         with patch("voiceger_editor.user_dictionary._atomic_write",
                    side_effect=OSError("disk full")):
             with self.assertRaises(UserDictionaryStorageError):
-                self.core.delete_japanese_pitch_events(word_uuid)
+                self.core.update_japanese_pitch_events(word_uuid, (PitchEvent(1, "["), PitchEvent(2, "]"), PitchEvent(3, "["), PitchEvent(4, "]")))
         self.assertEqual(self.core.get_japanese_pitch_events(word_uuid), EVENTS)
 
     def test_native_export_import_and_missing_or_corrupt_sidecar(self):
