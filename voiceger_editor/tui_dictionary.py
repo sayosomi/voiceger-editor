@@ -939,29 +939,10 @@ class TuiDictionaryController:
                 assert self.editor is not None
                 return self._export_owner.start(self.editor, "voicevox")
             return ()
-        if editor.kind == "dictionary_restore_confirmation":
-            if selected == "cancel":
-                self.editor = self._import_owner._import_review_state(action="cancel")
-                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
-            if selected == "restore":
-                return self._import_owner._commit_dictionary_import(confirmed=True)
-            return ()
-        if editor.kind == "dictionary_restore_review":
-            if selected == "restore":
-                self.editor = self._import_owner._restore_confirmation_state()
-                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
-            if selected == "cancel":
-                self._import_owner._clear_import_state()
-                self._restore_parent()
-                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
-            if (
-                isinstance(selected, tuple)
-                and selected[0] == "import_entry"
-                and isinstance(selected[1], int)
-            ):
-                self.editor = self._import_owner._import_detail_state(selected[1])
-                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
-            return ()
+        if editor.kind in {"dictionary_restore_confirmation", "dictionary_restore_review"}:
+            return self._import_owner.activate_restore(
+                restore_parent=self._restore_parent
+            )
         if editor.kind == "dictionary_import_review":
             if selected == "import_selected":
                 return self._import_owner._commit_dictionary_import()
