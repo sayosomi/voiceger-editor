@@ -74,12 +74,12 @@ class BatchItemMultiPeakTests(EditorControllerTestCase):
                     line.text for line in document
                     if line.key == ("pronunciation", 0)
                 )
-                self.assertEqual(label, "▶ JA | " + expected)
+                self.assertEqual(label, "▶ JA | " + expected + "。")
                 self.assertEqual(
                     rows[0].pitch_events is not None,
                     query.pronunciationPitchEvents is not None,
                 )
-                self.assertEqual(japanese_pronunciation(query), notation)
+                self.assertEqual(japanese_pronunciation(query), notation + "。")
 
     def test_later_phrase_uses_global_index_without_extra_boundaries(self):
         query = query_for("ア'メ/[シ]コク[メタン]")
@@ -94,10 +94,10 @@ class BatchItemMultiPeakTests(EditorControllerTestCase):
                     if line.key and line.key[0] == "pronunciation"]
         self.assertEqual(selected, [
             "▶ JA | [ア] メ",
-            "     | [シ] コ ク [メ タ ン]",
+            "     | [シ] コ ク [メ タ ン]。",
         ])
         self.assertEqual(japanese_pronunciation(query),
-                         "ア'メ/[シ]コク[メタン]")
+                         "ア'メ/[シ]コク[メタン]。")
 
     def test_mixed_japanese_english_rows_use_global_phrase_indices(self):
         segments = [
@@ -153,8 +153,8 @@ class BatchItemMultiPeakTests(EditorControllerTestCase):
         controller.open_pronunciation_item(
             query, rows, 0, origin=("pronunciation", 0), busy=False,
         )
-        self.assertEqual(controller.editor.input_value, "[シ]コク[メ]タン")
-        changed = "[シ]コク[メタン]"
+        self.assertEqual(controller.editor.input_value, "[シ]コク[メ]タン。")
+        changed = "[シ]コク[メタン]。"
         controller.editor.input_value = changed
         controller.editor.active_field = None
         controller.editor.selection = "save_dictionary"
@@ -174,7 +174,7 @@ class BatchItemMultiPeakTests(EditorControllerTestCase):
             self.assertEqual(len(preview), 1)
             self.assertIsInstance(preview[0], PreviewIntent)
             self.assertEqual(japanese_pronunciation(preview[0].query), changed)
-            self.assertEqual(japanese_pronunciation(query), "[シ]コク[メ]タン")
+            self.assertEqual(japanese_pronunciation(query), "[シ]コク[メ]タン。")
             applied = controller.apply_pronunciation(query)
         replacement = next(item for item in applied
                            if isinstance(item, ReplaceQueryIntent))
@@ -197,7 +197,7 @@ class BatchItemMultiPeakTests(EditorControllerTestCase):
                 self.assertFalse(any(isinstance(item, ReplaceQueryIntent)
                                      for item in result))
                 self.assertEqual(japanese_pronunciation(query),
-                                 "[シ]コク[メ]タン")
+                                 "[シ]コク[メ]タン。")
 
 
 if __name__ == "__main__":
