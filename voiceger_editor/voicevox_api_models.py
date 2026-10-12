@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_serializer
 
@@ -40,6 +40,20 @@ class PronunciationPunctuation(BaseModel):
         if value not in _CANONICAL_PRONUNCIATION_PUNCTUATION:
             raise ValueError("unsupported pronunciation punctuation")
         return value
+
+
+class JapanesePitchEvent(BaseModel):
+    """Adapter pitch event after a 1-based mora (never a phrase boundary)."""
+
+    afterMora: int = Field(ge=1)
+    symbol: Literal["[", "]"]
+
+
+class PronunciationPitchEvents(BaseModel):
+    """Adapter extension for one phrase's complete multi-peak event sequence."""
+
+    accentPhraseIndex: int = Field(ge=0)
+    events: List[JapanesePitchEvent] = Field(min_length=3)
 
 
 class VoicegerSegment(BaseModel):
@@ -92,6 +106,7 @@ class AudioQuery(BaseModel):
     kana: Optional[str] = None
     voicegerSegments: Optional[List[VoicegerSegment]] = None
     pronunciationPunctuation: Optional[List[PronunciationPunctuation]] = None
+    pronunciationPitchEvents: Optional[List[PronunciationPitchEvents]] = None
 
     @model_serializer(mode="wrap")
     def _serialize_optional_adapter_extension(self, handler):
@@ -100,4 +115,6 @@ class AudioQuery(BaseModel):
             data.pop("voicegerSegments", None)
         if self.pronunciationPunctuation is None:
             data.pop("pronunciationPunctuation", None)
+        if self.pronunciationPitchEvents is None:
+            data.pop("pronunciationPitchEvents", None)
         return data
