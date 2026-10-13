@@ -16,8 +16,8 @@ Voiceger Editorでは、よく使う単語や自動変換で正しく発音さ�
 |---|---|
 | `[J] Japanese` | 日本語辞書 |
 | `[E] English` | 英語辞書 |
-| `[I] Import dictionary` | 辞書のインポート |
-| `[X] Export dictionary` | 辞書のエクスポート |
+| `[I] Import dictionary (Merge)` | 辞書ファイルから単語を取り込む |
+| `[O] Export dictionary` | 辞書のエクスポート |
 
 ## 単語を登録する
 
@@ -240,84 +240,89 @@ Sortは一覧の表示順を変更する機能です。辞書ファイルに保�
 
 ## 辞書をインポートする
 
-`DICTIONARY` で `[I] Import dictionary` を選択します。
+`DICTIONARY` で `[I] Import dictionary (Merge)` を選択します。
 
-Voiceger Editorでは、既存の辞書ファイルを読み込み、登録する項目を確認してからインポートできます。
+ZIPバックアップやJSONファイルから、必要な単語だけを辞書に取り込めます。
 
 ### 対応形式
 
-次のJSON形式に対応しています。
-
 | 形式 | 内容 |
 |---|---|
-| VOICEVOX日本語辞書 | UUIDをキーとするUserDictWord形式 |
-| Voiceger Editor日本語辞書 | VOICEVOX互換のJSON形式 |
-| Voiceger Editor英語辞書 | 英単語とARPAbetの対応を保存したJSON形式 |
+| Voiceger Editorバックアップ（ZIP） | 日本語・英語辞書と追加のアクセント情報をまとめたファイル |
+| VOICEVOX日本語辞書（JSON） | VOICEVOX互換の日本語辞書 |
+| Voiceger Editor旧形式（JSON） | 以前のバージョンで書き出した日本語・英語辞書 |
 
-日本語のVOICEVOX辞書は、事前に変換せずインポートできます。
+ZIPでは、日本語と英語をまとめて取り込めます。JSON形式では、ファイルごとに日本語または英語を取り込みます。
 
-辞書形式はファイル名ではなく、JSONの内容から判定されます。
+VOICEVOXの日本語辞書は、変換せずに読み込めます。
 
 ### ファイルを読み込む
 
-`IMPORT DICTIONARY` の `File path` にJSONファイルのパスを入力します。
+`IMPORT DICTIONARY` の `File path` に、読み込むファイルのパスを指定します。
 
-初期値には、設定済みのOutputディレクトリが使用されます。
-
-ここで入力するのは読み込み元ファイルのパスです。変更しても、音声やエクスポートファイルの保存先は変わりません。
+初期値には、設定済みのOutputディレクトリが表示されます。読み込み元のパスを変更しても、Output設定は変わりません。
 
 パスを指定したら、`[I] Review file` を実行します。
 
 ### インポート内容を確認する
 
-ファイルを読み込むと、登録候補を確認する画面が開きます。
+ファイル内の単語が、現在の辞書と比較されます。
 
-![新規登録と競合を確認できる辞書インポートのレビュー画面](images/dictionary/04-dictionary-import-review.png)
+![日本語と英語の取り込み候補を表示した辞書インポート画面](images/dictionary/04-dictionary-import-review.png)
 
-候補は、既存の辞書との比較結果によって扱いが変わります。
+日本語と英語の単語は、それぞれの見出しの下に表示されます。通常の辞書一覧と同じように、単語の読みやアクセント・強勢も確認できます。
 
 | 判定 | 初期状態 |
 |---|---|
-| 新規登録 | 選択済み |
-| 既存の登録と競合 | 未選択 |
-| 完全一致する登録 | 候補一覧から除外 |
+| 新規登録 | `[x]` 選択済み |
+| 既存の登録と競合 | `[ ]` 未選択 |
+| 完全一致 | 候補一覧から除外 |
 
-競合する項目には、チェックボックスの直後に `!` が表示されます。
+競合する単語には `!` が表示されます。
 
-Spaceで選択状態を切り替えられます。
+`Space` で取り込むかどうかを切り替えられます。
 
-候補を選択してEnterを押すと、詳細を確認できます。
+画面上部の `Selected` には、取り込み対象として選択されている単語数が表示されます。
 
-日本語の詳細画面では、Surface・Pronunciation・Accent・Word type・Priorityを確認できます。この画面で変更できるのはWord typeのみです。
+### 単語の詳細を確認する
 
-英語の詳細画面は確認専用です。
+単語を選択してEnterを押すと、詳細画面が開きます。
 
-インポートする項目を選択したら、`[I] Import selected` を実行します。
+日本語の詳細画面では、Surface・Pronunciation・Word type・Priorityを確認できます。アクセントは通常の辞書と同じ表記で表示され、変更できるのはWord typeのみです。
 
-`[C] Clear selection` では、すべての候補の選択を解除できます。
+英語の詳細画面では、SurfaceとARPAbetによるPronunciationを確認できます。こちらは確認専用です。
 
-インポートを確定せずに戻った場合、辞書は変更されません。
+既存の単語と競合する場合は、`Existing — differences only` に変更前の情報が表示されます。同じ内容の項目は繰り返し表示されません。
+
+番号キーから詳細画面を直接開くこともできます。操作方法は[番号で単語を選択する](#番号で単語を選択する)を参照してください。
+
+### インポートする
+
+取り込む単語を選択したら、`[I] Import selected` を実行します。
+
+`[C] Clear selection` では、すべての選択を解除できます。
+
+既存の単語と競合する場合、選択した単語だけが置き換えられます。選択しなかった単語や、ファイルに含まれていない既存の単語はそのまま残ります。
 
 インポート完了後は、追加・置換・スキップした件数が表示されます。
 
 ## 辞書をエクスポートする
 
-`DICTIONARY` で `[X] Export dictionary` を選択します。
+`DICTIONARY` で `[O] Export dictionary` を選択します。
 
-エクスポートには次の2種類があります。
+エクスポートにはVoiceger Editor形式とVOICEVOX形式があります。
 
 ### Voiceger Editor形式
 
-`[E] Voiceger Editor` を選択すると、日本語辞書と英語辞書を別々のJSONファイルに出力します。
+`[E] Voiceger Editor` を選択すると、日本語辞書と英語辞書をまとめたZIPファイルを1つ出力します。
+
+追加のアクセント情報が登録されている場合は、それも保存されます。
 
 ファイル名の例：
 
-```text
-YYYYMMDDHHMM_user_dict.json
-YYYYMMDDHHMM_english_user_dict.json
-```
+`YYYYMMDDHHMM_voiceger_editor_dictionary.zip`
 
-2つの辞書をまとめた単一ファイルではありません。
+このZIPは、Voiceger EditorのImport（Merge）で読み込めます。
 
 ### VOICEVOX形式
 
@@ -325,25 +330,23 @@ YYYYMMDDHHMM_english_user_dict.json
 
 ファイル名の例：
 
-```text
-YYYYMMDDHHMM_voicevox_user_dict.json
-```
+`YYYYMMDDHHMM_voicevox_user_dict.json`
 
-英語辞書は含まれません。
+英語辞書は含まれません。また、VOICEVOX形式では追加のアクセント情報を保存できません。
+
+追加のアクセント情報がある場合、出力前に警告が表示されます。キャンセルするとファイルは作成されません。
+
+すべての情報を保存したい場合は、Voiceger Editor形式を使用してください。
 
 ### 保存先とファイル名
 
-エクスポート先は、Voiceger Editorで設定されているOutputディレクトリです。
+エクスポート先は、設定されているOutputディレクトリです。
 
-`[F] Output` から保存先を変更できます。この変更は共通のOutput設定に反映されます。
+`[F] Output` から保存先を変更できます。変更内容は共通のOutput設定に反映されます。
 
 保存先の設定については、[設定](settings.md)を参照してください。
 
-エクスポート時に同名ファイルが存在しても、既存ファイルは上書きされません。
-
-ファイル名の末尾に `-2`、`-3` などを追加して保存します。
-
-Voiceger Editor形式で2ファイルを同時に出力する場合は、両方に同じ番号が付けられます。
+同名ファイルが存在する場合は上書きせず、ファイル名の末尾に `-2`、`-3` などを追加します。
 
 ## 辞書ファイルの保存場所
 
