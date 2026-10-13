@@ -11,7 +11,7 @@ _HELP_ITEMS = (
     ("Up/Down", ": move one selectable item"),
     (
         "Left/Right",
-        ": Batch List Takes; Batch Item generation count or pronunciation controls",
+        ": Batch Item generation count or pronunciation controls",
     ),
     (
         "Enter",
@@ -36,7 +36,7 @@ _HELP_ITEMS = (
     ("[ / ]", ": previous / next Batch Item Caption or Dictionary word"),
     (main_shortcut("clear_candidates").shortcut.upper(), ": clear candidates through confirmation"),
     ("R", ": regenerate the focused Take"),
-    (main_shortcut("settings").shortcut.upper(), ": open Settings"),
+    (main_shortcut("settings_summary").shortcut.upper(), ": Batch Item voice / Batch List Settings"),
     (main_shortcut("dictionary").shortcut.upper(), ": open Dictionary"),
     ("A / G", ": Batch List Add captions / Generate selected"),
     (None, "Menu mode: editor/modal action letters are active."),
