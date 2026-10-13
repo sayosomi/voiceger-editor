@@ -13,6 +13,7 @@ from voiceger_editor.tui_navigation import (
     OpenHelp,
     OpenDictionary,
     OpenSettingsEditor,
+    OpenItemVoiceEditor,
     OpenCaptionEditor,
     PlayCandidate,
     Quit,
@@ -269,7 +270,7 @@ class TuiNavigationTests(unittest.TestCase):
     def test_focus_actions_are_routed_without_global_busy_policy(self):
         state = context(candidate_numbers=(1,))
         mappings = (
-            (("settings_summary", None), OpenSettingsEditor("style_id")),
+            (("settings_summary", None), OpenItemVoiceEditor()),
             (("output", None), EditOutputPath()),
             (("caption", None), OpenCaptionEditor()),
             (("pronunciation", 1), EditPronunciationItem(1)),

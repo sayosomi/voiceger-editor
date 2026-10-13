@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import curses
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Sequence
 
 from .settings import Settings
 from .tui_adjustments import step_bounded
+from .tui_editor_common import ApplyItemVoiceIntent
 from .tui_batch import BatchActionBindings, TuiBatchController
 from .tui_editors import PronunciationRow, adjustment_feedback_intents
 from .tui_navigation import (
@@ -26,6 +27,7 @@ from .tui_navigation import (
     OpenDictionary,
     OpenHelp,
     OpenSettingsEditor,
+    OpenItemVoiceEditor,
     PlayCandidate,
     Quit,
     RegenerateAll,
@@ -327,6 +329,21 @@ class TuiBatchItemController:
                 )
             elif isinstance(action, UpdateNavigationStatus):
                 actions.set_status(action.status)
+            elif isinstance(action, OpenItemVoiceEditor):
+                conflict = self._item_mutation_conflict(
+                    bindings, action="changing voice settings"
+                )
+                if conflict is not None:
+                    actions.set_status(conflict)
+                    continue
+                if session is not None and self.batch.open_item_id is not None:
+                    actions.dispatch_editor_intents(
+                        actions.editor_controller.open_item_voice(
+                            item_id=self.batch.open_item_id,
+                            settings=session.settings,
+                            origin=actions.navigation.focus_key,
+                        )
+                    )
             elif isinstance(action, OpenSettingsEditor):
                 actions.open_settings_editor(
                     action.selected_field,
@@ -756,6 +773,41 @@ class TuiBatchItemController:
                     item_id=self.batch.open_item_id,
                 )
             )
+
+    def apply_item_voice(
+        self,
+        intent: ApplyItemVoiceIntent,
+        bindings: BatchItemBindings,
+    ) -> str | None:
+        """Commit a scoped synthesis change without disturbing sibling Captions."""
+
+        if intent.item_id != self.batch.open_item_id:
+            return "The selected Batch Item changed."
+        conflict = self._item_mutation_conflict(
+            bindings, action="changing voice settings"
+        )
+        if conflict is not None:
+            return str(conflict)
+        session = bindings.get_session()
+        if session is None:
+            return "The Batch Item is unavailable."
+        if (
+            session.settings.style_id == intent.style_id
+            and session.settings.speed == intent.speed
+        ):
+            return None
+        try:
+            updated = replace(
+                session.settings, style_id=intent.style_id, speed=intent.speed
+            )
+            session.replace_settings(updated)
+        except (ValueError, OSError) as exc:
+            return str(exc)
+        bindings.actions.operations.stop_playback()
+        bindings.actions.operations.clear_current_take()
+        self.batch.clear_open_item_acceptance()
+        self.batch.clear_open_item_generation_outcome()
+        return None
 
     def _item_mutation_conflict(
         self,

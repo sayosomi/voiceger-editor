@@ -69,6 +69,11 @@ class OpenSettingsEditor:
 
 
 @dataclass(frozen=True)
+class OpenItemVoiceEditor:
+    pass
+
+
+@dataclass(frozen=True)
 class EditOutputPath:
     pass
 
@@ -147,6 +152,7 @@ NavigationAction = Union[
     ClearAdjustmentFeedback,
     UpdateNavigationStatus,
     OpenSettingsEditor,
+    OpenItemVoiceEditor,
     EditOutputPath,
     OpenCaptionEditor,
     EditPronunciationItem,
@@ -315,7 +321,7 @@ class TuiNavigation:
             return ()
         name, number = key
         if name == "settings_summary":
-            return (OpenSettingsEditor("style_id"),)
+            return (OpenItemVoiceEditor(),)
         if name == "output":
             return (EditOutputPath(),)
         if name == "caption":

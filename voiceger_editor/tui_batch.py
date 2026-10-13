@@ -251,6 +251,10 @@ class TuiBatchController:
         for item in self.batch.items:
             item.clear_generation_outcome()
 
+    def clear_acceptances(self) -> None:
+        for item in self.batch.items:
+            item.clear_acceptance()
+
     def set_item_generation_outcome(self, item_id: str, outcome: str) -> None:
         try:
             self.batch.set_generation_outcome(item_id, outcome)

@@ -502,7 +502,7 @@ class TuiRenderer:
             width,
             header_attr,
         )
-        settings = state.settings
+        settings = state.session.settings if state.session is not None else state.settings
         style_name = next(
             (
                 style.name
@@ -511,8 +511,8 @@ class TuiRenderer:
             ),
             "unavailable",
         )
-        text_state = "TXT ON" if settings.save_text else "TXT OFF"
-        lab_state = "LAB ON" if settings.save_lab else "LAB OFF"
+        text_state = "TXT ON" if state.settings.save_text else "TXT OFF"
+        lab_state = "LAB ON" if state.settings.save_lab else "LAB OFF"
         suffix = f" | {text_state} | {lab_state}"
         prefix = f"{style_name} | {settings.speed:.2f}x | Takes {settings.take_count}"
         marker = "▶ " if state.focus_key == ("settings_summary", None) else "  "

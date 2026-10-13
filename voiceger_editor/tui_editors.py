@@ -14,6 +14,7 @@ from .tui_editor_common import (
     AdjustmentPressedIntent,
     ApplyCaptionIntent,
     ApplySettingsIntent,
+    ApplyItemVoiceIntent,
     BuildPronunciationIntent,
     BuildPronunciationResult,
     CaptionApplicationResult,
@@ -43,6 +44,7 @@ from .tui_editor_pronunciation import (
     TuiPronunciationEditorOwner,
 )
 from .tui_editor_settings import TuiSettingsEditorOwner
+from .tui_editor_item_voice import TuiItemVoiceEditorOwner
 from .tui_editor_text import TuiTextEditorOwner
 from .tui_selection import move_clamped_selection
 from .tui_shortcuts import menu_items, resolve_shortcut
@@ -74,6 +76,10 @@ class TuiEditorController:
             english_word_groups=english_word_groups,
         )
         self._settings = TuiSettingsEditorOwner(
+            self,
+            available_styles=available_styles,
+        )
+        self._item_voice = TuiItemVoiceEditorOwner(
             self,
             available_styles=available_styles,
         )
@@ -122,6 +128,12 @@ class TuiEditorController:
 
     def open_settings(self, *args, **kwargs):
         return self._settings.open_settings(*args, **kwargs)
+
+    def open_item_voice(self, *args, **kwargs):
+        return self._item_voice.open(*args, **kwargs)
+
+    def complete_item_voice_application(self, error: str | None):
+        return self._item_voice.complete(error)
 
     def _settings_draft(self, *args, **kwargs):
         return self._settings._settings_draft(*args, **kwargs)
@@ -228,6 +240,7 @@ class TuiEditorController:
                     "caption",
                     "japanese",
                     "settings",
+                    "item_voice",
                     "english_word",
                     "section_text",
                     "add_section",
@@ -322,6 +335,13 @@ class TuiEditorController:
                 return (ClearAdjustmentFeedbackIntent(),)
             return self._activate_selection(settings, query, current_caption)
 
+        if editor.kind == "item_voice" and key in (
+            curses.KEY_LEFT, curses.KEY_RIGHT,
+        ):
+            return self._item_voice.adjust(
+                -1 if key == curses.KEY_LEFT else 1
+            )
+
         if editor.kind in {"settings", "audio_output_settings"} and key in (
             curses.KEY_LEFT,
             curses.KEY_RIGHT,
@@ -367,6 +387,8 @@ class TuiEditorController:
 
         if editor.kind in {"settings", "audio_output_settings"}:
             return self._settings.activate_selection(settings, current_caption)
+        if editor.kind == "item_voice":
+            return self._item_voice.activate(settings)
 
         selected = editor.selection
         if editor.kind == "build_confirmation":
@@ -458,6 +480,8 @@ class TuiEditorController:
             return ()
         if editor.kind in {"settings", "audio_output_settings"}:
             return self._settings.finish_field()
+        if editor.kind == "item_voice":
+            return self._item_voice.finish_field()
         if editor.kind in {"japanese", "english_word"}:
             return self._pronunciation.finish_field()
 
@@ -584,6 +608,7 @@ class TuiEditorController:
             "build_confirmation": "Pronunciation rebuild cancelled.",
             "japanese": "Japanese pronunciation draft discarded.",
             "settings": "Settings draft discarded.",
+            "item_voice": "Item voice draft discarded.",
             "english_word": "English word draft discarded.",
             "add_section": "New section draft discarded.",
             "clear_candidates_confirmation": "Candidate clearing cancelled.",

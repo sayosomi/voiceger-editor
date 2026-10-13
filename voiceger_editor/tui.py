@@ -31,6 +31,7 @@ from .tui_rendering import (
 )
 from .tui_editors import (
     AdjustmentPressedIntent, ApplyCaptionIntent, ApplySettingsIntent,
+    ApplyItemVoiceIntent,
     BuildPronunciationIntent, BuildPronunciationResult, CaptionApplicationResult,
     ClearAdjustmentFeedbackIntent, ClearCandidatesIntent, CloseEditorIntent,
     OpenHelpIntent, OpenDictionaryIntent, SaveToDictionaryIntent,
@@ -100,6 +101,7 @@ class TuiApp:
             set_status=lambda status: setattr(self, "_status", status),
             save=lambda value, path: save_settings(value, path),
             clear_generation_outcomes=self._batch.clear_generation_outcomes,
+            clear_acceptances=self._batch.clear_acceptances,
         )
         self._output_path_controller = TuiOutputPathController(
             get_output_dir=lambda: self.settings.output_dir,
@@ -609,6 +611,13 @@ class TuiApp:
                 error = self._build_pronunciation_from_caption()
                 pending[0:0] = self._editor_controller.complete_build_confirmation(
                     BuildPronunciationResult(error=error)
+                )
+            elif isinstance(intent, ApplyItemVoiceIntent):
+                error = self._batch_item_controller.apply_item_voice(
+                    intent, self._batch_item_bindings
+                )
+                pending[0:0] = (
+                    self._editor_controller.complete_item_voice_application(error)
                 )
             elif isinstance(intent, ApplySettingsIntent):
                 result = self._apply_settings_target(intent.settings)
