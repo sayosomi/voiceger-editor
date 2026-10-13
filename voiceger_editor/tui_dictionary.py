@@ -246,6 +246,7 @@ class TuiDictionaryController:
         if editor.kind not in {
             "dictionary_japanese_list",
             "dictionary_english_list",
+            "dictionary_import_review",
         }:
             return
         editor.payload["number_jump_active"] = self._number_jump.active
@@ -259,9 +260,17 @@ class TuiDictionaryController:
         if editor is None or editor.kind not in {
             "dictionary_japanese_list",
             "dictionary_english_list",
+            "dictionary_import_review",
         }:
             return ()
         target_index = target_number - 1
+        if editor.kind == "dictionary_import_review":
+            items = tuple(editor.payload.get("items", ()))
+            if not 0 <= target_index < len(items):
+                return ()
+            editor.selection = ("import_entry", target_index)
+            editor.error = EMPTY_STATUS
+            return self._activate()
         entries = tuple(editor.payload.get("entries", ()))
         if not 0 <= target_index < len(entries):
             return ()
@@ -880,6 +889,7 @@ class TuiDictionaryController:
                 self._stack.append(deepcopy(editor))
                 self.editor = self._english_list_state()
             elif selected == "import":
+                self._number_jump.reset()
                 self._stack.append(deepcopy(editor))
                 self._import_owner._clear_import_state()
                 self.editor = self._import_owner._import_path_state()
@@ -1167,11 +1177,16 @@ class TuiDictionaryController:
         if editor.kind in {
             "dictionary_japanese_list",
             "dictionary_english_list",
+            "dictionary_import_review",
         }:
             was_number_jump = self._number_jump.active
+            entry_count = len(editor.payload.get(
+                "items" if editor.kind == "dictionary_import_review" else "entries",
+                (),
+            ))
             number_jump = self._number_jump.handle_key(
                 key,
-                item_count=len(editor.payload.get("entries", ())),
+                item_count=entry_count,
             )
             if number_jump.handled:
                 self._sync_number_jump_payload(editor)
@@ -1180,6 +1195,8 @@ class TuiDictionaryController:
                 if number_jump.target_number is not None:
                     return self._open_list_entry_number(number_jump.target_number)
                 return ()
+            if editor.kind == "dictionary_import_review":
+                return None
             if key in (" ", "p", "P"):
                 # During explicit number entry, no Preview shortcut fires.
                 if was_number_jump or self._number_jump.active:

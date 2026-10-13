@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from .tui_display import _adjustable_value, _display_width, _truncate_display
+from .pronunciation import parse_pronunciation
+from .tui_dictionary_pitch import format_dictionary_pitch
+from .tui_display import _adjustable_value, format_english_phonemes
 from .tui_rendering_editor_common import EditorDocumentBuilder
-from .tui_rendering_shared import adjustment_press_direction
+from .tui_rendering_dictionary_list import _dictionary_list_row, _dictionary_surface_column_width
+from .tui_rendering_shared import _numbered_shortcut_token, adjustment_press_direction
 
 
 def build_import_document(builder: EditorDocumentBuilder) -> bool:
@@ -22,34 +25,62 @@ def build_import_document(builder: EditorDocumentBuilder) -> bool:
     wrap = builder.wrap
     selectable = builder.selectable
     if editor.kind == "dictionary_import_review":
-        paired_backup = editor.payload.get("paired_backup", False)
+        paired_backup = bool(editor.payload.get("paired_backup"))
+        items = tuple(editor.payload.get("items", ()))
         plain()
         if paired_backup:
             counts = editor.payload.get("language_counts", (0, 0))
             plain(f"Backup: {counts[0]} Japanese, {counts[1]} English")
-        total_count = int(editor.payload.get("total_count", 0))
-        exact_count = int(editor.payload.get("exact_duplicate_count", 0))
-        review_count = int(editor.payload.get("review_count", 0))
-        plain(f"{total_count} words found")
-        plain(f"{exact_count} already exist")
-        plain(f"{review_count} to review")
-        plain()
-        word_type_labels = tuple(editor.payload.get("word_type_labels", ()))
-        for index, item in enumerate(editor.payload.get("items", ())):
-            key = ("import_entry", index)
-            marker = "▶ " if editor.selection == key else "  "
-            checkbox = "[x]" if item.selected else "[ ]"
-            attention = "!" if item.relation.value == "conflict" else " "
-            word_type_label = (
-                word_type_labels[index] if index < len(word_type_labels) else ""
+        selected = sum(bool(item.selected) for item in items)
+        plain(f"Selected: {selected} / {len(items)} words")
+        exact = int(editor.payload.get("exact_duplicate_count", 0))
+        if exact:
+            plain(f"{exact} unchanged word(s) omitted")
+        if any(item.relation.value == "conflict" for item in items):
+            plain("! Conflicts with an existing word")
+
+        japanese = tuple(
+            (index, item) for index, item in enumerate(items)
+            if hasattr(item, "source_uuid")
+        )
+        english = tuple(
+            (index, item) for index, item in enumerate(items)
+            if not hasattr(item, "source_uuid")
+        )
+        events = editor.payload.get("incoming_pitch_events", {})
+        groups = (("Japanese", japanese), ("English", english))
+        for label, group in groups:
+            if not group:
+                continue
+            plain()
+            plain(label)
+            surface_width = _dictionary_surface_column_width(
+                tuple(str(item.incoming.surface) for _, item in group)
             )
-            suffix = f"  {word_type_label}" if word_type_label else ""
-            language = (
-                "JA " if hasattr(item, "source_uuid") else "EN "
-            ) if paired_backup else ""
-            value = f"{checkbox} {attention} {language}{item.incoming.surface}{suffix}"
-            available = max(1, width - 1 - _display_width(marker))
-            lines.append((marker + _truncate_display(value, available), key))
+            for index, item in group:
+                key = ("import_entry", index)
+                checkbox = "[x]" if item.selected else "[ ]"
+                attention = "!" if item.relation.value == "conflict" else " "
+                number = _numbered_shortcut_token(index + 1, len(items))
+                incoming = item.incoming
+                if hasattr(item, "source_uuid"):
+                    parsed = parse_pronunciation(incoming.pronunciation + "'")
+                    pronunciation = format_dictionary_pitch(
+                        parsed.phrases[0].morae,
+                        incoming.accent_type,
+                        events.get(item.source_uuid, ()),
+                    )
+                else:
+                    pronunciation = format_english_phonemes(incoming.phonemes)
+                builder.wrapped_selectable_text(
+                    key,
+                    _dictionary_list_row(
+                        f"{number} {checkbox} {attention}",
+                        str(incoming.surface),
+                        pronunciation,
+                        surface_width,
+                    ),
+                )
         plain()
         selectable("import_selected")
         selectable("clear_selection")

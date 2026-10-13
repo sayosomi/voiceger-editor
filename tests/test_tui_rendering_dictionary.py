@@ -328,17 +328,22 @@ class DictionaryRenderingDocumentTests(RenderingTestCase):
         self.assertIn(("  [O] Export dictionary", "export"), document)
         self.assertFalse(any("[X] Export dictionary" in line for line, _ in document))
 
-    def test_dictionary_import_review_is_compact_and_marks_conflicts_after_checkbox(self):
+    def test_dictionary_import_review_reuses_dictionary_row_format_and_groups(self):
         items = (
             SimpleNamespace(
+                source_uuid="uuid-1",
                 selected=True,
                 relation=SimpleNamespace(value="new"),
-                incoming=SimpleNamespace(surface="ずんだもん"),
+                incoming=SimpleNamespace(
+                    surface="ずんだもん", pronunciation="ズンダモン", accent_type=3,
+                ),
             ),
             SimpleNamespace(
                 selected=False,
                 relation=SimpleNamespace(value="conflict"),
-                incoming=SimpleNamespace(surface="雨"),
+                incoming=SimpleNamespace(
+                    surface="Alpha", phonemes=("AE1", "L", "F", "AH0"),
+                ),
             ),
         )
         editor = SimpleNamespace(
@@ -347,10 +352,10 @@ class DictionaryRenderingDocumentTests(RenderingTestCase):
             selection=("import_entry", 1),
             payload={
                 "items": items,
-                "word_type_labels": ("固有名詞", "普通名詞"),
-                "total_count": 3,
+                "paired_backup": True,
+                "language_counts": (1, 1),
                 "exact_duplicate_count": 1,
-                "review_count": 2,
+                "incoming_pitch_events": {},
             },
             active_field=None,
             input_value="",
@@ -358,21 +363,71 @@ class DictionaryRenderingDocumentTests(RenderingTestCase):
             error="",
             scroll=0,
         )
-
         document, _cursor_line, _cursor_column = self.renderer.editor_document(
             render_state(editor=editor), 80
         )
         labels = [line for line, _key in document]
-
-        self.assertIn("3 words found", labels)
-        self.assertIn("1 already exist", labels)
-        self.assertIn("2 to review", labels)
-        self.assertIn("  [x]   ずんだもん  固有名詞", labels)
-        self.assertIn("▶ [ ] ! 雨  普通名詞", labels)
-        self.assertFalse(any("CONFLICT" in line or "NEW" in line for line in labels))
+        self.assertIn("Backup: 1 Japanese, 1 English", labels)
+        self.assertIn("Selected: 1 / 2 words", labels)
+        self.assertIn("1 unchanged word(s) omitted", labels)
+        self.assertIn("! Conflicts with an existing word", labels)
+        self.assertIn("Japanese", labels)
+        self.assertIn("English", labels)
+        japanese = next(line for line, key in document if key == ("import_entry", 0))
+        english = next(line for line, key in document if key == ("import_entry", 1))
+        self.assertIn("[1] [x]", japanese)
+        self.assertIn("ずんだもん", japanese)
+        self.assertIn("ズ ン [ダ] モ ン", japanese)
+        self.assertIn("[2] [ ] !", english)
+        self.assertIn("Alpha", english)
+        self.assertIn("[AE1] L F AH0", english)
+        self.assertFalse(any("words found" in line or "to review" in line for line in labels))
         self.assertIn(("  [I] Import selected", "import_selected"), document)
         self.assertIn(("  [C] Clear selection", "clear_selection"), document)
         self.assertIn(("  [Esc] Back", "back"), document)
+
+    def test_import_review_shows_native_multi_peak_and_wraps_long_words(self):
+        from voiceger_editor.pronunciation import PitchEvent
+
+        item = SimpleNamespace(
+            source_uuid="id-pitch",
+            selected=True,
+            relation=SimpleNamespace(value="new"),
+            incoming=SimpleNamespace(
+                surface="スタックチャン", pronunciation="スタックチャン",
+                accent_type=2,
+            ),
+        )
+        editor = SimpleNamespace(
+            kind="dictionary_import_review",
+            title="IMPORT DICTIONARY",
+            selection=("import_entry", 0),
+            payload={
+                "items": (item,),
+                "exact_duplicate_count": 0,
+                "incoming_pitch_events": {
+                    "id-pitch": (
+                        PitchEvent(1, "["), PitchEvent(2, "]"),
+                        PitchEvent(4, "["), PitchEvent(5, "]"),
+                    ),
+                },
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+            render_state(editor=editor), 26
+        )
+        rows = [line for line, key in document if key == ("import_entry", 0)]
+        self.assertGreater(len(rows), 1)
+        self.assertIn("[1] [x]", rows[0])
+        self.assertIn("スタックチャン", "".join(rows))
+        self.assertIn("[", "".join(rows))
+        self.assertIn("]", "".join(rows))
+        self.assertEqual(len(rows), sum(key == ("import_entry", 0) for _, key in document))
 
     def test_dictionary_import_detail_renders_japanese_fields_and_english_comparison(self):
         japanese_item = SimpleNamespace(

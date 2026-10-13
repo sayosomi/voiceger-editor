@@ -317,6 +317,11 @@ class JapaneseDictionaryImportReview:
         )
 
     @property
+    def incoming_pitch_events(self) -> dict[str, tuple[PitchEvent, ...]]:
+        """Return validated incoming pitch events for list presentation."""
+        return dict(self._incoming_pitch_events)
+
+    @property
     def exact_duplicate_count(self) -> int:
         return sum(
             candidate.relation is DictionaryImportRelation.EXACT

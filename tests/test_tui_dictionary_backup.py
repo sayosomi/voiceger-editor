@@ -52,6 +52,7 @@ class TuiDictionaryBackupTests(DictionaryControllerTestCase):
         self.assertEqual([item.incoming.surface for item in editor.payload["items"]],
                          ["雨", "Alpha"])
         self.assertTrue(all(item.selected for item in editor.payload["items"]))
+        self.assertEqual(editor.payload["incoming_pitch_events"], {})
         self.key(" ")
         self.assertFalse(self.controller.editor.payload["items"][0].selected)
         self.key(curses.KEY_DOWN)

@@ -187,11 +187,17 @@ to a native ZIP backup or an older JSON dictionary file, then select
 **Review file**.
 
 Native ZIP backups include Japanese, English, and optional additional
-Japanese pitch events. Both languages are reviewed together. New entries
-start selected; conflicts start unselected; exact duplicates are omitted
-from the review list and counted. A selected conflict replaces the matching
-logical entry without deleting unrelated local words. Review each word with
-Enter, toggle its selection using Space, then choose **Import selected**.
+Japanese pitch events. Both languages are reviewed together in a numbered
+list grouped under Japanese and English headings. The list shows each word's
+pronunciation and pitch or stress, using the same notation and alignment as
+the dictionary lists. Keys 1–9 directly open the corresponding word; with
+10 or more candidates, 0 starts an explicit number jump. New entries start
+selected; conflicts start unselected and carry `!`; exact duplicates are
+omitted from the review list and counted separately. The top summary shows
+the number selected out of all reviewable words. A selected conflict replaces
+the matching logical entry without deleting unrelated local words. Review
+each word with Enter, toggle its selection using Space, then choose **Import
+selected**.
 
 Japanese review details show Surface, Pronunciation, Accent, Word type, and
 Priority. For Merge, only Japanese Word type is adjustable; changing it

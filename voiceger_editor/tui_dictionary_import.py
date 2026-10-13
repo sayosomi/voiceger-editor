@@ -142,6 +142,14 @@ class DictionaryImportOwner:
                 "review_count": len(items),
                 "paired_backup": is_backup,
                 "language_counts": review.language_counts if is_backup else None,
+                "incoming_pitch_events": (
+                    review.japanese.incoming_pitch_events
+                    if is_backup else
+                    review.incoming_pitch_events
+                    if review.format is DictionaryImportFormat.JAPANESE else {}
+                ),
+                "number_jump_active": False,
+                "number_jump_value": "",
             },
         )
 
