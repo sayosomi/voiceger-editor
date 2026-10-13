@@ -106,10 +106,15 @@ class TuiItemVoiceTests(TuiAppTestCase):
                 [(s.settings.style_id, s.settings.speed) for s in sessions],
                 [(1, 1.11), (7, 0.91), (3, 1.0)],
             )
-            app._change_settings(style_id=3, speed=0.95)
+            app._change_settings(speed=0.95)
             self.assertEqual(
                 [(s.settings.style_id, s.settings.speed) for s in sessions],
-                [(3, 0.95)] * 3,
+                [(1, 0.95), (7, 0.95), (3, 0.95)],
+            )
+            app._change_settings(style_id=1)
+            self.assertEqual(
+                [(s.settings.style_id, s.settings.speed) for s in sessions],
+                [(1, 0.95)] * 3,
             )
 
     def test_item_summary_uses_scoped_voice_not_global(self):
