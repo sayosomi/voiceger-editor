@@ -167,6 +167,13 @@ class DictionaryImportOwner:
             existing_word_type = (
                 None if item.existing is None else japanese_word_type(item.existing)
             )
+            incoming_pitch = (
+                review.japanese.incoming_pitch_events
+                if isinstance(review, DictionaryBackupReview) else
+                review.incoming_pitch_events
+            )
+            existing_uuid = item.existing_uuid
+            current_pitch = self.core.list_japanese_pitch_events()
             return EditorState(
                 kind="dictionary_import_japanese_detail",
                 title="IMPORT JAPANESE WORD",
@@ -178,6 +185,13 @@ class DictionaryImportOwner:
                     "item": item,
                     "word_type": word_type,
                     "word_type_label": _japanese_word_type_label(word_type),
+                    "incoming_pitch_events": incoming_pitch.get(
+                        item.source_uuid, ()
+                    ),
+                    "existing_pitch_events": (
+                        current_pitch.get(existing_uuid, ())
+                        if existing_uuid is not None else ()
+                    ),
                     "existing_word_type": existing_word_type,
                     "existing_word_type_label": (
                         None

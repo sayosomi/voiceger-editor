@@ -16,6 +16,7 @@ from .tui_rendering_dictionary_import import build_import_document
 from .tui_rendering_dictionary_entry import (
     build_japanese_dictionary_entry,
     build_japanese_dictionary_pronunciation,
+    render_dictionary_word_field,
 )
 from .tui_rendering_dictionary_list import (
     _DICTIONARY_SORT_LABELS,
@@ -146,22 +147,15 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         return build_japanese_dictionary_pronunciation(builder)
     elif editor.kind == "dictionary_english_entry":
         plain()
-        if editor.active_field == "surface":
-            input_field("surface", "▶ Surface        ")
-        else:
-            marker = "▶ " if editor.selection == "surface" else "  "
-            wrap(marker + "Surface        ", editor.payload["surface"], "surface")
+        render_dictionary_word_field(
+            builder, "Surface", editor.payload["surface"], key="surface"
+        )
         selectable("generate_pronunciation")
         plain()
-        if editor.active_field == "phonemes":
-            input_field("phonemes", "▶ Pronunciation  ")
-        else:
-            marker = "▶ " if editor.selection == "phonemes" else "  "
-            wrap(
-                marker + "Pronunciation  ",
-                " ".join(editor.payload["phonemes"]),
-                "phonemes",
-            )
+        render_dictionary_word_field(
+            builder, "Pronunciation", " ".join(editor.payload["phonemes"]),
+            key="phonemes",
+        )
         plain()
         selectable("preview")
         selectable("save")

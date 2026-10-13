@@ -199,11 +199,16 @@ the matching logical entry without deleting unrelated local words. Review
 each word with Enter, toggle its selection using Space, then choose **Import
 selected**.
 
-Japanese review details show Surface, Pronunciation, Accent, Word type, and
-Priority. For Merge, only Japanese Word type is adjustable; changing it
-updates conflict detection. English details are read-only. Local words not
-selected for replacement remain intact. Changes for both languages and all
-selected pitch events are committed as one recoverable operation.
+Import detail screens share the Dictionary editor's Surface, Pronunciation,
+Word type and Priority row layout. Japanese accent (including extra pitch
+events) is displayed on the Pronunciation row using the regular Dictionary
+notation rather than numeric Accent values. Only Japanese Word type is
+adjustable in the Import detail; changing it updates conflict detection.
+When a local entry exists, an **Existing — differences only** section shows
+only fields whose values differ. English details use stressed ARPAbet
+notation and are read-only. Local words not selected for replacement remain
+intact. Changes for both languages and all selected pitch events are committed
+as one recoverable operation.
 
 Standalone JSON remains supported:
 

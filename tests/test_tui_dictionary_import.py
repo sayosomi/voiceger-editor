@@ -163,6 +163,8 @@ class TuiDictionaryImportTests(DictionaryControllerTestCase):
         )
         self.assertEqual(self.controller.editor.selection, "word_type")
         self.assertEqual(self.controller.editor.payload["word_type_label"], "普通名詞")
+        self.assertEqual(self.controller.editor.payload["incoming_pitch_events"], ())
+        self.assertEqual(self.controller.editor.payload["existing_pitch_events"], ())
         before = self.controller.editor.payload["item"]
         self.assertIs(before.relation, DictionaryImportRelation.NEW)
 

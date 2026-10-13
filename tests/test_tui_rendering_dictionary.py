@@ -438,15 +438,16 @@ class DictionaryRenderingDocumentTests(RenderingTestCase):
         self.assertTrue(any("[" in row for row in rows))
         self.assertTrue(any("]" in row for row in rows))
 
-    def test_dictionary_import_detail_renders_japanese_fields_and_english_comparison(self):
+    def test_dictionary_import_detail_matches_dictionary_fields_and_shows_differences(self):
         japanese_item = SimpleNamespace(
             incoming=SimpleNamespace(
-                surface="雨",
-                pronunciation="アメ",
-                accent_type=1,
-                priority=6,
+                surface="ずんだもん", pronunciation="ズンダモン",
+                accent_type=3, priority=5,
             ),
-            existing=None,
+            existing=SimpleNamespace(
+                surface="ずんだもん", pronunciation="ズンダモン",
+                accent_type=0, priority=5,
+            ),
         )
         japanese = SimpleNamespace(
             kind="dictionary_import_japanese_detail",
@@ -454,8 +455,11 @@ class DictionaryRenderingDocumentTests(RenderingTestCase):
             selection="word_type",
             payload={
                 "item": japanese_item,
-                "word_type": JapaneseWordType.COMMON_NOUN,
-                "word_type_label": "普通名詞",
+                "word_type": JapaneseWordType.PROPER_NOUN,
+                "word_type_label": "固有名詞",
+                "existing_word_type_label": "固有名詞",
+                "incoming_pitch_events": (),
+                "existing_pitch_events": (),
             },
             active_field=None,
             input_value="",
@@ -463,18 +467,21 @@ class DictionaryRenderingDocumentTests(RenderingTestCase):
             error="",
             scroll=0,
         )
-
-        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+        document, _, _ = self.renderer.editor_document(
             render_state(editor=japanese), 80
         )
         labels = [line for line, _key in document]
-        self.assertIn("Incoming", labels)
-        self.assertIn("  Surface        雨", labels)
-        self.assertIn("  Pronunciation  アメ", labels)
-        self.assertIn("  Accent         1", labels)
-        self.assertTrue(any("品詞" in line and "普通名詞" in line for line in labels))
-        self.assertFalse(any("COMMON_NOUN" in line for line in labels))
-        self.assertIn("  Priority       6", labels)
+        self.assertNotIn("Incoming", labels)
+        self.assertIn("  Surface        ずんだもん", labels)
+        self.assertIn("  Pronunciation  ズ ン [ダ] モ ン", labels)
+        self.assertIn(("▶ Word type      < 固有名詞 >", "word_type"), document)
+        self.assertIn("  Priority       5", labels)
+        self.assertIn("Existing — differences only", labels)
+        self.assertIn("  Pronunciation  ズ ン ダ モ [ン]", labels)
+        self.assertEqual(sum("Surface" in line for line in labels), 1)
+        self.assertEqual(sum("Priority" in line for line in labels), 1)
+        self.assertFalse(any("Accent" in line or "品詞" in line for line in labels))
+        self.assertIn(("  [Esc] Back", "back"), document)
 
         english_item = SimpleNamespace(
             incoming=SimpleNamespace(
@@ -497,16 +504,75 @@ class DictionaryRenderingDocumentTests(RenderingTestCase):
             error="",
             scroll=0,
         )
-
-        document, _cursor_line, _cursor_column = self.renderer.editor_document(
+        document, _, _ = self.renderer.editor_document(
             render_state(editor=english), 80
         )
-        labels = [line for line, _key in document]
-        self.assertIn("Incoming", labels)
-        self.assertIn("Existing", labels)
-        self.assertTrue(any("V OY1 AH0 JH ER0" in line for line in labels))
-        self.assertTrue(any("V OY1 JH ER0" in line for line in labels))
-        self.assertFalse(any("Word type" in line for line in labels))
+        english_labels = [line for line, _key in document]
+        self.assertIn("  Surface        Voiceger", english_labels)
+        self.assertIn("  Pronunciation  V [OY1] AH0 JH ER0", english_labels)
+        self.assertIn("Existing — differences only", english_labels)
+        self.assertIn("  Pronunciation  V [OY1] JH ER0", english_labels)
+        self.assertEqual(sum("Surface" in line for line in english_labels), 1)
+        self.assertFalse(any("Word type" in line for line in english_labels))
+
+    def test_import_detail_preserves_extra_peaks_and_marks_only_changed_fields(self):
+        from voiceger_editor.pronunciation import PitchEvent
+
+        incoming = SimpleNamespace(
+            surface="スタックチャン", pronunciation="スタックチャン",
+            accent_type=2, priority=5,
+        )
+        existing = SimpleNamespace(
+            surface="スタックチャン", pronunciation="スタックチャン",
+            accent_type=2, priority=5,
+        )
+        editor = SimpleNamespace(
+            kind="dictionary_import_japanese_detail",
+            title="IMPORT JAPANESE WORD",
+            selection="word_type",
+            payload={
+                "item": SimpleNamespace(incoming=incoming, existing=existing),
+                "word_type_label": "固有名詞",
+                "existing_word_type_label": "固有名詞",
+                "incoming_pitch_events": (
+                    PitchEvent(1, "["), PitchEvent(2, "]"),
+                    PitchEvent(4, "["), PitchEvent(5, "]"),
+                ),
+                "existing_pitch_events": (),
+            },
+            active_field=None, input_value="", input_cursor=0, error="", scroll=0,
+        )
+        doc, _, _ = self.renderer.editor_document(render_state(editor=editor), 80)
+        rows = [line for line, _ in doc]
+        self.assertIn("Existing — differences only", rows)
+        pronunciations = [line for line in rows if "Pronunciation" in line]
+        self.assertEqual(len(pronunciations), 2)
+        self.assertNotEqual(pronunciations[0], pronunciations[1])
+        self.assertEqual(sum("Surface" in line for line in rows), 1)
+        self.assertIn(("▶ Word type      < 固有名詞 >", "word_type"), doc)
+
+    def test_import_detail_new_word_has_no_existing_section(self):
+        item = SimpleNamespace(
+            incoming=SimpleNamespace(surface="雨", pronunciation="アメ",
+                                    accent_type=1, priority=6),
+            existing=None,
+        )
+        editor = SimpleNamespace(
+            kind="dictionary_import_japanese_detail",
+            title="IMPORT JAPANESE WORD",
+            selection="word_type",
+            payload={
+                "item": item, "word_type_label": "普通名詞",
+                "incoming_pitch_events": (),
+            },
+            active_field=None, input_value="", input_cursor=0, error="", scroll=0,
+        )
+        doc, _, _ = self.renderer.editor_document(render_state(editor=editor), 80)
+        labels = [line for line, _ in doc]
+        self.assertNotIn("Incoming", labels)
+        self.assertNotIn("Existing — differences only", labels)
+        self.assertIn("  Pronunciation  [ア] メ", labels)
+        self.assertIn(("▶ Word type      < 普通名詞 >", "word_type"), doc)
 
     def test_dictionary_delete_confirmation_matches_common_modal(self):
         cases = (
