@@ -215,7 +215,7 @@ local dictionary data is changed.
 
 ## Export a dictionary
 
-Choose **Export dictionary** from the top-level Dictionary screen.
+Choose **[O] Export dictionary** (or press O) from the top-level Dictionary screen.
 The Export screen shows the current shared output directory as
 **[F] Output**. Press F or Enter while the row is selected to change
 `Settings.output_dir` in place.

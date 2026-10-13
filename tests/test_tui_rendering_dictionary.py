@@ -325,6 +325,8 @@ class DictionaryRenderingDocumentTests(RenderingTestCase):
         )
 
         self.assertIn(("▶ [I] Import dictionary (Merge)", "import"), document)
+        self.assertIn(("  [O] Export dictionary", "export"), document)
+        self.assertFalse(any("[X] Export dictionary" in line for line, _ in document))
 
     def test_dictionary_import_review_is_compact_and_marks_conflicts_after_checkbox(self):
         items = (

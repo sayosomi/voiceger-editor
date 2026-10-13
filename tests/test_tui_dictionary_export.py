@@ -44,8 +44,16 @@ class TuiDictionaryExportTests(unittest.TestCase):
 
     def open_export(self):
         self.controller.open_menu()
-        intents = self.controller.handle_key("x")
+        intents = self.controller.handle_key("o")
         self.assertTrue(intents)
+        self.assertEqual(self.controller.editor.kind, "dictionary_export")
+
+    def test_export_uses_o_and_x_does_not_open_export(self):
+        self.controller.open_menu()
+        self.assertEqual(self.controller.editor.kind, "dictionary_menu")
+        self.controller.handle_key("x")
+        self.assertEqual(self.controller.editor.kind, "dictionary_menu")
+        self.controller.handle_key("o")
         self.assertEqual(self.controller.editor.kind, "dictionary_export")
 
     def test_top_level_export_and_export_screen_use_declared_vertical_navigation(self):

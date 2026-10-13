@@ -74,7 +74,7 @@ class TuiShortcutTests(unittest.TestCase):
             },
             "audio_output_settings": {"x": "save_text", "l": "save_lab"},
             "dictionary_menu": {
-                "j": "japanese", "e": "english", "i": "import", "x": "export",
+                "j": "japanese", "e": "english", "i": "import", "o": "export",
             },
             "batch_recipe_read_path": {"f": "path", "r": "read"},
             "batch_recipe_write_path": {"f": "output", "w": "write"},

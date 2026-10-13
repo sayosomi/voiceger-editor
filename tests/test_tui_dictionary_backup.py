@@ -62,7 +62,7 @@ class TuiDictionaryBackupTests(DictionaryControllerTestCase):
     def test_voicevox_warns_before_any_write_and_cancel_keeps_export_screen(self):
         self.core.pitch_events["multi"] = ("additional",)
         self.controller.open_menu()
-        self.key("x")
+        self.key("o")
         self.assertEqual(self.controller.editor.kind, "dictionary_export")
         with patch(
             "voiceger_editor.tui_dictionary_export.export_voicevox_dictionary"
