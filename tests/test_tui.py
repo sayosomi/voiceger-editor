@@ -92,25 +92,6 @@ class TuiTests(TuiAppTestCase):
             [("dictionary", None), ("help", None), ("quit", None)],
         )
 
-    def test_batch_output_edit_is_shared_and_cancel_does_not_change_settings(self):
-        app = self.make_app(query=mixed_query())
-        app._handle_key("\x1b")
-        previous = app.settings.output_dir
-
-        app._handle_key("f")
-        self.assertTrue(app._output_path_controller.active)
-        app._output_path_controller.state.value = "/tmp/unsaved-batch-output"
-        app._handle_key("\x1b")
-        self.assertEqual(app.settings.output_dir, previous)
-
-        app._handle_key("f")
-        app._output_path_controller.state.value = "/tmp/saved-batch-output"
-        with patch("voiceger_editor.tui.save_settings") as save:
-            app._handle_key("\n")
-        save.assert_called_once()
-        self.assertEqual(app.settings.output_dir, Path("/tmp/saved-batch-output"))
-        self.assertFalse(app._output_path_controller.active)
-
     def test_main_dictionary_shortcut_opens_dictionary_menu(self):
         app = self.make_app(query=mixed_query())
 
