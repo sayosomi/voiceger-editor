@@ -502,7 +502,7 @@ class TuiRenderer:
             width,
             header_attr,
         )
-        settings = state.session.settings if state.session is not None else state.settings
+        settings = getattr(state.session, "settings", state.settings)
         style_name = next(
             (
                 style.name

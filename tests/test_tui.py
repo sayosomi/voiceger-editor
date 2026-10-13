@@ -1448,7 +1448,11 @@ class TuiTests(TuiAppTestCase):
 
         set_navigation_focus(app, ("settings_summary", None))
         app._handle_key("\n")
-        self.assertIsNotNone(app._editor_controller.editor)
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertIn("currently generating", app._status)
+
+        set_navigation_focus(app, ("settings", None))
+        app._handle_key("\n")
         self.assertEqual(app._editor_controller.editor.kind, "settings")
         app._handle_key("\x1b")
 

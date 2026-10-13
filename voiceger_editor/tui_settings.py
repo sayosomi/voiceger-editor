@@ -146,17 +146,40 @@ class TuiSettingsController:
         """Apply and persist the complete Settings target from the editor."""
 
         baseline = self.settings
-        runtime_changed = target != baseline
-        synthesis_changed = self._synthesis_changed(target, baseline)
-        updated_fields = {
-            field.name: getattr(target, field.name)
+        global_changes = {
+            field.name
             for field in fields(Settings)
             if getattr(target, field.name) != getattr(baseline, field.name)
         }
+        # A full Settings Apply reconciles shared values, even when a loaded
+        # batch has older sampling values. Local Style/Speed survive unless
+        # that particular global field was explicitly changed.
+        applied_fields = {
+            field.name: getattr(target, field.name)
+            for field in fields(Settings)
+            if field.name not in {"style_id", "speed"}
+            or field.name in global_changes
+        }
+        sessions = tuple(self._sessions())
+        updated_sessions = tuple(
+            (session, replace(session.settings, **applied_fields))
+            for session in sessions
+        )
+        runtime_changed = bool(global_changes) or any(
+            updated != session.settings for session, updated in updated_sessions
+        )
+        synthesis_changed = self._synthesis_changed(target, baseline) or any(
+            self._synthesis_changed(updated, session.settings)
+            for session, updated in updated_sessions
+        )
         changed_names = tuple(
             name
             for name in _OPERATION_RELEVANT_SETTING_NAMES
-            if getattr(target, name) != getattr(self.settings, name)
+            if name in global_changes
+            or any(
+                getattr(updated, name) != getattr(session.settings, name)
+                for session, updated in updated_sessions
+            )
         )
         conflict = self._operations.settings_change_conflict_status(
             changed_names
@@ -169,8 +192,7 @@ class TuiSettingsController:
             try:
                 if synthesis_changed:
                     self._operations.stop_playback()
-                for owned_session in self._sessions():
-                    scoped = replace(owned_session.settings, **updated_fields)
+                for owned_session, scoped in updated_sessions:
                     owned_session.replace_settings(scoped)
                 if synthesis_changed:
                     self._clear_generation_outcomes()
