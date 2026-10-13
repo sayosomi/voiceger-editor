@@ -751,7 +751,7 @@ class TuiBatchItemIntegrationTests(TuiAppTestCase):
         self.assertEqual(app._editor_controller.editor.kind, "caption")
         app._handle_key("\x1b")
         app._handle_key("s")
-        self.assertEqual(app._editor_controller.editor.kind, "settings")
+        self.assertEqual(app._editor_controller.editor.kind, "item_voice")
         self.assertEqual(app._editor_controller.editor.selection, "style_id")
         app._handle_key("\x1b")
         app._operations.play_take = Mock(return_value=())

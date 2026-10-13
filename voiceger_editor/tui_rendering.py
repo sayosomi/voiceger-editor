@@ -516,16 +516,13 @@ class TuiRenderer:
             ),
             "unavailable",
         )
-        text_state = "TXT ON" if state.settings.save_text else "TXT OFF"
-        lab_state = "LAB ON" if state.settings.save_lab else "LAB OFF"
-        suffix = f" | {text_state} | {lab_state}"
-        prefix = f"{style_name} | {settings.speed:.2f}x | Takes {settings.take_count}"
         marker = "▶ " if state.focus_key == ("settings_summary", None) else "  "
-        prefix_width = max(
-            0,
-            width - 1 - _display_width(marker) - _display_width(suffix),
+        prefix = main_shortcut("settings_summary").display_with_label(
+            f"{style_name} | {settings.speed:.2f}x"
         )
-        summary = marker + _truncate_display(prefix, prefix_width) + suffix
+        summary = marker + _truncate_display(
+            prefix, max(0, width - 1 - _display_width(marker))
+        )
         summary_attr = (
             self._focus_attribute()
             if state.focus_key == ("settings_summary", None)
