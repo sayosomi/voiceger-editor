@@ -800,10 +800,11 @@ class TuiBatchItemController:
             updated = replace(
                 session.settings, style_id=intent.style_id, speed=intent.speed
             )
+            # Stop a player before replace_settings discards its temporary WAV.
+            bindings.actions.operations.stop_playback()
             session.replace_settings(updated)
         except (ValueError, OSError) as exc:
             return str(exc)
-        bindings.actions.operations.stop_playback()
         bindings.actions.operations.clear_current_take()
         self.batch.clear_open_item_acceptance()
         self.batch.clear_open_item_generation_outcome()
