@@ -101,7 +101,7 @@ class TuiTests(TuiAppTestCase):
         app = self.make_app(query=mixed_query())
 
         app._handle_key("d")
-        app._handle_key("x")
+        app._handle_key("o")
         export_editor = app._dictionary_controller.editor
         self.assertEqual(export_editor.kind, "dictionary_export")
 
@@ -132,7 +132,7 @@ class TuiTests(TuiAppTestCase):
     def test_export_output_edit_remains_available_during_generation(self):
         app = self.make_app(query=mixed_query())
         app._handle_key("d")
-        app._handle_key("x")
+        app._handle_key("o")
         export_editor = app._dictionary_controller.editor
         app._operations.busy = True
         app._operations.worker_operation = "initial"

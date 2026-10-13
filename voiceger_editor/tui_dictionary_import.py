@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Callable, Union
 
+from .dictionary_backup import DictionaryBackupReview
 from .dictionary_import import (
     DictionaryImportFormat,
     DictionaryImportReview,
@@ -80,9 +81,7 @@ class DictionaryImportOwner:
             title="IMPORT DICTIONARY",
             origin=("dictionary", None),
             selection="path",
-            payload={
-                "path": self._default_input_path() if path is None else path,
-            },
+            payload={"path": self._default_input_path() if path is None else path},
         )
 
     @staticmethod
@@ -104,13 +103,11 @@ class DictionaryImportOwner:
         if review is None:
             raise RuntimeError("dictionary import review is not available")
         items = tuple(review.items)
-        word_type_labels = (
-            tuple(
-                _japanese_word_type_label(japanese_word_type(item.incoming))
-                for item in items
-            )
-            if review.format is DictionaryImportFormat.JAPANESE
-            else ()
+        is_backup = isinstance(review, DictionaryBackupReview)
+        word_type_labels = tuple(
+            _japanese_word_type_label(japanese_word_type(item.incoming))
+            if hasattr(item, "source_uuid") else ""
+            for item in items
         )
         selection: str | tuple[str, int | None]
         if action is not None:
@@ -143,6 +140,16 @@ class DictionaryImportOwner:
                 "total_count": review.total_count,
                 "exact_duplicate_count": review.exact_duplicate_count,
                 "review_count": len(items),
+                "paired_backup": is_backup,
+                "language_counts": review.language_counts if is_backup else None,
+                "incoming_pitch_events": (
+                    review.japanese.incoming_pitch_events
+                    if is_backup else
+                    review.incoming_pitch_events
+                    if review.format is DictionaryImportFormat.JAPANESE else {}
+                ),
+                "number_jump_active": False,
+                "number_jump_value": "",
             },
         )
 
@@ -155,11 +162,18 @@ class DictionaryImportOwner:
             raise IndexError("dictionary import review entry is out of range")
         item = items[index]
         identity = self._import_item_identity(item)
-        if review.format is DictionaryImportFormat.JAPANESE:
+        if hasattr(item, "source_uuid"):
             word_type = japanese_word_type(item.incoming)
             existing_word_type = (
                 None if item.existing is None else japanese_word_type(item.existing)
             )
+            incoming_pitch = (
+                review.japanese.incoming_pitch_events
+                if isinstance(review, DictionaryBackupReview) else
+                review.incoming_pitch_events
+            )
+            existing_uuid = item.existing_uuid
+            current_pitch = self.core.list_japanese_pitch_events()
             return EditorState(
                 kind="dictionary_import_japanese_detail",
                 title="IMPORT JAPANESE WORD",
@@ -171,6 +185,13 @@ class DictionaryImportOwner:
                     "item": item,
                     "word_type": word_type,
                     "word_type_label": _japanese_word_type_label(word_type),
+                    "incoming_pitch_events": incoming_pitch.get(
+                        item.source_uuid, ()
+                    ),
+                    "existing_pitch_events": (
+                        current_pitch.get(existing_uuid, ())
+                        if existing_uuid is not None else ()
+                    ),
                     "existing_word_type": existing_word_type,
                     "existing_word_type_label": (
                         None
@@ -222,12 +243,15 @@ class DictionaryImportOwner:
         review = self._import_review
         if editor is None or review is None:
             return ()
-        language: DictionaryLanguage = (
-            "ja" if review.format is DictionaryImportFormat.JAPANESE else "en"
+        language: DictionaryLanguage | None = (
+            "ja" if review.format is DictionaryImportFormat.JAPANESE else
+            "en" if review.format is DictionaryImportFormat.ENGLISH else None
         )
         core = self.core
 
         def work() -> Any:
+            if isinstance(review, DictionaryBackupReview):
+                return review.commit(core)
             return review.commit(core)
 
         request = dictionary_operation_request(
@@ -256,7 +280,13 @@ class DictionaryImportOwner:
             return ()
         item = items[index]
         identity = self._import_item_identity(item)
-        if review.format is DictionaryImportFormat.JAPANESE:
+        if isinstance(review, DictionaryBackupReview):
+            review.set_selected(
+                item.source_uuid if hasattr(item, "source_uuid") else item.incoming.surface,
+                selected,
+                language="ja" if hasattr(item, "source_uuid") else "en",
+            )
+        elif review.format is DictionaryImportFormat.JAPANESE:
             review.set_selected(item.source_uuid, selected)
         else:
             review.set_selected(item.incoming.surface, selected)
@@ -268,7 +298,13 @@ class DictionaryImportOwner:
         if review is None:
             return ()
         for item in tuple(review.items):
-            if review.format is DictionaryImportFormat.JAPANESE:
+            if isinstance(review, DictionaryBackupReview):
+                review.set_selected(
+                    item.source_uuid if hasattr(item, "source_uuid") else item.incoming.surface,
+                    False,
+                    language="ja" if hasattr(item, "source_uuid") else "en",
+                )
+            elif review.format is DictionaryImportFormat.JAPANESE:
                 review.set_selected(item.source_uuid, False)
             else:
                 review.set_selected(item.incoming.surface, False)
@@ -291,7 +327,10 @@ class DictionaryImportOwner:
             editor is None
             or editor.kind != "dictionary_import_japanese_detail"
             or review is None
-            or review.format is not DictionaryImportFormat.JAPANESE
+            or (
+                review.format is not DictionaryImportFormat.JAPANESE
+                and review.format is not DictionaryImportFormat.BACKUP
+            )
             or editor.selection != "word_type"
         ):
             return ()
@@ -306,7 +345,7 @@ class DictionaryImportOwner:
             ),
             None,
         )
-        if item is None:
+        if item is None or not hasattr(item, "source_uuid"):
             self.editor = self._import_review_state(preferred_index=index)
             return (UpdateStatusIntent("This entry no longer requires review."),)
         current = japanese_word_type(item.incoming)
@@ -377,12 +416,10 @@ class DictionaryImportOwner:
             self._stack.pop()
         self._clear_import_state()
         self.editor = self._menu_state()
-        return (
-            UpdateStatusIntent(
-                "Dictionary import complete: "
-                f"{result.imported} imported, "
-                f"{result.replaced} replaced, "
-                f"{result.skipped} skipped."
-            ),
-            ClearAdjustmentFeedbackIntent(),
+        outcome = (
+            "Dictionary import complete: "
+            f"{result.imported} imported, "
+            f"{result.replaced} replaced, "
+            f"{result.skipped} skipped."
         )
+        return (UpdateStatusIntent(outcome), ClearAdjustmentFeedbackIntent())

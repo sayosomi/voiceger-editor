@@ -656,8 +656,12 @@ class TuiRenderer:
         if editor.kind in {
             "dictionary_japanese_list",
             "dictionary_english_list",
+            "dictionary_import_review",
         }:
-            entries = tuple(editor.payload.get("entries", ()))
+            entries = tuple(editor.payload.get(
+                "items" if editor.kind == "dictionary_import_review" else "entries",
+                (),
+            ))
             if len(entries) >= 10:
                 if bool(editor.payload.get("number_jump_active", False)):
                     safe_add(

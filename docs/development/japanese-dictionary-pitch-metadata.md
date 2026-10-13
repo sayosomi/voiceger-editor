@@ -61,16 +61,40 @@ or unmatched persistent sidecar is a storage error, never a silent reset.
 
 No runtime Voiceger files or dictionaries are modified by this mechanism.
 
-## Native transfer naming
+## Native ZIP backup (#283)
 
-Without multi-peak words, export remains exactly two separate files:
+Current Voiceger Editor export writes one complete native backup:
 
 ```text
-YYYYMMDDHHMM_user_dict.json
-YYYYMMDDHHMM_english_user_dict.json
+YYYYMMDDHHMM_voiceger_editor_dictionary.zip
 ```
 
-With multi-peak words, native export produces exactly three:
+ZIP members are `manifest.json` (format version 1 and SHA-256 digest for
+each listed member), the unchanged canonical Japanese `user_dict.json`,
+the unchanged `english_user_dict.json`, and optionally the unchanged
+`user_dict_pitch_events.json` when there are extra Japanese pitch events.
+The ZIP is written to a temporary file, then collision-safely published as
+a completed archive. Names are never overwritten; a duplicate name gains
+`-2`, `-3`, etc. before `.zip`. Failed exports leave no misleading
+named incomplete archive. Imports validate ZIP structure, safe bounded
+size and expansion, member completeness/uniqueness, version, digest,
+canonical JSON, and matching pitch metadata before producing a review.
+
+Native **Merge** reviews Japanese/English changes in one combined flow:
+new entries are selected, conflicts are opt-in, exact duplicates are
+skipped, and local-only entries are retained. There is no destructive
+full-replacement restore action. Selected Merge changes update the
+canonical Japanese dictionary, English dictionary, and pitch sidecar
+as one journaled, recoverable operation.
+The `dictionaries.pending.json` journal stores the previous optional
+bytes of all three files; startup recovery restores them if an operation
+was interrupted. The existing `user_dict.pending.json` journal still
+covers ordinary Japanese word+pitch changes.
+
+Legacy native exports remain importable. A two-file export used the
+separate `YYYYMMDDHHMM_user_dict.json` and
+`YYYYMMDDHHMM_english_user_dict.json` files, imported individually.
+When multi-peak words existed, the three-file export used:
 
 ```text
 YYYYMMDDHHMM_user_dict_with_pitch_events.json
@@ -78,28 +102,19 @@ YYYYMMDDHHMM_english_user_dict.json
 YYYYMMDDHHMM_user_dict_pitch_events.json
 ```
 
-When names already exist, each file gets the *same* `-2`, `-3`, etc.
-before `.json`. All group members are reserved before writing; partial
-export attempts remove only files reserved by that attempt. The
-`user_dict_with_pitch_events` filename explicitly declares that the
-matching sidecar must exist, be valid and match the exported canonical JSON.
-Import rejects missing or incorrect sidecars before making any changes.
-Imported metadata follows the word's stable UUID, or the retained UUID for
-a selected logical-identity conflict. All selected word and metadata changes
-commit as one dictionary transaction. Native Japanese import remains
-review/selection based; English is imported separately as before.
-
-Ordinary VOICEVOX or legacy Voiceger Editor UUID-keyed JSON files continue
-to import without a sidecar. Renaming a declared native file to a legacy
-filename discards this declaration and is unsupported for lossless transfer;
-retain original filenames.
+Import the declared Japanese `user_dict_with_pitch_events` member
+alongside its matching sidecar. Sidecar integrity and reference checks
+are unchanged. Standalone VOICEVOX / legacy UUID-keyed Japanese JSON
+and Voiceger Editor English JSON continue to be supported. The ZIP
+format is native to Voiceger Editor, not a VOICEVOX interchange format.
 
 ## VOICEVOX export
 
 `YYYYMMDDHHMM_voicevox_user_dict.json` contains **only** the canonical
 single-accent dictionary, regardless of sidecar contents. Export results
 report affected UUIDs so the TUI can visibly warn that VOICEVOX import
-cannot recover the extra peaks. Such an export is not a lossless native
-backup; choose Voiceger Editor native export for that purpose.
+cannot recover the extra peaks. The TUI warns before export and offers
+Cancel. Such an export is not a lossless native backup; choose the Voiceger
+Editor ZIP export for that purpose.
 
 Priority is independent of pitch metadata. Default priority remains 5.

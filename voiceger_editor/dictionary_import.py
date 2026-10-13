@@ -35,6 +35,7 @@ class DictionaryImportError(UserDictionaryInputError):
 class DictionaryImportFormat(str, Enum):
     JAPANESE = "japanese"
     ENGLISH = "english"
+    BACKUP = "backup"
 
 
 class DictionaryImportRelation(str, Enum):
@@ -194,7 +195,10 @@ def _parse_english(
 
 
 def load_dictionary_import(path: str | Path) -> ParsedDictionaryImport:
-    """Read one legacy dictionary or a declared three-file native backup."""
+    """Read a native ZIP, a legacy dictionary or a declared pitch sidecar pair."""
+    if Path(path).suffix.lower() == ".zip":
+        from .dictionary_backup import load_dictionary_backup
+        return load_dictionary_backup(path)
     source_path, raw = _read_json_object(path)
     values = list(raw.values())
     native = re.fullmatch(
@@ -311,6 +315,11 @@ class JapaneseDictionaryImportReview:
             for candidate in self._candidates
             if candidate.relation is not DictionaryImportRelation.EXACT
         )
+
+    @property
+    def incoming_pitch_events(self) -> dict[str, tuple[PitchEvent, ...]]:
+        """Return validated incoming pitch events for list presentation."""
+        return dict(self._incoming_pitch_events)
 
     @property
     def exact_duplicate_count(self) -> int:
@@ -604,6 +613,9 @@ def plan_dictionary_import(
 ) -> DictionaryImportReview:
     """Compare validated import data with the current dictionary state."""
 
+    from .dictionary_backup import ParsedDictionaryBackup, DictionaryBackupReview
+    if isinstance(parsed, ParsedDictionaryBackup):
+        return DictionaryBackupReview(parsed, core)
     if parsed.format is DictionaryImportFormat.JAPANESE:
         return JapaneseDictionaryImportReview(
             core.list_japanese_entries(),

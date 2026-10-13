@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
+import os
+import tempfile
+from zipfile import ZIP_DEFLATED, ZipFile
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
@@ -86,27 +91,71 @@ def export_voiceger_editor_dictionaries(
     *,
     timestamp: datetime | None = None,
 ) -> DictionaryExportResult:
-    """Export native Japanese and English dictionaries as one paired operation."""
+    """Atomically publish one versioned, checksummed native ZIP backup."""
 
-    words = core.list_japanese_entries()
+    if hasattr(core, "native_dictionary_backup_snapshot"):
+        words, english_words, events = core.native_dictionary_backup_snapshot()
+    else:
+        # Support duck-typed dictionary cores used by client integrations.
+        words = core.list_japanese_entries()
+        english_words = core.list_english_entries()
+        events = getattr(core, "list_japanese_pitch_events", lambda: {})()
     japanese = serialize_japanese_dictionary(words)
-    english = serialize_english_dictionary(core.list_english_entries())
-    events = getattr(core, "list_japanese_pitch_events", lambda: {})()
-    payloads = (
-        ("user_dict", japanese),
-        ("english_user_dict", english),
-    )
+    english = serialize_english_dictionary(english_words)
+    members = {
+        "user_dict.json": japanese,
+        "english_user_dict.json": english,
+    }
     if events:
-        payloads = (
-            ("user_dict_with_pitch_events", japanese),
-            ("english_user_dict", english),
-            ("user_dict_pitch_events", serialize_pitch_metadata(words, events, japanese)),
+        members["user_dict_pitch_events.json"] = serialize_pitch_metadata(
+            words, events, japanese
         )
-    return _export_payloads(
-        output_dir=output_dir,
-        timestamp=timestamp,
-        payloads=payloads,
-    )
+    manifest = {
+        "version": 1,
+        "members": {
+            name: hashlib.sha256(data).hexdigest()
+            for name, data in members.items()
+        },
+    }
+    manifest_bytes = (
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
+    ).encode("utf-8")
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    temporary_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=".voiceger-dictionary-",
+            suffix=".tmp",
+            dir=output_dir,
+            delete=False,
+        ) as temporary:
+            temporary_name = temporary.name
+            with ZipFile(temporary, "w", compression=ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", manifest_bytes)
+                for name, data in members.items():
+                    archive.writestr(name, data)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+
+        prefix = _timestamp_prefix(timestamp)
+        collision = 1
+        while True:
+            suffix = "" if collision == 1 else f"-{collision}"
+            destination = (
+                output_dir / f"{prefix}_voiceger_editor_dictionary{suffix}.zip"
+            )
+            try:
+                # Same-filesystem hard link publishes only a complete archive;
+                # an already-existing destination can never be overwritten.
+                os.link(temporary_name, destination)
+                return DictionaryExportResult(paths=(destination,))
+            except FileExistsError:
+                collision += 1
+    finally:
+        if temporary_name is not None:
+            Path(temporary_name).unlink(missing_ok=True)
 
 
 def export_voicevox_dictionary(

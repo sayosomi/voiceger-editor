@@ -252,8 +252,8 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
     "dictionary_menu": (
         MenuItem("japanese", "Japanese", "j", "action", "activate"),
         MenuItem("english", "English", "e", "action", "activate"),
-        MenuItem("import", "Import dictionary", "i", "action", "activate"),
-        MenuItem("export", "Export dictionary", "x", "action", "activate"),
+        MenuItem("import", "Import dictionary (Merge)", "i", "action", "activate"),
+        MenuItem("export", "Export dictionary", "o", "action", "activate"),
         _escape_action("back", "Back"),
     ),
     "dictionary_export": (
@@ -271,6 +271,10 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("import_selected", "Import selected", "i", "action", "activate"),
         MenuItem("clear_selection", "Clear selection", "c", "action", "activate"),
         _escape_action("back", "Back"),
+    ),
+    "dictionary_voicevox_loss_confirmation": (
+        MenuItem("export", "Export without extra peaks", "e", "action", "activate"),
+        _escape_action("cancel", "Cancel"),
     ),
     "dictionary_import_japanese_detail": (
         MenuItem(

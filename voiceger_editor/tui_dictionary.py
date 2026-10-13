@@ -7,10 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable, Literal, Sequence, Union
 
-from .dictionary_export import (
-    export_voiceger_editor_dictionaries,
-    export_voicevox_dictionary,
-)
+from .tui_dictionary_export import DictionaryExportOwner
 
 from .tui_adjustments import step_cyclic
 from .tui_confirmation import handle_confirmation_key
@@ -90,6 +87,7 @@ class TuiDictionaryController:
         self._japanese_pronunciation = japanese_pronunciation
         self._english_word_groups = english_word_groups
         self._output_dir = output_dir or (lambda: Path("."))
+        self._export_owner = DictionaryExportOwner(core, self._output_dir)
         self._list_state = DictionaryListStateOwner(core)
         self._accent = JapaneseListAccentOwner(core)
         self._stress = EnglishListStressOwner(core)
@@ -143,52 +141,6 @@ class TuiDictionaryController:
                 "japanese_count": len(self.core.list_japanese_entries()),
                 "english_count": len(self.core.list_english_entries()),
             },
-        )
-
-    @staticmethod
-    def _export_state() -> EditorState:
-        return EditorState(
-            kind="dictionary_export",
-            title="EXPORT DICTIONARY",
-            origin=("dictionary", None),
-            selection="voiceger",
-            payload={},
-        )
-
-    def _export_dictionary(
-        self,
-        target: Literal["voiceger", "voicevox"],
-    ) -> tuple[DictionaryControllerIntent, ...]:
-        editor = self.editor
-        if editor is None:
-            return ()
-
-        core = self.core
-        output_dir = Path(self._output_dir())
-        if target == "voiceger":
-            operation: DictionaryOperationIdentity = "export_voiceger_editor"
-            status = "Exporting Voiceger Editor dictionaries…"
-
-            def work() -> Any:
-                return export_voiceger_editor_dictionaries(core, output_dir)
-        else:
-            operation = "export_voicevox"
-            status = "Exporting VOICEVOX dictionary…"
-
-            def work() -> Any:
-                return export_voicevox_dictionary(core, output_dir)
-
-        request = dictionary_operation_request(
-            editor,
-            operation=operation,
-            language=None,
-        )
-        return (
-            DictionaryOperationIntent(
-                request,
-                info_status(status),
-                work,
-            ),
         )
 
     def open_quick_save_japanese(
@@ -294,6 +246,7 @@ class TuiDictionaryController:
         if editor.kind not in {
             "dictionary_japanese_list",
             "dictionary_english_list",
+            "dictionary_import_review",
         }:
             return
         editor.payload["number_jump_active"] = self._number_jump.active
@@ -307,9 +260,17 @@ class TuiDictionaryController:
         if editor is None or editor.kind not in {
             "dictionary_japanese_list",
             "dictionary_english_list",
+            "dictionary_import_review",
         }:
             return ()
         target_index = target_number - 1
+        if editor.kind == "dictionary_import_review":
+            items = tuple(editor.payload.get("items", ()))
+            if not 0 <= target_index < len(items):
+                return ()
+            editor.selection = ("import_entry", target_index)
+            editor.error = EMPTY_STATUS
+            return self._activate()
         entries = tuple(editor.payload.get("entries", ()))
         if not 0 <= target_index < len(entries):
             return ()
@@ -913,25 +874,7 @@ class TuiDictionaryController:
             return self._entry_owner.complete_operation(request, value, error)
 
         assert editor is not None
-        if error is not None:
-            editor.error = error_status(f"Dictionary export was not completed: {error}")
-            return (UpdateStatusIntent(editor.error),)
-
-        editor.error = EMPTY_STATUS
-        filenames = ", ".join(path.name for path in value.paths)
-        lossy = getattr(value, "lossy_pitch_event_uuids", ())
-        if lossy:
-            outcome = warning_status(
-                f"VOICEVOX export complete: {filenames}. {len(lossy)} word(s) "
-                "have extra pitch peaks that VOICEVOX cannot import; "
-                "use Voiceger Editor native export for a lossless backup."
-            )
-        else:
-            outcome = f"Dictionary export complete: {filenames}"
-        return (
-            UpdateStatusIntent(outcome),
-            ClearAdjustmentFeedbackIntent(),
-        )
+        return self._export_owner.complete(editor, value, error)
 
     def _activate(self) -> tuple[DictionaryControllerIntent, ...]:
         editor = self.editor
@@ -946,6 +889,7 @@ class TuiDictionaryController:
                 self._stack.append(deepcopy(editor))
                 self.editor = self._english_list_state()
             elif selected == "import":
+                self._number_jump.reset()
                 self._stack.append(deepcopy(editor))
                 self._import_owner._clear_import_state()
                 self.editor = self._import_owner._import_path_state()
@@ -955,7 +899,7 @@ class TuiDictionaryController:
                 )
             elif selected == "export":
                 self._stack.append(deepcopy(editor))
-                self.editor = self._export_state()
+                self.editor = self._export_owner.export_state()
             elif selected == "back":
                 self._restore_parent()
             return (UpdateStatusIntent(""),)
@@ -963,9 +907,14 @@ class TuiDictionaryController:
             if selected == "output":
                 return (BeginOutputPathEditIntent("dictionary_export"),)
             if selected == "voiceger":
-                return self._export_dictionary("voiceger")
+                return self._export_owner.start(editor, "voiceger")
             if selected == "voicevox":
-                return self._export_dictionary("voicevox")
+                warning = self._export_owner.voicevox_warning()
+                if warning is not None:
+                    self._stack.append(deepcopy(editor))
+                    self.editor = warning
+                    return (UpdateStatusIntent(""),)
+                return self._export_owner.start(editor, "voicevox")
             if selected == "back":
                 self._restore_parent()
                 return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
@@ -982,6 +931,15 @@ class TuiDictionaryController:
                 self._import_owner._clear_import_state()
                 self._restore_parent()
                 return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            return ()
+        if editor.kind == "dictionary_voicevox_loss_confirmation":
+            if selected == "cancel":
+                self._restore_parent()
+                return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
+            if selected == "export":
+                self._restore_parent()
+                assert self.editor is not None
+                return self._export_owner.start(self.editor, "voicevox")
             return ()
         if editor.kind == "dictionary_import_review":
             if selected == "import_selected":
@@ -1219,11 +1177,16 @@ class TuiDictionaryController:
         if editor.kind in {
             "dictionary_japanese_list",
             "dictionary_english_list",
+            "dictionary_import_review",
         }:
             was_number_jump = self._number_jump.active
+            entry_count = len(editor.payload.get(
+                "items" if editor.kind == "dictionary_import_review" else "entries",
+                (),
+            ))
             number_jump = self._number_jump.handle_key(
                 key,
-                item_count=len(editor.payload.get("entries", ())),
+                item_count=entry_count,
             )
             if number_jump.handled:
                 self._sync_number_jump_payload(editor)
@@ -1232,6 +1195,8 @@ class TuiDictionaryController:
                 if number_jump.target_number is not None:
                     return self._open_list_entry_number(number_jump.target_number)
                 return ()
+            if editor.kind == "dictionary_import_review":
+                return None
             if key in (" ", "p", "P"):
                 # During explicit number entry, no Preview shortcut fires.
                 if was_number_jump or self._number_jump.active:
@@ -1328,6 +1293,7 @@ class TuiDictionaryController:
         if editor.kind in {
             "dictionary_delete_confirmation",
             "dictionary_discard_confirmation",
+            "dictionary_voicevox_loss_confirmation",
         }:
             interaction = handle_confirmation_key(
                 editor.kind,
@@ -1411,13 +1377,13 @@ class TuiDictionaryController:
                 return self._entry_owner._back_from_entry()
             if editor.kind in {
                 "dictionary_import_japanese_detail",
-                "dictionary_import_english_detail",
+                    "dictionary_import_english_detail",
             }:
                 return self._import_owner._back_from_import_detail()
             if editor.kind in {
                 "dictionary_import_path",
                 "dictionary_import_review",
-            }:
+                }:
                 self._import_owner._clear_import_state()
             self._restore_parent()
             return (UpdateStatusIntent(""), ClearAdjustmentFeedbackIntent())
