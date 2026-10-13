@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .caption_batch import CaptionBatch
+from .settings import Settings
 from .styles import available_styles
 from .tui_confirmation import ConfirmationDetail, confirmation_lines
 from .tui_display import _display_width, _truncate_display, _wrap_active_input, _wrap_text
@@ -348,6 +349,7 @@ class TuiRenderer:
         pressed_adjustment: tuple[str, str, int] | None = None,
         active_generation: tuple[str, int, int] | None = None,
         generation_busy: bool = False,
+        settings: Settings | None = None,
     ) -> list[NavigationLine]:
         return _batch_list_document(
             batch,
@@ -356,6 +358,7 @@ class TuiRenderer:
             pressed_adjustment,
             active_generation,
             generation_busy,
+            settings,
         )
 
     def render_batch_list(
@@ -375,6 +378,7 @@ class TuiRenderer:
         background_status: str = "",
         number_jump_active: bool = False,
         number_jump_value: str = "",
+        settings: Settings | None = None,
     ) -> None:
         """Render the top-level Batch List screen."""
 
@@ -443,6 +447,7 @@ class TuiRenderer:
             pressed_adjustment,
             active_generation,
             generation_busy,
+            settings,
         )
         footer = self._status_footer_layout(
             status,

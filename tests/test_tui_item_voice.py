@@ -124,8 +124,8 @@ class TuiItemVoiceTests(TuiAppTestCase):
         with patch("voiceger_editor.tui_rendering.available_styles", return_value=STYLES):
             app._render()
         rendered = self.rendered(app._screen)
-        self.assertIn("Sweet | 1.12x", rendered)
-        self.assertIn("TXT OFF | LAB OFF", rendered)
+        self.assertIn("[S] Sweet | 1.12x", rendered)
+        self.assertNotIn("TXT OFF", rendered)
 
     def test_item_voice_actions_remain_available_on_narrow_screen(self):
         app = self.make_app(query=mixed_query())

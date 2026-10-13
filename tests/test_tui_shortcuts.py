@@ -137,7 +137,7 @@ class TuiShortcutTests(unittest.TestCase):
             "g": "generate",
             "c": "clear_candidates",
             "x": "delete_caption",
-            "s": "settings",
+            "s": "settings_summary",
             "d": "dictionary",
             "?": "help",
             "q": "quit",

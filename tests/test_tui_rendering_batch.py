@@ -47,7 +47,8 @@ class BatchRenderingDocumentTests(RenderingTestCase):
 
         lines = self.renderer.batch_list_document(batch, ("caption", 0), 80)
         labels = [line.text for line in lines]
-        self.assertIn("  Takes < 4 >", labels)
+        self.assertIn("  [S] Takes 4 | TXT OFF | LAB OFF | WAV", labels)
+        self.assertIn("Captions", labels)
         self.assertIn("▶ [x] [1]  [!] first caption", labels)
         self.assertIn("  [ ] [2]  [✓] second caption", labels)
         self.assertFalse(any("[25%]" in label for label in labels))
@@ -59,7 +60,7 @@ class BatchRenderingDocumentTests(RenderingTestCase):
                 batch, ("caption", 0), 80
             )
         ]
-        self.assertIn("  Takes < 9 >", labels)
+        self.assertIn("  [S] Takes 9 | TXT OFF | LAB OFF | WAV", labels)
         self.assertIn("▶ [x] [1]  [!] first caption", labels)
 
         batch.set_generation_outcome(batch.items[0].item_id, "cancelled")
@@ -96,7 +97,7 @@ class BatchRenderingDocumentTests(RenderingTestCase):
             "[G] Generate selected",
             "[R] Read batch",
             "[W] Write batch",
-            "[S] Settings",
+            "[S] Takes 4 | TXT OFF | LAB OFF | WAV",
             "[D] Dictionary",
             "[?] Help",
             "[Q] Quit",
@@ -105,7 +106,7 @@ class BatchRenderingDocumentTests(RenderingTestCase):
 
         action_start = labels.index("  [A] Add captions")
         self.assertEqual(
-            labels[action_start : action_start + 11],
+            labels[action_start : action_start + 10],
             [
                 "  [A] Add captions",
                 "  [G] Generate selected",
@@ -113,7 +114,6 @@ class BatchRenderingDocumentTests(RenderingTestCase):
                 "  [R] Read batch",
                 "  [W] Write batch",
                 "",
-                "  [S] Settings",
                 "  [D] Dictionary",
                 "",
                 "  [?] Help",
@@ -147,6 +147,34 @@ class BatchRenderingDocumentTests(RenderingTestCase):
             header,
             "BATCH LIST · 1/1 selected · 1 take · Accepted 0/1",
         )
+
+    def test_settings_summary_shows_live_global_output_preferences(self):
+        batch = CaptionBatch(default_take_count=7)
+        settings = Settings(
+            take_count=7, save_text=True, save_lab=True, output_format="flac"
+        )
+        lines = self.renderer.batch_list_document(
+            batch, ("settings", None), 80, settings=settings
+        )
+        self.assertEqual(
+            lines[0].text, "▶ [S] Takes 7 | TXT ON | LAB ON | FLAC"
+        )
+        self.assertEqual(lines[0].key, ("settings", None))
+        self.assertIn("Captions", [line.text for line in lines])
+        self.assertEqual(
+            sum(line.key == ("settings", None) for line in lines), 1
+        )
+
+    def test_settings_summary_wraps_with_visible_shortcut_on_narrow_terminal(self):
+        batch = CaptionBatch(default_take_count=4)
+        settings = Settings(save_text=True, save_lab=False, output_format="wav")
+        lines = self.renderer.batch_list_document(
+            batch, ("settings", None), 23, settings=settings
+        )
+        summary = [line for line in lines if line.focus_owner == ("settings", None)]
+        self.assertGreater(len(summary), 1)
+        self.assertTrue(summary[0].text.startswith("▶ [S] Takes 4"))
+        self.assertTrue(all(len(line.text) <= 22 for line in summary))
 
     def test_batch_list_marks_current_selected_generation_item(self):
         batch = CaptionBatch(default_take_count=4)

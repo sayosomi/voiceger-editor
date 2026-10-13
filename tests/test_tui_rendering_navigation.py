@@ -21,14 +21,14 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
         labels = [
             line.text
             for line in navigation_document(
-                render_state(focus_key=("settings", None)),
+                render_state(focus_key=("dictionary", None)),
                 80,
             )
         ]
 
         self.assertEqual(
-            labels[-4:],
-            ["▶ [S] Settings", "  [D] Dictionary", "  [?] Help", "  [Q] Quit"],
+            labels[-3:],
+            ["▶ [D] Dictionary", "  [?] Help", "  [Q] Quit"],
         )
 
     def test_batch_item_header_uses_current_product_name_or_explicit_item_title(self):
@@ -59,7 +59,7 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
         self.assertTrue(header.endswith("< 2 / 4 >"))
         self.assertTrue(header_row[3] & curses.A_REVERSE)
 
-    def test_batch_item_summary_is_compact_and_shows_txt_and_lab_states(self):
+    def test_batch_item_summary_shows_only_item_style_and_speed(self):
         cases = ((False, True), (True, False), (True, True), (False, False))
         for save_text, save_lab in cases:
             with self.subTest(save_text=save_text, save_lab=save_lab):
@@ -83,10 +83,10 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
                 lab = "ON" if save_lab else "OFF"
                 self.assertEqual(
                     summary,
-                    f"▶ Neutral | 1.00x | Takes 1 | TXT {txt} | LAB {lab}",
+                    "▶ [S] Neutral | 1.00x",
                 )
 
-    def test_batch_item_summary_prioritizes_txt_and_lab_when_narrow(self):
+    def test_batch_item_summary_is_readable_when_narrow(self):
         screen = FakeScreen(columns=35)
         settings = Settings(take_count=1, save_text=False, save_lab=True)
         with patch(
@@ -101,7 +101,7 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
             text for row, _col, text, _attr in screen.drawn if row == 1
         )
         self.assertTrue(summary.startswith("▶ "))
-        self.assertTrue(summary.endswith(" | TXT OFF | LAB ON"))
+        self.assertEqual(summary, "▶ [S] Neutral | 1.00x")
         self.assertLessEqual(_display_width(summary), screen.columns - 1)
 
     def test_batch_item_output_row_is_a_visible_f_shortcut(self):
@@ -447,7 +447,6 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
         self.assertEqual(lines[clear_index + 1].text, "")
         self.assertEqual(delete_index, clear_index + 2)
         self.assertEqual(lines[delete_index + 1].text, "")
-        self.assertEqual(labels[("settings", None)], "  [S] Settings")
         self.assertEqual(labels[("dictionary", None)], "  [D] Dictionary")
         self.assertEqual(labels[("help", None)], "  [?] Help")
         self.assertEqual(labels[("quit", None)], "  [Q] Quit")

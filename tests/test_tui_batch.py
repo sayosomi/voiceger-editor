@@ -4,13 +4,8 @@ import unittest
 from unittest.mock import Mock
 
 from voiceger_editor.caption_batch import CaptionBatch
-from voiceger_editor.tui_editors import (
-    AdjustmentPressedIntent,
-    ClearAdjustmentFeedbackIntent,
-)
 from voiceger_editor.tui_batch import (
     AddCaptions,
-    AdjustBatchTakeCount,
     BatchActionBindings,
     GenerateSelected,
     OpenBatchDictionary,
@@ -55,7 +50,7 @@ class TuiBatchControllerTests(unittest.TestCase):
         operations.start_session_preparation.return_value = ()
         operations.generation_conflict_status.return_value = None
         navigation = SimpleNamespace(
-            focus_key=("takes", None),
+            focus_key=("settings", None),
             revision=7,
             mark_context_change=Mock(),
             reset_pronunciation_index=Mock(),
@@ -86,19 +81,18 @@ class TuiBatchControllerTests(unittest.TestCase):
         populated = self.make_controller("first\nsecond")
         self.assertEqual(populated.focus_key, ("caption", 0))
 
-    def test_batch_list_items_keep_takes_captions_and_actions_in_vertical_order(self):
+    def test_batch_list_items_keep_settings_captions_and_actions_in_vertical_order(self):
         controller = self.make_controller("first\nsecond")
         self.assertEqual(
             controller.navigation_items(),
             (
-                ("takes", None),
+                ("settings", None),
                 ("caption", 0),
                 ("caption", 1),
                 ("add_captions", None),
                 ("generate_selected", None),
                 ("read_batch", None),
                 ("write_batch", None),
-                ("settings", None),
                 ("dictionary", None),
                 ("help", None),
                 ("quit", None),
@@ -120,7 +114,7 @@ class TuiBatchControllerTests(unittest.TestCase):
     def test_x_requests_delete_only_for_focused_caption_and_escape_cancels(self):
         controller = self.make_controller("first\nsecond")
         target = controller.batch.items[1]
-        controller.focus_key = ("takes", None)
+        controller.focus_key = ("settings", None)
 
         self.assertEqual(controller.handle_key("x"), ())
         self.assertFalse(controller.delete_confirmation_active)
@@ -316,16 +310,13 @@ class TuiBatchControllerTests(unittest.TestCase):
         self.assertFalse(controller.in_item)
         self.assertEqual(controller.focus_key, ("caption", 1))
 
-    def test_left_right_adjust_only_the_focused_batch_take_count(self):
+    def test_batch_list_settings_row_activates_settings_without_arrow_adjustment(self):
         controller = self.make_controller("first")
-        controller.focus_key = ("takes", None)
+        controller.focus_key = ("settings", None)
 
-        self.assertEqual(
-            controller.handle_key(curses.KEY_RIGHT),
-            (AdjustBatchTakeCount(1),),
-        )
-        controller.focus_key = ("caption", 0)
+        self.assertEqual(controller.handle_key(curses.KEY_RIGHT), ())
         self.assertEqual(controller.handle_key(curses.KEY_LEFT), ())
+        self.assertEqual(controller.handle_key("\n"), (OpenBatchSettings(),))
 
     def test_batch_list_shortcuts_emit_settled_actions(self):
         controller = self.make_controller("first")
@@ -489,34 +480,6 @@ class TuiBatchControllerTests(unittest.TestCase):
 
         self.assertFalse(first.is_accepted)
         self.assertTrue(second.is_accepted)
-
-    def test_dispatch_take_adjustment_keeps_batch_default_as_source_of_truth(self):
-        controller = self.make_controller("first")
-        bindings = self.make_bindings()
-
-        controller.dispatch_actions((AdjustBatchTakeCount(1),), bindings)
-
-        bindings.dispatch_editor_intents.assert_called_once_with(
-            (
-                AdjustmentPressedIntent("batch_list", "takes", 1),
-            )
-        )
-        bindings.change_settings.assert_called_once_with(
-            take_count=5,
-            report_success=False,
-        )
-        self.assertEqual(controller.batch.default_take_count, 4)
-
-    def test_dispatch_take_adjustment_at_endpoint_clears_feedback(self):
-        controller = TuiBatchController(default_take_count=100)
-        bindings = self.make_bindings()
-
-        controller.dispatch_actions((AdjustBatchTakeCount(1),), bindings)
-
-        bindings.dispatch_editor_intents.assert_called_once_with(
-            (ClearAdjustmentFeedbackIntent(),)
-        )
-        bindings.change_settings.assert_not_called()
 
     def test_add_captions_uses_frontend_neutral_multiline_model(self):
         controller = self.make_controller()

@@ -238,7 +238,6 @@ def navigation_document(
         )
         plain()
 
-    action(("settings", None), main_shortcut("settings").display_label)
     action(("dictionary", None), main_shortcut("dictionary").display_label)
     action(("help", None), main_shortcut("help").display_label)
     action(("quit", None), main_shortcut("quit").display_label)

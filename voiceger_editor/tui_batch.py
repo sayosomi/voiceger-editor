@@ -7,9 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional, Sequence, Union
 
 from .caption_batch import CaptionBatch
-from .tui_adjustments import step_bounded
 from .tui_confirmation import handle_confirmation_key
-from .tui_editors import adjustment_feedback_intents
 from .tui_navigation import TuiNavigation
 from .tui_numbered_list import NumberedListJump
 from .tui_operations import OperationEffect, TuiOperations
@@ -54,11 +52,6 @@ class OpenBatchWrite:
 
 
 @dataclass(frozen=True)
-class AdjustBatchTakeCount:
-    direction: int
-
-
-@dataclass(frozen=True)
 class OpenBatchSettings:
     pass
 
@@ -89,7 +82,6 @@ BatchAction = Union[
     GenerateSelected,
     OpenBatchRead,
     OpenBatchWrite,
-    AdjustBatchTakeCount,
     OpenBatchSettings,
     OpenBatchDictionary,
     OpenBatchHelp,
@@ -372,29 +364,6 @@ class TuiBatchController:
                     )
                 else:
                     bindings.open_batch_write()
-            elif isinstance(action, AdjustBatchTakeCount):
-                count = self.batch.default_take_count
-                result = step_bounded(
-                    count,
-                    direction=action.direction,
-                    step=1,
-                    minimum=1,
-                    maximum=100,
-                )
-                bindings.dispatch_editor_intents(
-                    adjustment_feedback_intents(
-                        changed=result.changed,
-                        area="batch_list",
-                        control="takes",
-                        direction=action.direction,
-                    )
-                )
-                if not result.changed:
-                    continue
-                bindings.change_settings(
-                    take_count=result.value,
-                    report_success=False,
-                )
             elif isinstance(action, OpenBatchSettings):
                 bindings.open_settings_editor("style_id")
             elif isinstance(action, OpenBatchDictionary):
@@ -410,14 +379,13 @@ class TuiBatchController:
 
     def navigation_items(self) -> tuple[BatchFocusKey, ...]:
         return (
-            (("takes", None),)
+            (("settings", None),)
             + tuple(("caption", index) for index in range(len(self.batch)))
             + (
                 ("add_captions", None),
                 ("generate_selected", None),
                 ("read_batch", None),
                 ("write_batch", None),
-                ("settings", None),
                 ("dictionary", None),
                 ("help", None),
                 ("quit", None),
@@ -509,14 +477,6 @@ class TuiBatchController:
         if key == " ":
             if self.focus_key[0] == "caption" and self.focus_key[1] is not None:
                 self.batch.toggle_included(self.batch.items[self.focus_key[1]].item_id)
-            return ()
-        if key in (curses.KEY_LEFT, curses.KEY_RIGHT):
-            if self.focus_key == ("takes", None):
-                return (
-                    AdjustBatchTakeCount(
-                        -1 if key == curses.KEY_LEFT else 1
-                    ),
-                )
             return ()
         if key in _ENTER_KEYS:
             return self._activate(self.focus_key)

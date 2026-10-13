@@ -69,7 +69,8 @@ class TuiTests(TuiAppTestCase):
         app._render()
         summary = next(item for item in screen.drawn if item[0] == 1)
         self.assertTrue(summary[2].startswith("▶ "))
-        self.assertIn(" | 1.00x | Takes 4 | TXT OFF | LAB OFF", summary[2])
+        self.assertIn("[S] ", summary[2])
+        self.assertTrue(summary[2].endswith(" | 1.00x"))
         self.assertTrue(summary[3] & curses.A_REVERSE)
 
         set_navigation_focus(app, ("output", None))
@@ -77,15 +78,10 @@ class TuiTests(TuiAppTestCase):
         output = next(item for item in screen.drawn if item[0] == 2)
         self.assertTrue(output[2].startswith("▶ [F] Output:"))
         self.assertTrue(output[3] & curses.A_REVERSE)
-        self.assertIn(("settings", None), navigation_items(app))
+        self.assertNotIn(("settings", None), navigation_items(app))
         self.assertEqual(
-            navigation_items(app)[-4:],
-            [
-                ("settings", None),
-                ("dictionary", None),
-                ("help", None),
-                ("quit", None),
-            ],
+            navigation_items(app)[-3:],
+            [("dictionary", None), ("help", None), ("quit", None)],
         )
 
     def test_main_dictionary_shortcut_opens_dictionary_menu(self):
@@ -231,10 +227,12 @@ class TuiTests(TuiAppTestCase):
         self.assertEqual(app._output_path_controller.state.owner, "batch_item")
 
         app._handle_key("\x1b")
-        set_navigation_focus(app, ("settings", None))
-        app._handle_key("\n")
+        app._handle_key("s")
+        self.assertEqual(app._editor_controller.editor.kind, "item_voice")
         self.assertEqual(app._editor_controller.editor.selection, "style_id")
-        self.assertIsNone(app._editor_controller.editor.active_field)
+        self.assertEqual(
+            app._editor_controller.editor.origin, ("output", None)
+        )
 
     def test_enter_on_pronunciation_rows_opens_language_specific_editors(self):
         app = self.make_app(query=mixed_query(["HH", "AH1"]))
@@ -718,7 +716,8 @@ class TuiTests(TuiAppTestCase):
                 self.assertEqual(app._batch.focus_key, ("add_captions", None))
                 rendered = self.rendered(screen)
                 self.assertIn("BATCH LIST", rendered)
-                self.assertIn("Takes < 4 >", rendered)
+                self.assertIn("[S] Takes 4 | TXT OFF | LAB OFF | WAV", rendered)
+                self.assertIn("Captions", rendered)
                 self.assertIn("[A] Add captions", rendered)
                 self.assertNotIn("Voiceger Accent Adapter", rendered)
                 self.assertNotIn("EDIT CAPTION TEXT", rendered)
@@ -1450,11 +1449,6 @@ class TuiTests(TuiAppTestCase):
         app._handle_key("\n")
         self.assertIsNone(app._editor_controller.editor)
         self.assertIn("currently generating", app._status)
-
-        set_navigation_focus(app, ("settings", None))
-        app._handle_key("\n")
-        self.assertEqual(app._editor_controller.editor.kind, "settings")
-        app._handle_key("\x1b")
 
         set_navigation_focus(app, ("output", None))
         app._handle_key("\n")

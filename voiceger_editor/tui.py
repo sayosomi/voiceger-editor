@@ -843,6 +843,7 @@ class TuiApp:
                 background_status=background_status,
                 number_jump_active=self._batch.number_jump_active,
                 number_jump_value=self._batch.number_jump_value,
+                settings=self.settings,
             )
         else:
             self._dispatch_navigation_actions(
