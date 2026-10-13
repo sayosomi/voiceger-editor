@@ -44,6 +44,7 @@ class HelpRenderingDocumentTests(RenderingTestCase):
             "clear candidates through confirmation",
             "Batch List Add captions / Generate selected",
             "Batch Item voice / Batch List Settings",
+            "edit Batch List Output directory",
             "Menu mode: editor/modal action letters are active.",
             "Editing: Enter finishes; printable shortcut letters insert text.",
             "Add captions: Ctrl+N inserts a new line; Enter finishes editing.",

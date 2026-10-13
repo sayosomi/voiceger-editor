@@ -350,6 +350,7 @@ class TuiRenderer:
         active_generation: tuple[str, int, int] | None = None,
         generation_busy: bool = False,
         settings: Settings | None = None,
+        output_path_edit: OutputPathEditRenderState | None = None,
     ) -> list[NavigationLine]:
         return _batch_list_document(
             batch,
@@ -359,6 +360,7 @@ class TuiRenderer:
             active_generation,
             generation_busy,
             settings,
+            output_path_edit,
         )
 
     def render_batch_list(
@@ -379,6 +381,7 @@ class TuiRenderer:
         number_jump_active: bool = False,
         number_jump_value: str = "",
         settings: Settings | None = None,
+        output_path_edit: OutputPathEditRenderState | None = None,
     ) -> None:
         """Render the top-level Batch List screen."""
 
@@ -448,6 +451,7 @@ class TuiRenderer:
             active_generation,
             generation_busy,
             settings,
+            output_path_edit,
         )
         footer = self._status_footer_layout(
             status,
@@ -456,11 +460,15 @@ class TuiRenderer:
             background_status=background_status,
         )
         viewport_height = max(0, footer.start_row - content_start_row)
+        editing_output = (
+            output_path_edit is not None and output_path_edit.owner == "batch_list"
+        )
+        active_focus = ("output", None) if editing_output else focus_key
         focused_index = next(
             (
                 index
                 for index, line in enumerate(lines)
-                if line.focus_owner == focus_key
+                if line.focus_owner == active_focus
             ),
             0,
         )
@@ -469,7 +477,7 @@ class TuiRenderer:
             start = max(0, len(lines) - viewport_height)
         for offset, line in enumerate(lines[start : start + viewport_height]):
             row = content_start_row + offset
-            focused = line.focus_owner == focus_key
+            focused = line.focus_owner == active_focus
             safe_add(
                 screen,
                 row,
@@ -479,6 +487,24 @@ class TuiRenderer:
                 self._focus_attribute() if focused else 0,
             )
         self._render_status_footer(screen, footer, width)
+        if editing_output:
+            output_index = next(
+                (index for index, line in enumerate(lines) if line.key == ("output", None)),
+                None,
+            )
+            if output_index is not None and start <= output_index < start + viewport_height:
+                prefix = "▶ [F] Output: "
+                input_width = max(1, width - 1 - _display_width(prefix))
+                _pieces, _cursor_row, cursor_cells = _wrap_active_input(
+                    output_path_edit.value, output_path_edit.cursor, input_width
+                )
+                try:
+                    screen.move(
+                        content_start_row + output_index - start,
+                        min(width - 1, _display_width(prefix) + cursor_cells),
+                    )
+                except curses.error:
+                    pass
 
     def render_navigation(
         self,
@@ -528,43 +554,7 @@ class TuiRenderer:
             if state.focus_key == ("settings_summary", None)
             else 0
         )
-        output_marker = "▶ " if state.focus_key == ("output", None) else "  "
-        output_attr = (
-            self._focus_attribute() if state.focus_key == ("output", None) else 0
-        )
         safe_add(screen, 1, 0, summary, width, summary_attr)
-        output_edit = state.output_path_edit
-        output_cursor_column: int | None = None
-        if output_edit is not None and output_edit.owner == "batch_item":
-            output_prefix = "▶ " + main_shortcut("output").display_with_label("Output: ")
-            input_width = max(1, width - 1 - _display_width(output_prefix))
-            wrapped, cursor_row, cursor_cells = _wrap_active_input(
-                output_edit.value,
-                output_edit.cursor,
-                input_width,
-            )
-            visible = wrapped[min(cursor_row, len(wrapped) - 1)]
-            safe_add(
-                screen,
-                2,
-                0,
-                output_prefix + visible,
-                width,
-                self._focus_attribute(),
-            )
-            output_cursor_column = _display_width(output_prefix) + cursor_cells
-        else:
-            safe_add(
-                screen,
-                2,
-                0,
-                output_marker
-                + main_shortcut("output").display_with_label(
-                    f"Output: {settings.output_dir}"
-                ),
-                width,
-                output_attr,
-            )
 
         lines = self.navigation_document(state, width)
         footer = self._status_footer_layout(
@@ -573,7 +563,7 @@ class TuiRenderer:
             width,
             background_status=state.background_status,
         )
-        viewport_height = max(0, footer.start_row - 4)
+        viewport_height = max(0, footer.start_row - 3)
         focused_index = next(
             (
                 index
@@ -586,7 +576,7 @@ class TuiRenderer:
         if start + viewport_height > len(lines):
             start = max(0, len(lines) - viewport_height)
         for offset, line in enumerate(lines[start : start + viewport_height]):
-            row = 4 + offset
+            row = 3 + offset
             focused = line.focus_owner == state.focus_key
             attr = self._focus_attribute() if focused else 0
             safe_add(screen, row, 0, line.text, width, attr)
@@ -604,11 +594,6 @@ class TuiRenderer:
                 )
 
         self._render_status_footer(screen, footer, width)
-        if output_cursor_column is not None:
-            try:
-                screen.move(2, min(width - 1, output_cursor_column))
-            except curses.error:
-                pass
 
     def navigation_document(
         self,

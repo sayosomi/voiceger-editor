@@ -21,7 +21,6 @@ from voiceger_editor.tui_navigation import (
     TuiNavigation,
 )
 from voiceger_editor.tui_operations import UpdateStatusEffect
-from voiceger_editor.tui_output_path import BeginOutputPathEditIntent
 from voiceger_editor.tui_status import error_status, warning_status
 
 
@@ -157,14 +156,12 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             (ClearAdjustmentFeedbackIntent(),)
         )
 
-    def test_file_shortcut_starts_inline_shared_output_edit(self):
+    def test_file_shortcut_is_not_available_inside_batch_item(self):
         subject, _batch, bindings, _state = self.make_subject()
 
         subject.handle_key("f", bindings)
 
-        bindings.actions.dispatch_editor_intents.assert_called_once_with(
-            (BeginOutputPathEditIntent("batch_item"),)
-        )
+        bindings.actions.dispatch_editor_intents.assert_not_called()
         bindings.actions.open_settings_editor.assert_not_called()
 
     def test_open_item_focus_prefers_accepted_then_first_candidate(self):
@@ -225,10 +222,10 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         self.assertEqual(batch.item_position, (2, 2))
         self.assertEqual(bindings.actions.navigation.focus_key, ("caption", None))
 
-        bindings.actions.navigation.focus_key = ("output", None)
+        bindings.actions.navigation.focus_key = ("settings_summary", None)
         subject.move_open_item(-1, bindings)
         self.assertEqual(batch.item_position, (1, 2))
-        self.assertEqual(bindings.actions.navigation.focus_key, ("output", None))
+        self.assertEqual(bindings.actions.navigation.focus_key, ("settings_summary", None))
 
     def test_candidate_focus_keeps_same_take_or_falls_back_to_target_priority(self):
         subject, batch, bindings, state = self.make_subject()
@@ -730,8 +727,7 @@ class TuiBatchItemIntegrationTests(TuiAppTestCase):
         output = self.make_app(query=mixed_query())
         output._handle_key("f")
         self.assertIsNone(output._editor_controller.editor)
-        self.assertTrue(output._output_path_controller.active)
-        self.assertEqual(output._output_path_controller.state.owner, "batch_item")
+        self.assertFalse(output._output_path_controller.active)
 
         for removed in (
             curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "x", "l"

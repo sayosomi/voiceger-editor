@@ -18,7 +18,6 @@ from .tui_navigation import (
     BuildPronunciation,
     ClearAdjustmentFeedback,
     DeleteCaption,
-    EditOutputPath,
     EditPronunciationItem,
     NavigationAction,
     NavigationContext,
@@ -36,7 +35,6 @@ from .tui_navigation import (
     UpdateNavigationStatus,
 )
 from .tui_numbered_list import NumberedListJump
-from .tui_output_path import BeginOutputPathEditIntent
 from .tui_shortcuts import resolve_main_shortcut
 from .tui_status import (
     EMPTY_STATUS,
@@ -346,10 +344,6 @@ class TuiBatchItemController:
                 actions.open_settings_editor(
                     action.selected_field,
                     edit=action.edit,
-                )
-            elif isinstance(action, EditOutputPath):
-                actions.dispatch_editor_intents(
-                    (BeginOutputPathEditIntent("batch_item"),)
                 )
             elif isinstance(action, OpenCaptionEditor):
                 conflict = self._item_mutation_conflict(

@@ -6,7 +6,6 @@ from voiceger_editor.tui_navigation import (
     BuildPronunciation,
     ClearAdjustmentFeedback,
     DeleteCaption,
-    EditOutputPath,
     EditPronunciationItem,
     NavigationContext,
     OpenClearCandidatesConfirmation,
@@ -55,7 +54,6 @@ class TuiNavigationTests(unittest.TestCase):
             ),
             (
                 ("settings_summary", None),
-                ("output", None),
                 ("caption", None),
                 ("build_pronunciation", None),
                 ("pronunciation", 0),
@@ -93,7 +91,6 @@ class TuiNavigationTests(unittest.TestCase):
             ),
             (
                 ("settings_summary", None),
-                ("output", None),
                 ("caption", None),
                 ("dictionary", None),
                 ("help", None),
@@ -108,7 +105,6 @@ class TuiNavigationTests(unittest.TestCase):
             ),
             (
                 ("settings_summary", None),
-                ("output", None),
                 ("caption", None),
                 ("build_pronunciation", None),
                 ("pronunciation", 0),
@@ -267,7 +263,6 @@ class TuiNavigationTests(unittest.TestCase):
         state = context(candidate_numbers=(1,))
         mappings = (
             (("settings_summary", None), OpenItemVoiceEditor()),
-            (("output", None), EditOutputPath()),
             (("caption", None), OpenCaptionEditor()),
             (("pronunciation", 1), EditPronunciationItem(1)),
             (("add_section", None), AddSectionEditor()),

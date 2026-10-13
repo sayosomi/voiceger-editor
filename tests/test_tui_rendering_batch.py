@@ -1,3 +1,6 @@
+from pathlib import Path
+import curses
+
 from voiceger_editor.settings import Settings
 from voiceger_editor.tui_status import EMPTY_STATUS
 from voiceger_editor.tui_status import warning_status
@@ -48,6 +51,7 @@ class BatchRenderingDocumentTests(RenderingTestCase):
         lines = self.renderer.batch_list_document(batch, ("caption", 0), 80)
         labels = [line.text for line in lines]
         self.assertIn("  [S] Takes 4 | TXT OFF | LAB OFF | WAV", labels)
+        self.assertTrue(any("[F] Output:" in label for label in labels))
         self.assertIn("Captions", labels)
         self.assertIn("▶ [x] [1]  [!] first caption", labels)
         self.assertIn("  [ ] [2]  [✓] second caption", labels)
@@ -175,6 +179,55 @@ class BatchRenderingDocumentTests(RenderingTestCase):
         self.assertGreater(len(summary), 1)
         self.assertTrue(summary[0].text.startswith("▶ [S] Takes 4"))
         self.assertTrue(all(len(line.text) <= 22 for line in summary))
+
+    def test_output_row_is_focused_and_precedes_captions(self):
+        batch = CaptionBatch(default_take_count=4)
+        settings = Settings(output_dir=Path("/tmp/voiceger-output"))
+        lines = self.renderer.batch_list_document(
+            batch, ("output", None), 80, settings=settings
+        )
+        output = next(line for line in lines if line.key == ("output", None))
+        self.assertEqual(output.text, "▶ [F] Output: /tmp/voiceger-output")
+        self.assertLess(
+            next(index for index, line in enumerate(lines) if line.key == ("output", None)),
+            next(index for index, line in enumerate(lines) if line.text == "Captions"),
+        )
+
+        screen = FakeScreen()
+        self.renderer.render_batch_list(
+            screen, batch, ("output", None), EMPTY_STATUS,
+            screen.rows, screen.columns, settings=settings,
+        )
+        drawn = next(item for item in screen.drawn if "[F] Output:" in item[2])
+        self.assertEqual(drawn[2], "▶ [F] Output: /tmp/voiceger-output")
+        self.assertTrue(drawn[3] & curses.A_REVERSE)
+
+    def test_output_edit_is_visible_and_cursor_tracks_input(self):
+        batch = CaptionBatch(default_take_count=4)
+        settings = Settings(output_dir=Path("/tmp/old-output"))
+        edit = SimpleNamespace(owner="batch_list", value="/tmp/new-output", cursor=8)
+        screen = FakeScreen()
+        self.renderer.render_batch_list(
+            screen, batch, ("settings", None), EMPTY_STATUS,
+            screen.rows, screen.columns, settings=settings,
+            output_path_edit=edit,
+        )
+        output = next(item for item in screen.drawn if "[F] Output:" in item[2])
+        self.assertIn("▶ [F] Output: /tmp/new-output", output[2])
+        self.assertTrue(output[3] & curses.A_REVERSE)
+        self.assertEqual(screen.cursor, (output[0], len("▶ [F] Output: ") + 8))
+
+        narrow = FakeScreen(rows=18, columns=25)
+        edit.value = "/tmp/a-very-long-directory-for-generation"
+        edit.cursor = len(edit.value)
+        self.renderer.render_batch_list(
+            narrow, batch, ("settings", None), EMPTY_STATUS,
+            narrow.rows, narrow.columns, settings=settings,
+            output_path_edit=edit,
+        )
+        self.assertIsNotNone(narrow.cursor)
+        self.assertLess(narrow.cursor[1], narrow.columns)
+        self.assertTrue(any("[F] Output:" in item[2] for item in narrow.drawn))
 
     def test_batch_list_marks_current_selected_generation_item(self):
         batch = CaptionBatch(default_take_count=4)

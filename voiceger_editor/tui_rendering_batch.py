@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from .caption_batch import CaptionBatch
 from .settings import Settings
-from .tui_display import _display_width, _wrap_text
-from .tui_rendering_shared import NavigationLine, _numbered_shortcut_token
+from .tui_display import _display_width, _wrap_active_input, _wrap_text
+from .tui_rendering_shared import NavigationLine, OutputPathEditRenderState, _numbered_shortcut_token
 from .tui_shortcuts import batch_list_shortcut
 
 def batch_list_document(
@@ -16,6 +16,7 @@ def batch_list_document(
     active_generation: tuple[str, int, int] | None = None,
     generation_busy: bool = False,
     settings: Settings | None = None,
+    output_path_edit: OutputPathEditRenderState | None = None,
 ) -> list[NavigationLine]:
     """Build the top-level Batch List document."""
 
@@ -46,6 +47,29 @@ def batch_list_document(
     )
     for continuation in summary_lines[1:]:
         lines.append(NavigationLine("  " + continuation, None, summary_key))
+
+    output_key = ("output", None)
+    editing_output = (
+        output_path_edit is not None and output_path_edit.owner == "batch_list"
+    )
+    output_marker = "▶ " if focus_key == output_key or editing_output else "  "
+    output_prefix = "[F] Output: "
+    output_width = max(1, width - 1 - _display_width(output_marker + output_prefix))
+    if editing_output:
+        pieces, cursor_row, _cursor_cells = _wrap_active_input(
+            output_path_edit.value, output_path_edit.cursor, output_width
+        )
+        lines.append(NavigationLine(
+            output_marker + output_prefix + pieces[min(cursor_row, len(pieces) - 1)],
+            output_key,
+            output_key,
+        ))
+    else:
+        pieces = _wrap_text(str(global_settings.output_dir), output_width) or [""]
+        lines.append(NavigationLine(output_marker + output_prefix + pieces[0], output_key, output_key))
+        indentation = " " * _display_width(output_marker + output_prefix)
+        for piece in pieces[1:]:
+            lines.append(NavigationLine(indentation + piece, None, output_key))
     plain()
     plain("Captions")
 

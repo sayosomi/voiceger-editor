@@ -43,7 +43,7 @@ class TuiOutputPathControllerTests(unittest.TestCase):
 
     def test_escape_cancels_without_saving(self):
         controller, state = self.make_controller()
-        controller.begin("batch_item")
+        controller.begin("batch_list")
 
         controller.handle_key("\x1b")
 
@@ -62,7 +62,7 @@ class TuiOutputPathControllerTests(unittest.TestCase):
     def test_begin_is_not_globally_blocked_by_background_work(self):
         controller, _state = self.make_controller()
 
-        self.assertTrue(controller.begin("batch_item"))
+        self.assertTrue(controller.begin("batch_list"))
 
         self.assertTrue(controller.active)
 

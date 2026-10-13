@@ -74,11 +74,6 @@ class OpenItemVoiceEditor:
 
 
 @dataclass(frozen=True)
-class EditOutputPath:
-    pass
-
-
-@dataclass(frozen=True)
 class OpenCaptionEditor:
     pass
 
@@ -153,7 +148,6 @@ NavigationAction = Union[
     UpdateNavigationStatus,
     OpenSettingsEditor,
     OpenItemVoiceEditor,
-    EditOutputPath,
     OpenCaptionEditor,
     EditPronunciationItem,
     AddSectionEditor,
@@ -185,7 +179,6 @@ class TuiNavigation:
             items.append(("batch_item", None))
         items.extend([
             ("settings_summary", None),
-            ("output", None),
             ("caption", None),
         ])
         if context.has_session:
@@ -322,8 +315,6 @@ class TuiNavigation:
         name, number = key
         if name == "settings_summary":
             return (OpenItemVoiceEditor(),)
-        if name == "output":
-            return (EditOutputPath(),)
         if name == "caption":
             return (OpenCaptionEditor(),)
         if name == "pronunciation" and number is not None:

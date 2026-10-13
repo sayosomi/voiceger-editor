@@ -37,6 +37,7 @@ _HELP_ITEMS = (
     (main_shortcut("clear_candidates").shortcut.upper(), ": clear candidates through confirmation"),
     ("R", ": regenerate the focused Take"),
     (main_shortcut("settings_summary").shortcut.upper(), ": Batch Item voice / Batch List Settings"),
+    ("F", ": edit Batch List Output directory"),
     (main_shortcut("dictionary").shortcut.upper(), ": open Dictionary"),
     ("A / G", ": Batch List Add captions / Generate selected"),
     (None, "Menu mode: editor/modal action letters are active."),

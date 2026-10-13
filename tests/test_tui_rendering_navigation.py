@@ -104,50 +104,21 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
         self.assertEqual(summary, "▶ [S] Neutral | 1.00x")
         self.assertLessEqual(_display_width(summary), screen.columns - 1)
 
-    def test_batch_item_output_row_is_a_visible_f_shortcut(self):
+    def test_batch_item_does_not_show_shared_output_path(self):
         screen = FakeScreen()
-        settings = Settings(output_dir=Path("/tmp/voiceger-output"))
         with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
             self.renderer.render_navigation(
                 screen,
-                render_state(
-                    settings=settings,
-                    focus_key=("output", None),
-                    batch_item_position=(1, 1),
-                ),
-                screen.rows,
-                screen.columns,
-                title="BATCH ITEM",
+                render_state(batch_item_position=(1, 1)),
+                screen.rows, screen.columns, title="BATCH ITEM",
             )
-
-        output_row = next(item for item in screen.drawn if item[0] == 2)
-        self.assertIn("▶ [F] Output: /tmp/voiceger-output", output_row[2])
-        self.assertTrue(output_row[3] & curses.A_REVERSE)
-
-    def test_batch_item_output_edit_renders_in_place(self):
-        screen = FakeScreen()
-        settings = Settings(output_dir=Path("/tmp/voiceger-output"))
-        edit = SimpleNamespace(
-            owner="batch_item",
-            value="/tmp/new-output",
-            cursor=len("/tmp/new-output"),
-        )
-        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
-            self.renderer.render_navigation(
-                screen,
-                render_state(
-                    settings=settings,
-                    focus_key=("output", None),
-                    batch_item_position=(1, 1),
-                    output_path_edit=edit,
-                ),
-                screen.rows,
-                screen.columns,
-                title="BATCH ITEM",
-            )
-
-        output_row = next(item for item in screen.drawn if item[0] == 2)
-        self.assertIn("▶ [F] Output: /tmp/new-output", output_row[2])
+        self.assertFalse(any(
+            "[F] Output:" in text for _row, _col, text, _attr in screen.drawn
+        ))
+        self.assertTrue(any(
+            row == 3 and "[E] Caption" in text
+            for row, _col, text, _attr in screen.drawn
+        ))
 
     def test_acceptance_busy_state_keeps_generate_label_as_generate_action(self):
         lines = self.renderer.navigation_document(

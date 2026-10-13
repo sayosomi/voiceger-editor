@@ -130,7 +130,6 @@ class TuiShortcutTests(unittest.TestCase):
 
     def test_main_shortcuts_match_issue_49_contract_and_share_display_metadata(self):
         expected = {
-            "f": "output",
             "e": "caption",
             "p": "build_pronunciation",
             "a": "add_section",
@@ -164,6 +163,7 @@ class TuiShortcutTests(unittest.TestCase):
             "r": "read_batch",
             "w": "write_batch",
             "s": "settings",
+            "f": "output",
             "d": "dictionary",
             "?": "help",
             "q": "quit",

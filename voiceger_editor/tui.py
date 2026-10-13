@@ -844,6 +844,7 @@ class TuiApp:
                 number_jump_active=self._batch.number_jump_active,
                 number_jump_value=self._batch.number_jump_value,
                 settings=self.settings,
+                output_path_edit=self._output_path_controller.state,
             )
         else:
             self._dispatch_navigation_actions(

@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import Mock
 
 from voiceger_editor.caption_batch import CaptionBatch
+from voiceger_editor.tui_output_path import BeginOutputPathEditIntent
 from voiceger_editor.tui_batch import (
     AddCaptions,
     BatchActionBindings,
@@ -13,6 +14,7 @@ from voiceger_editor.tui_batch import (
     OpenBatchItem,
     OpenBatchRead,
     OpenBatchSettings,
+    EditBatchOutput,
     OpenBatchWrite,
     QuitBatch,
     ReportBatchStatus,
@@ -87,6 +89,7 @@ class TuiBatchControllerTests(unittest.TestCase):
             controller.navigation_items(),
             (
                 ("settings", None),
+                ("output", None),
                 ("caption", 0),
                 ("caption", 1),
                 ("add_captions", None),
@@ -318,6 +321,19 @@ class TuiBatchControllerTests(unittest.TestCase):
         self.assertEqual(controller.handle_key(curses.KEY_LEFT), ())
         self.assertEqual(controller.handle_key("\n"), (OpenBatchSettings(),))
 
+    def test_output_row_enter_uses_shared_editor_intent(self):
+        controller = self.make_controller("first")
+        controller.focus_key = ("output", None)
+        self.assertEqual(controller.handle_key("\n"), (EditBatchOutput(),))
+        self.assertEqual(controller.handle_key("f"), (EditBatchOutput(),))
+
+        bindings = self.make_bindings()
+        controller.dispatch_actions((EditBatchOutput(),), bindings)
+        bindings.dispatch_editor_intents.assert_called_once_with(
+            (BeginOutputPathEditIntent("batch_list"),)
+        )
+        bindings.open_settings_editor.assert_not_called()
+
     def test_batch_list_shortcuts_emit_settled_actions(self):
         controller = self.make_controller("first")
         expected = {
@@ -326,6 +342,7 @@ class TuiBatchControllerTests(unittest.TestCase):
             "r": OpenBatchRead(),
             "w": OpenBatchWrite(),
             "s": OpenBatchSettings(),
+            "f": EditBatchOutput(),
             "d": OpenBatchDictionary(),
             "?": OpenBatchHelp(),
             "q": QuitBatch(),

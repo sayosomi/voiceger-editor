@@ -60,7 +60,7 @@ from tests.tui_app_test_support import (
 
 
 class TuiTests(TuiAppTestCase):
-    def test_top_settings_and_output_rows_are_selectable_and_focused(self):
+    def test_scoped_item_settings_and_batch_list_output_are_separate(self):
         app = self.make_app(query=mixed_query())
         screen = FakeScreen()
         app._screen = screen
@@ -73,16 +73,43 @@ class TuiTests(TuiAppTestCase):
         self.assertTrue(summary[2].endswith(" | 1.00x"))
         self.assertTrue(summary[3] & curses.A_REVERSE)
 
-        set_navigation_focus(app, ("output", None))
+        self.assertNotIn(("output", None), navigation_items(app))
+        app._handle_key("f")
+        self.assertFalse(app._output_path_controller.active)
+        app._handle_key("\x1b")
+        self.assertFalse(app._batch.in_item)
+        app._batch.focus_key = ("output", None)
+        screen.drawn.clear()
         app._render()
-        output = next(item for item in screen.drawn if item[0] == 2)
-        self.assertTrue(output[2].startswith("▶ [F] Output:"))
+        output = next(
+            item for item in screen.drawn if item[2].startswith("▶ [F] Output:")
+        )
         self.assertTrue(output[3] & curses.A_REVERSE)
+        self.assertIn(("output", None), app._batch.navigation_items())
         self.assertNotIn(("settings", None), navigation_items(app))
         self.assertEqual(
             navigation_items(app)[-3:],
             [("dictionary", None), ("help", None), ("quit", None)],
         )
+
+    def test_batch_output_edit_is_shared_and_cancel_does_not_change_settings(self):
+        app = self.make_app(query=mixed_query())
+        app._handle_key("\x1b")
+        previous = app.settings.output_dir
+
+        app._handle_key("f")
+        self.assertTrue(app._output_path_controller.active)
+        app._output_path_controller.state.value = "/tmp/unsaved-batch-output"
+        app._handle_key("\x1b")
+        self.assertEqual(app.settings.output_dir, previous)
+
+        app._handle_key("f")
+        app._output_path_controller.state.value = "/tmp/saved-batch-output"
+        with patch("voiceger_editor.tui.save_settings") as save:
+            app._handle_key("\n")
+        save.assert_called_once()
+        self.assertEqual(app.settings.output_dir, Path("/tmp/saved-batch-output"))
+        self.assertFalse(app._output_path_controller.active)
 
     def test_main_dictionary_shortcut_opens_dictionary_menu(self):
         app = self.make_app(query=mixed_query())
@@ -212,7 +239,7 @@ class TuiTests(TuiAppTestCase):
         self.assertIs(app._editor_controller.editor, pronunciation_editor)
         self.assertEqual(app.session.replace_query_calls, [])
 
-    def test_settings_summary_opens_style_and_output_edits_inline(self):
+    def test_item_voice_stays_local_and_batch_output_edits_inline(self):
         app = self.make_app(query=mixed_query())
         set_navigation_focus(app, ("settings_summary", None))
         app._handle_key("\n")
@@ -220,19 +247,26 @@ class TuiTests(TuiAppTestCase):
         self.assertIsNone(app._editor_controller.editor.active_field)
 
         app._handle_key("\x1b")
-        set_navigation_focus(app, ("output", None))
-        app._handle_key("\n")
-        self.assertIsNone(app._editor_controller.editor)
-        self.assertTrue(app._output_path_controller.active)
-        self.assertEqual(app._output_path_controller.state.owner, "batch_item")
-
-        app._handle_key("\x1b")
         app._handle_key("s")
         self.assertEqual(app._editor_controller.editor.kind, "item_voice")
         self.assertEqual(app._editor_controller.editor.selection, "style_id")
         self.assertEqual(
-            app._editor_controller.editor.origin, ("output", None)
+            app._editor_controller.editor.origin, ("settings_summary", None)
         )
+        app._handle_key("\x1b")
+        app._handle_key("\x1b")
+        self.assertFalse(app._batch.in_item)
+
+        app._handle_key("f")
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertTrue(app._output_path_controller.active)
+        self.assertEqual(app._output_path_controller.state.owner, "batch_list")
+        app._handle_key("\x1b")
+        self.assertFalse(app._output_path_controller.active)
+        app._batch.focus_key = ("output", None)
+        app._handle_key("\n")
+        self.assertTrue(app._output_path_controller.active)
+        self.assertEqual(app._output_path_controller.state.owner, "batch_list")
 
     def test_enter_on_pronunciation_rows_opens_language_specific_editors(self):
         app = self.make_app(query=mixed_query(["HH", "AH1"]))
@@ -1449,11 +1483,6 @@ class TuiTests(TuiAppTestCase):
         app._handle_key("\n")
         self.assertIsNone(app._editor_controller.editor)
         self.assertIn("currently generating", app._status)
-
-        set_navigation_focus(app, ("output", None))
-        app._handle_key("\n")
-        self.assertTrue(app._output_path_controller.active)
-        app._handle_key("\x1b")
 
         focus_candidate(app, 1)
         app._handle_key("\n")

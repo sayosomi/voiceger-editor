@@ -11,6 +11,7 @@ from .tui_confirmation import handle_confirmation_key
 from .tui_navigation import TuiNavigation
 from .tui_numbered_list import NumberedListJump
 from .tui_operations import OperationEffect, TuiOperations
+from .tui_output_path import BeginOutputPathEditIntent
 from .tui_selection import move_clamped_selection
 from .tui_status import EMPTY_STATUS, Status, info_status, warning_status
 from .tui_shortcuts import (
@@ -57,6 +58,11 @@ class OpenBatchSettings:
 
 
 @dataclass(frozen=True)
+class EditBatchOutput:
+    pass
+
+
+@dataclass(frozen=True)
 class OpenBatchDictionary:
     pass
 
@@ -83,6 +89,7 @@ BatchAction = Union[
     OpenBatchRead,
     OpenBatchWrite,
     OpenBatchSettings,
+    EditBatchOutput,
     OpenBatchDictionary,
     OpenBatchHelp,
     QuitBatch,
@@ -366,6 +373,10 @@ class TuiBatchController:
                     bindings.open_batch_write()
             elif isinstance(action, OpenBatchSettings):
                 bindings.open_settings_editor("style_id")
+            elif isinstance(action, EditBatchOutput):
+                bindings.dispatch_editor_intents(
+                    (BeginOutputPathEditIntent("batch_list"),)
+                )
             elif isinstance(action, OpenBatchDictionary):
                 bindings.dispatch_editor_intents(
                     bindings.dictionary_controller.open_menu()
@@ -379,7 +390,7 @@ class TuiBatchController:
 
     def navigation_items(self) -> tuple[BatchFocusKey, ...]:
         return (
-            (("settings", None),)
+            (("settings", None), ("output", None))
             + tuple(("caption", index) for index in range(len(self.batch)))
             + (
                 ("add_captions", None),
@@ -496,6 +507,8 @@ class TuiBatchController:
             return (OpenBatchWrite(),)
         if name == "settings":
             return (OpenBatchSettings(),)
+        if name == "output":
+            return (EditBatchOutput(),)
         if name == "dictionary":
             return (OpenBatchDictionary(),)
         if name == "help":
