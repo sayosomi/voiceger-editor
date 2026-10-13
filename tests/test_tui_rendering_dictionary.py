@@ -418,16 +418,25 @@ class DictionaryRenderingDocumentTests(RenderingTestCase):
             error="",
             scroll=0,
         )
+        wide_document, _, _ = self.renderer.editor_document(
+            render_state(editor=editor), 80
+        )
+        wide_row = next(
+            line for line, key in wide_document if key == ("import_entry", 0)
+        )
+        self.assertIn("スタックチャン", wide_row)
+        self.assertIn("[", wide_row)
+        self.assertIn("]", wide_row)
+
         document, _cursor_line, _cursor_column = self.renderer.editor_document(
             render_state(editor=editor), 26
         )
         rows = [line for line, key in document if key == ("import_entry", 0)]
         self.assertGreater(len(rows), 1)
         self.assertIn("[1] [x]", rows[0])
-        self.assertIn("スタックチャン", "".join(rows))
-        self.assertIn("[", "".join(rows))
-        self.assertIn("]", "".join(rows))
-        self.assertEqual(len(rows), sum(key == ("import_entry", 0) for _, key in document))
+        self.assertTrue(all(_display_width(row) < 26 for row in rows))
+        self.assertTrue(any("[" in row for row in rows))
+        self.assertTrue(any("]" in row for row in rows))
 
     def test_dictionary_import_detail_renders_japanese_fields_and_english_comparison(self):
         japanese_item = SimpleNamespace(
