@@ -330,9 +330,7 @@ class TuiBatchItemController:
             elif isinstance(action, UpdateNavigationStatus):
                 actions.set_status(action.status)
             elif isinstance(action, OpenItemVoiceEditor):
-                conflict = self._item_mutation_conflict(
-                    bindings, action="changing voice settings"
-                )
+                conflict = self._voice_edit_conflict(bindings)
                 if conflict is not None:
                     actions.set_status(conflict)
                     continue
@@ -774,6 +772,19 @@ class TuiBatchItemController:
                 )
             )
 
+    def _voice_edit_conflict(self, bindings: BatchItemBindings) -> Status | None:
+        conflict = self._item_mutation_conflict(
+            bindings, action="changing voice settings"
+        )
+        if conflict is not None:
+            return conflict
+        operations = bindings.actions.operations
+        if operations.busy and operations.worker_operation == "preview":
+            return warning_status(
+                "Item voice settings cannot change while pronunciation Preview is active."
+            )
+        return None
+
     def apply_item_voice(
         self,
         intent: ApplyItemVoiceIntent,
@@ -783,9 +794,7 @@ class TuiBatchItemController:
 
         if intent.item_id != self.batch.open_item_id:
             return "The selected Batch Item changed."
-        conflict = self._item_mutation_conflict(
-            bindings, action="changing voice settings"
-        )
+        conflict = self._voice_edit_conflict(bindings)
         if conflict is not None:
             return str(conflict)
         session = bindings.get_session()

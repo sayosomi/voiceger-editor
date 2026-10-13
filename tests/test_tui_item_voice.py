@@ -137,3 +137,13 @@ class TuiItemVoiceTests(TuiAppTestCase):
         self.assertIn("[A] Apply", rendered)
         self.assertIn("[R] Reset to Settings", rendered)
         self.assertIn("[Esc] Back", rendered)
+
+    def test_item_voice_is_blocked_while_pronunciation_preview_is_active(self):
+        app = self.make_app(query=mixed_query())
+        app._operations.busy = True
+        app._operations.worker_operation = "preview"
+        with patch("voiceger_editor.tui.available_styles", return_value=STYLES):
+            set_navigation_focus(app, ("settings_summary", None))
+            app._handle_key("\n")
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertIn("Preview", str(app._status))
