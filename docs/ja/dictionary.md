@@ -290,7 +290,11 @@ VOICEVOXの日本語辞書は、変換せずに読み込めます。
 
 日本語の詳細画面では、Surface・Pronunciation・Word type・Priorityを確認できます。アクセントは通常の辞書と同じ表記で表示され、変更できるのはWord typeのみです。
 
+![日本語の辞書インポート詳細画面とアクセントの差分](images/dictionary/05-dictionary-import-japanese-detail.png)
+
 英語の詳細画面では、SurfaceとARPAbetによるPronunciationを確認できます。こちらは確認専用です。
+
+![英語の辞書インポート詳細画面と発音の差分](images/dictionary/06-dictionary-import-english-detail.png)
 
 既存の単語と競合する場合は、`Existing — differences only` に変更前の情報が表示されます。同じ内容の項目は繰り返し表示されません。
 
