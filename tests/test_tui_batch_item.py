@@ -222,10 +222,10 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         self.assertEqual(batch.item_position, (2, 2))
         self.assertEqual(bindings.actions.navigation.focus_key, ("caption", None))
 
-        bindings.actions.navigation.focus_key = ("settings_summary", None)
+        bindings.actions.navigation.focus_key = ("item_style", None)
         subject.move_open_item(-1, bindings)
         self.assertEqual(batch.item_position, (1, 2))
-        self.assertEqual(bindings.actions.navigation.focus_key, ("settings_summary", None))
+        self.assertEqual(bindings.actions.navigation.focus_key, ("item_style", None))
 
     def test_candidate_focus_keeps_same_take_or_falls_back_to_target_priority(self):
         subject, batch, bindings, state = self.make_subject()
@@ -730,7 +730,7 @@ class TuiBatchItemIntegrationTests(TuiAppTestCase):
         self.assertFalse(output._output_path_controller.active)
 
         for removed in (
-            curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "x", "l"
+            curses.KEY_F5, "\x07", "R", "b", "t", "n", "x", "l"
         ):
             with self.subTest(removed=removed):
                 legacy = self.make_app(query=mixed_query())
@@ -747,9 +747,8 @@ class TuiBatchItemIntegrationTests(TuiAppTestCase):
         self.assertEqual(app._editor_controller.editor.kind, "caption")
         app._handle_key("\x1b")
         app._handle_key("s")
-        self.assertEqual(app._editor_controller.editor.kind, "item_voice")
-        self.assertEqual(app._editor_controller.editor.selection, "style_id")
-        app._handle_key("\x1b")
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app._navigation.focus_key, ("item_style", None))
         app._operations.play_take = Mock(return_value=())
         focus_candidate(app, 1)
         navigation_revision = app._navigation.revision

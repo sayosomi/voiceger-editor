@@ -348,7 +348,7 @@ class TuiRenderingTests(RenderingTestCase):
             batch, ("settings", None), 80
         )
         self.assertIn(
-            "▶ [S] Takes 4 | TXT OFF | LAB OFF | WAV",
+            "▶ [S] Settings Takes 4 | WAV",
             [line.text for line in batch_lines],
         )
 

@@ -33,7 +33,7 @@ class HelpRenderingDocumentTests(RenderingTestCase):
         self.assertIn(f"Docs: {DOCUMENTATION_URL}", visible)
         for text in (
             "Up/Down",
-            "Batch Item generation count",
+            "Style/Speed, generation count",
             "open a Batch List Caption",
             "toggle Batch List inclusion",
             "delete current Batch Item Caption through confirmation",
@@ -43,7 +43,7 @@ class HelpRenderingDocumentTests(RenderingTestCase):
             "1-9",
             "clear candidates through confirmation",
             "Batch List Add captions / Generate selected",
-            "Batch Item voice / Batch List Settings",
+            "focus Batch Item Style / Speed; S opens Batch List Settings",
             "edit Batch List Output directory",
             "Menu mode: editor/modal action letters are active.",
             "Editing: Enter finishes; printable shortcut letters insert text.",

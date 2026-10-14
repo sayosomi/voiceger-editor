@@ -50,7 +50,7 @@ class BatchRenderingDocumentTests(RenderingTestCase):
 
         lines = self.renderer.batch_list_document(batch, ("caption", 0), 80)
         labels = [line.text for line in lines]
-        self.assertIn("  [S] Takes 4 | TXT OFF | LAB OFF | WAV", labels)
+        self.assertIn("  [S] Settings Takes 4 | WAV", labels)
         self.assertTrue(any("[F] Output:" in label for label in labels))
         self.assertIn("Captions", labels)
         self.assertIn("▶ [x] [1]  [!] first caption", labels)
@@ -64,7 +64,7 @@ class BatchRenderingDocumentTests(RenderingTestCase):
                 batch, ("caption", 0), 80
             )
         ]
-        self.assertIn("  [S] Takes 9 | TXT OFF | LAB OFF | WAV", labels)
+        self.assertIn("  [S] Settings Takes 9 | WAV", labels)
         self.assertIn("▶ [x] [1]  [!] first caption", labels)
 
         batch.set_generation_outcome(batch.items[0].item_id, "cancelled")
@@ -101,7 +101,7 @@ class BatchRenderingDocumentTests(RenderingTestCase):
             "[G] Generate selected",
             "[R] Read batch",
             "[W] Write batch",
-            "[S] Takes 4 | TXT OFF | LAB OFF | WAV",
+            "[S] Settings Takes 4 | WAV",
             "[D] Dictionary",
             "[?] Help",
             "[Q] Quit",
@@ -161,7 +161,7 @@ class BatchRenderingDocumentTests(RenderingTestCase):
             batch, ("settings", None), 80, settings=settings
         )
         self.assertEqual(
-            lines[0].text, "▶ [S] Takes 7 | TXT ON | LAB ON | FLAC"
+            lines[0].text, "▶ [S] Settings Takes 7 | FLAC LAB TXT"
         )
         self.assertEqual(lines[0].key, ("settings", None))
         self.assertIn("Captions", [line.text for line in lines])
@@ -177,7 +177,7 @@ class BatchRenderingDocumentTests(RenderingTestCase):
         )
         summary = [line for line in lines if line.focus_owner == ("settings", None)]
         self.assertGreater(len(summary), 1)
-        self.assertTrue(summary[0].text.startswith("▶ [S] Takes 4"))
+        self.assertTrue(summary[0].text.startswith("▶ [S] Settings Takes 4"))
         self.assertTrue(all(len(line.text) <= 22 for line in summary))
 
     def test_output_row_is_focused_and_precedes_captions(self):

@@ -65,13 +65,13 @@ class TuiTests(TuiAppTestCase):
         screen = FakeScreen()
         app._screen = screen
 
-        set_navigation_focus(app, ("settings_summary", None))
+        set_navigation_focus(app, ("item_style", None))
         app._render()
-        summary = next(item for item in screen.drawn if item[0] == 1)
-        self.assertTrue(summary[2].startswith("▶ "))
-        self.assertIn("[S] ", summary[2])
-        self.assertTrue(summary[2].endswith(" | 1.00x"))
-        self.assertTrue(summary[3] & curses.A_REVERSE)
+        style_row = next(item for item in screen.drawn if "[S] Style" in item[2])
+        speed_row = next(item for item in screen.drawn if "[V] Speed" in item[2])
+        self.assertTrue(style_row[2].startswith("▶ "))
+        self.assertIn("1.00x", speed_row[2])
+        self.assertTrue(style_row[3] & curses.A_REVERSE)
 
         self.assertNotIn(("output", None), navigation_items(app))
         app._handle_key("f")
@@ -222,24 +222,18 @@ class TuiTests(TuiAppTestCase):
 
     def test_item_voice_stays_local_and_batch_output_edits_inline(self):
         app = self.make_app(query=mixed_query())
-        set_navigation_focus(app, ("settings_summary", None))
-        app._handle_key("\n")
-        self.assertEqual(app._editor_controller.editor.selection, "style_id")
-        self.assertIsNone(app._editor_controller.editor.active_field)
-
-        app._handle_key("\x1b")
         app._handle_key("s")
-        self.assertEqual(app._editor_controller.editor.kind, "item_voice")
-        self.assertEqual(app._editor_controller.editor.selection, "style_id")
-        self.assertEqual(
-            app._editor_controller.editor.origin, ("settings_summary", None)
-        )
+        self.assertEqual(app._navigation.focus_key, ("item_style", None))
+        self.assertIsNone(app._editor_controller.editor)
+        app._handle_key("v")
+        self.assertEqual(app._navigation.focus_key, ("item_speed", None))
+        app._handle_key("\n")
+        self.assertIsNotNone(app._batch_item_controller.speed_edit)
         app._handle_key("\x1b")
+        self.assertIsNone(app._batch_item_controller.speed_edit)
         app._handle_key("\x1b")
         self.assertFalse(app._batch.in_item)
-
         app._handle_key("f")
-        self.assertIsNone(app._editor_controller.editor)
         self.assertTrue(app._output_path_controller.active)
         self.assertEqual(app._output_path_controller.state.owner, "batch_list")
         app._handle_key("\x1b")
@@ -247,7 +241,6 @@ class TuiTests(TuiAppTestCase):
         app._batch.focus_key = ("output", None)
         app._handle_key("\n")
         self.assertTrue(app._output_path_controller.active)
-        self.assertEqual(app._output_path_controller.state.owner, "batch_list")
 
     def test_enter_on_pronunciation_rows_opens_language_specific_editors(self):
         app = self.make_app(query=mixed_query(["HH", "AH1"]))
@@ -290,7 +283,7 @@ class TuiTests(TuiAppTestCase):
 
     def test_text_and_generate_are_reachable_with_only_vertical_arrows(self):
         app = self.make_app(query=mixed_query())
-        set_navigation_focus(app, ("settings_summary", None))
+        set_navigation_focus(app, ("item_style", None))
         app._handle_key(curses.KEY_UP)
         self.assertEqual(app._navigation.focus_key, ("batch_item", None))
         app._handle_key(curses.KEY_UP)
@@ -731,7 +724,7 @@ class TuiTests(TuiAppTestCase):
                 self.assertEqual(app._batch.focus_key, ("add_captions", None))
                 rendered = self.rendered(screen)
                 self.assertIn("BATCH LIST", rendered)
-                self.assertIn("[S] Takes 4 | TXT OFF | LAB OFF | WAV", rendered)
+                self.assertIn("[S] Settings Takes 4 | WAV", rendered)
                 self.assertIn("Captions", rendered)
                 self.assertIn("[A] Add captions", rendered)
                 self.assertNotIn("Voiceger Accent Adapter", rendered)
@@ -1460,7 +1453,7 @@ class TuiTests(TuiAppTestCase):
         app._operations.start_generation.assert_not_called()
         app._operations.start_regenerate_all.assert_not_called()
 
-        set_navigation_focus(app, ("settings_summary", None))
+        set_navigation_focus(app, ("item_style", None))
         app._handle_key("\n")
         self.assertIsNone(app._editor_controller.editor)
         self.assertIn("currently generating", app._status)

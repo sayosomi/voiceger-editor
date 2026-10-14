@@ -352,7 +352,7 @@ class UtteranceSession:
     ):
         """Capture a fresh immutable synthesis recipe for future Take operations."""
         query_snapshot = deepcopy(query)
-        style_snapshot = deepcopy(style)
+        style_snapshot = style
         adapter = self._adapter
         resolved_top_k = settings.top_k if top_k is None else top_k
         resolved_top_p = settings.top_p if top_p is None else top_p

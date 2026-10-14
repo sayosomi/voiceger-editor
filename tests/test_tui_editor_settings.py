@@ -60,7 +60,10 @@ class TuiSettingsEditorOwnerTests(EditorControllerTestCase):
             self.settings(), origin=("settings", None), busy=False
         )
         self.assertEqual(controller.editor.selection, "style_id")
-        self.assertEqual(controller.adjust_settings(-1), (ClearAdjustmentFeedbackIntent(),))
+        self.assertEqual(controller.adjust_settings(-1), (AdjustmentPressedIntent("settings", "style_id", -1),))
+        self.assertEqual(controller.editor.payload["draft_settings"]["style_id"], "22")
+        self.assertEqual(controller.adjust_settings(1), (AdjustmentPressedIntent("settings", "style_id", 1),))
+        self.assertEqual(controller.editor.payload["draft_settings"]["style_id"], "3")
         self.assertEqual(controller.adjust_settings(1), (AdjustmentPressedIntent("settings", "style_id", 1),))
         self.assertEqual(controller.editor.payload["draft_settings"]["style_id"], "1")
         self.assertEqual(controller.adjust_settings(1), (AdjustmentPressedIntent("settings", "style_id", 1),))

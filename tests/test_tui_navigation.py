@@ -11,7 +11,6 @@ from voiceger_editor.tui_navigation import (
     OpenClearCandidatesConfirmation,
     OpenHelp,
     OpenDictionary,
-    OpenItemVoiceEditor,
     OpenCaptionEditor,
     PlayCandidate,
     Quit,
@@ -53,7 +52,8 @@ class TuiNavigationTests(unittest.TestCase):
                 context(pronunciation_count=4, candidate_numbers=(5, 2))
             ),
             (
-                ("settings_summary", None),
+                ("item_style", None),
+                ("item_speed", None),
                 ("caption", None),
                 ("build_pronunciation", None),
                 ("pronunciation", 0),
@@ -90,7 +90,8 @@ class TuiNavigationTests(unittest.TestCase):
                 context(has_session=False, candidate_numbers=(4, 2))
             ),
             (
-                ("settings_summary", None),
+                ("item_style", None),
+                ("item_speed", None),
                 ("caption", None),
                 ("dictionary", None),
                 ("help", None),
@@ -104,7 +105,8 @@ class TuiNavigationTests(unittest.TestCase):
                 context(candidate_numbers=(5, 2, 8))
             ),
             (
-                ("settings_summary", None),
+                ("item_style", None),
+                ("item_speed", None),
                 ("caption", None),
                 ("build_pronunciation", None),
                 ("pronunciation", 0),
@@ -262,7 +264,6 @@ class TuiNavigationTests(unittest.TestCase):
     def test_focus_actions_are_routed_without_global_busy_policy(self):
         state = context(candidate_numbers=(1,))
         mappings = (
-            (("settings_summary", None), OpenItemVoiceEditor()),
             (("caption", None), OpenCaptionEditor()),
             (("pronunciation", 1), EditPronunciationItem(1)),
             (("add_section", None), AddSectionEditor()),
@@ -274,6 +275,12 @@ class TuiNavigationTests(unittest.TestCase):
             (("dictionary", None), OpenDictionary()),
             (("help", None), OpenHelp()),
             (("quit", None), Quit()),
+        )
+        self.assertEqual(
+            self.navigation.activate_item(state, ("item_style", None)), ()
+        )
+        self.assertEqual(
+            self.navigation.activate_item(state, ("item_speed", None)), ()
         )
         for focus_key, expected in mappings:
             with self.subTest(focus_key=focus_key):
