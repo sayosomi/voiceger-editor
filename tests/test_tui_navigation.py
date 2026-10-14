@@ -6,13 +6,11 @@ from voiceger_editor.tui_navigation import (
     BuildPronunciation,
     ClearAdjustmentFeedback,
     DeleteCaption,
-    EditOutputPath,
     EditPronunciationItem,
     NavigationContext,
     OpenClearCandidatesConfirmation,
     OpenHelp,
     OpenDictionary,
-    OpenSettingsEditor,
     OpenCaptionEditor,
     PlayCandidate,
     Quit,
@@ -54,8 +52,8 @@ class TuiNavigationTests(unittest.TestCase):
                 context(pronunciation_count=4, candidate_numbers=(5, 2))
             ),
             (
-                ("settings_summary", None),
-                ("output", None),
+                ("item_style", None),
+                ("item_speed", None),
                 ("caption", None),
                 ("build_pronunciation", None),
                 ("pronunciation", 0),
@@ -68,7 +66,6 @@ class TuiNavigationTests(unittest.TestCase):
                 ("generate", None),
                 ("clear_candidates", None),
                 ("delete_caption", None),
-                ("settings", None),
                 ("dictionary", None),
                 ("help", None),
                 ("quit", None),
@@ -93,10 +90,9 @@ class TuiNavigationTests(unittest.TestCase):
                 context(has_session=False, candidate_numbers=(4, 2))
             ),
             (
-                ("settings_summary", None),
-                ("output", None),
+                ("item_style", None),
+                ("item_speed", None),
                 ("caption", None),
-                ("settings", None),
                 ("dictionary", None),
                 ("help", None),
                 ("quit", None),
@@ -109,8 +105,8 @@ class TuiNavigationTests(unittest.TestCase):
                 context(candidate_numbers=(5, 2, 8))
             ),
             (
-                ("settings_summary", None),
-                ("output", None),
+                ("item_style", None),
+                ("item_speed", None),
                 ("caption", None),
                 ("build_pronunciation", None),
                 ("pronunciation", 0),
@@ -119,7 +115,6 @@ class TuiNavigationTests(unittest.TestCase):
                 ("generate", None),
                 ("clear_candidates", None),
                 ("delete_caption", None),
-                ("settings", None),
                 ("dictionary", None),
                 ("help", None),
                 ("quit", None),
@@ -269,8 +264,6 @@ class TuiNavigationTests(unittest.TestCase):
     def test_focus_actions_are_routed_without_global_busy_policy(self):
         state = context(candidate_numbers=(1,))
         mappings = (
-            (("settings_summary", None), OpenSettingsEditor("style_id")),
-            (("output", None), EditOutputPath()),
             (("caption", None), OpenCaptionEditor()),
             (("pronunciation", 1), EditPronunciationItem(1)),
             (("add_section", None), AddSectionEditor()),
@@ -279,10 +272,15 @@ class TuiNavigationTests(unittest.TestCase):
             (("candidate", 1), AcceptCandidate(1)),
             (("clear_candidates", None), OpenClearCandidatesConfirmation()),
             (("delete_caption", None), DeleteCaption()),
-            (("settings", None), OpenSettingsEditor("style_id")),
             (("dictionary", None), OpenDictionary()),
             (("help", None), OpenHelp()),
             (("quit", None), Quit()),
+        )
+        self.assertEqual(
+            self.navigation.activate_item(state, ("item_style", None)), ()
+        )
+        self.assertEqual(
+            self.navigation.activate_item(state, ("item_speed", None)), ()
         )
         for focus_key, expected in mappings:
             with self.subTest(focus_key=focus_key):

@@ -48,14 +48,14 @@ class MainShortcut:
 
 
 _MAIN_SHORTCUTS: tuple[MainShortcut, ...] = (
-    MainShortcut("output", "Output", PATH_EDIT_SHORTCUT),
     MainShortcut("caption", "Caption", "e"),
     MainShortcut("build_pronunciation", "Build pronunciation", "p"),
     MainShortcut("add_section", "Add section", "a"),
     MainShortcut("generate", "Generate", "g"),
     MainShortcut("clear_candidates", "Clear candidates", "c"),
     MainShortcut("delete_caption", "Delete caption", "x"),
-    MainShortcut("settings", "Settings", "s"),
+    MainShortcut("item_style", "Style", "s"),
+    MainShortcut("item_speed", "Speed", "v"),
     MainShortcut("dictionary", "Dictionary", "d"),
     MainShortcut("help", "Help", "?"),
     MainShortcut("quit", "Quit", "q"),
@@ -67,6 +67,7 @@ _BATCH_LIST_SHORTCUTS: tuple[MainShortcut, ...] = (
     MainShortcut("read_batch", "Read batch", "r"),
     MainShortcut("write_batch", "Write batch", "w"),
     MainShortcut("settings", "Settings", "s"),
+    MainShortcut("output", "Output", PATH_EDIT_SHORTCUT),
     MainShortcut("dictionary", "Dictionary", "d"),
     MainShortcut("help", "Help", "?"),
     MainShortcut("quit", "Quit", "q"),

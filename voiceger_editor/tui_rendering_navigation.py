@@ -11,6 +11,7 @@ from .tui_display import (
     _wrap_text,
 )
 from .tui_editors import PronunciationRow
+from .styles import available_styles
 from .tui_rendering_shared import (
     NavigationLine,
     TuiRenderState,
@@ -19,6 +20,30 @@ from .tui_rendering_shared import (
     adjustment_press_direction,
 )
 from .tui_shortcuts import main_shortcut
+
+def _candidate_lines(
+    candidate, *, total: int, accepted_number: int | None,
+    focused: bool, row_limit: int,
+) -> list[NavigationLine]:
+    """Render one Take's recorded synthesis provenance, including narrow layouts."""
+    duration = _duration_seconds(candidate.frame_count, candidate.sampling_rate)
+    number_token = _numbered_shortcut_token(candidate.number, total)
+    accepted_marker = " ✓" if candidate.number == accepted_number else "  "
+    prefix = f"{number_token}{accepted_marker} Take {candidate.number}  "
+    generated_speed = getattr(
+        getattr(candidate, "query", None), "speedScale", 1.0
+    )
+    style_name = getattr(candidate, "style_name", "Unknown")
+    details = f"{style_name} | {generated_speed:.2f}x | {duration:.2f}s"
+    key = ("candidate", candidate.number)
+    marker = "▶ " if focused else "  "
+    available = max(1, row_limit - _display_width(marker + prefix))
+    pieces = _wrap_text(details, available) or [details]
+    output = [NavigationLine(marker + prefix + pieces[0], key, key)]
+    for piece in pieces[1:]:
+        output.append(NavigationLine("    " + piece, None, key))
+    return output
+
 
 def navigation_document(
     state: TuiRenderState,
@@ -134,6 +159,32 @@ def navigation_document(
             )
 
     session = state.session
+    if session is not None:
+        voice_settings = getattr(session, "settings", state.settings)
+        style_name = next(
+            (style.name for style in available_styles(state.voiceger_root)
+             if style.id == voice_settings.style_id),
+            "unavailable",
+        )
+        style_display = _adjustable_value(
+            style_name, adjustment_press_direction(state, "navigation", "item_style")
+        )
+        action(
+            ("item_style", None),
+            main_shortcut("item_style").display_with_label(f"Style     {style_display}"),
+        )
+        speed = f"{voice_settings.speed:.2f}"
+        if state.item_speed_edit is not None:
+            edit = state.item_speed_edit
+            speed = edit.value[:edit.cursor] + "_" + edit.value[edit.cursor:]
+        speed_display = _adjustable_value(
+            f"{speed}x", adjustment_press_direction(state, "navigation", "item_speed")
+        )
+        action(
+            ("item_speed", None),
+            main_shortcut("item_speed").display_with_label(f"Speed     {speed_display}"),
+        )
+        plain()
     caption_action(("caption", None), session.caption if session else "")
     if session is not None:
         action(
@@ -201,25 +252,12 @@ def navigation_document(
                     plain("  [0] Jump to Take")
                 plain()
         for candidate in candidates:
-            duration = _duration_seconds(
-                candidate.frame_count,
-                candidate.sampling_rate,
-            )
-            number_token = _numbered_shortcut_token(
-                candidate.number,
-                len(candidates),
-            )
-            accepted_marker = (
-                " ✓" if candidate.number == state.accepted_take_number else ""
-            )
-            label = (
-                f"{number_token}  Take {candidate.number}  {duration:.2f}s"
-                f"{accepted_marker}"
-            )
-            action(
-                ("candidate", candidate.number),
-                label,
-            )
+            lines.extend(_candidate_lines(
+                candidate, total=len(candidates),
+                accepted_number=state.accepted_take_number,
+                focused=state.focus_key == ("candidate", candidate.number),
+                row_limit=row_limit,
+            ))
         if session.candidates:
             plain()
         action(
@@ -238,7 +276,6 @@ def navigation_document(
         )
         plain()
 
-    action(("settings", None), main_shortcut("settings").display_label)
     action(("dictionary", None), main_shortcut("dictionary").display_label)
     action(("help", None), main_shortcut("help").display_label)
     action(("quit", None), main_shortcut("quit").display_label)

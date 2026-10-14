@@ -125,7 +125,7 @@ def render_state(
     *,
     session=None,
     settings=None,
-    focus_key=("settings_summary", None),
+    focus_key=("item_style", None),
     status=EMPTY_STATUS,
     segments=(
         ("ja", "明日は", 0),

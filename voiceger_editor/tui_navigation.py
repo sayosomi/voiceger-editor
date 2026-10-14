@@ -69,11 +69,6 @@ class OpenSettingsEditor:
 
 
 @dataclass(frozen=True)
-class EditOutputPath:
-    pass
-
-
-@dataclass(frozen=True)
 class OpenCaptionEditor:
     pass
 
@@ -147,7 +142,6 @@ NavigationAction = Union[
     ClearAdjustmentFeedback,
     UpdateNavigationStatus,
     OpenSettingsEditor,
-    EditOutputPath,
     OpenCaptionEditor,
     EditPronunciationItem,
     AddSectionEditor,
@@ -178,8 +172,8 @@ class TuiNavigation:
         if context.has_item_navigator:
             items.append(("batch_item", None))
         items.extend([
-            ("settings_summary", None),
-            ("output", None),
+            ("item_style", None),
+            ("item_speed", None),
             ("caption", None),
         ])
         if context.has_session:
@@ -197,7 +191,7 @@ class TuiNavigation:
                 items.append(("clear_candidates", None))
             items.append(("delete_caption", None))
         items.extend(
-            (("settings", None), ("dictionary", None), ("help", None), ("quit", None))
+            (("dictionary", None), ("help", None), ("quit", None))
         )
         return tuple(items)
 
@@ -314,10 +308,8 @@ class TuiNavigation:
         if key not in self.navigation_items(context):
             return ()
         name, number = key
-        if name == "settings_summary":
-            return (OpenSettingsEditor("style_id"),)
-        if name == "output":
-            return (EditOutputPath(),)
+        if name in {"item_style", "item_speed"}:
+            return ()
         if name == "caption":
             return (OpenCaptionEditor(),)
         if name == "pronunciation" and number is not None:
@@ -334,8 +326,6 @@ class TuiNavigation:
             return (OpenClearCandidatesConfirmation(),)
         if name == "delete_caption":
             return (DeleteCaption(),)
-        if name == "settings":
-            return (OpenSettingsEditor("style_id"),)
         if name == "dictionary":
             return (OpenDictionary(),)
         if name == "help":

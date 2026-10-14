@@ -21,19 +21,19 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
         labels = [
             line.text
             for line in navigation_document(
-                render_state(focus_key=("settings", None)),
+                render_state(focus_key=("dictionary", None)),
                 80,
             )
         ]
 
         self.assertEqual(
-            labels[-4:],
-            ["▶ [S] Settings", "  [D] Dictionary", "  [?] Help", "  [Q] Quit"],
+            labels[-3:],
+            ["▶ [D] Dictionary", "  [?] Help", "  [Q] Quit"],
         )
 
     def test_batch_item_header_uses_current_product_name_or_explicit_item_title(self):
         screen = FakeScreen()
-        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
+        with patch("voiceger_editor.tui_rendering_navigation.available_styles", return_value=()):
             self.renderer.render_navigation(
                 screen, render_state(), screen.rows, screen.columns
             )
@@ -42,7 +42,7 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
         self.assertNotIn("Voiceger Accent Adapter", header)
 
         screen.drawn.clear()
-        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
+        with patch("voiceger_editor.tui_rendering_navigation.available_styles", return_value=()):
             self.renderer.render_navigation(
                 screen,
                 render_state(
@@ -59,7 +59,7 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
         self.assertTrue(header.endswith("< 2 / 4 >"))
         self.assertTrue(header_row[3] & curses.A_REVERSE)
 
-    def test_batch_item_summary_is_compact_and_shows_txt_and_lab_states(self):
+    def test_batch_item_summary_shows_only_item_style_and_speed(self):
         cases = ((False, True), (True, False), (True, True), (False, False))
         for save_text, save_lab in cases:
             with self.subTest(save_text=save_text, save_lab=save_lab):
@@ -69,85 +69,55 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
                     save_text=save_text, save_lab=save_lab,
                 )
                 with patch(
-                    "voiceger_editor.tui_rendering.available_styles",
+                    "voiceger_editor.tui_rendering_navigation.available_styles",
                     return_value=(SimpleNamespace(id=3, name="Neutral"),),
                 ):
                     self.renderer.render_navigation(
-                        screen, render_state(settings=settings),
+                        screen, render_state(session=FakeSession(), settings=settings),
                         screen.rows, screen.columns, title="BATCH ITEM",
                     )
                 summary = next(
-                    text for row, _col, text, _attr in screen.drawn if row == 1
+                    text for row, _col, text, _attr in screen.drawn if row == 2
                 )
                 txt = "ON" if save_text else "OFF"
                 lab = "ON" if save_lab else "OFF"
-                self.assertEqual(
-                    summary,
-                    f"▶ Neutral | 1.00x | Takes 1 | TXT {txt} | LAB {lab}",
-                )
+                self.assertIn("[S] Style", summary)
+                self.assertIn("< Neutral >", summary)
 
-    def test_batch_item_summary_prioritizes_txt_and_lab_when_narrow(self):
+    def test_batch_item_summary_is_readable_when_narrow(self):
         screen = FakeScreen(columns=35)
         settings = Settings(take_count=1, save_text=False, save_lab=True)
         with patch(
-            "voiceger_editor.tui_rendering.available_styles",
+            "voiceger_editor.tui_rendering_navigation.available_styles",
             return_value=(SimpleNamespace(id=3, name="Neutral"),),
         ):
             self.renderer.render_navigation(
-                screen, render_state(settings=settings),
+                screen, render_state(session=FakeSession(), settings=settings),
                 screen.rows, screen.columns, title="BATCH ITEM",
             )
         summary = next(
-            text for row, _col, text, _attr in screen.drawn if row == 1
+            text for row, _col, text, _attr in screen.drawn if row == 2
         )
-        self.assertTrue(summary.startswith("▶ "))
-        self.assertTrue(summary.endswith(" | TXT OFF | LAB ON"))
+        self.assertTrue(summary.startswith("▶ [S] Style"))
+        self.assertIn("[S] Style", summary)
+        self.assertIn("< Neutral >", summary)
         self.assertLessEqual(_display_width(summary), screen.columns - 1)
 
-    def test_batch_item_output_row_is_a_visible_f_shortcut(self):
+    def test_batch_item_does_not_show_shared_output_path(self):
         screen = FakeScreen()
-        settings = Settings(output_dir=Path("/tmp/voiceger-output"))
-        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
+        with patch("voiceger_editor.tui_rendering_navigation.available_styles", return_value=()):
             self.renderer.render_navigation(
                 screen,
-                render_state(
-                    settings=settings,
-                    focus_key=("output", None),
-                    batch_item_position=(1, 1),
-                ),
-                screen.rows,
-                screen.columns,
-                title="BATCH ITEM",
+                render_state(batch_item_position=(1, 1)),
+                screen.rows, screen.columns, title="BATCH ITEM",
             )
-
-        output_row = next(item for item in screen.drawn if item[0] == 2)
-        self.assertIn("▶ [F] Output: /tmp/voiceger-output", output_row[2])
-        self.assertTrue(output_row[3] & curses.A_REVERSE)
-
-    def test_batch_item_output_edit_renders_in_place(self):
-        screen = FakeScreen()
-        settings = Settings(output_dir=Path("/tmp/voiceger-output"))
-        edit = SimpleNamespace(
-            owner="batch_item",
-            value="/tmp/new-output",
-            cursor=len("/tmp/new-output"),
-        )
-        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
-            self.renderer.render_navigation(
-                screen,
-                render_state(
-                    settings=settings,
-                    focus_key=("output", None),
-                    batch_item_position=(1, 1),
-                    output_path_edit=edit,
-                ),
-                screen.rows,
-                screen.columns,
-                title="BATCH ITEM",
-            )
-
-        output_row = next(item for item in screen.drawn if item[0] == 2)
-        self.assertIn("▶ [F] Output: /tmp/new-output", output_row[2])
+        self.assertFalse(any(
+            "[F] Output:" in text for _row, _col, text, _attr in screen.drawn
+        ))
+        self.assertTrue(any(
+            "[E] Caption" in text
+            for row, _col, text, _attr in screen.drawn
+        ))
 
     def test_acceptance_busy_state_keeps_generate_label_as_generate_action(self):
         lines = self.renderer.navigation_document(
@@ -353,7 +323,7 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
             session=FakeSession(), focus_key=("pronunciation", 2)
         )
         screen = FakeScreen()
-        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
+        with patch("voiceger_editor.tui_rendering_navigation.available_styles", return_value=()):
             self.renderer.render_navigation(screen, state, screen.rows, screen.columns)
 
         base = next(
@@ -371,7 +341,7 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
 
         idle_screen = FakeScreen()
         idle_state = render_state(session=FakeSession(), focus_key=("pronunciation", 0))
-        with patch("voiceger_editor.tui_rendering.available_styles", return_value=()):
+        with patch("voiceger_editor.tui_rendering_navigation.available_styles", return_value=()):
             self.renderer.render_navigation(idle_screen, idle_state, idle_screen.rows, idle_screen.columns)
         idle_source = next(item for item in idle_screen.drawn if item[2] == "hello")
         self.assertTrue(idle_source[3] & curses.A_BOLD)
@@ -418,8 +388,8 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
         self.assertEqual(labels[("build_pronunciation", None)], "  [P] Build pronunciation")
         self.assertEqual(labels[("add_section", None)], "  [A] Add section")
         self.assertEqual(labels[("generate", None)], "▶ [G] Regenerate all <<6 > takes")
-        self.assertEqual(labels[("candidate", 1)], "  [1]  Take 1  0.01s")
-        self.assertEqual(labels[("candidate", 2)], "  [2]  Take 2  0.01s ✓")
+        self.assertEqual(labels[("candidate", 1)], "  [1]   Take 1  Unknown | 1.00x | 0.01s")
+        self.assertEqual(labels[("candidate", 2)], "  [2] ✓ Take 2  Unknown | 1.00x | 0.01s")
         self.assertEqual(labels[("clear_candidates", None)], "  [C] Clear candidates")
         self.assertEqual(labels[("delete_caption", None)], "  [X] Delete caption")
         keyed = [line.key for line in lines if line.key is not None]
@@ -447,7 +417,6 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
         self.assertEqual(lines[clear_index + 1].text, "")
         self.assertEqual(delete_index, clear_index + 2)
         self.assertEqual(lines[delete_index + 1].text, "")
-        self.assertEqual(labels[("settings", None)], "  [S] Settings")
         self.assertEqual(labels[("dictionary", None)], "  [D] Dictionary")
         self.assertEqual(labels[("help", None)], "  [?] Help")
         self.assertEqual(labels[("quit", None)], "  [Q] Quit")
@@ -472,9 +441,9 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
             with self.subTest(number=number):
                 self.assertEqual(
                     labels[("candidate", number)],
-                    f"  [{number}]  Take {number}  0.01s",
+                    f"  [{number}]   Take {number}  Unknown | 1.00x | 0.01s",
                 )
-        self.assertEqual(labels[("candidate", 10)], "   10  Take 10  0.01s")
+        self.assertEqual(labels[("candidate", 10)], "   10   Take 10  Unknown | 1.00x | 0.01s")
 
     def test_take_number_jump_row_only_appears_for_ten_or_more_candidates(self):
         nine = render_state(
@@ -494,8 +463,8 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
         candidates_index = twelve_labels.index("Candidates")
         self.assertEqual(twelve_labels[candidates_index + 1], "  [0] Jump to Take")
         self.assertEqual(twelve_labels[candidates_index + 2], "")
-        self.assertEqual(twelve_labels[candidates_index + 3], "  [1]  Take 1  0.01s")
-        self.assertEqual(twelve_labels[candidates_index + 12], "   10  Take 10  0.01s")
+        self.assertEqual(twelve_labels[candidates_index + 3], "  [1]   Take 1  Unknown | 1.00x | 0.01s")
+        self.assertEqual(twelve_labels[candidates_index + 12], "   10   Take 10  Unknown | 1.00x | 0.01s")
 
     def test_active_take_number_jump_replaces_entry_row_with_explicit_input(self):
         state = render_state(

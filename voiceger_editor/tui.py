@@ -100,6 +100,7 @@ class TuiApp:
             set_status=lambda status: setattr(self, "_status", status),
             save=lambda value, path: save_settings(value, path),
             clear_generation_outcomes=self._batch.clear_generation_outcomes,
+            clear_acceptances=self._batch.clear_acceptances,
         )
         self._output_path_controller = TuiOutputPathController(
             get_output_dir=lambda: self.settings.output_dir,
@@ -133,7 +134,10 @@ class TuiApp:
         self._renderer = TuiRenderer()
         self._input = TuiInputReader()
         self._interrupt_controller = TuiInterruptController()
-        self._batch_item_controller = TuiBatchItemController(self._batch)
+        self._batch_item_controller = TuiBatchItemController(
+            self._batch,
+            available_styles=lambda: available_styles(self.adapter.voiceger_root),
+        )
         self._batch_action_bindings = tui_batch.BatchActionBindings(
             operations=self._operations,
             navigation=self._navigation,
@@ -753,6 +757,7 @@ class TuiApp:
                 self._operations.can_cancel_batch,
             ),
             output_path_edit=self._output_path_controller.state,
+            item_speed_edit=self._batch_item_controller.speed_edit,
             batch_item_number_jump_active=(
                 self._batch_item_controller.number_jump_active
             ),
@@ -834,6 +839,8 @@ class TuiApp:
                 background_status=background_status,
                 number_jump_active=self._batch.number_jump_active,
                 number_jump_value=self._batch.number_jump_value,
+                settings=self.settings,
+                output_path_edit=self._output_path_controller.state,
             )
         else:
             self._dispatch_navigation_actions(

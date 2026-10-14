@@ -279,8 +279,8 @@ class UtteranceSession:
 
         self.prepare_from_caption()
 
-    def replace_settings(self, settings: Settings) -> None:
-        """Resolve new settings before invalidating the current take batch."""
+    def replace_settings(self, settings: Settings, *, preserve_takes: bool = False) -> None:
+        """Apply settings; optionally retain historical candidates for item voice edits."""
 
         _validate_settings(settings)
         style = get_style(self._adapter.voiceger_root, settings.style_id)
@@ -291,10 +291,21 @@ class UtteranceSession:
             replacement_query.speedScale = settings.speed
 
         synthesis_fields = ("style_id", "speed", "top_k", "top_p", "temperature")
-        if any(
+        synthesis_changed = any(
             getattr(settings, name) != getattr(self._settings, name)
             for name in synthesis_fields
-        ):
+        )
+        if synthesis_changed and preserve_takes and self._active_batch is not None:
+            # Reconfigure future regenerations, without rewriting old candidates.
+            if replacement_query is None:
+                raise RuntimeError("pronunciation/query is not prepared")
+            synthesizer = self._take_synthesizer(
+                replacement_query, style, settings
+            )
+            self._active_batch.set_generation(
+                synthesizer, style_name=style.name, query=replacement_query
+            )
+        elif synthesis_changed:
             self.discard_takes()
         self._settings = settings
         self._style = style
@@ -329,6 +340,48 @@ class UtteranceSession:
         self._preview_cache[cache_key] = dict(result)
         return dict(result)
 
+    def _take_synthesizer(
+        self,
+        query: AudioQuery,
+        style: VoicegerStyle,
+        settings: Settings,
+        *,
+        top_k: int | None = None,
+        top_p: float | None = None,
+        temperature: float | None = None,
+    ):
+        """Capture a fresh immutable synthesis recipe for future Take operations."""
+        query_snapshot = deepcopy(query)
+        style_snapshot = style
+        adapter = self._adapter
+        resolved_top_k = settings.top_k if top_k is None else top_k
+        resolved_top_p = settings.top_p if top_p is None else top_p
+        resolved_temperature = (
+            settings.temperature if temperature is None else temperature
+        )
+
+        def synthesize_one():
+            synthesis_kwargs = {
+                "adapter": adapter,
+                "query": deepcopy(query_snapshot),
+                "style": style_snapshot,
+                "top_k": resolved_top_k,
+                "top_p": resolved_top_p,
+                "temperature": resolved_temperature,
+            }
+            if (
+                query_snapshot.voicegerSegments
+                and {
+                    segment.language
+                    for segment in query_snapshot.voicegerSegments
+                }
+                == {"ja", "en"}
+            ):
+                synthesis_kwargs["capture_mixed_lab_provenance"] = True
+            return synthesize_audio_query(**synthesis_kwargs)
+
+        return synthesize_one
+
     def generate_takes(
         self,
         *,
@@ -356,25 +409,11 @@ class UtteranceSession:
             settings_snapshot.temperature if temperature is None else temperature
         )
 
-        def synthesize_one():
-            synthesis_kwargs = {
-                "adapter": adapter,
-                "query": deepcopy(query_snapshot),
-                "style": style_snapshot,
-                "top_k": resolved_top_k,
-                "top_p": resolved_top_p,
-                "temperature": resolved_temperature,
-            }
-            if (
-                query_snapshot.voicegerSegments
-                and {
-                    segment.language
-                    for segment in query_snapshot.voicegerSegments
-                }
-                == {"ja", "en"}
-            ):
-                synthesis_kwargs["capture_mixed_lab_provenance"] = True
-            return synthesize_audio_query(**synthesis_kwargs)
+        synthesize_one = self._take_synthesizer(
+            query_snapshot, style_snapshot, settings_snapshot,
+            top_k=resolved_top_k, top_p=resolved_top_p,
+            temperature=resolved_temperature,
+        )
 
         batch = TakeBatch(
             take_count=resolved_take_count,

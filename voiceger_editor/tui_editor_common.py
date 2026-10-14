@@ -69,6 +69,13 @@ class ApplySettingsIntent:
 
 
 @dataclass(frozen=True)
+class ApplyItemVoiceIntent:
+    item_id: str
+    style_id: int
+    speed: float
+
+
+@dataclass(frozen=True)
 class CloseEditorIntent:
     origin: tuple[str, int | None]
     status: Status
@@ -135,6 +142,7 @@ EditorIntent = Union[
     ApplyCaptionIntent,
     BuildPronunciationIntent,
     ApplySettingsIntent,
+    ApplyItemVoiceIntent,
     CloseEditorIntent,
     UpdateStatusIntent,
     AdjustmentPressedIntent,

@@ -180,6 +180,19 @@ class TakeBatch:
 
         return generate()
 
+    def set_generation(
+        self,
+        synthesize_one: Callable[[], Mapping[str, Any]],
+        *,
+        style_name: str,
+        query: AudioQuery,
+    ) -> None:
+        """Set the conditions for future generations, preserving existing Takes."""
+        self._ensure_open()
+        self.synthesize_one = synthesize_one
+        self._style_name = style_name
+        self._query = deepcopy(query)
+
     def regenerate(self, take_number: int) -> TakeCandidate:
         """Replace one existing candidate after its new WAV is ready."""
 
