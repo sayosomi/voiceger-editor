@@ -27,7 +27,6 @@ from .tui_navigation import (
     OpenDictionary,
     OpenHelp,
     OpenSettingsEditor,
-    OpenItemVoiceEditor,
     PlayCandidate,
     Quit,
     RegenerateAll,
