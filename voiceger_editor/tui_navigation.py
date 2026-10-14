@@ -69,11 +69,6 @@ class OpenSettingsEditor:
 
 
 @dataclass(frozen=True)
-class OpenItemVoiceEditor:
-    pass
-
-
-@dataclass(frozen=True)
 class OpenCaptionEditor:
     pass
 
@@ -147,7 +142,6 @@ NavigationAction = Union[
     ClearAdjustmentFeedback,
     UpdateNavigationStatus,
     OpenSettingsEditor,
-    OpenItemVoiceEditor,
     OpenCaptionEditor,
     EditPronunciationItem,
     AddSectionEditor,

@@ -5,7 +5,6 @@ from __future__ import annotations
 from .tui_rendering_dictionary import build_document as build_dictionary_document
 from .tui_rendering_editor_common import EditorDocumentBuilder
 from .tui_rendering_editor_general import build_document as build_general_document
-from .tui_rendering_item_voice import build_document as build_item_voice_document
 from .tui_rendering_settings import build_document as build_settings_document
 from .tui_rendering_shared import (
     TuiRenderState,
@@ -56,9 +55,8 @@ def editor_document(
         )
     )
 
-    if not build_item_voice_document(builder):
-        if not build_settings_document(builder):
-            if not build_dictionary_document(builder):
-                build_general_document(builder)
+    if not build_settings_document(builder):
+        if not build_dictionary_document(builder):
+            build_general_document(builder)
 
     return builder.lines, builder.cursor_line, builder.cursor_column

@@ -215,15 +215,6 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("reset", "Reset", "r", "action", "activate"),
         _escape_action("back", "Back"),
     ),
-    "item_voice": (
-        MenuItem("style_id", "Style", None, "adjustable",
-                 no_shortcut_reason="Left/Right selects an available Style."),
-        MenuItem("speed", "Speed", None, "adjustable",
-                 no_shortcut_reason="Enter edits Speed; Left/Right adjusts it."),
-        MenuItem("apply", "Apply", "a", "action", "activate"),
-        MenuItem("reset", "Reset to Settings", "r", "action", "activate"),
-        _escape_action("back", "Back"),
-    ),
     "audio_output_settings": (
         MenuItem(
             "output_format",
