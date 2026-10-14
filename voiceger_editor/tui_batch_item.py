@@ -800,6 +800,11 @@ class TuiBatchItemController:
         session = bindings.get_session()
         if session is None or selected not in {"item_style", "item_speed"}:
             return
+        conflict = self._voice_edit_conflict(bindings)
+        if conflict is not None:
+            actions.set_status(conflict)
+            actions.dispatch_editor_intents(adjustment_feedback_intents(changed=False))
+            return
         changed = False
         if selected == "item_style":
             styles = tuple(self._available_styles())

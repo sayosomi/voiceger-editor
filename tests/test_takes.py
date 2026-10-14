@@ -188,6 +188,59 @@ class TakeBatchTests(unittest.TestCase):
             self.assertTrue(replacement.wav_path.is_file())
             batch.close()
 
+    def test_changed_generation_recipe_keeps_old_take_metadata_and_updates_replacements(self):
+        calls = []
+
+        def synthesize_old():
+            calls.append("old")
+            return {"audio": object(), "sampling_rate": 32000}
+
+        def synthesize_new():
+            calls.append("new")
+            return {"audio": object(), "sampling_rate": 32000}
+
+        with tempfile.TemporaryDirectory() as directory:
+            batch = self.make_batch(
+                directory, take_count=2, synthesize_one=synthesize_old
+            )
+            batch._query = SimpleNamespace(speedScale=1.0)
+            with patch.dict(
+                "sys.modules", {"soundfile": self.fake_soundfile_module()}
+            ):
+                first, old_second = list(batch.generate_all())
+                original_path = first.wav_path
+                batch.set_generation(
+                    synthesize_new,
+                    style_name="Happy",
+                    query=SimpleNamespace(speedScale=1.10),
+                )
+                self.assertEqual(batch.candidates, (first, old_second))
+                self.assertEqual(first.style_name, "Neutral")
+                self.assertEqual(first.query.speedScale, 1.0)
+                updated = batch.regenerate(2)
+                self.assertEqual(batch.candidates, (first, updated))
+                self.assertEqual(updated.style_name, "Happy")
+                self.assertEqual(updated.query.speedScale, 1.10)
+                self.assertEqual(first.wav_path, original_path)
+                self.assertTrue(first.wav_path.is_file())
+                self.assertFalse(old_second.wav_path.exists())
+                with patch(
+                    "voiceger_editor.takes.save_output_audio",
+                    return_value=SavedOutput(Path("/tmp/saved.wav")),
+                ) as save:
+                    batch.accept(
+                        1, caption="example", output_dir=Path(directory),
+                        save_text=False,
+                    )
+                self.assertEqual(save.call_args.kwargs["style_name"], "Neutral")
+                later = list(batch.regenerate_all())
+                self.assertEqual([x.style_name for x in later], ["Happy", "Happy"])
+                self.assertEqual(
+                    [x.query.speedScale for x in later], [1.10, 1.10]
+                )
+                self.assertEqual(calls, ["old", "old", "new", "new", "new"])
+            batch.close()
+
     def test_full_regeneration_requires_initial_generation(self):
         calls = []
 

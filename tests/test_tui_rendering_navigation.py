@@ -73,7 +73,7 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
                     return_value=(SimpleNamespace(id=3, name="Neutral"),),
                 ):
                     self.renderer.render_navigation(
-                        screen, render_state(settings=settings),
+                        screen, render_state(session=FakeSession(), settings=settings),
                         screen.rows, screen.columns, title="BATCH ITEM",
                     )
                 summary = next(
@@ -92,7 +92,7 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
             return_value=(SimpleNamespace(id=3, name="Neutral"),),
         ):
             self.renderer.render_navigation(
-                screen, render_state(settings=settings),
+                screen, render_state(session=FakeSession(), settings=settings),
                 screen.rows, screen.columns, title="BATCH ITEM",
             )
         summary = next(
