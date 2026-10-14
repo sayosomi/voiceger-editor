@@ -226,7 +226,7 @@ class TakeBatchTests(unittest.TestCase):
                 self.assertFalse(old_second.wav_path.exists())
                 with patch(
                     "voiceger_editor.takes.save_output_audio",
-                    return_value=SavedOutput(Path("/tmp/saved.wav")),
+                    return_value=SavedOutput(Path("/tmp/saved.wav"), text_path=None),
                 ) as save:
                     batch.accept(
                         1, caption="example", output_dir=Path(directory),
