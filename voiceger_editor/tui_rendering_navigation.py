@@ -11,6 +11,7 @@ from .tui_display import (
     _wrap_text,
 )
 from .tui_editors import PronunciationRow
+from .styles import available_styles
 from .tui_rendering_shared import (
     NavigationLine,
     TuiRenderState,
@@ -134,6 +135,31 @@ def navigation_document(
             )
 
     session = state.session
+    if session is not None:
+        style_name = next(
+            (style.name for style in available_styles(state.voiceger_root)
+             if style.id == session.settings.style_id),
+            "unavailable",
+        )
+        style_display = _adjustable_value(
+            style_name, adjustment_press_direction(state, "navigation", "item_style")
+        )
+        action(
+            ("item_style", None),
+            main_shortcut("item_style").display_with_label(f"Style     {style_display}"),
+        )
+        speed = f"{session.settings.speed:.2f}"
+        if state.item_speed_edit is not None:
+            edit = state.item_speed_edit
+            speed = edit.value[:edit.cursor] + "_" + edit.value[edit.cursor:]
+        speed_display = _adjustable_value(
+            f"{speed}x", adjustment_press_direction(state, "navigation", "item_speed")
+        )
+        action(
+            ("item_speed", None),
+            main_shortcut("item_speed").display_with_label(f"Speed     {speed_display}"),
+        )
+        plain()
     caption_action(("caption", None), session.caption if session else "")
     if session is not None:
         action(
@@ -209,17 +235,21 @@ def navigation_document(
                 candidate.number,
                 len(candidates),
             )
-            accepted_marker = (
-                " ✓" if candidate.number == state.accepted_take_number else ""
+            accepted_marker = " ✓" if candidate.number == state.accepted_take_number else "  "
+            prefix = f"{number_token}{accepted_marker} Take {candidate.number}  "
+            generated_speed = (
+                candidate.query.speedScale if candidate.query is not None else 1.0
             )
-            label = (
-                f"{number_token}  Take {candidate.number}  {duration:.2f}s"
-                f"{accepted_marker}"
+            details = (
+                f"{candidate.style_name} | {generated_speed:.2f}x | {duration:.2f}s"
             )
-            action(
-                ("candidate", candidate.number),
-                label,
-            )
+            key = ("candidate", candidate.number)
+            marker = "▶ " if key == state.focus_key else "  "
+            available = max(1, row_limit - _display_width(marker + prefix))
+            pieces = _wrap_text(details, available) or [details]
+            lines.append(NavigationLine(marker + prefix + pieces[0], key, key))
+            for piece in pieces[1:]:
+                lines.append(NavigationLine("    " + piece, None, key))
         if session.candidates:
             plain()
         action(

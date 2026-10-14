@@ -426,10 +426,7 @@ class TuiSettingsEditorOwner(EditorOwnerBase):
             if index is None:
                 editor.error = error_status(f"Style ID {current_id} is not available.")
                 return clear_feedback
-            target = index + direction
-            if not 0 <= target < len(styles):
-                return clear_feedback
-            updated_id = styles[target].id
+            updated_id = styles[(index + direction) % len(styles)].id
             if updated_id == current_id:
                 return clear_feedback
             draft["style_id"] = str(updated_id)

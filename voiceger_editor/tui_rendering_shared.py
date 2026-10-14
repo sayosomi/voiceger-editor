@@ -134,6 +134,7 @@ class TuiRenderState:
     active_generation_item_id: str | None = None
     background_status: str = ""
     output_path_edit: OutputPathEditRenderState | None = None
+    item_speed_edit: Any | None = None
     batch_item_number_jump_active: bool = False
     batch_item_number_jump_value: str = ""
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import curses
 from dataclasses import dataclass, replace
+from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, Sequence
 
 from .settings import Settings
@@ -35,6 +36,7 @@ from .tui_navigation import (
     UpdateNavigationStatus,
 )
 from .tui_numbered_list import NumberedListJump
+from .tui_text_editing import apply_text_edit_key
 from .tui_shortcuts import resolve_main_shortcut
 from .tui_status import (
     EMPTY_STATUS,
@@ -59,11 +61,22 @@ class BatchItemBindings:
     get_status: Callable[[], Status]
 
 
+@dataclass
+class ItemSpeedEdit:
+    value: str
+    cursor: int
+
+
 class TuiBatchItemController:
     """Own Batch Item key interpretation and action-routing policy."""
 
-    def __init__(self, batch: TuiBatchController) -> None:
+    def __init__(
+        self, batch: TuiBatchController, *,
+        available_styles: Callable[[], Sequence[Any]] | None = None,
+    ) -> None:
         self.batch = batch
+        self._available_styles = available_styles or (lambda: ())
+        self.speed_edit: ItemSpeedEdit | None = None
         self._pending_prepare_focus: tuple[FocusKey, FocusKey] | None = None
         self._number_jump = NumberedListJump()
 
@@ -79,6 +92,7 @@ class TuiBatchItemController:
         """Choose the most useful initial focus for the currently open item."""
 
         self._pending_prepare_focus = None
+        self.speed_edit = None
         self._number_jump.reset()
         session = bindings.get_session()
         actions = bindings.actions
@@ -137,6 +151,7 @@ class TuiBatchItemController:
         """Preserve the current work focus when switching Batch Items."""
 
         self._pending_prepare_focus = None
+        self.speed_edit = None
         session = bindings.get_session()
         actions = bindings.actions
         if session is None:
@@ -192,6 +207,9 @@ class TuiBatchItemController:
         self.initialize_open_item_focus(bindings)
 
     def handle_key(self, key: Any, bindings: BatchItemBindings) -> None:
+        if self.speed_edit is not None:
+            self._handle_speed_edit(key, bindings)
+            return
         actions = bindings.actions
         session = bindings.get_session()
         number_jump = self._number_jump.handle_key(
@@ -221,13 +239,20 @@ class TuiBatchItemController:
         context = self.navigation_context(bindings)
         main_shortcut = resolve_main_shortcut(key)
         if main_shortcut is not None:
-            self.dispatch_navigation_actions(
-                actions.navigation.activate_item(
-                    context,
-                    (main_shortcut.navigation_key, None),
-                ),
-                bindings,
-            )
+            if main_shortcut.navigation_key in {"item_style", "item_speed"}:
+                self.dispatch_navigation_actions(
+                    actions.navigation.set_focus_key(
+                        context, (main_shortcut.navigation_key, None), moved=True
+                    ),
+                    bindings,
+                )
+            else:
+                self.dispatch_navigation_actions(
+                    actions.navigation.activate_item(
+                        context, (main_shortcut.navigation_key, None)
+                    ),
+                    bindings,
+                )
             return
         if key == "\t":
             self.dispatch_navigation_actions(
@@ -244,7 +269,9 @@ class TuiBatchItemController:
             return
         if key in (curses.KEY_LEFT, curses.KEY_RIGHT):
             direction = -1 if key == curses.KEY_LEFT else 1
-            if actions.navigation.focus_key[0] == "generate":
+            if actions.navigation.focus_key[0] in {"item_style", "item_speed"}:
+                self.adjust_item_voice(direction, bindings)
+            elif actions.navigation.focus_key[0] == "generate":
                 self.adjust_take_count(direction, bindings)
             elif (
                 actions.navigation.focus_key[0] == "pronunciation"
@@ -295,10 +322,21 @@ class TuiBatchItemController:
                     )
                 )
         elif key in _ENTER_KEYS:
-            self.dispatch_navigation_actions(
-                actions.navigation.activate_focused_item(context),
-                bindings,
-            )
+            if actions.navigation.focus_key == ("item_speed", None):
+                conflict = self._voice_edit_conflict(bindings)
+                if conflict is not None:
+                    actions.set_status(conflict)
+                elif session is not None:
+                    value = f"{session.settings.speed:.2f}"
+                    self.speed_edit = ItemSpeedEdit(value, len(value))
+                    actions.set_status(EMPTY_STATUS)
+            elif actions.navigation.focus_key == ("item_style", None):
+                self.adjust_item_voice(1, bindings)
+            else:
+                self.dispatch_navigation_actions(
+                    actions.navigation.activate_focused_item(context),
+                    bindings,
+                )
 
     def navigation_context(self, bindings: BatchItemBindings) -> NavigationContext:
         session = bindings.get_session()
@@ -327,19 +365,6 @@ class TuiBatchItemController:
                 )
             elif isinstance(action, UpdateNavigationStatus):
                 actions.set_status(action.status)
-            elif isinstance(action, OpenItemVoiceEditor):
-                conflict = self._voice_edit_conflict(bindings)
-                if conflict is not None:
-                    actions.set_status(conflict)
-                    continue
-                if session is not None and self.batch.open_item_id is not None:
-                    actions.dispatch_editor_intents(
-                        actions.editor_controller.open_item_voice(
-                            item_id=self.batch.open_item_id,
-                            settings=session.settings,
-                            origin=actions.navigation.focus_key,
-                        )
-                    )
             elif isinstance(action, OpenSettingsEditor):
                 actions.open_settings_editor(
                     action.selected_field,
@@ -766,6 +791,99 @@ class TuiBatchItemController:
                 )
             )
 
+    def adjust_item_voice(
+        self, direction: int, bindings: BatchItemBindings
+    ) -> None:
+        """Adjust the focused item Style or Speed without discarding Takes."""
+        actions = bindings.actions
+        selected = actions.navigation.focus_key[0]
+        session = bindings.get_session()
+        if session is None or selected not in {"item_style", "item_speed"}:
+            return
+        changed = False
+        if selected == "item_style":
+            styles = tuple(self._available_styles())
+            index = next(
+                (i for i, style in enumerate(styles)
+                 if style.id == session.settings.style_id),
+                None,
+            )
+            if index is None:
+                actions.set_status(error_status("Selected Style is unavailable."))
+            elif len(styles) > 1:
+                target = styles[(index + direction) % len(styles)].id
+                changed = self._apply_local_voice(bindings, style_id=target)
+        else:
+            value = Decimal(str(session.settings.speed)).quantize(Decimal("0.01"))
+            result = step_bounded(
+                value, direction=direction,
+                step=Decimal("0.01"), minimum=Decimal("0.01"),
+            )
+            if result.changed:
+                changed = self._apply_local_voice(
+                    bindings, speed=float(result.value)
+                )
+        actions.dispatch_editor_intents(
+            adjustment_feedback_intents(
+                changed=changed, area="navigation", control=selected,
+                direction=direction,
+            )
+        )
+
+    def _apply_local_voice(self, bindings: BatchItemBindings, **changes: Any) -> bool:
+        session = bindings.get_session()
+        item_id = self.batch.open_item_id
+        if session is None or item_id is None:
+            return False
+        intent = ApplyItemVoiceIntent(
+            item_id=item_id,
+            style_id=changes.get("style_id", session.settings.style_id),
+            speed=changes.get("speed", session.settings.speed),
+        )
+        error = self.apply_item_voice(intent, bindings)
+        if error is not None:
+            bindings.actions.set_status(error_status(f"Item voice was not changed: {error}"))
+            return False
+        bindings.actions.set_status(EMPTY_STATUS)
+        return True
+
+    def _handle_speed_edit(self, key: Any, bindings: BatchItemBindings) -> None:
+        edit = self.speed_edit
+        if edit is None:
+            return
+        if key == _ESCAPE:
+            self.speed_edit = None
+            bindings.actions.set_status(EMPTY_STATUS)
+            return
+        if key in _ENTER_KEYS:
+            try:
+                value = Decimal(edit.value)
+                if not value.is_finite() or value <= 0:
+                    raise InvalidOperation
+                speed = float(value)
+            except (InvalidOperation, ValueError, OverflowError):
+                bindings.actions.set_status(
+                    error_status("Speed must be a positive finite number.")
+                )
+                return
+            session = bindings.get_session()
+            if session is None:
+                self.speed_edit = None
+                return
+            if speed != session.settings.speed and not self._apply_local_voice(
+                bindings, speed=speed
+            ):
+                return
+            self.speed_edit = None
+            bindings.actions.set_status(EMPTY_STATUS)
+            return
+        change = apply_text_edit_key(
+            edit.value, edit.cursor, key, input_width=24
+        )
+        if change.handled:
+            edit.value = change.value
+            edit.cursor = change.cursor
+
     def _voice_edit_conflict(self, bindings: BatchItemBindings) -> Status | None:
         conflict = self._item_mutation_conflict(
             bindings, action="changing voice settings"
@@ -803,14 +921,9 @@ class TuiBatchItemController:
             updated = replace(
                 session.settings, style_id=intent.style_id, speed=intent.speed
             )
-            # Stop a player before replace_settings discards its temporary WAV.
-            bindings.actions.operations.stop_playback()
-            session.replace_settings(updated)
-        except (ValueError, OSError) as exc:
+            session.replace_settings(updated, preserve_takes=True)
+        except (ValueError, OSError, RuntimeError) as exc:
             return str(exc)
-        bindings.actions.operations.clear_current_take()
-        self.batch.clear_open_item_acceptance()
-        self.batch.clear_open_item_generation_outcome()
         return None
 
     def _item_mutation_conflict(
@@ -838,6 +951,7 @@ class TuiBatchItemController:
             ):
                 return True
             self._pending_prepare_focus = None
+            self.speed_edit = None
             actions.operations.stop_playback()
             actions.operations.clear_current_take()
             actions.editor_controller.clear_groupings()

@@ -135,7 +135,10 @@ class TuiApp:
         self._renderer = TuiRenderer()
         self._input = TuiInputReader()
         self._interrupt_controller = TuiInterruptController()
-        self._batch_item_controller = TuiBatchItemController(self._batch)
+        self._batch_item_controller = TuiBatchItemController(
+            self._batch,
+            available_styles=lambda: available_styles(self.adapter.voiceger_root),
+        )
         self._batch_action_bindings = tui_batch.BatchActionBindings(
             operations=self._operations,
             navigation=self._navigation,
@@ -762,6 +765,7 @@ class TuiApp:
                 self._operations.can_cancel_batch,
             ),
             output_path_edit=self._output_path_controller.state,
+            item_speed_edit=self._batch_item_controller.speed_edit,
             batch_item_number_jump_active=(
                 self._batch_item_controller.number_jump_active
             ),

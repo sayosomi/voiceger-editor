@@ -533,29 +533,6 @@ class TuiRenderer:
             width,
             header_attr,
         )
-        settings = getattr(state.session, "settings", state.settings)
-        style_name = next(
-            (
-                style.name
-                for style in available_styles(state.voiceger_root)
-                if style.id == settings.style_id
-            ),
-            "unavailable",
-        )
-        marker = "▶ " if state.focus_key == ("settings_summary", None) else "  "
-        prefix = main_shortcut("settings_summary").display_with_label(
-            f"{style_name} | {settings.speed:.2f}x"
-        )
-        summary = marker + _truncate_display(
-            prefix, max(0, width - 1 - _display_width(marker))
-        )
-        summary_attr = (
-            self._focus_attribute()
-            if state.focus_key == ("settings_summary", None)
-            else 0
-        )
-        safe_add(screen, 1, 0, summary, width, summary_attr)
-
         lines = self.navigation_document(state, width)
         footer = self._status_footer_layout(
             state.status,
@@ -563,7 +540,7 @@ class TuiRenderer:
             width,
             background_status=state.background_status,
         )
-        viewport_height = max(0, footer.start_row - 3)
+        viewport_height = max(0, footer.start_row - 2)
         focused_index = next(
             (
                 index
@@ -576,7 +553,7 @@ class TuiRenderer:
         if start + viewport_height > len(lines):
             start = max(0, len(lines) - viewport_height)
         for offset, line in enumerate(lines[start : start + viewport_height]):
-            row = 3 + offset
+            row = 2 + offset
             focused = line.focus_owner == state.focus_key
             attr = self._focus_attribute() if focused else 0
             safe_add(screen, row, 0, line.text, width, attr)

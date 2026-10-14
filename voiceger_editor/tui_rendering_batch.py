@@ -30,11 +30,14 @@ def batch_list_document(
         lines.append(NavigationLine(marker + label, key, key))
 
     global_settings = settings if settings is not None else Settings()
+    enabled_formats = [global_settings.output_format.upper()]
+    if global_settings.save_lab:
+        enabled_formats.append("LAB")
+    if global_settings.save_text:
+        enabled_formats.append("TXT")
     summary = (
-        f"[S] Takes {batch.default_take_count}"
-        f" | TXT {'ON' if global_settings.save_text else 'OFF'}"
-        f" | LAB {'ON' if global_settings.save_lab else 'OFF'}"
-        f" | {global_settings.output_format.upper()}"
+        f"[S] Settings Takes {batch.default_take_count}"
+        f" | {' '.join(enabled_formats)}"
     )
     summary_key = ("settings", None)
     summary_marker = "▶ " if focus_key == summary_key else "  "

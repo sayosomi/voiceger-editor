@@ -178,7 +178,8 @@ class TuiNavigation:
         if context.has_item_navigator:
             items.append(("batch_item", None))
         items.extend([
-            ("settings_summary", None),
+            ("item_style", None),
+            ("item_speed", None),
             ("caption", None),
         ])
         if context.has_session:
@@ -313,8 +314,8 @@ class TuiNavigation:
         if key not in self.navigation_items(context):
             return ()
         name, number = key
-        if name == "settings_summary":
-            return (OpenItemVoiceEditor(),)
+        if name in {"item_style", "item_speed"}:
+            return ()
         if name == "caption":
             return (OpenCaptionEditor(),)
         if name == "pronunciation" and number is not None:
