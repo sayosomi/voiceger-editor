@@ -420,6 +420,28 @@ class TakeBatchTests(unittest.TestCase):
             )
             batch.close()
 
+    def test_shrink_commits_when_worker_closes_after_last_yield(self):
+        with tempfile.TemporaryDirectory() as directory:
+            batch = self.make_batch(directory, take_count=4)
+            with patch.dict("sys.modules", {"soundfile": self.fake_soundfile_module()}):
+                original = list(batch.generate_all())
+                worker_values = batch.regenerate_all(
+                    2, protected_numbers=frozenset({1})
+                )
+                replacement = next(worker_values)
+                self.assertEqual(replacement.number, 2)
+                worker_values.close()
+
+            self.assertEqual(batch.take_count, 2)
+            self.assertEqual(
+                [candidate.number for candidate in batch.candidates], [1, 2]
+            )
+            self.assertIs(batch.candidates[0], original[0])
+            self.assertTrue(original[0].wav_path.is_file())
+            self.assertFalse(original[2].wav_path.exists())
+            self.assertFalse(original[3].wav_path.exists())
+            batch.close()
+
     def test_failed_shrink_keeps_excess_existing_candidates(self):
         calls = []
 

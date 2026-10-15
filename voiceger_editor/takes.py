@@ -256,12 +256,16 @@ class TakeBatch:
         def regenerate() -> Iterator[TakeCandidate]:
             completed = False
             try:
-                for number in numbers:
+                for index, number in enumerate(numbers):
                     previous = self._candidates.get(number)
                     replacement = self._generate_candidate(number)
                     self._candidates[number] = replacement
                     if previous is not None:
                         self._remove_candidate_file(previous)
+                    # The worker consumes the planned number of yields then closes
+                    # the iterator, so a successful final yield must commit a shrink.
+                    if index == len(numbers) - 1:
+                        completed = True
                     yield replacement
                 completed = True
             finally:
