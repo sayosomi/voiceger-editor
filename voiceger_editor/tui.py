@@ -712,8 +712,10 @@ class TuiApp:
                         effect.item_id,
                         effect.number,
                     )
-                elif self._batch.open_item_accepted_take_number == effect.number:
-                    self._batch.clear_open_item_acceptance()
+                elif self._batch.open_item_id is not None:
+                    self._batch.invalidate_acceptance_for_replacement(
+                        self._batch.open_item_id, effect.number,
+                    )
 
     def _render_state(
         self,
@@ -745,7 +747,7 @@ class TuiApp:
                 if self._dictionary_controller.active
                 else self._editor_controller.editor
             ),
-            accepted_take_number=self._batch.open_item_accepted_take_number,
+            accepted_take_numbers=self._batch.open_item_accepted_take_numbers,
             batch_item_position=(
                 self._batch.item_position if self._batch.in_item else None
             ),
