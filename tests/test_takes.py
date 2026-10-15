@@ -268,6 +268,47 @@ class TakeBatchTests(unittest.TestCase):
             )
             batch.close()
 
+    def test_multiple_accepted_takes_save_distinct_audio_and_txt_without_overwrite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output_dir = Path(directory) / "output"
+            batch = self.make_batch(directory, take_count=4)
+            with patch.dict(
+                "sys.modules", {"soundfile": self.fake_soundfile_module()}
+            ):
+                candidates = list(batch.generate_all())
+            original_bytes = {
+                entry.number: entry.wav_path.read_bytes() for entry in candidates
+            }
+
+            saved = [
+                batch.accept(
+                    number,
+                    caption="same caption",
+                    output_dir=output_dir,
+                    save_text=True,
+                    filename_template="{caption}",
+                )
+                for number in (1, 3, 4)
+            ]
+
+            self.assertEqual(
+                [output.wav_path.name for output in saved],
+                ["same caption.wav", "same caption-2.wav", "same caption-3.wav"],
+            )
+            self.assertEqual(
+                [output.text_path.name for output in saved],
+                ["same caption.txt", "same caption-2.txt", "same caption-3.txt"],
+            )
+            for number, output in zip((1, 3, 4), saved):
+                self.assertEqual(output.wav_path.read_bytes(), original_bytes[number])
+                self.assertEqual(output.text_path.read_text(encoding="utf-8"), "same caption")
+            self.assertEqual(
+                [entry.wav_path.read_bytes() for entry in batch.candidates],
+                [original_bytes[number] for number in range(1, 5)],
+            )
+            batch.close()
+            self.assertTrue(all(output.wav_path.is_file() for output in saved))
+
     def test_accepted_slots_survive_single_bulk_growth_and_failed_shrink(self):
         calls = []
 

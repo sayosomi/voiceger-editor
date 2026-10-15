@@ -375,13 +375,30 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
         self.assertIn("AA0", wrapped)
         self.assertIn("OW2", wrapped)
 
+    def test_multiple_accepted_candidates_each_show_check_marker(self):
+        state = render_state(
+            session=FakeSession(
+                candidates=(candidate(1), candidate(2), candidate(3), candidate(4))
+            ),
+            accepted_take_numbers=frozenset({1, 3, 4}),
+        )
+        lines = self.renderer.navigation_document(state, 100)
+        labels = {line.key: line.text for line in lines if line.key is not None}
+        for number in (1, 3, 4):
+            self.assertIn("✓ Take", labels[("candidate", number)])
+        self.assertNotIn("✓ Take", labels[("candidate", 2)])
+        self.assertIn(
+            "Regenerate unaccepted",
+            labels[("generate", None)],
+        )
+
     def test_main_action_and_candidate_rows_show_visible_shortcuts(self):
         state = render_state(
             session=FakeSession(candidates=(candidate(1), candidate(2))),
             settings=Settings(take_count=6),
             focus_key=("generate", None),
             pressed_adjustment=("navigation", "generate", -1),
-            accepted_take_number=2,
+            accepted_take_numbers=frozenset({2}),
         )
         lines = self.renderer.navigation_document(state, 100)
         labels = {line.key: line.text for line in lines if line.key is not None}

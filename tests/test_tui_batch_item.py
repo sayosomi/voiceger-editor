@@ -708,6 +708,50 @@ class TuiBatchItemIntegrationTests(TuiAppTestCase):
         self.assertIs(app.session, session)
         self.assertEqual(app._navigation.focus_key, ("candidate", 1))
 
+    def test_multiple_take_acceptance_duplicate_noop_and_failed_new_save(self):
+        app = self.make_app(
+            query=mixed_query(),
+            candidates=(candidate(1), candidate(2), candidate(3), candidate(4)),
+        )
+        session = app.session
+        item = app._batch.batch.items[0]
+        app._operations.play_take = Mock(return_value=())
+
+        for number in (1, 3, 4):
+            focus_candidate(app, number)
+            app._handle_key("\n")
+            self.assertFalse(item.is_take_accepted(number))
+            app._operations.start_pending_worker()
+            app._operations.join_worker()
+            app._consume_events()
+            self.assertTrue(item.is_take_accepted(number))
+
+        self.assertEqual(session.accept_calls, [1, 3, 4])
+        self.assertEqual(item.accepted_take_numbers, frozenset({1, 3, 4}))
+        self.assertFalse(app._operations.busy)
+
+        focus_candidate(app, 3)
+        app._handle_key("\n")
+        self.assertEqual(session.accept_calls, [1, 3, 4])
+        self.assertFalse(app._operations.busy)
+        self.assertIn("already accepted", app._status)
+        self.assertEqual(item.accepted_take_numbers, frozenset({1, 3, 4}))
+
+        session.accept_error = RuntimeError("disk full")
+        focus_candidate(app, 2)
+        app._handle_key("\n")
+        app._operations.start_pending_worker()
+        app._operations.join_worker()
+        app._consume_events()
+        self.assertEqual(session.accept_calls, [1, 3, 4, 2])
+        self.assertEqual(item.accepted_take_numbers, frozenset({1, 3, 4}))
+        self.assertIn("Take 2 was not saved", app._status)
+
+        focus_candidate(app, 3)
+        app._handle_key("r")
+        self.assertIn("cannot be regenerated", app._status)
+        self.assertEqual(item.accepted_take_numbers, frozenset({1, 3, 4}))
+
     def test_primary_batch_item_shortcuts_activate_settled_visible_actions(self):
         caption = self.make_app(query=mixed_query())
         caption._handle_key("e")

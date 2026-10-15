@@ -22,13 +22,13 @@ from .tui_rendering_shared import (
 from .tui_shortcuts import main_shortcut
 
 def _candidate_lines(
-    candidate, *, total: int, accepted_number: int | None,
+    candidate, *, total: int, accepted_numbers: frozenset[int],
     focused: bool, row_limit: int,
 ) -> list[NavigationLine]:
     """Render one Take's recorded synthesis provenance, including narrow layouts."""
     duration = _duration_seconds(candidate.frame_count, candidate.sampling_rate)
     number_token = _numbered_shortcut_token(candidate.number, total)
-    accepted_marker = " ✓" if candidate.number == accepted_number else "  "
+    accepted_marker = " ✓" if candidate.number in accepted_numbers else "  "
     prefix = f"{number_token}{accepted_marker} Take {candidate.number}  "
     generated_speed = getattr(
         getattr(candidate, "query", None), "speedScale", 1.0
@@ -226,7 +226,7 @@ def navigation_document(
             )
             generate_label = (
                 f"Regenerate unaccepted ({adjustable_count} total)"
-                if has_batch and state.accepted_take_number is not None
+                if has_batch and state.accepted_take_numbers
                 else f"Regenerate all {adjustable_count} takes"
                 if has_batch else f"Generate {adjustable_count} takes"
             )
@@ -255,7 +255,7 @@ def navigation_document(
         for candidate in candidates:
             lines.extend(_candidate_lines(
                 candidate, total=len(candidates),
-                accepted_number=state.accepted_take_number,
+                accepted_numbers=state.accepted_take_numbers,
                 focused=state.focus_key == ("candidate", candidate.number),
                 row_limit=row_limit,
             ))

@@ -159,14 +159,14 @@ class TuiBatchController:
         return self.item_index is not None
 
     @property
-    def open_item_accepted_take_number(self) -> int | None:
+    def open_item_accepted_take_numbers(self) -> frozenset[int]:
         item_id = self.open_item_id
         if item_id is None:
-            return None
+            return frozenset()
         try:
-            return self.batch.get_item(item_id).accepted_take_number
+            return self.batch.get_item(item_id).accepted_take_numbers
         except KeyError:
-            return None
+            return frozenset()
 
     @property
     def sessions(self) -> tuple[Any, ...]:
@@ -269,8 +269,7 @@ class TuiBatchController:
             item = self.batch.get_item(item_id)
         except KeyError:
             return
-        if item.accepted_take_number == take_number:
-            self.batch.clear_acceptance(item_id)
+        item.clear_take_acceptance(take_number)
 
     def complete_acceptance(self, item_id: str, take_number: int) -> None:
         self.batch.mark_accepted(item_id, take_number)

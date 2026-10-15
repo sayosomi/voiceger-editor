@@ -120,6 +120,31 @@ class CaptionBatchTests(unittest.TestCase):
         self.assertIsNone(second.accepted_take_number)
         self.assertEqual(batch.accepted_items, ())
 
+    def test_multiple_accepted_takes_are_additive_immutable_and_selectively_cleared(self):
+        item = self.make_item("caption", item_id="item")
+        batch = CaptionBatch(default_take_count=4, items=[item])
+        batch.mark_accepted("item", 1)
+        first_snapshot = item.accepted_take_numbers
+        batch.mark_accepted("item", 3)
+        batch.mark_accepted("item", 4)
+        batch.mark_accepted("item", 3)
+
+        self.assertEqual(first_snapshot, frozenset({1}))
+        self.assertIsInstance(item.accepted_take_numbers, frozenset)
+        self.assertEqual(item.accepted_take_numbers, frozenset({1, 3, 4}))
+        self.assertTrue(item.is_take_accepted(4))
+        self.assertFalse(item.is_take_accepted(2))
+        self.assertTrue(item.is_accepted)
+        self.assertEqual(batch.accepted_items, (item,))
+
+        item.clear_take_acceptance(3)
+        self.assertEqual(item.accepted_take_numbers, frozenset({1, 4}))
+        item.clear_take_acceptance(2)
+        self.assertEqual(item.accepted_take_numbers, frozenset({1, 4}))
+        batch.clear_acceptance("item")
+        self.assertEqual(item.accepted_take_numbers, frozenset())
+        self.assertFalse(item.is_accepted)
+
     def test_generation_outcome_is_explicit_and_independent_of_take_count(self):
         item = self.make_item("caption", item_id="item")
         batch = CaptionBatch(default_take_count=4, items=[item])

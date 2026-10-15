@@ -741,6 +741,11 @@ class TuiBatchItemController:
         item = self.batch.batch.get_item(item_id)
         session = item.session
         actions = bindings.actions
+        if item.is_take_accepted(number):
+            actions.set_status(info_status(
+                f"Take {number} is already accepted; no new file was saved."
+            ))
+            return
         effects = actions.operations.accept_take(
             session,
             number,

@@ -91,7 +91,8 @@ def batch_list_document(
             percent = round(completed * 100 / total)
             review_state = f"[{percent}%] "
         elif item.is_accepted:
-            review_state = "[✓] "
+            accepted_count = len(item.accepted_take_numbers)
+            review_state = f"[✓{accepted_count}] " if accepted_count > 1 else "[✓] "
         elif item.generation_outcome in {"cancelled", "failed"}:
             review_state = "[⚠] "
         elif item.generation_outcome == "completed":

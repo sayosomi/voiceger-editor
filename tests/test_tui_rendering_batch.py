@@ -35,6 +35,32 @@ class BatchRenderingDocumentTests(RenderingTestCase):
         self.assertIn("  [A] Add captions", labels)
         self.assertIn("  [G] Generate selected", labels)
 
+    def test_batch_list_counts_multiple_accepted_takes(self):
+        batch = CaptionBatch(default_take_count=4)
+        batch.add_captions_from_text(
+            "first caption",
+            session_factory=lambda caption: SimpleNamespace(
+                caption=caption, candidates=(),
+            ),
+        )
+        item = batch.items[0]
+        batch.mark_accepted(item.item_id, 1)
+        labels = [
+            row.text for row in batch_list_document(batch, ("caption", 0), 80)
+        ]
+        self.assertIn("▶ [x] [1]  [✓] first caption", labels)
+
+        batch.mark_accepted(item.item_id, 3)
+        labels = [
+            row.text for row in batch_list_document(batch, ("caption", 0), 80)
+        ]
+        self.assertIn("▶ [x] [1]  [✓2] first caption", labels)
+        batch.mark_accepted(item.item_id, 4)
+        labels = [
+            row.text for row in batch_list_document(batch, ("caption", 0), 80)
+        ]
+        self.assertIn("▶ [x] [1]  [✓3] first caption", labels)
+
     def test_batch_list_header_summarizes_selection_requested_takes_and_actions(self):
         batch = CaptionBatch(default_take_count=4)
         batch.add_captions_from_text(

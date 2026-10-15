@@ -52,7 +52,7 @@ class CaptionBatchItem:
         self._item_id = resolved_item_id
         self._included_for_generation = included_for_generation
         self._take_count_override = take_count_override
-        self._accepted_take_number: int | None = None
+        self._accepted_take_numbers: set[int] = set()
         self._generation_outcome: GenerationOutcome | None = None
 
     @property
@@ -98,21 +98,20 @@ class CaptionBatchItem:
 
     @property
     def accepted_take_number(self) -> int | None:
-        return self._accepted_take_number
+        """First accepted Take for compatibility with single-Take callers."""
+        return min(self._accepted_take_numbers, default=None)
 
     @property
     def is_accepted(self) -> bool:
-        return self._accepted_take_number is not None
+        return bool(self._accepted_take_numbers)
 
     @property
     def accepted_take_numbers(self) -> frozenset[int]:
-        """Read-only membership view used by regeneration protection."""
-        if self._accepted_take_number is None:
-            return frozenset()
-        return frozenset({self._accepted_take_number})
+        """Immutable snapshot of all accepted Takes."""
+        return frozenset(self._accepted_take_numbers)
 
     def is_take_accepted(self, take_number: int) -> bool:
-        return take_number in self.accepted_take_numbers
+        return take_number in self._accepted_take_numbers
 
     def mark_accepted(self, take_number: int) -> None:
         _validate_take_count(
@@ -120,10 +119,14 @@ class CaptionBatchItem:
             name="accepted_take_number",
             nullable=False,
         )
-        self._accepted_take_number = take_number
+        self._accepted_take_numbers.add(take_number)
+
+    def clear_take_acceptance(self, take_number: int) -> None:
+        """Invalidate only one candidate's acceptance."""
+        self._accepted_take_numbers.discard(take_number)
 
     def clear_acceptance(self) -> None:
-        self._accepted_take_number = None
+        self._accepted_take_numbers.clear()
 
     @property
     def generation_outcome(self) -> GenerationOutcome | None:
