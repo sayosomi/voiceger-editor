@@ -598,8 +598,12 @@ class TuiBatchItemController:
         coverage = {
             row.source_segment_index
             for row in rows
-            if row.language == "ja" and row.phrase_index is not None
-            or row.language == "en" and row.group_index is not None
+            if (
+                getattr(row, "language", None) == "ja"
+                and getattr(row, "phrase_index", None) is not None
+                or getattr(row, "language", None) == "en"
+                and getattr(row, "group_index", None) is not None
+            )
         }
         grouping_error = actions.editor_controller.grouping_error
         if grouping_error or coverage != set(range(len(sections))) or (
