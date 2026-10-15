@@ -65,7 +65,7 @@ Example:
 キョ'ーワ ア'メデスネ。
 ```
 
-Each phrase has one accent position.
+Legacy phrases have one accent position. A multi-peak phrase can contain several pitch rises and falls **without creating extra accent-phrase boundaries**.
 
 The TUI does not require you to type `/` between phrases.
 
@@ -79,13 +79,21 @@ The VOICEVOX-style API kana form uses `/`:
 
 On a Batch Item, select a Japanese pronunciation row.
 
-Use Left / Right to move the accent by one mora.
+For a **single-accent** phrase, Left / Right moves the accent by one mora. This direct shortcut cannot change a multi-peak phrase: it would discard its other pitch events.
 
-Press Enter for detailed editing.
+Press Enter for **EDIT PRONUNCIATION**. Its text cursor lets you move, insert, or remove individual `[` (rise) and `]` (fall) pitch markers in a multi-peak phrase. The complete mora must remain intact. The selected Japanese row opens the entire Japanese section so that phrase boundaries and punctuation can be preserved.
 
-Changing pronunciation or accent does not take effect until the edit is applied.
+In **BATCH ITEM**, the pronunciation rows show complete mora-separated high spans, while the detailed editor shows compact editable text:
 
-Applying the change clears existing Takes because they were generated with the previous pronunciation.
+| Detailed pronunciation | BATCH ITEM row |
+| --- | --- |
+| `[シ]コク[メ]タン` | `[シ] コ ク [メ] タ ン` |
+| `[シ]コク[メタン]` | `[シ] コ ク [メ タ ン]` |
+| `シ'コクメタン` | `[シ] コ ク メ タ ン` |
+
+The leading `[` and final `]` are display delimiters for an initially high or finally high span, not additional pitch events. Spaces **inside the detailed editor** delimit **real accent phrases**, not individual morae. Do not insert spaces to separate internal peaks; `/` belongs to the API notation and is not typed in the detailed editor. In the Batch Item rows, spaces merely separate visual mora tokens.
+
+Use **Preview** to listen to the proposed contour without changing the query, then **Apply** to update it. **Quick Save** can store the edited pronunciation in the Japanese user dictionary for subsequent preparation. Query edits clear existing Takes; unchanged input does not. If you have manually edited the current pronunciation, an automatic **Build pronunciation** requires explicit confirmation before replacing it.
 
 ## Preview
 

@@ -85,7 +85,9 @@ def navigation_document(
         continuation_prefix = "     | "
 
         if item.language == "ja":
-            tokens = _japanese_mora_tokens(item.moras, item.accent or 1)
+            tokens = _japanese_mora_tokens(
+                item.moras, item.accent or 1, item.pitch_events
+            )
             if item.punctuation_suffix:
                 tokens[-1] += item.punctuation_suffix
             physical, _cursor = _wrap_tokens_with_prefixes(

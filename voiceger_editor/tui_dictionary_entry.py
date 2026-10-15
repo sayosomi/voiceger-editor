@@ -50,6 +50,14 @@ from .voicevox_api_models import (
 DictionaryEntryIntent = Union[EditorIntent, DictionaryOperationIntent]
 
 
+def _katakana_notation(value: str) -> str:
+    """Normalize editable Japanese kana without changing pitch markers or punctuation."""
+    return "".join(
+        chr(ord(char) + 0x60) if "ぁ" <= char <= "ゖ" else char
+        for char in value
+    )
+
+
 def _reading_morae(reading: str) -> tuple[str, ...]:
     if "'" in reading or "/" in reading or any(ch in reading for ch in "。？！"):
         raise ValueError("Dictionary pronunciation must be one kana reading")
@@ -154,7 +162,7 @@ class DictionaryEntryOwner:
         pronunciation: str,
     ) -> tuple[EditorIntent, ...]:
         try:
-            canonical = pronunciation.replace("　", "/").replace(" ", "/")
+            canonical = _katakana_notation(pronunciation.replace("　", "/").replace(" ", "/"))
             parsed = parse_pronunciation(canonical)
             if len(parsed.phrases) != 1:
                 raise ValueError(
@@ -375,7 +383,7 @@ class DictionaryEntryOwner:
         parent: EditorState, detail: EditorState,
     ) -> tuple[str, tuple[str, ...], int, tuple[PitchEvent, ...]]:
         """Parse one dictionary phrase without discarding an unchanged legacy zero accent."""
-        value = detail.input_value
+        value = _katakana_notation(detail.input_value)
         if value == detail.payload["opening_draft"] and parent.payload["moras"]:
             return (
                 str(parent.payload["pronunciation"]),
@@ -516,6 +524,7 @@ class DictionaryEntryOwner:
                         and not editor.payload["pronunciation"]
                     )
                 elif name == "pronunciation":
+                    value = _katakana_notation(value)
                     if any(marker in value for marker in ("'", "[", "]")):
                         parsed = parse_pronunciation(value)
                         if len(parsed.phrases) != 1:
@@ -532,6 +541,7 @@ class DictionaryEntryOwner:
                         reading = value
                         if events:
                             CoreAccentPhrase(tuple(moras), accent, tuple(events))
+                    editor.input_value = value
                     editor.payload["pronunciation"] = reading
                     editor.payload["moras"] = tuple(moras)
                     editor.payload["accent"] = accent

@@ -12,6 +12,7 @@ from .english_stress import (
 )
 from .pronunciation import (
     AccentPhrase as CoreAccentPhrase,
+    PitchEvent,
     PronunciationPunctuation as CorePronunciationPunctuation,
     canonicalize_punctuation,
     parse_pronunciation,
@@ -54,6 +55,7 @@ class PronunciationRow:
     phrase_index_in_segment: int | None = None
     moras: tuple[str, ...] = ()
     accent: int | None = None
+    pitch_events: tuple[PitchEvent, ...] | None = None
     group_index: int | None = None
     word: str | None = None
     phonemes: tuple[str, ...] = ()
@@ -105,6 +107,13 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
 
         rows: list[PronunciationRow] = []
         self.grouping_error = None
+        # AudioQuery indices are global across every Japanese-English section.
+        events_by_phrase = {
+            entry.accentPhraseIndex: tuple(
+                PitchEvent(event.afterMora, event.symbol) for event in entry.events
+            )
+            for entry in query.pronunciationPitchEvents or ()
+        }
         for source_index, (language, source_text, model_index) in enumerate(segments):
             first = True
             if language == "ja":
@@ -164,6 +173,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                             phrase_index_in_segment=local_index,
                             moras=tuple(mora.text for mora in phrase.moras),
                             accent=phrase.accent,
+                            pitch_events=events_by_phrase.get(phrase_index),
                             punctuation_suffix=punctuation_suffixes[local_index],
                         )
                     )
@@ -348,6 +358,10 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
         clear = (ClearAdjustmentFeedbackIntent(),)
         try:
             if row.language == "ja" and row.phrase_index is not None:
+                # The inline Left/Right shortcut edits legacy single accents.
+                # Edit explicit multi-peak markers in EDIT PRONUNCIATION.
+                if row.pitch_events is not None:
+                    return clear
                 updated = move_japanese_accent(
                     query,
                     accent_phrase_index=row.phrase_index,
