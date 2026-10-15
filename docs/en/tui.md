@@ -25,7 +25,7 @@ BATCH LIST
 → check or edit pronunciation
 → Generate
 → listen to Takes
-→ accept one Take
+→ accept preferred Takes
 ```
 
 English-only Captions are supported alongside Japanese and mixed Japanese-English
@@ -272,15 +272,19 @@ acceptance marker. BATCH LIST generation also skips accepted Take slots.
 
 ## Accept a Take
 
-Focus a Take and press Enter.
+Focus a Take and press Enter. Repeat for any other Takes you want to accept.
+Each newly accepted Take is saved independently in the configured audio format
+(WAV or FLAC, or MP3 when ffmpeg is available).
 
-The accepted Take is saved in the configured audio format: WAV or FLAC, or MP3
-when ffmpeg is available. If enabled, TXT and LAB sidecars use the same final
-basename.
+Every accepted candidate shows `✓`. The corresponding Batch List Caption
+shows `[✓]` for one accepted Take, `[✓2]` for two, and so on.
 
-Acceptance does not discard the candidate set. The accepted candidate is marked
-with `✓` inside the Batch Item, and the corresponding Batch List Caption shows
-`[✓]`. You can continue reviewing and regenerating unaccepted candidates after acceptance.
+Pressing Enter on an already accepted Take does not create another output file.
+When filenames collide, the existing `-2`, `-3`, etc. suffix handling keeps
+each saved Take separate, including its enabled TXT and LAB sidecars.
+
+Acceptance does not discard the candidate set. You can continue reviewing and
+regenerating unaccepted candidates after acceptance.
 
 ## Clear candidates
 
