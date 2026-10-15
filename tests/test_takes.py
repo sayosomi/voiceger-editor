@@ -442,6 +442,42 @@ class TakeBatchTests(unittest.TestCase):
             self.assertFalse(original[3].wav_path.exists())
             batch.close()
 
+    def test_shrink_to_accepted_only_removes_unaccepted_excess_without_synthesis(self):
+        calls = []
+
+        def synthesize_one():
+            calls.append(len(calls) + 1)
+            return {"audio": object(), "sampling_rate": 32000}
+
+        with tempfile.TemporaryDirectory() as directory:
+            batch = self.make_batch(
+                directory, take_count=2, synthesize_one=synthesize_one
+            )
+            with patch.dict(
+                "sys.modules", {"soundfile": self.fake_soundfile_module()}
+            ):
+                original = list(batch.generate_all())
+                before = len(calls)
+                replacements = list(
+                    batch.regenerate_all(
+                        1, protected_numbers=frozenset({1})
+                    )
+                )
+
+            self.assertEqual(replacements, [])
+            self.assertEqual(len(calls), before)
+            self.assertEqual(batch.candidates, (original[0],))
+            self.assertEqual(batch.take_count, 1)
+            self.assertTrue(original[0].wav_path.is_file())
+            self.assertFalse(original[1].wav_path.exists())
+            self.assertEqual(
+                list(batch.regenerate_all(1, protected_numbers=frozenset({1}))),
+                [],
+            )
+            self.assertEqual(len(calls), before)
+            self.assertTrue(original[0].wav_path.is_file())
+            batch.close()
+
     def test_failed_shrink_keeps_excess_existing_candidates(self):
         calls = []
 
