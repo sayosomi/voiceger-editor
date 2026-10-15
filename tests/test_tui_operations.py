@@ -423,6 +423,51 @@ class TuiOperationsTests(unittest.TestCase):
         self.assertEqual(session.regenerate_all_calls, 0)
         self.assertFalse(self.operations.busy)
 
+    def test_shrink_to_only_accepted_take_prunes_unaccepted_excess_without_worker(self):
+        preserved = candidate(1)
+        extra = candidate(2)
+        session = FakeSession((preserved, extra))
+        protected = frozenset({1})
+        synthesis_calls = []
+
+        def shrink_only(*, take_count, protected_numbers):
+            self.assertEqual((take_count, protected_numbers), (1, protected))
+
+            def apply_shrink():
+                session.candidates[:] = [
+                    item for item in session.candidates if item.number <= take_count
+                ]
+                if False:
+                    yield  # No synthesis: exhaustion only finalizes the shrink.
+
+            return apply_shrink()
+
+        session.regenerate_all_takes = Mock(side_effect=shrink_only)
+        effects = self.operations.start_regenerate_all(
+            session, take_count=1, navigation_revision=0,
+            protected_numbers=protected,
+        )
+        self.assertEqual(
+            effects,
+            (UpdateStatusEffect(
+                "Reduced Takes to 1; accepted Takes preserved."
+            ),),
+        )
+        self.assertEqual(session.candidates, [preserved])
+        self.assertIs(session.candidates[0], preserved)
+        self.assertEqual(session.regenerate_all_takes.call_count, 1)
+        self.assertFalse(self.operations.busy)
+        self.assertIsNone(self.operations.worker)
+
+        # A second request must be a true no-op, not another shrink.
+        effects = self.operations.start_regenerate_all(
+            session, take_count=1, navigation_revision=0,
+            protected_numbers=protected,
+        )
+        self.assertIn("nothing to regenerate", effects[0].status)
+        self.assertEqual(session.regenerate_all_takes.call_count, 1)
+        self.assertEqual(synthesis_calls, [])
+
     def test_partial_accepted_regeneration_only_reports_unprotected_slot(self):
         session = FakeSession((candidate(1), candidate(2), candidate(3)))
         effects = self.operations.start_regenerate_all(
