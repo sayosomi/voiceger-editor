@@ -428,7 +428,6 @@ class TuiOperationsTests(unittest.TestCase):
         extra = candidate(2)
         session = FakeSession((preserved, extra))
         protected = frozenset({1})
-        synthesis_calls = []
 
         def shrink_only(*, take_count, protected_numbers):
             self.assertEqual((take_count, protected_numbers), (1, protected))
@@ -466,7 +465,6 @@ class TuiOperationsTests(unittest.TestCase):
         )
         self.assertIn("nothing to regenerate", effects[0].status)
         self.assertEqual(session.regenerate_all_takes.call_count, 1)
-        self.assertEqual(synthesis_calls, [])
 
     def test_partial_accepted_regeneration_only_reports_unprotected_slot(self):
         session = FakeSession((candidate(1), candidate(2), candidate(3)))
