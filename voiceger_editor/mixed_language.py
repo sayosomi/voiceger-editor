@@ -45,11 +45,12 @@ def _character_language(char: str) -> str | None:
     if (
         0x3040 <= code <= 0x30FF  # Hiragana / Katakana
         or 0x31F0 <= code <= 0x31FF  # Katakana phonetic extensions
+        or 0xFF65 <= code <= 0xFF9F  # Halfwidth katakana
         or 0x3400 <= code <= 0x9FFF  # CJK ideographs
         or 0xF900 <= code <= 0xFAFF  # CJK compatibility ideographs
         or 0x20000 <= code <= 0x323AF  # CJK ideograph extensions
         or 0x1B000 <= code <= 0x1B16F  # Historic Japanese kana
-        or char in "々〆ヶ"
+        or char in "々〆ヶ〇〻"
     ):
         return "ja"
     if category(char).startswith("L"):
@@ -73,7 +74,13 @@ def detect_language_segments(text: str) -> List[DetectedSegment]:
         if result and result[-1].language == language:
             previous = result[-1]
             result[-1] = DetectedSegment(language, previous.text + neutral + char)
+        elif result:
+            # Separators between different scripts belong to the preceding run.
+            previous = result[-1]
+            result[-1] = DetectedSegment(previous.language, previous.text + neutral)
+            result.append(DetectedSegment(language, char))
         else:
+            # Leading separators belong to the first pronounceable run.
             result.append(DetectedSegment(language, neutral + char))
         neutral = ""
 
