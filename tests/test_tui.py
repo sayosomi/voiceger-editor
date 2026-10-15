@@ -1087,6 +1087,7 @@ class TuiTests(TuiAppTestCase):
 
     def test_clean_build_uses_visible_deferred_preparation_lifecycle(self):
         app = self.make_app(query=mixed_query())
+        app.session.caption = "雨hello"
         app.session.candidates = (candidate(2),)
         app.session.utterance_manually_edited = False
         english_grouping(app, 1)
@@ -1118,6 +1119,7 @@ class TuiTests(TuiAppTestCase):
 
     def test_dirty_build_confirmation_starts_deferred_rebuild_only_after_confirm(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(2),))
+        app.session.caption = "雨hello"
         app.session.utterance_manually_edited = True
         english_grouping(app, 1)
         clear_groupings = Mock(wraps=app._editor_controller.clear_groupings)
