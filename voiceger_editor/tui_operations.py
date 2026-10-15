@@ -290,6 +290,25 @@ class TuiOperations:
             ),)
         remaining = take_count - len(protected_numbers)
         if protected_numbers and remaining == 0:
+            # An accepted slot can be the only target even while higher,
+            # unaccepted candidates still exist from the previous take count.
+            # Finish the core shrink without starting a synthesis worker.
+            if any(candidate.number > take_count for candidate in session.candidates):
+                try:
+                    for _ in session.regenerate_all_takes(
+                        take_count=take_count,
+                        protected_numbers=protected_numbers,
+                    ):
+                        raise RuntimeError(
+                            "shrink-only regeneration unexpectedly generated a Take"
+                        )
+                except Exception as exc:
+                    return (UpdateStatusEffect(
+                        error_status(f"Could not reduce Takes: {exc}")
+                    ),)
+                return (UpdateStatusEffect(
+                    f"Reduced Takes to {take_count}; accepted Takes preserved."
+                ),)
             return (UpdateStatusEffect(
                 "All Takes are accepted; nothing to regenerate."
             ),)
