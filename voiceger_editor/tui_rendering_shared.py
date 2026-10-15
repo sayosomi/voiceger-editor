@@ -128,7 +128,7 @@ class TuiRenderState:
     operation_total: int
     pressed_adjustment: tuple[str, str, int] | None
     editor: EditorRenderState | None
-    accepted_take_number: int | None = None
+    accepted_take_numbers: frozenset[int] = frozenset()
     batch_item_position: tuple[int, int] | None = None
     batch_item_id: str | None = None
     active_generation_item_id: str | None = None
