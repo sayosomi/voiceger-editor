@@ -87,7 +87,7 @@ BATCH LIST
 → check or edit pronunciation
 → Generate
 → listen to Takes
-→ accept one Take
+→ accept preferred Takes
 ```
 
 English-only Captions use the same Batch List → Batch Item workflow and Voiceger's native English mode.
