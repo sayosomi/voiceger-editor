@@ -12,6 +12,8 @@ Up / Downで項目を選択し、Left / Rightで値を変更できます。項�
 
 ## 基本設定
 
+![EDIT SETTINGS画面](images/settings/01-settings.png)
+
 ### Style
 
 音声生成に使用するVoicegerのStyleを選択します。
@@ -76,6 +78,8 @@ Takeの保存、バッチファイルの書き出し、辞書のエクスポー�
 一方、バッチファイルや辞書を読み込む際の`File path`は、読み込み対象を指定するための一時的な入力欄です。読み込み元を変更しても、共通のOutput設定は変わりません。
 
 ## 音声ファイルの設定
+
+![AUDIO OUTPUT画面](images/settings/02-audio-output.png)
 
 `File format & naming` を選択すると、`AUDIO OUTPUT` が開きます。
 
