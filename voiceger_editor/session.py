@@ -431,18 +431,31 @@ class UtteranceSession:
         self._active_batch = batch
         return iterator
 
-    def regenerate_take(self, take_number: int) -> TakeCandidate:
-        return self._require_active_batch().regenerate(take_number)
+    def regenerate_take(
+        self, take_number: int, *, protected_numbers: frozenset[int] = frozenset()
+    ) -> TakeCandidate:
+        batch = self._require_active_batch()
+        if protected_numbers:
+            return batch.regenerate(
+                take_number, protected_numbers=protected_numbers
+            )
+        return batch.regenerate(take_number)
 
     def regenerate_all_takes(
         self,
         *,
         take_count: int | None = None,
+        protected_numbers: frozenset[int] = frozenset(),
     ) -> Iterator[TakeCandidate]:
         resolved_take_count = (
             self._settings.take_count if take_count is None else take_count
         )
-        return self._require_active_batch().regenerate_all(resolved_take_count)
+        batch = self._require_active_batch()
+        if protected_numbers:
+            return batch.regenerate_all(
+                resolved_take_count, protected_numbers=protected_numbers
+            )
+        return batch.regenerate_all(resolved_take_count)
 
     def accept_take(self, take_number: int) -> SavedOutput:
         batch = self._require_active_batch()

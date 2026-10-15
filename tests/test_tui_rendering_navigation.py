@@ -387,7 +387,7 @@ class NavigationRenderingDocumentTests(RenderingTestCase):
         labels = {line.key: line.text for line in lines if line.key is not None}
         self.assertEqual(labels[("build_pronunciation", None)], "  [P] Build pronunciation")
         self.assertEqual(labels[("add_section", None)], "  [A] Add section")
-        self.assertEqual(labels[("generate", None)], "▶ [G] Regenerate all <<6 > takes")
+        self.assertEqual(labels[("generate", None)], "▶ [G] Regenerate unaccepted (<<6 > total)")
         self.assertEqual(labels[("candidate", 1)], "  [1]   Take 1  Unknown | 1.00x | 0.01s")
         self.assertEqual(labels[("candidate", 2)], "  [2] ✓ Take 2  Unknown | 1.00x | 0.01s")
         self.assertEqual(labels[("clear_candidates", None)], "  [C] Clear candidates")

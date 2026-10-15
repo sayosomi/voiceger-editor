@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 
 def make_batch_generation_work(
-    plan: tuple[tuple[CaptionBatchItem, int], ...],
+    plan: tuple[tuple[CaptionBatchItem, int, tuple[int, ...], frozenset[int]], ...],
     *,
     overall_total: int,
     cancellation_event: Event,
@@ -42,7 +42,7 @@ def make_batch_generation_work(
         try:
             with open(os.devnull, "w", encoding="utf-8") as sink:
                 with redirect_stdout(sink), redirect_stderr(sink):
-                    for caption_number, (item, take_total) in enumerate(
+                    for caption_number, (item, take_total, numbers, protected) in enumerate(
                         plan, start=1
                     ):
                         if cancellation_event.is_set():
@@ -54,9 +54,15 @@ def make_batch_generation_work(
                                     item.session.prepare_from_caption()
                                 replacing_existing = item.session.has_active_batch
                                 if replacing_existing:
-                                    values = item.session.regenerate_all_takes(
-                                        take_count=take_total
-                                    )
+                                    if protected:
+                                        values = item.session.regenerate_all_takes(
+                                            take_count=take_total,
+                                            protected_numbers=protected,
+                                        )
+                                    else:
+                                        values = item.session.regenerate_all_takes(
+                                            take_count=take_total
+                                        )
                                 else:
                                     values = item.session.generate_takes(
                                         take_count=take_total
@@ -75,7 +81,7 @@ def make_batch_generation_work(
                                 )
                                 return
 
-                            for take_number in range(1, take_total + 1):
+                            for take_number in numbers:
                                 if cancellation_event.is_set():
                                     emit_event(
                                         BatchGenerationCancelledEvent(
@@ -134,6 +140,7 @@ def make_batch_generation_work(
                                         overall_completed=overall_completed,
                                         overall_total=overall_total,
                                         replacing_existing=replacing_existing,
+                                        item_finished=take_number == numbers[-1],
                                     )
                                 )
                         finally:

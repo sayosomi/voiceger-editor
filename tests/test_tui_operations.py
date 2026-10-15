@@ -396,6 +396,93 @@ class TuiOperationsTests(unittest.TestCase):
         self.operations.join_worker()
         self.consume(session)
 
+    def test_accepted_regeneration_noops_without_worker_or_side_effects(self):
+        session = FakeSession((candidate(1), candidate(2)))
+        protected = frozenset({1, 2})
+        single = self.operations.start_regeneration(
+            session, 1, take_count=2, navigation_revision=0,
+            protected_numbers=protected,
+        )
+        self.assertIn("accepted", single[0].status)
+        self.assertFalse(self.operations.busy)
+        self.assertEqual(session.regenerate_calls, [])
+
+        all_accepted = self.operations.start_regenerate_all(
+            session, take_count=2, navigation_revision=0,
+            protected_numbers=protected,
+        )
+        self.assertIn("nothing to regenerate", all_accepted[0].status)
+        self.assertFalse(self.operations.busy)
+        self.assertEqual(session.regenerate_all_calls, 0)
+
+        protected_shrink = self.operations.start_regenerate_all(
+            session, take_count=1, navigation_revision=0,
+            protected_numbers=protected,
+        )
+        self.assertIn("Cannot reduce", protected_shrink[0].status)
+        self.assertEqual(session.regenerate_all_calls, 0)
+        self.assertFalse(self.operations.busy)
+
+    def test_shrink_to_only_accepted_take_prunes_unaccepted_excess_without_worker(self):
+        preserved = candidate(1)
+        extra = candidate(2)
+        session = FakeSession((preserved, extra))
+        protected = frozenset({1})
+
+        def shrink_only(*, take_count, protected_numbers):
+            self.assertEqual((take_count, protected_numbers), (1, protected))
+
+            def apply_shrink():
+                session.candidates[:] = [
+                    item for item in session.candidates if item.number <= take_count
+                ]
+                if False:
+                    yield  # No synthesis: exhaustion only finalizes the shrink.
+
+            return apply_shrink()
+
+        session.regenerate_all_takes = Mock(side_effect=shrink_only)
+        effects = self.operations.start_regenerate_all(
+            session, take_count=1, navigation_revision=0,
+            protected_numbers=protected,
+        )
+        self.assertEqual(
+            effects,
+            (UpdateStatusEffect(
+                "Reduced Takes to 1; accepted Takes preserved."
+            ),),
+        )
+        self.assertEqual(session.candidates, [preserved])
+        self.assertIs(session.candidates[0], preserved)
+        self.assertEqual(session.regenerate_all_takes.call_count, 1)
+        self.assertFalse(self.operations.busy)
+        self.assertIsNone(self.operations.worker)
+
+        # A second request must be a true no-op, not another shrink.
+        effects = self.operations.start_regenerate_all(
+            session, take_count=1, navigation_revision=0,
+            protected_numbers=protected,
+        )
+        self.assertIn("nothing to regenerate", effects[0].status)
+        self.assertEqual(session.regenerate_all_takes.call_count, 1)
+
+    def test_partial_accepted_regeneration_only_reports_unprotected_slot(self):
+        session = FakeSession((candidate(1), candidate(2), candidate(3)))
+        effects = self.operations.start_regenerate_all(
+            session, take_count=3, navigation_revision=0,
+            protected_numbers=frozenset({1, 3}),
+        )
+        self.assertEqual(effects, (UpdateStatusEffect("Regenerating 1/1"),))
+        self.assertEqual(self.operations.operation_total, 1)
+        self.operations.join_worker()
+        result = self.consume(session)
+        replaced = [
+            effect.number for effect in result
+            if isinstance(effect, CandidateReplacedEffect)
+        ]
+        self.assertEqual(replaced, [2])
+        self.assertEqual(session.regenerate_all_calls, 1)
+
     def test_worker_suppresses_output_and_posts_candidate_then_done(self):
         stdout = io.StringIO()
         stderr = io.StringIO()
@@ -945,12 +1032,14 @@ class BatchFakeSession:
         self.has_active_batch = True
         return self._values(take_count, "initial")
 
-    def regenerate_all_takes(self, *, take_count=None):
+    def regenerate_all_takes(self, *, take_count=None, protected_numbers=frozenset()):
         self.regenerate_take_counts.append(take_count)
-        return self._values(take_count, "regenerate")
+        return self._values(take_count, "regenerate", protected_numbers)
 
-    def _values(self, take_count, mode):
+    def _values(self, take_count, mode, protected_numbers=frozenset()):
         for number in range(1, take_count + 1):
+            if number in protected_numbers:
+                continue
             if self.concurrency is not None:
                 self.concurrency["active"] += 1
                 self.concurrency["max"] = max(
@@ -1292,6 +1381,113 @@ class TuiBatchGenerationTests(unittest.TestCase):
             replacements,
             [BatchCandidateReplacedEffect("only", 1)],
         )
+
+    def test_batch_selected_skips_accepted_slot_and_completes_item(self):
+        log = []
+        session = BatchFakeSession("one", log, existing=True)
+        original = [candidate(1), candidate(2), candidate(3)]
+        session.candidates = list(original)
+        item = CaptionBatchItem(session, item_id="one")
+        item.mark_accepted(3)
+        batch = self.make_batch(item, default_take_count=3)
+        operations = TuiOperations()
+
+        effects = operations.start_batch_generation(batch, navigation_revision=0)
+        self.assertEqual(operations.operation_total, 2)
+        operations.join_worker()
+        completed = self.consume(operations)
+        self.assertEqual(session.regenerate_take_counts, [3])
+        self.assertEqual(
+            [(mode, phase, number) for _, mode, phase, number in log if phase == "start"],
+            [("regenerate", "start", 1), ("regenerate", "start", 2)],
+        )
+        self.assertIs(next(c for c in session.candidates if c.number == 3), original[2])
+        self.assertEqual(item.accepted_take_numbers, frozenset({3}))
+        self.assertNotIn(BatchCandidateReplacedEffect("one", 3), completed)
+        self.assertIn(GenerationOutcomeEffect("one", "completed"), completed)
+
+    def test_batch_all_accepted_is_noop(self):
+        session = BatchFakeSession("one", [], existing=True)
+        item = CaptionBatchItem(session, item_id="one")
+        item.mark_accepted(1)
+        batch = self.make_batch(item, default_take_count=1)
+        operations = TuiOperations()
+        effects = operations.start_batch_generation(batch, navigation_revision=0)
+        self.assertIn("nothing to regenerate", effects[0].status)
+        self.assertFalse(operations.busy)
+        self.assertIsNone(operations.worker)
+
+    def test_batch_shrink_only_prunes_unaccepted_excess_without_worker(self):
+        original = [candidate(1), candidate(2)]
+        session = BatchFakeSession("only", [], existing=True)
+        session.candidates = list(original)
+        item = CaptionBatchItem(session, item_id="only")
+        item.mark_accepted(1)
+        batch = self.make_batch(item, default_take_count=1)
+
+        def shrink_only(*, take_count, protected_numbers):
+            self.assertEqual((take_count, protected_numbers), (1, frozenset({1})))
+
+            def prune():
+                session.candidates[:] = [
+                    value for value in session.candidates if value.number <= take_count
+                ]
+                if False:
+                    yield
+
+            return prune()
+
+        session.regenerate_all_takes = Mock(side_effect=shrink_only)
+        operations = TuiOperations()
+        result = operations.start_batch_generation(batch, navigation_revision=0)
+        self.assertEqual(
+            result,
+            (UpdateStatusEffect(
+                "Reduced selected Caption Takes; accepted Takes preserved."
+            ),),
+        )
+        self.assertFalse(operations.busy)
+        self.assertIsNone(operations.worker)
+        self.assertEqual(session.candidates, [original[0]])
+        self.assertIs(session.candidates[0], original[0])
+        self.assertEqual(item.accepted_take_numbers, frozenset({1}))
+        session.regenerate_all_takes.assert_called_once()
+
+        result = operations.start_batch_generation(batch, navigation_revision=0)
+        self.assertIn("nothing to regenerate", result[0].status)
+        session.regenerate_all_takes.assert_called_once()
+
+    def test_batch_shrink_only_item_is_handled_alongside_generating_item(self):
+        log = []
+        first = BatchFakeSession("first", log, existing=True)
+        originals = [candidate(1), candidate(2)]
+        first.candidates = list(originals)
+        protected_item = CaptionBatchItem(first, item_id="first")
+        protected_item.mark_accepted(1)
+        second = BatchFakeSession("second", log)
+        other_item = CaptionBatchItem(second, item_id="second")
+        batch = self.make_batch(protected_item, other_item, default_take_count=1)
+
+        def shrink_only(*, take_count, protected_numbers):
+            def prune():
+                first.candidates[:] = [
+                    value for value in first.candidates if value.number <= take_count
+                ]
+                if False:
+                    yield
+            return prune()
+
+        first.regenerate_all_takes = Mock(side_effect=shrink_only)
+        operations = TuiOperations()
+        operations.start_batch_generation(batch, navigation_revision=0)
+        self.assertEqual(operations.operation_total, 1)
+        operations.join_worker()
+        self.consume(operations)
+        self.assertEqual(first.candidates, [originals[0]])
+        self.assertEqual(protected_item.accepted_take_numbers, frozenset({1}))
+        self.assertEqual(second.generate_take_counts, [1])
+        self.assertIn(("second", "initial", "start", 1), log)
+        self.assertEqual(first.regenerate_all_takes.call_count, 1)
 
     def test_zero_selection_does_not_start_worker(self):
         session = BatchFakeSession("only", [])
