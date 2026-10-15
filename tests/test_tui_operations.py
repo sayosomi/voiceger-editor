@@ -1417,6 +1417,78 @@ class TuiBatchGenerationTests(unittest.TestCase):
         self.assertFalse(operations.busy)
         self.assertIsNone(operations.worker)
 
+    def test_batch_shrink_only_prunes_unaccepted_excess_without_worker(self):
+        original = [candidate(1), candidate(2)]
+        session = BatchFakeSession("only", [], existing=True)
+        session.candidates = list(original)
+        item = CaptionBatchItem(session, item_id="only")
+        item.mark_accepted(1)
+        batch = self.make_batch(item, default_take_count=1)
+
+        def shrink_only(*, take_count, protected_numbers):
+            self.assertEqual((take_count, protected_numbers), (1, frozenset({1})))
+
+            def prune():
+                session.candidates[:] = [
+                    value for value in session.candidates if value.number <= take_count
+                ]
+                if False:
+                    yield
+
+            return prune()
+
+        session.regenerate_all_takes = Mock(side_effect=shrink_only)
+        operations = TuiOperations()
+        result = operations.start_batch_generation(batch, navigation_revision=0)
+        self.assertEqual(
+            result,
+            (UpdateStatusEffect(
+                "Reduced selected Caption Takes; accepted Takes preserved."
+            ),),
+        )
+        self.assertFalse(operations.busy)
+        self.assertIsNone(operations.worker)
+        self.assertEqual(session.candidates, [original[0]])
+        self.assertIs(session.candidates[0], original[0])
+        self.assertEqual(item.accepted_take_numbers, frozenset({1}))
+        session.regenerate_all_takes.assert_called_once()
+
+        result = operations.start_batch_generation(batch, navigation_revision=0)
+        self.assertIn("nothing to regenerate", result[0].status)
+        session.regenerate_all_takes.assert_called_once()
+
+    def test_batch_shrink_only_item_is_handled_alongside_generating_item(self):
+        log = []
+        first = BatchFakeSession("first", log, existing=True)
+        originals = [candidate(1), candidate(2)]
+        first.candidates = list(originals)
+        protected_item = CaptionBatchItem(first, item_id="first")
+        protected_item.mark_accepted(1)
+        second = BatchFakeSession("second", log)
+        other_item = CaptionBatchItem(second, item_id="second")
+        batch = self.make_batch(protected_item, other_item, default_take_count=1)
+
+        def shrink_only(*, take_count, protected_numbers):
+            def prune():
+                first.candidates[:] = [
+                    value for value in first.candidates if value.number <= take_count
+                ]
+                if False:
+                    yield
+            return prune()
+
+        first.regenerate_all_takes = Mock(side_effect=shrink_only)
+        operations = TuiOperations()
+        operations.start_batch_generation(batch, navigation_revision=0)
+        self.assertEqual(operations.operation_total, 1)
+        operations.join_worker()
+        self.consume(operations)
+        self.assertEqual(first.candidates, [originals[0]])
+        self.assertEqual(protected_item.accepted_take_numbers, frozenset({1}))
+        self.assertEqual(second.generate_take_counts, [1])
+        self.assertIn(("second", "initial", "start", 1), log)
+        self.assertEqual(first.regenerate_all_takes.call_count, 1)
+
     def test_zero_selection_does_not_start_worker(self):
         session = BatchFakeSession("only", [])
         batch = self.make_batch(
