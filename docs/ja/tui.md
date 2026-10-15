@@ -111,7 +111,11 @@ JA | [シ] コ ク
 
 ![4 Take生成後の BATCH ITEM](images/tui/08-takes-generated.png)
 
-生成済みの Take がある場合、`[G] Generate` は `[G] Regenerate all` に変わります。
+生成済みのTakeがある場合、`[G] Generate` は `[G] Regenerate all` に変わります。
+
+採用済みのTakeがある場合は、`[G] Regenerate unaccepted` と表示されます。この操作では未採用のTakeだけを再生成し、採用済みのTakeは変更されません。
+
+すべてのTakeが採用済みの場合は、再生成を開始しません。
 
 各Takeには、生成時のStyle・Speed・音声の長さが表示されます。
 
