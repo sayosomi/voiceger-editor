@@ -113,6 +113,10 @@ JA | [シ] コ ク
 
 生成済みの Take がある場合、`[G] Generate` は `[G] Regenerate all` に変わります。
 
+各Takeには、生成時のStyle・Speed・音声の長さが表示されます。
+
+StyleやSpeedを変えてTakeを生成・再生成する方法は、[BATCH ITEM](batch-item.md)を参照してください。
+
 ## 6. Take を再生
 
 Up / Down で Take にフォーカスを移動すると、その Take が再生されます。

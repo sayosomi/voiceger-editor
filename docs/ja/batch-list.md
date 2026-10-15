@@ -22,6 +22,21 @@ BATCH LIST · 2/3 selected · 4 takes · Accepted 0/3
 | `[x]` | 一括生成の対象 |
 | `[ ]` | 一括生成の対象外 |
 
+`BATCH LIST` の上部には、共通設定と音声ファイルの保存先が表示されます。
+
+```text
+[S] Settings Takes 4 | WAV LAB TXT
+[F] Output: /Users/yosomi/output
+```
+
+`Settings` には、標準のTake数と、保存するファイル形式が表示されます。
+
+`WAV`、`FLAC`、`MP3` のいずれか1つが表示され、TXT・LABの出力が有効な場合は、その形式も追加されます。
+
+`S` を押すと共通のSettingsを開けます。
+
+`F` を押すと、音声ファイルの保存先を直接編集できます。
+
 選択の有無は一括生成の対象を決めるものです。対象外にしてもCaptionは削除されず、個別に開いて編集・生成できます。
 
 ## 複数のCaptionをまとめて追加する
@@ -50,8 +65,9 @@ Enterで編集を終了し、`[A] Apply` を実行します。
 
 1. Up / Downで2番目のCaptionにフォーカスを合わせます。
 2. Spaceを押して、`[x]` を `[ ]` に切り替えます。
-3. `Takes` にフォーカスを移動します。
-4. Left / RightでTake数を `2` に設定します。
+3. `S` を押して `EDIT SETTINGS` を開きます。
+4. `Takes` にフォーカスを合わせ、Left / RightでTake数を `2` に変更します。Enterで数値を直接入力することもできます。
+5. `[A] Apply and save` で設定を保存します。
 
 ![2番目のCaptionを対象外にし、Takesを2にしたBATCH LIST](images/batch-list/02-batch-selection.png)
 

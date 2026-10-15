@@ -21,13 +21,13 @@ Captionの登録と一括生成は [BATCH LIST](batch-list.md)、Takeの生成�
 | 項目 | 内容 |
 |---|---|
 | `< 3 / 3 >` | 現在開いているCaptionの位置 |
-| 画面上部の設定概要 | Style、Speed、Take数、TXT・LABの出力状態 |
-| `[F] Output` | 音声ファイルの保存先 |
+| `[S] Style` | このCaptionの音声生成に使用するスタイル |
+| `[V] Speed` | このCaptionの音声生成に使用する話速 |
 | `[E] Caption` | ファイル名やTXT出力に使う文章 |
 | `[P] Build pronunciation` | Captionから発音情報を再作成 |
 | `JA` / `EN` | 実際に読み上げる日本語・英語の発音情報 |
 | `[A] Add section` | 読み上げるセクションを追加 |
-| `Candidates` | 生成したTakeの一覧 |
+| `Candidates` | 生成したTakeと、それぞれの生成条件 |
 | `[G] Generate` | Takeを生成・再生成 |
 
 Up / Downで項目を移動できます。Tab / Shift+Tabでは主要な項目間を移動できます。
@@ -39,6 +39,45 @@ Up / Downで項目を移動できます。Tab / Shift+Tabでは主要な項目�
 タイトル行の位置表示にフォーカスを合わせた場合は、Left / Rightでも移動できます。先頭と末尾でループはしません。
 
 Escで`BATCH LIST`に戻ります。
+
+## StyleとSpeedを変更する
+
+`BATCH ITEM` では、Captionごとに音声のStyleとSpeedを設定できます。
+
+```text
+[S] Style     < Neutral >
+[V] Speed     < 1.00x >
+```
+
+`S` を押すとStyle、`V` を押すとSpeedにフォーカスが移動します。
+
+フォーカスした項目は、Left / Rightキーで変更できます。
+
+Styleは選択できるスタイルを順番に切り替えます。最後のスタイルからRightを押すと最初に戻り、最初のスタイルからLeftを押すと最後に移動します。
+
+Speedは0.01刻みで変更できます。Enterを押して数値を直接入力することもできます。入力をキャンセルする場合はEscを押してください。
+
+変更したStyleとSpeedは、現在開いているCaptionにだけ適用されます。ほかのCaptionや共通のSettingsには影響しません。
+
+### 生成済みのTakeについて
+
+**StyleやSpeedを変更しても、生成済みのTakeは削除されません。採用状態も維持されます。**
+
+画面上部のStyleとSpeedは、これから生成するTakeに使用される設定です。
+
+一方、`Candidates` には、各Takeを生成したときのStyle・Speed・音声の長さが表示されます。
+
+```text
+Candidates
+  [1] ✓ Take 1  Neutral | 1.00x | 2.15s
+  [2]   Take 2  Happy   | 1.10x | 2.04s
+```
+
+この例では、Take 1をNeutral・1.00xで生成した後、StyleとSpeedを変更してTake 2を生成しています。
+
+設定を変更しても、すでに生成したTakeの音声や生成条件は変わりません。
+
+新しい設定を反映した音声が必要な場合は、Takeを再生成してください。
 
 ## Captionの文章を編集する
 
@@ -173,6 +212,10 @@ Captionを編集しただけでは、読み上げる文章や発音情報は自�
 
 撮影例ではTake 1が **3.86秒のまま**、Take 2が **4.30秒から4.50秒** に変わっています。Take 1は維持され、Take 2だけが置き換わりました。
 
+Takeを再生成すると、現在のStyleとSpeedが使用されます。
+
+例えば、Take 1をNeutral・1.00xで生成した後、StyleをHappy、Speedを1.10xに変更してTake 2だけを再生成すると、Take 1はそのまま残り、Take 2だけが新しい設定の音声に置き換わります。
+
 採用済みのTakeを再生成すると、その採用状態は解除されます。別のTakeが採用済みであれば、その採用状態は維持されます。
 
 すでにOutputへ保存したファイルは、再生成しても削除されません。
@@ -206,7 +249,8 @@ Take数だけを変更しても、その時点では既存の候補は削除さ�
 | 発音・アクセントを変更 | クリア |
 | `Add section` / `Delete section` | クリア |
 | `Build pronunciation` | クリア |
-| 音声生成パラメーターを変更 | クリア |
+| BATCH ITEMでStyle・Speedを変更 | 維持 |
+| 共通SettingsでStyle・Speed・サンプリング値を変更 | クリア |
 | Take数のみを変更 | 維持 |
 
 Takeの再生・採用の基本操作は [はじめての音声生成](tui.md) を参照してください。
@@ -230,8 +274,8 @@ Escでキャンセルした場合、CaptionとTakeは維持されます。すで
 | `1`〜`9` | 対応するTakeへ移動して再生 |
 | `0` | Takeが10本以上ある場合に番号を指定 |
 | Space | 選択中のTakeを再生 |
-| `F` | Outputの保存先を直接編集 |
-| `S` | Settingsを開く |
+| `S` | Styleに移動 |
+| `V` | Speedに移動 |
 | `D` | Dictionaryを開く |
 | `?` | Helpを開く |
 | Esc | BATCH LISTに戻る |
