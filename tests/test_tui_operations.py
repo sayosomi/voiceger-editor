@@ -1358,7 +1358,7 @@ class TuiBatchGenerationTests(unittest.TestCase):
             [(mode, phase, number) for _, mode, phase, number in log if phase == "start"],
             [("regenerate", "start", 1), ("regenerate", "start", 2)],
         )
-        self.assertIs(session.candidates[2], original[2])
+        self.assertIs(next(c for c in session.candidates if c.number == 3), original[2])
         self.assertEqual(item.accepted_take_numbers, frozenset({3}))
         self.assertNotIn(BatchCandidateReplacedEffect("one", 3), completed)
         self.assertIn(GenerationOutcomeEffect("one", "completed"), completed)
