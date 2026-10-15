@@ -87,6 +87,8 @@ BATCH LIST · 2/3 selected · 4 takes · Accepted 0/3
 
 選択されているCaptionが、一覧の順番に生成されます。
 
+すでにTakeがあるCaptionでは、未採用のTakeだけを再生成し、採用済みのTakeはそのまま残します。すべての対象Takeが採用済みの場合は、生成を開始せずStatusで通知します。詳しくは[BATCH ITEM](batch-item.md#takeを再生成する)を参照してください。
+
 ### 生成中
 
 生成中は、処理中のCaptionに進捗率が表示されます。
