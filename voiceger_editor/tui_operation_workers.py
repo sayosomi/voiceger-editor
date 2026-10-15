@@ -54,11 +54,15 @@ def make_batch_generation_work(
                                     item.session.prepare_from_caption()
                                 replacing_existing = item.session.has_active_batch
                                 if replacing_existing:
-                                    values = item.session.regenerate_all_takes(
-                                        take_count=take_total, protected_numbers=protected
-                                    ) if protected else item.session.regenerate_all_takes(
-                                        take_count=take_total
-                                    )
+                                    if protected:
+                                        values = item.session.regenerate_all_takes(
+                                            take_count=take_total,
+                                            protected_numbers=protected,
+                                        )
+                                    else:
+                                        values = item.session.regenerate_all_takes(
+                                            take_count=take_total
+                                        )
                                 else:
                                     values = item.session.generate_takes(
                                         take_count=take_total
