@@ -395,6 +395,43 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         self.assertEqual(subject.pronunciation_rows(bindings), ())
         bindings.actions.editor_controller.pronunciation_rows.assert_not_called()
 
+    def test_complete_preparation_rejects_empty_pronunciation_rows(self):
+        subject, _batch, bindings, state = self.make_subject()
+        subject.complete_preparation(
+            state["session"], rebuild=True, error=None, bindings=bindings
+        )
+        self.assertEqual(
+            state["status"],
+            error_status(
+                "Pronunciation was not fully prepared: some Caption "
+                "sections have no editable pronunciation."
+            ),
+        )
+        bindings.actions.operations.stop_playback.assert_not_called()
+
+    def test_complete_preparation_rejects_partial_section_rows(self):
+        subject, _batch, bindings, state = self.make_subject()
+        state["session"].caption = "今日はhello"
+        state["session"].query = SimpleNamespace(voicegerSegments=[
+            SimpleNamespace(language="ja", text="今日は"),
+            SimpleNamespace(language="en", text="hello"),
+        ])
+        bindings.actions.editor_controller.pronunciation_rows.return_value = (
+            SimpleNamespace(language="ja", source_segment_index=0, phrase_index=0),
+        )
+        subject.complete_preparation(
+            state["session"], rebuild=True, error=None, bindings=bindings
+        )
+        self.assertIn("not fully prepared", state["status"])
+
+    def test_complete_preparation_rejects_editor_grouping_errors(self):
+        subject, _batch, bindings, state = self.make_subject()
+        bindings.actions.editor_controller.grouping_error = error_status("Cannot align English words.")
+        subject.complete_preparation(
+            state["session"], rebuild=True, error=None, bindings=bindings
+        )
+        self.assertEqual(state["status"], error_status("Cannot align English words."))
+
     def test_preparation_failure_is_visible_and_explicit_build_can_retry(self):
         subject, _batch, bindings, state = self.make_subject()
         state["session"].is_prepared = False
