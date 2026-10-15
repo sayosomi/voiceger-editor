@@ -25,7 +25,7 @@ BATCH LIST
 → check or edit pronunciation
 → Generate
 → listen to Takes
-→ accept one Take
+→ accept preferred Takes
 ```
 
 English-only Captions are supported alongside Japanese and mixed Japanese-English
@@ -231,7 +231,7 @@ The default number of Takes is 4.
 
 The Generate row can adjust the Take count with Left / Right.
 
-If Takes already exist, Generate replaces the complete candidate set.
+If Takes already exist, Generate replaces only unaccepted candidate slots. Accepted Takes retain their original audio, generation-time settings, and acceptance markers. When every Take is accepted, regeneration does nothing. A smaller Take count cannot delete an accepted numbered slot; increase the count or explicitly clear candidates first.
 
 During cancellable Take generation, Esc keeps its normal Back meaning. You can return from a generating Batch Item to BATCH LIST and generation continues for that Caption in the background.
 
@@ -266,20 +266,25 @@ Moving focus onto a Take plays it for review. Use:
 - with 10 or more Takes, `0` → number → Enter to focus and play an arbitrary Take;
 - `r` to regenerate only the focused Take when that action is available.
 
-Regenerating one Take leaves the other candidates unchanged. Replacing the
-currently accepted Take invalidates that acceptance until a Take is accepted again.
+Regenerating one unaccepted Take leaves the other candidates unchanged. Pressing
+`r` on an accepted Take does not regenerate it, replace its WAV, or remove its
+acceptance marker. BATCH LIST generation also skips accepted Take slots.
 
 ## Accept a Take
 
-Focus a Take and press Enter.
+Focus a Take and press Enter. Repeat for any other Takes you want to accept.
+Each newly accepted Take is saved independently in the configured audio format
+(WAV or FLAC, or MP3 when ffmpeg is available).
 
-The accepted Take is saved in the configured audio format: WAV or FLAC, or MP3
-when ffmpeg is available. If enabled, TXT and LAB sidecars use the same final
-basename.
+Every accepted candidate shows `✓`. The corresponding Batch List Caption
+shows `[✓]` for one accepted Take, `[✓2]` for two, and so on.
 
-Acceptance does not discard the candidate set. The accepted candidate is marked
-with `✓` inside the Batch Item, and the corresponding Batch List Caption shows
-`[✓]`. You can continue reviewing or regenerating candidates after acceptance.
+Pressing Enter on an already accepted Take does not create another output file.
+When filenames collide, the existing `-2`, `-3`, etc. suffix handling keeps
+each saved Take separate, including its enabled TXT and LAB sidecars.
+
+Acceptance does not discard the candidate set. You can continue reviewing and
+regenerating unaccepted candidates after acceptance.
 
 ## Clear candidates
 

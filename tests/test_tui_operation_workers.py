@@ -67,7 +67,7 @@ class TuiOperationWorkerTests(unittest.TestCase):
             generate_takes=Mock(return_value=iter((object(), object()))),
         )
         item = SimpleNamespace(item_id="item-1", session=session)
-        make_batch_generation_work(((item, 2),), overall_total=2, cancellation_event=Event(), emit_event=events.append)()
+        make_batch_generation_work(((item, 2, (1, 2), frozenset()),), overall_total=2, cancellation_event=Event(), emit_event=events.append)()
         self.assertEqual([type(event) for event in events[:-1]], [
             BatchGenerationProgressEvent, BatchCandidateReadyEvent,
             BatchGenerationProgressEvent, BatchCandidateReadyEvent,
@@ -93,7 +93,7 @@ class TuiOperationWorkerTests(unittest.TestCase):
             if isinstance(event, BatchCandidateReadyEvent):
                 cancel.set()
 
-        make_batch_generation_work(((item, 2),), overall_total=2, cancellation_event=cancel, emit_event=emit)()
+        make_batch_generation_work(((item, 2, (1, 2), frozenset()),), overall_total=2, cancellation_event=cancel, emit_event=emit)()
         self.assertEqual([type(event) for event in events[:-1]], [
             BatchGenerationProgressEvent, BatchCandidateReadyEvent,
             BatchGenerationCancelledEvent,
@@ -107,7 +107,7 @@ class TuiOperationWorkerTests(unittest.TestCase):
             prepare_from_caption=Mock(side_effect=ValueError("bad Caption")),
         )
         item = SimpleNamespace(item_id="bad", session=session)
-        make_batch_generation_work(((item, 2),), overall_total=2, cancellation_event=Event(), emit_event=events.append)()
+        make_batch_generation_work(((item, 2, (1, 2), frozenset()),), overall_total=2, cancellation_event=Event(), emit_event=events.append)()
         self.assertIsInstance(events[0], BatchGenerationFailedEvent)
         self.assertEqual(events[0].item_id, "bad")
         self.assertEqual(str(events[0].error), "bad Caption")

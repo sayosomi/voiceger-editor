@@ -345,13 +345,10 @@ class TuiRenderingTests(RenderingTestCase):
     def test_angle_bracket_controls_show_transient_arrow_feedback(self):
         batch = CaptionBatch(default_take_count=4)
         batch_lines = self.renderer.batch_list_document(
-            batch,
-            ("takes", None),
-            80,
-            ("batch_list", "takes", 1),
+            batch, ("settings", None), 80
         )
         self.assertIn(
-            "▶ Takes < 4>>",
+            "▶ [S] Settings Takes 4 | WAV",
             [line.text for line in batch_lines],
         )
 

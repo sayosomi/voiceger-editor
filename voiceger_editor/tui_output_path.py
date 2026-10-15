@@ -15,7 +15,7 @@ _ENTER_KEYS = {"\n", "\r", curses.KEY_ENTER}
 _ESCAPE = "\x1b"
 _OUTPUT_PREFIX = "▶ [F] Output: "
 
-OutputPathOwner = Literal["batch_item", "dictionary_export", "batch_write"]
+OutputPathOwner = Literal["batch_list", "dictionary_export", "batch_write"]
 
 
 @dataclass(frozen=True)

@@ -367,7 +367,6 @@ class TuiEditorController:
 
         if editor.kind in {"settings", "audio_output_settings"}:
             return self._settings.activate_selection(settings, current_caption)
-
         selected = editor.selection
         if editor.kind == "build_confirmation":
             if selected == "rebuild":

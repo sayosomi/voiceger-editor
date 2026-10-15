@@ -162,9 +162,9 @@ class FakeSession:
             raise self.generate_error
         return iter(())
 
-    def replace_settings(self, settings):
+    def replace_settings(self, settings, *, preserve_takes=False):
         self.replace_settings_calls.append(settings)
-        if any(
+        if not preserve_takes and any(
             getattr(settings, name) != getattr(self.settings, name)
             for name in ("style_id", "speed", "top_k", "top_p", "temperature")
         ):

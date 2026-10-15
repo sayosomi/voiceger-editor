@@ -125,6 +125,11 @@ class FakeTakeBatch:
             raise RuntimeError("take batch is closed")
         return self.initial_iterator
 
+    def set_generation(self, synthesize_one, *, style_name, query):
+        self.kwargs["synthesize_one"] = synthesize_one
+        self.kwargs["style_name"] = style_name
+        self.kwargs["query"] = query
+
     def regenerate(self, take_number):
         self.regenerate_calls.append(take_number)
         return TakeCandidate(
@@ -748,6 +753,37 @@ class UtteranceSessionTests(unittest.TestCase):
                 self.assertTrue(batch.closed)
                 self.assertFalse(session.has_active_batch)
                 self.assertEqual(session.candidates, ())
+
+    def test_local_voice_change_preserves_existing_takes_and_updates_future_recipe(self):
+        session = self.make_session()
+        batch = self.activate_batch(session)
+        previous = _candidate(1, "/tmp/original-take.wav")
+        batch._candidates.append(previous)
+        old_query = batch.kwargs["query"]
+        original_style = batch.kwargs["style_name"]
+
+        with patch(
+            "voiceger_editor.session.get_style", return_value=self.other_style
+        ):
+            session.replace_settings(
+                replace(session.settings, style_id=1, speed=0.85),
+                preserve_takes=True,
+            )
+
+        self.assertFalse(batch.closed)
+        self.assertIs(session.candidates[-1], previous)
+        self.assertEqual(previous.style_name, original_style)
+        self.assertEqual(old_query.speedScale, 1.25)
+        self.assertEqual(session.query.speedScale, 0.85)
+        self.assertEqual(batch.kwargs["style_name"], "Sweet")
+        self.assertEqual(batch.kwargs["query"].speedScale, 0.85)
+        with patch(
+            "voiceger_editor.session.synthesize_audio_query",
+            return_value={"audio": object(), "sampling_rate": 32000},
+        ) as synthesize:
+            batch.kwargs["synthesize_one"]()
+        self.assertIs(synthesize.call_args.kwargs["style"], self.other_style)
+        self.assertEqual(synthesize.call_args.kwargs["query"].speedScale, 0.85)
 
     def test_output_text_preference_and_take_count_changes_preserve_batch(self):
         session = self.make_session()

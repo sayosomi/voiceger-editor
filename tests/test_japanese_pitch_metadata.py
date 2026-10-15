@@ -199,19 +199,38 @@ class JapaneseMultiPeakDictionaryTests(unittest.TestCase):
         self.assertEqual(self.core.get_japanese_pitch_events(word_uuid), EVENTS)
 
     def test_native_export_import_and_missing_or_corrupt_sidecar(self):
+        from zipfile import ZipFile
+        import hashlib
+
         word_uuid = self.add_multi()
         result = export_voiceger_editor_dictionaries(
             self.core, self.root / "out",
         )
-        self.assertEqual(len(result.paths), 3)
-        self.assertIn("user_dict_with_pitch_events", result.paths[0].name)
-        self.assertIn("user_dict_pitch_events", result.paths[2].name)
-        self.assertEqual(result.paths[0].read_bytes(), self.core.japanese_path.read_bytes())
+        self.assertEqual(len(result.paths), 1)
+        self.assertTrue(result.paths[0].name.endswith("_voiceger_editor_dictionary.zip"))
+        with ZipFile(result.paths[0]) as archive:
+            names = set(archive.namelist())
+            self.assertEqual(
+                names,
+                {
+                    "manifest.json", "user_dict.json",
+                    "english_user_dict.json", "user_dict_pitch_events.json",
+                },
+            )
+            self.assertEqual(
+                archive.read("user_dict.json"),
+                self.core.japanese_path.read_bytes(),
+            )
+            original = {
+                name: archive.read(name) for name in names
+                if name != "manifest.json"
+            }
         second = export_voiceger_editor_dictionaries(
             self.core, self.root / "out",
         )
-        self.assertEqual(len(second.paths), 3)
-        self.assertTrue(all("-2.json" in path.name for path in second.paths))
+        self.assertEqual(len(second.paths), 1)
+        self.assertIn("-2.zip", second.paths[0].name)
+
         other = UserDictionaryCore(
             self.voiceger, data_directory=self.root / "other",
             openjtalk_dictionary=FakeBackend(),
@@ -226,11 +245,64 @@ class JapaneseMultiPeakDictionaryTests(unittest.TestCase):
         exact = prepare_dictionary_import(result.paths[0], other)
         self.assertEqual(exact.exact_duplicate_count, 1)
 
-        result.paths[2].unlink()
+        for label, members in (
+            ("missing", {name: data for name, data in original.items()
+                         if name != "user_dict_pitch_events.json"}),
+            ("bad_pitch", {**original, "user_dict_pitch_events.json": b"{}\\n"}),
+        ):
+            broken = self.root / (label + ".zip")
+            manifest = {
+                "version": 1,
+                "members": {
+                    name: hashlib.sha256(data).hexdigest()
+                    for name, data in members.items()
+                },
+            }
+            with ZipFile(broken, "w") as archive:
+                archive.writestr("manifest.json", json.dumps(manifest))
+                for name, data in members.items():
+                    archive.writestr(name, data)
+            if label == "missing":
+                # Optional pitch data is a valid single-peak archive. It
+                # is the incomplete manifest member list that must fail.
+                manifest["members"]["user_dict_pitch_events.json"] = (
+                    hashlib.sha256(original["user_dict_pitch_events.json"]).hexdigest()
+                )
+                with ZipFile(broken, "w") as archive:
+                    archive.writestr("manifest.json", json.dumps(manifest))
+                    for name, data in members.items():
+                        archive.writestr(name, data)
+            with self.subTest(label=label):
+                with self.assertRaises(DictionaryImportError):
+                    prepare_dictionary_import(broken, other)
+                self.assertEqual(other.get_japanese_pitch_events(word_uuid), EVENTS)
+
+    def test_legacy_three_file_native_sidecar_import_remains_supported(self):
+        from voiceger_editor.japanese_pitch_metadata import serialize_pitch_metadata
+        from voiceger_editor.user_dictionary import serialize_japanese_dictionary
+
+        uuid = self.add_multi()
+        words = self.core.list_japanese_entries()
+        japanese = serialize_japanese_dictionary(words)
+        directory = self.root / "legacy"
+        directory.mkdir()
+        primary = directory / "202610130200_user_dict_with_pitch_events.json"
+        sidecar = directory / "202610130200_user_dict_pitch_events.json"
+        primary.write_bytes(japanese)
+        sidecar.write_bytes(serialize_pitch_metadata(
+            words, self.core.list_japanese_pitch_events(), japanese,
+        ))
+        other = UserDictionaryCore(
+            self.voiceger, data_directory=self.root / "other_legacy",
+            openjtalk_dictionary=FakeBackend(),
+        )
+        review = prepare_dictionary_import(primary, other)
+        self.assertEqual(review.total_count, 1)
+        review.commit(other)
+        self.assertEqual(other.get_japanese_pitch_events(uuid), EVENTS)
+        sidecar.unlink()
         with self.assertRaises(DictionaryImportError):
-            prepare_dictionary_import(result.paths[0], other)
-        with self.assertRaises(DictionaryImportError):
-            prepare_dictionary_import(result.paths[0], self.core)
+            prepare_dictionary_import(primary, other)
 
     def test_metadata_changes_with_same_base_word_are_reviewable(self):
         word_uuid = self.add_multi()
@@ -238,7 +310,7 @@ class JapaneseMultiPeakDictionaryTests(unittest.TestCase):
         self.core.delete_japanese_pitch_events(word_uuid)
         review = prepare_dictionary_import(result.paths[0], self.core)
         self.assertEqual(review.items[0].relation, DictionaryImportRelation.CONFLICT)
-        review.set_selected(word_uuid, True)
+        review.set_selected(word_uuid, True, language="ja")
         review.commit(self.core)
         self.assertEqual(self.core.get_japanese_pitch_events(word_uuid), EVENTS)
 

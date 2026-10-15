@@ -74,7 +74,7 @@ class TuiShortcutTests(unittest.TestCase):
             },
             "audio_output_settings": {"x": "save_text", "l": "save_lab"},
             "dictionary_menu": {
-                "j": "japanese", "e": "english", "i": "import", "x": "export",
+                "j": "japanese", "e": "english", "i": "import", "o": "export",
             },
             "batch_recipe_read_path": {"f": "path", "r": "read"},
             "batch_recipe_write_path": {"f": "output", "w": "write"},
@@ -84,6 +84,7 @@ class TuiShortcutTests(unittest.TestCase):
             "dictionary_import_review": {
                 "i": "import_selected", "c": "clear_selection",
             },
+            "dictionary_voicevox_loss_confirmation": {"e": "export"},
             "dictionary_import_japanese_detail": {},
             "dictionary_import_english_detail": {},
             "dictionary_japanese_list": {
@@ -129,14 +130,14 @@ class TuiShortcutTests(unittest.TestCase):
 
     def test_main_shortcuts_match_issue_49_contract_and_share_display_metadata(self):
         expected = {
-            "f": "output",
             "e": "caption",
             "p": "build_pronunciation",
             "a": "add_section",
             "g": "generate",
             "c": "clear_candidates",
             "x": "delete_caption",
-            "s": "settings",
+            "s": "item_style",
+            "v": "item_speed",
             "d": "dictionary",
             "?": "help",
             "q": "quit",
@@ -152,7 +153,7 @@ class TuiShortcutTests(unittest.TestCase):
                     f"[{shortcut.upper()}] "
                 ))
 
-        for removed in (curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "l", "o"):
+        for removed in (curses.KEY_F5, "\x07", "R", "b", "t", "n", "l", "o"):
             with self.subTest(removed=removed):
                 self.assertIsNone(resolve_main_shortcut(removed))
 
@@ -163,6 +164,7 @@ class TuiShortcutTests(unittest.TestCase):
             "r": "read_batch",
             "w": "write_batch",
             "s": "settings",
+            "f": "output",
             "d": "dictionary",
             "?": "help",
             "q": "quit",

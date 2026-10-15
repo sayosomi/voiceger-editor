@@ -44,8 +44,16 @@ class TuiDictionaryExportTests(unittest.TestCase):
 
     def open_export(self):
         self.controller.open_menu()
-        intents = self.controller.handle_key("x")
+        intents = self.controller.handle_key("o")
         self.assertTrue(intents)
+        self.assertEqual(self.controller.editor.kind, "dictionary_export")
+
+    def test_export_uses_o_and_x_does_not_open_export(self):
+        self.controller.open_menu()
+        self.assertEqual(self.controller.editor.kind, "dictionary_menu")
+        self.controller.handle_key("x")
+        self.assertEqual(self.controller.editor.kind, "dictionary_menu")
+        self.controller.handle_key("o")
         self.assertEqual(self.controller.editor.kind, "dictionary_export")
 
     def test_top_level_export_and_export_screen_use_declared_vertical_navigation(self):
@@ -93,12 +101,11 @@ class TuiDictionaryExportTests(unittest.TestCase):
         self.current_output_dir = Path("/new-output")
         result = DictionaryExportResult(
             paths=(
-                Path("/new-output/202610060102_user_dict-2.json"),
-                Path("/new-output/202610060102_english_user_dict-2.json"),
+                Path("/new-output/202610060102_voiceger_editor_dictionary-2.zip"),
             )
         )
         with patch(
-            "voiceger_editor.tui_dictionary.export_voiceger_editor_dictionaries",
+            "voiceger_editor.tui_dictionary_export.export_voiceger_editor_dictionaries",
             return_value=result,
         ) as export:
             operation = self.operation(self.controller.handle_key("e"))
@@ -111,10 +118,8 @@ class TuiDictionaryExportTests(unittest.TestCase):
         export.assert_called_once_with(self.core, Path("/new-output"))
         completion = self.controller.complete_operation(operation.request, value)
         self.assertEqual(self.controller.editor.kind, "dictionary_export")
-        self.assertIn("202610060102_user_dict-2.json", completion[0].status)
         self.assertIn(
-            "202610060102_english_user_dict-2.json",
-            completion[0].status,
+            "202610060102_voiceger_editor_dictionary-2.zip", completion[0].status
         )
 
     def test_voicevox_export_and_failure_keep_export_screen_open(self):
@@ -124,7 +129,7 @@ class TuiDictionaryExportTests(unittest.TestCase):
             paths=(Path("/first-output/202610060102_voicevox_user_dict.json"),)
         )
         with patch(
-            "voiceger_editor.tui_dictionary.export_voicevox_dictionary",
+            "voiceger_editor.tui_dictionary_export.export_voicevox_dictionary",
             return_value=result,
         ) as export:
             operation = self.operation(self.controller.handle_key("\n"))

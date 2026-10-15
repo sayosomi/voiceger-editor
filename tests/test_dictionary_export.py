@@ -1,15 +1,18 @@
+import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from zipfile import ZipFile
 
 from voiceger_editor.dictionary_export import (
     export_voiceger_editor_dictionaries,
     export_voicevox_dictionary,
 )
 from voiceger_editor.openjtalk_dictionary import expand_word_type
+from voiceger_editor.pronunciation import PitchEvent
 from voiceger_editor.user_dictionary import (
     EnglishUserDictionaryEntry,
     JapaneseWordType,
@@ -55,6 +58,7 @@ class FakeDictionaryCore:
                 phonemes=["AE1", "P", "AH0", "L"],
             ),
         }
+        self.pitch = {}
 
     def list_japanese_entries(self):
         return dict(self.japanese)
@@ -62,85 +66,107 @@ class FakeDictionaryCore:
     def list_english_entries(self):
         return dict(self.english)
 
+    def list_japanese_pitch_events(self):
+        return dict(self.pitch)
+
 
 class DictionaryExportTests(unittest.TestCase):
     timestamp = datetime(2026, 10, 6, 1, 2)
 
-    def test_voiceger_pair_preserves_order_and_uses_one_collision_suffix(self):
+    def test_native_zip_is_single_complete_collision_safe_archive(self):
         core = FakeDictionaryCore()
         with tempfile.TemporaryDirectory() as directory:
-            output_dir = Path(directory)
-            existing = output_dir / "202610060102_english_user_dict.json"
+            output = Path(directory)
+            existing = output / "202610060102_voiceger_editor_dictionary.zip"
             existing.write_text("existing", encoding="utf-8")
-
             result = export_voiceger_editor_dictionaries(
-                core,
-                output_dir,
-                timestamp=self.timestamp,
+                core, output, timestamp=self.timestamp,
             )
-
             self.assertEqual(
                 [path.name for path in result.paths],
-                [
-                    "202610060102_user_dict-2.json",
-                    "202610060102_english_user_dict-2.json",
-                ],
+                ["202610060102_voiceger_editor_dictionary-2.zip"],
             )
             self.assertEqual(existing.read_text(encoding="utf-8"), "existing")
-            self.assertFalse(
-                (output_dir / "202610060102_user_dict.json").exists()
-            )
-
-            japanese = json.loads(result.paths[0].read_text(encoding="utf-8"))
-            english = json.loads(result.paths[1].read_text(encoding="utf-8"))
+            with ZipFile(result.paths[0]) as archive:
+                self.assertEqual(
+                    archive.namelist(),
+                    ["manifest.json", "user_dict.json", "english_user_dict.json"],
+                )
+                manifest = json.loads(archive.read("manifest.json"))
+                self.assertEqual(manifest["version"], 1)
+                for name, digest in manifest["members"].items():
+                    self.assertEqual(
+                        hashlib.sha256(archive.read(name)).hexdigest(), digest
+                    )
+                japanese = json.loads(archive.read("user_dict.json"))
+                english = json.loads(archive.read("english_user_dict.json"))
             self.assertEqual(list(japanese), list(core.japanese))
             self.assertEqual(list(english), list(core.english))
+            self.assertEqual(list(output.iterdir()), [existing, result.paths[0]])
 
-    def test_voicevox_export_is_japanese_only_and_collision_safe(self):
+    def test_pitch_metadata_is_optional_and_stays_canonical(self):
+        core = FakeDictionaryCore()
+        core.japanese["33333333-3333-4333-8333-333333333333"] = japanese_word(
+            "スタックチャン", "スタックチャン", 2
+        )
+        uuid = "33333333-3333-4333-8333-333333333333"
+        core.pitch[uuid] = (
+            PitchEvent(1, "["), PitchEvent(2, "]"),
+            PitchEvent(4, "["), PitchEvent(5, "]"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = export_voiceger_editor_dictionaries(
+                core, Path(directory), timestamp=self.timestamp
+            ).paths[0]
+            with ZipFile(path) as archive:
+                self.assertEqual(
+                    archive.namelist(),
+                    [
+                        "manifest.json", "user_dict.json",
+                        "english_user_dict.json", "user_dict_pitch_events.json",
+                    ],
+                )
+                metadata = json.loads(archive.read("user_dict_pitch_events.json"))
+                self.assertEqual(
+                    metadata["entries"][uuid]["events"],
+                    [
+                        {"afterMora": 1, "symbol": "["},
+                        {"afterMora": 2, "symbol": "]"},
+                        {"afterMora": 4, "symbol": "["},
+                        {"afterMora": 5, "symbol": "]"},
+                    ],
+                )
+
+    def test_failed_publication_never_leaves_an_incomplete_named_backup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            with patch(
+                "voiceger_editor.dictionary_export.os.link",
+                side_effect=OSError("disk full"),
+            ):
+                with self.assertRaisesRegex(OSError, "disk full"):
+                    export_voiceger_editor_dictionaries(
+                        FakeDictionaryCore(), output, timestamp=self.timestamp
+                    )
+            self.assertEqual(list(output.iterdir()), [])
+
+    def test_voicevox_export_is_still_japanese_json_and_collision_safe(self):
         core = FakeDictionaryCore()
         with tempfile.TemporaryDirectory() as directory:
-            output_dir = Path(directory) / "nested"
-            output_dir.mkdir()
-            existing = output_dir / "202610060102_voicevox_user_dict.json"
+            output = Path(directory)
+            existing = output / "202610060102_voicevox_user_dict.json"
             existing.write_text("existing", encoding="utf-8")
-
             result = export_voicevox_dictionary(
-                core,
-                output_dir,
-                timestamp=self.timestamp,
+                core, output, timestamp=self.timestamp
             )
-
             self.assertEqual(
                 [path.name for path in result.paths],
                 ["202610060102_voicevox_user_dict-2.json"],
             )
             self.assertEqual(existing.read_text(encoding="utf-8"), "existing")
-            self.assertFalse(
-                (output_dir / "202610060102_english_user_dict-2.json").exists()
-            )
-            payload = json.loads(result.paths[0].read_text(encoding="utf-8"))
-            self.assertEqual(list(payload), list(core.japanese))
-            first = payload[next(iter(payload))]
-            self.assertIn("surface", first)
-            self.assertIn("part_of_speech", first)
-            self.assertIn("accent_type", first)
-
-    def test_failed_pair_write_removes_only_files_owned_by_attempt(self):
-        core = FakeDictionaryCore()
-        with tempfile.TemporaryDirectory() as directory:
-            output_dir = Path(directory)
-            with patch(
-                "voiceger_editor.dictionary_export._write_payload",
-                side_effect=[None, OSError("write failed")],
-            ):
-                with self.assertRaisesRegex(OSError, "write failed"):
-                    export_voiceger_editor_dictionaries(
-                        core,
-                        output_dir,
-                        timestamp=self.timestamp,
-                    )
-
-            self.assertEqual(list(output_dir.iterdir()), [])
+            japanese = json.loads(result.paths[0].read_text(encoding="utf-8"))
+            self.assertEqual(list(japanese), list(core.japanese))
+            self.assertIn("part_of_speech", next(iter(japanese.values())))
 
 
 if __name__ == "__main__":

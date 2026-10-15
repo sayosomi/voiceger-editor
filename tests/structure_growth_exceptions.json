@@ -12,8 +12,8 @@
       "path": "voiceger_editor/tui_editors.py",
       "symbol": "TuiEditorController",
       "metric": "class_methods",
-      "reviewed_max": 51,
-      "justification": "The compatibility facade still coordinates several focused editor owners through one controller class; new feature behavior belongs in those focused owners and this direct-method baseline may not silently grow.",
+      "reviewed_max": 53,
+      "justification": "The compatibility facade delegates the per-item voice editor open/completion through two focused-owner hooks without owning the feature behavior. The reviewed interface grows from 51 to 53 methods for #285; subsequent growth requires its own focused ownership review.",
       "follow_up_issue": null
     },
     {
