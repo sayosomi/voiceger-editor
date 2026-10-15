@@ -141,15 +141,17 @@ Space でフォーカス中の Take を再生できます。
 
 Take を採用しても、ほかの候補は残ります。
 
+同じCaptionで複数のTakeを採用できます。別のTakeに移動してEnterを押すと、そのTakeも保存・採用されます。採用済みのTakeにもう一度Enterを押しても、ファイルは重複保存されません。
+
 ## 8. BATCH LIST に戻る
 
 Esc で `BATCH LIST` に戻ります。
 
-採用済みの Caption には `[✓]` が表示されます。
+Takeを1本採用したCaptionには `[✓]`、2本なら `[✓2]`、3本なら `[✓3]` と表示されます。
 
 ![Take採用後の BATCH LIST](images/tui/10-batch-list-accepted.png)
 
-画面上部の `Accepted 1/2` は、2件の Caption のうち1件で Take が採用されていることを表します。
+画面上部の `Accepted 1/2` は、Takeの本数ではなく、採用済みTakeがあるCaptionの件数を表します。
 
 ## 関連ドキュメント
 
