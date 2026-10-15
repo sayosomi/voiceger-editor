@@ -592,8 +592,33 @@ class TuiBatchItemController:
             )
             return
 
-        actions.operations.stop_playback()
         actions.editor_controller.clear_groupings()
+        rows = self.pronunciation_rows(bindings)
+        sections = self.segments(session)
+        coverage = {
+            row.source_segment_index
+            for row in rows
+            if (
+                getattr(row, "language", None) == "ja"
+                and getattr(row, "phrase_index", None) is not None
+                or getattr(row, "language", None) == "en"
+                and getattr(row, "group_index", None) is not None
+            )
+        }
+        grouping_error = actions.editor_controller.grouping_error
+        if grouping_error or coverage != set(range(len(sections))) or (
+            "".join(text for _, text, _ in sections) != session.caption
+        ):
+            self._pending_prepare_focus = None
+            actions.set_status(
+                grouping_error or error_status(
+                    "Pronunciation was not fully prepared: some Caption "
+                    "sections have no editable pronunciation."
+                )
+            )
+            return
+
+        actions.operations.stop_playback()
         actions.operations.clear_current_take()
         self.batch.clear_open_item_generation_outcome()
         if rebuild:

@@ -73,6 +73,63 @@ class MixedPronunciationOverridesTests(unittest.TestCase):
 
 
 class MixedRuntimeHooksTests(unittest.TestCase):
+    def test_scoped_deterministic_runtime_segments_and_restoration(self):
+        japanese, english, inference = runtime()
+        langsegment = SimpleNamespace(getTexts=lambda text: [{"lang": "zh", "text": text}])
+        inference.LangSegment = langsegment
+        original_get_texts = langsegment.getTexts
+        overrides = MixedPronunciationOverrides(
+            japanese=japanese,
+            english=english,
+            inference_webui=inference,
+            japanese_overrides=[],
+            english_overrides=[],
+        )
+        expected = (("ja", "今日は"), ("en", "hello"), ("ja", "なのだ"))
+        with scoped_mixed_runtime_hooks(
+            japanese=japanese,
+            inference_webui=inference,
+            overrides=overrides,
+            capture=MixedLabCapture(inference, None),
+            language_segments=expected,
+        ):
+            self.assertEqual(
+                langsegment.getTexts("今日はhelloなのだ"),
+                [{"lang": "ja", "text": "今日は"},
+                 {"lang": "en", "text": "hello"},
+                 {"lang": "ja", "text": "なのだ"}],
+            )
+            self.assertEqual(
+                langsegment.getTexts("今日はhelloなのだ。")[-1]["text"],
+                "なのだ。",
+            )
+            with self.assertRaisesRegex(ValueError, "altered"):
+                langsegment.getTexts("今日はhello")
+        self.assertIs(langsegment.getTexts, original_get_texts)
+
+    def test_segmentation_hook_restores_after_failure(self):
+        japanese, english, inference = runtime()
+        langsegment = SimpleNamespace(getTexts=lambda text: [])
+        inference.LangSegment = langsegment
+        original_get_texts = langsegment.getTexts
+        overrides = MixedPronunciationOverrides(
+            japanese=japanese,
+            english=english,
+            inference_webui=inference,
+            japanese_overrides=[],
+            english_overrides=[],
+        )
+        with self.assertRaisesRegex(RuntimeError, "synthesis failed"):
+            with scoped_mixed_runtime_hooks(
+                japanese=japanese,
+                inference_webui=inference,
+                overrides=overrides,
+                capture=MixedLabCapture(inference, None),
+                language_segments=(("ja", "今日は"), ("en", "hi")),
+            ):
+                raise RuntimeError("synthesis failed")
+        self.assertIs(langsegment.getTexts, original_get_texts)
+
     def test_restores_both_hooks_after_synthesis_exception(self):
         japanese, english, inference = runtime()
         original_japanese = japanese.g2p

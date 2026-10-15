@@ -123,6 +123,35 @@ class VoicegerIntegrationTests(unittest.TestCase):
             "キョ'ーワ/アメデスネ'！",
         )
 
+    def test_japanese_countdown_variants_prepare_and_synthesize(self):
+        for caption in ("３，２，１！", "３、２、１！", "三、二、一！",
+                        "３，２，１！なのだ"):
+            with self.subTest(caption=caption):
+                session = UtteranceSession.from_caption(
+                    adapter=self.adapter,
+                    caption=caption,
+                    settings=Settings(style_id=3),
+                )
+                session.prepare_from_caption()
+                self.assertIsNone(session.query.voicegerSegments)
+                self.assertTrue(session.query.accent_phrases)
+                self.assertEqual(session.synthesis_source_text, caption)
+                self.assert_full_synthesis_succeeds(session.query)
+
+    def test_deterministic_japanese_english_override_consumption(self):
+        for caption in ("今日はhelloと言うよ。", "Version 2なのだ"):
+            with self.subTest(caption=caption):
+                session = UtteranceSession.from_caption(
+                    adapter=self.adapter,
+                    caption=caption,
+                    settings=Settings(style_id=3),
+                )
+                session.prepare_from_caption()
+                segments = session.query.voicegerSegments
+                self.assertEqual({s.language for s in segments}, {"ja", "en"})
+                self.assertEqual("".join(s.text for s in segments), caption)
+                self.assert_full_synthesis_succeeds(session.query)
+
     def test_english_only_caption_with_numbers_prepares_and_synthesizes(self):
         session = UtteranceSession.from_caption(
             adapter=self.adapter,

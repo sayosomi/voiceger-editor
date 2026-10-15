@@ -224,7 +224,7 @@ class JapanesePitchMatchingTests(unittest.TestCase):
                 pure.pronunciationPitchEvents,
             )
             mixed = build_mixed_audio_query(
-                "あスタックチャンを作ったのだ！hello",
+                "あhelloスタックチャンを作ったのだ！",
                 segments=[
                     DetectedSegment("ja", "あ"),
                     DetectedSegment("en", "hello"),

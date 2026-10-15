@@ -46,28 +46,100 @@ class MixedLanguageTests(unittest.TestCase):
                         pronunciationTerminator=value,
                     )
 
-    def test_detects_and_merges_adjacent_segments(self):
-        def fake(_):
-            return [
-                {"lang": "ja", "text": "今日は"},
-                {"lang": "en", "text": "Open"},
-                {"lang": "en", "text": "AI"},
-                {"lang": "ja", "text": "を使う。"},
-            ]
-
-        segments = detect_language_segments(
-            "今日はOpenAIを使う。",
-            get_texts=fake,
+    def test_deterministic_segmentation_reconstructs_human_matrix(self):
+        cases = (
+            ("３，２，１", (("ja", "３，２，１"),)),
+            ("３，２，１！", (("ja", "３，２，１！"),)),
+            ("３，２，１？", (("ja", "３，２，１？"),)),
+            ("３，２，１、", (("ja", "３，２，１、"),)),
+            ("３，２，１。", (("ja", "３，２，１。"),)),
+            ("３、２、１！", (("ja", "３、２、１！"),)),
+            ("３，２，１なのだ！", (("ja", "３，２，１なのだ！"),)),
+            ("３，２，１！なのだ", (("ja", "３，２，１！なのだ"),)),
+            ("三、二、一！", (("ja", "三、二、一！"),)),
+            ("さん、にー、いち！", (("ja", "さん、にー、いち！"),)),
+            ("ｶﾀｶﾅ〇", (("ja", "ｶﾀｶﾅ〇"),)),
+            ("１！", (("ja", "１！"),)),
+            ("１２３！", (("ja", "１２３！"),)),
+            ("3,2,1!", (("ja", "3,2,1!"),)),
+            ("今日はOpenAIを使うのだ！", (
+                ("ja", "今日は"), ("en", "OpenAI"), ("ja", "を使うのだ！"),
+            )),
+            ("Hello, world!", (("en", "Hello, world!"),)),
+            ("Version 2なのだ", (("en", "Version 2"), ("ja", "なのだ"))),
+            ("Caption 01", (("en", "Caption 01"),)),
+            ("（Hello）なのだ！", (("en", "（Hello）"), ("ja", "なのだ！"))),
+            ("あ  hello,  1なのだ", (
+                ("ja", "あ  "), ("en", "hello,  1"), ("ja", "なのだ"),
+            )),
         )
+        for caption, expected in cases:
+            with self.subTest(caption=caption):
+                segments = detect_language_segments(caption)
+                actual = tuple((item.language, item.text) for item in segments)
+                self.assertEqual(actual, expected)
+                self.assertEqual("".join(item.text for item in segments), caption)
+                self.assertTrue(all(item.language in {"ja", "en"} for item in segments))
 
+    def test_unsupported_scripts_and_punctuation_only_are_rejected(self):
+        for caption in ("안녕", "Привет", "hello한글", "！？。", "   "):
+            with self.subTest(caption=caption):
+                with self.assertRaises(ValueError):
+                    detect_language_segments(caption)
+
+    def test_source_loss_or_unsupported_injected_sections_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, "complete Caption"):
+            build_mixed_audio_query(
+                "今日はhello",
+                segments=[DetectedSegment("ja", "今日は"), DetectedSegment("en", "hell")],
+            )
+        with self.assertRaisesRegex(ValueError, "ja/en"):
+            build_mixed_audio_query(
+                "三、二、一！",
+                segments=[DetectedSegment("zh", "三、二、一！")],
+            )
+
+    def test_japanese_numeric_query_keeps_all_countdown_phrases(self):
+        japanese = Pronunciation(
+            phrases=(
+                AccentPhrase(("サ", "ン"), 1),
+                AccentPhrase(("ニ", "ー"), 1),
+                AccentPhrase(("イ", "チ"), 1),
+            ),
+            terminator="！",
+        )
+        for caption in ("３，２，１！", "３、２、１！", "三、二、一！"):
+            with self.subTest(caption=caption), patch(
+                "voiceger_editor.mixed_language.text_to_pronunciation",
+                return_value=japanese,
+            ) as convert:
+                query = build_mixed_audio_query(caption)
+                convert.assert_called_once_with(caption)
+                self.assertIsNone(query.voicegerSegments)
+                self.assertEqual(len(query.accent_phrases), 3)
+
+    def test_auto_mixed_query_keeps_exact_section_identity(self):
+        japanese = Pronunciation(
+            phrases=(AccentPhrase(("ナ", "ノ", "ダ"), 2),),
+            terminator="！",
+        )
+        with patch(
+            "voiceger_editor.mixed_language.text_to_pronunciation",
+            return_value=japanese,
+        ):
+            query = build_mixed_audio_query(
+                "Version 2なのだ！",
+                english_g2p=lambda _: ["V", "ER1", "ZH", "AH0", "N"],
+            )
         self.assertEqual(
-            [(segment.language, segment.text) for segment in segments],
-            [
-                ("ja", "今日は"),
-                ("en", "OpenAI"),
-                ("ja", "を使う。"),
-            ],
+            [(item.language, item.text) for item in query.voicegerSegments],
+            [("en", "Version 2"), ("ja", "なのだ！")],
         )
+        self.assertEqual(query.voicegerSegments[1].accentPhraseCount, 1)
+        self.assertEqual(query.voicegerSegments[0].phonemes[1], "ER1")
+        plan = build_mixed_synthesis_plan(query)
+        self.assertEqual(plan.text, "Version 2なのだ！")
+        self.assertEqual(plan.text_language, "Japanese-English Mixed")
 
     def test_english_only_query_and_plan_use_native_english_mode(self):
         phonemes = ["K", "AE1", "P", "SH", "AH0", "N"]
