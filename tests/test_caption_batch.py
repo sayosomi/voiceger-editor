@@ -108,6 +108,9 @@ class CaptionBatchTests(unittest.TestCase):
         self.assertIs(marked, second)
         self.assertTrue(second.is_accepted)
         self.assertEqual(second.accepted_take_number, 2)
+        self.assertEqual(second.accepted_take_numbers, frozenset({2}))
+        self.assertTrue(second.is_take_accepted(2))
+        self.assertFalse(second.is_take_accepted(1))
         self.assertEqual(batch.accepted_items, (second,))
         self.assertFalse(first.is_accepted)
 

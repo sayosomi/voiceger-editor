@@ -396,6 +396,50 @@ class TuiOperationsTests(unittest.TestCase):
         self.operations.join_worker()
         self.consume(session)
 
+    def test_accepted_regeneration_noops_without_worker_or_side_effects(self):
+        session = FakeSession((candidate(1), candidate(2)))
+        protected = frozenset({1, 2})
+        single = self.operations.start_regeneration(
+            session, 1, take_count=2, navigation_revision=0,
+            protected_numbers=protected,
+        )
+        self.assertIn("accepted", single[0].status)
+        self.assertFalse(self.operations.busy)
+        self.assertEqual(session.regenerate_calls, [])
+
+        all_accepted = self.operations.start_regenerate_all(
+            session, take_count=2, navigation_revision=0,
+            protected_numbers=protected,
+        )
+        self.assertIn("nothing to regenerate", all_accepted[0].status)
+        self.assertFalse(self.operations.busy)
+        self.assertEqual(session.regenerate_all_calls, 0)
+
+        protected_shrink = self.operations.start_regenerate_all(
+            session, take_count=1, navigation_revision=0,
+            protected_numbers=protected,
+        )
+        self.assertIn("Cannot reduce", protected_shrink[0].status)
+        self.assertEqual(session.regenerate_all_calls, 0)
+        self.assertFalse(self.operations.busy)
+
+    def test_partial_accepted_regeneration_only_reports_unprotected_slot(self):
+        session = FakeSession((candidate(1), candidate(2), candidate(3)))
+        effects = self.operations.start_regenerate_all(
+            session, take_count=3, navigation_revision=0,
+            protected_numbers=frozenset({1, 3}),
+        )
+        self.assertEqual(effects, (UpdateStatusEffect("Regenerating 1/1"),))
+        self.assertEqual(self.operations.operation_total, 1)
+        self.operations.join_worker()
+        result = self.consume(session)
+        replaced = [
+            effect.number for effect in result
+            if isinstance(effect, CandidateReplacedEffect)
+        ]
+        self.assertEqual(replaced, [2])
+        self.assertEqual(session.regenerate_all_calls, 1)
+
     def test_worker_suppresses_output_and_posts_candidate_then_done(self):
         stdout = io.StringIO()
         stderr = io.StringIO()
@@ -945,12 +989,14 @@ class BatchFakeSession:
         self.has_active_batch = True
         return self._values(take_count, "initial")
 
-    def regenerate_all_takes(self, *, take_count=None):
+    def regenerate_all_takes(self, *, take_count=None, protected_numbers=frozenset()):
         self.regenerate_take_counts.append(take_count)
-        return self._values(take_count, "regenerate")
+        return self._values(take_count, "regenerate", protected_numbers)
 
-    def _values(self, take_count, mode):
+    def _values(self, take_count, mode, protected_numbers=frozenset()):
         for number in range(1, take_count + 1):
+            if number in protected_numbers:
+                continue
             if self.concurrency is not None:
                 self.concurrency["active"] += 1
                 self.concurrency["max"] = max(
@@ -1292,6 +1338,41 @@ class TuiBatchGenerationTests(unittest.TestCase):
             replacements,
             [BatchCandidateReplacedEffect("only", 1)],
         )
+
+    def test_batch_selected_skips_accepted_slot_and_completes_item(self):
+        log = []
+        session = BatchFakeSession("one", log, existing=True)
+        original = [candidate(1), candidate(2), candidate(3)]
+        session.candidates = list(original)
+        item = CaptionBatchItem(session, item_id="one")
+        item.mark_accepted(3)
+        batch = self.make_batch(item, default_take_count=3)
+        operations = TuiOperations()
+
+        effects = operations.start_batch_generation(batch, navigation_revision=0)
+        self.assertEqual(operations.operation_total, 2)
+        operations.join_worker()
+        completed = self.consume(operations)
+        self.assertEqual(session.regenerate_take_counts, [3])
+        self.assertEqual(
+            [(mode, phase, number) for _, mode, phase, number in log if phase == "start"],
+            [("regenerate", "start", 1), ("regenerate", "start", 2)],
+        )
+        self.assertIs(session.candidates[2], original[2])
+        self.assertEqual(item.accepted_take_numbers, frozenset({3}))
+        self.assertNotIn(BatchCandidateReplacedEffect("one", 3), completed)
+        self.assertIn(GenerationOutcomeEffect("one", "completed"), completed)
+
+    def test_batch_all_accepted_is_noop(self):
+        session = BatchFakeSession("one", [], existing=True)
+        item = CaptionBatchItem(session, item_id="one")
+        item.mark_accepted(1)
+        batch = self.make_batch(item, default_take_count=1)
+        operations = TuiOperations()
+        effects = operations.start_batch_generation(batch, navigation_revision=0)
+        self.assertIn("nothing to regenerate", effects[0].status)
+        self.assertFalse(operations.busy)
+        self.assertIsNone(operations.worker)
 
     def test_zero_selection_does_not_start_worker(self):
         session = BatchFakeSession("only", [])

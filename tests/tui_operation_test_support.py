@@ -51,14 +51,15 @@ class FakeSession:
             raise self.regenerate_error
         return next(item for item in self.candidates if item.number == number)
 
-    def regenerate_all_takes(self):
+    def regenerate_all_takes(self, *, take_count=None, protected_numbers=frozenset()):
         self.regenerate_all_calls += 1
         if self.regenerate_all_error is not None:
             raise self.regenerate_all_error
 
         def values():
             for item in self.candidates:
-                yield item
+                if item.number not in protected_numbers:
+                    yield item
 
         return values()
 

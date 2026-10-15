@@ -635,6 +635,28 @@ class TuiBatchItemIntegrationTests(TuiAppTestCase):
             item_id=app._batch.open_item_id,
         )
 
+    def test_accepted_take_cannot_regenerate_and_bulk_passes_protected_membership(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
+        item = app._batch.batch.items[0]
+        item.mark_accepted(1)
+        app._operations.start_regeneration = Mock(return_value=())
+        app._operations.start_regenerate_all = Mock(return_value=())
+
+        focus_candidate(app, 1)
+        app._handle_key("r")
+        app._operations.start_regeneration.assert_not_called()
+        self.assertIn("accepted", app._status)
+        self.assertEqual(item.accepted_take_numbers, frozenset({1}))
+
+        app._handle_key("g")
+        app._operations.start_regenerate_all.assert_called_once_with(
+            app.session,
+            take_count=app.settings.take_count,
+            navigation_revision=app._navigation.revision,
+            item_id=app._batch.open_item_id,
+            protected_numbers=frozenset({1}),
+        )
+
     def test_busy_candidate_remains_playable_without_inline_unavailable_cues(self):
         app = self.make_app(candidates=(candidate(1), candidate(2)))
         app._operations.play_take = Mock(return_value=())

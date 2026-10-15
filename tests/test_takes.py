@@ -268,6 +268,49 @@ class TakeBatchTests(unittest.TestCase):
             )
             batch.close()
 
+    def test_accepted_slots_survive_single_bulk_growth_and_failed_shrink(self):
+        calls = []
+
+        def synthesize_one():
+            calls.append(len(calls))
+            return {"audio": object(), "sampling_rate": 32000}
+
+        with tempfile.TemporaryDirectory() as directory:
+            batch = self.make_batch(directory, take_count=3, synthesize_one=synthesize_one)
+            with patch.dict("sys.modules", {"soundfile": self.fake_soundfile_module()}):
+                original = list(batch.generate_all())
+                before = [(entry, entry.wav_path.read_bytes()) for entry in original]
+                protected = frozenset({1, 3})
+
+                with self.assertRaisesRegex(ValueError, "accepted"):
+                    batch.regenerate(1, protected_numbers=protected)
+                with self.assertRaisesRegex(ValueError, "accepted Take 3"):
+                    batch.regenerate_all(2, protected_numbers=protected)
+                self.assertEqual(len(calls), 3)
+
+                replacements = list(batch.regenerate_all(3, protected_numbers=protected))
+                self.assertEqual([entry.number for entry in replacements], [2])
+                self.assertEqual(len(calls), 4)
+                self.assertEqual(batch.candidates[0], original[0])
+                self.assertEqual(batch.candidates[2], original[2])
+                self.assertFalse(original[1].wav_path.exists())
+
+                self.assertEqual(
+                    list(batch.regenerate_all(3, protected_numbers=frozenset({1, 2, 3}))),
+                    [],
+                )
+                self.assertEqual(len(calls), 4)
+
+                grown = list(batch.regenerate_all(5, protected_numbers=protected))
+                self.assertEqual([entry.number for entry in grown], [2, 4, 5])
+                self.assertEqual([entry.number for entry in batch.candidates], [1, 2, 3, 4, 5])
+                self.assertEqual(batch.take_count, 5)
+                for entry, data in (before[0], before[2]):
+                    self.assertTrue(entry.wav_path.is_file())
+                    self.assertEqual(entry.wav_path.read_bytes(), data)
+                    self.assertIn(entry, batch.candidates)
+            batch.close()
+
     def test_full_regeneration_uses_only_existing_partial_slots_in_order(self):
         calls = []
 
