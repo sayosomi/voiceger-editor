@@ -463,12 +463,18 @@ class TuiBatchItemController:
                 if conflict is not None:
                     actions.set_status(conflict)
                     continue
+                item = self.batch.batch.get_item(self.batch.open_item_id)
+                protection = (
+                    {"protected_numbers": item.accepted_take_numbers}
+                    if item.is_accepted else {}
+                )
                 actions.dispatch_operation_effects(
                     actions.operations.start_regenerate_all(
                         session,
                         take_count=settings.take_count,
                         navigation_revision=actions.navigation.revision,
                         item_id=self.batch.open_item_id,
+                        **protection,
                     )
                 )
             elif isinstance(action, BuildPronunciation):
@@ -480,6 +486,13 @@ class TuiBatchItemController:
                     bindings=bindings,
                 )
             elif isinstance(action, RegenerateCandidate):
+                item_id = self.batch.open_item_id
+                item = self.batch.batch.get_item(item_id)
+                if item.is_take_accepted(action.number):
+                    actions.set_status(info_status(
+                        f"Take {action.number} is accepted and cannot be regenerated."
+                    ))
+                    continue
                 conflict = actions.operations.generation_conflict_status(
                     self.batch.batch,
                     requested_item_id=self.batch.open_item_id,

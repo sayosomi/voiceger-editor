@@ -104,6 +104,16 @@ class CaptionBatchItem:
     def is_accepted(self) -> bool:
         return self._accepted_take_number is not None
 
+    @property
+    def accepted_take_numbers(self) -> frozenset[int]:
+        """Read-only membership view used by regeneration protection."""
+        if self._accepted_take_number is None:
+            return frozenset()
+        return frozenset({self._accepted_take_number})
+
+    def is_take_accepted(self, take_number: int) -> bool:
+        return take_number in self.accepted_take_numbers
+
     def mark_accepted(self, take_number: int) -> None:
         _validate_take_count(
             take_number,

@@ -193,11 +193,15 @@ class TakeBatch:
         self._style_name = style_name
         self._query = deepcopy(query)
 
-    def regenerate(self, take_number: int) -> TakeCandidate:
-        """Replace one existing candidate after its new WAV is ready."""
+    def regenerate(
+        self, take_number: int, *, protected_numbers: frozenset[int] = frozenset()
+    ) -> TakeCandidate:
+        """Replace one unprotected candidate after its new WAV is ready."""
 
         self._ensure_open()
         number = self._validate_take_number(take_number)
+        if number in protected_numbers:
+            raise ValueError(f"Take {number} is accepted and cannot be regenerated")
         previous = self._candidates.get(number)
         if previous is None:
             raise ValueError(f"take {number} has no generated candidate")
@@ -210,6 +214,8 @@ class TakeBatch:
     def regenerate_all(
         self,
         take_count: int | None = None,
+        *,
+        protected_numbers: frozenset[int] = frozenset(),
     ) -> Iterator[TakeCandidate]:
         """Regenerate and resize candidate slots progressively in take order."""
 
@@ -232,6 +238,14 @@ class TakeBatch:
         else:
             target_count = len(self._candidates)
             numbers = tuple(sorted(self._candidates))
+
+        excess_protected = sorted(number for number in protected_numbers if number > target_count)
+        if excess_protected:
+            raise ValueError(
+                f"Cannot reduce Takes to {target_count}: accepted Take "
+                f"{excess_protected[0]} would be removed. Increase Take count first."
+            )
+        numbers = tuple(number for number in numbers if number not in protected_numbers)
 
         original_take_count = self.take_count
         if resizing and target_count > original_take_count:

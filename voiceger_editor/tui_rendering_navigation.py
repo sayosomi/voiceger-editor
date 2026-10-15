@@ -225,9 +225,10 @@ def navigation_document(
                 adjustment_press_direction(state, "navigation", "generate"),
             )
             generate_label = (
-                f"Regenerate all {adjustable_count} takes"
-                if has_batch
-                else f"Generate {adjustable_count} takes"
+                f"Regenerate unaccepted ({adjustable_count} total)"
+                if has_batch and state.accepted_take_number is not None
+                else f"Regenerate all {adjustable_count} takes"
+                if has_batch else f"Generate {adjustable_count} takes"
             )
             if (
                 state.busy
