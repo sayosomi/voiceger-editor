@@ -63,6 +63,22 @@ if TYPE_CHECKING:
     from .tui_dictionary_operations import DictionaryOperationIntent
 
 
+def _finish_protected_shrink(
+    session: UtteranceSession,
+    *,
+    take_count: int,
+    protected_numbers: frozenset[int],
+) -> None:
+    """Prune excess unaccepted slots without synthesizing protected slots."""
+    values = session.regenerate_all_takes(
+        take_count=take_count, protected_numbers=protected_numbers,
+    )
+    for _ in values:
+        raise RuntimeError(
+            "shrink-only regeneration unexpectedly generated a Take"
+        )
+
+
 class TuiOperations:
     """Own operation state and return typed effects for app-owned actions."""
 
@@ -110,22 +126,6 @@ class TuiOperations:
         self._ctrl_c_cancellation_guard = False
         self._pending_worker: tuple[Callable[[], None], str] | None = None
 
-    @staticmethod
-    def _finish_protected_shrink(
-        session: UtteranceSession,
-        *,
-        take_count: int,
-        protected_numbers: frozenset[int],
-    ) -> None:
-        """Prune excess unaccepted slots without synthesizing protected slots."""
-        values = session.regenerate_all_takes(
-            take_count=take_count, protected_numbers=protected_numbers,
-        )
-        for _ in values:
-            raise RuntimeError(
-                "shrink-only regeneration unexpectedly generated a Take"
-            )
-
     def start_batch_generation(
         self,
         batch: CaptionBatch,
@@ -171,7 +171,7 @@ class TuiOperations:
 
         for item, take_total, accepted in shrink_only_rows:
             try:
-                self._finish_protected_shrink(
+                _finish_protected_shrink(
                     item.session,
                     take_count=take_total,
                     protected_numbers=accepted,
@@ -331,7 +331,7 @@ class TuiOperations:
             # Finish the core shrink without starting a synthesis worker.
             if any(candidate.number > take_count for candidate in session.candidates):
                 try:
-                    self._finish_protected_shrink(
+                    _finish_protected_shrink(
                         session,
                         take_count=take_count,
                         protected_numbers=protected_numbers,
