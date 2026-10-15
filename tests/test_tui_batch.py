@@ -498,6 +498,19 @@ class TuiBatchControllerTests(unittest.TestCase):
         self.assertFalse(first.is_accepted)
         self.assertTrue(second.is_accepted)
 
+    def test_invalidation_removes_only_replaced_take_from_accepted_set(self):
+        controller = self.make_controller("first")
+        item = controller.batch.items[0]
+        for number in (1, 3, 4):
+            controller.complete_acceptance(item.item_id, number)
+
+        controller.invalidate_acceptance_for_replacement(item.item_id, 3)
+        self.assertEqual(item.accepted_take_numbers, frozenset({1, 4}))
+        controller.invalidate_acceptance_for_replacement(item.item_id, 2)
+        self.assertEqual(item.accepted_take_numbers, frozenset({1, 4}))
+        controller.clear_acceptances()
+        self.assertEqual(item.accepted_take_numbers, frozenset())
+
     def test_add_captions_uses_frontend_neutral_multiline_model(self):
         controller = self.make_controller()
         controller.add_captions(
