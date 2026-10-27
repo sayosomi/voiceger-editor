@@ -166,7 +166,7 @@ def _active_input_prefix(editor: EditorRenderState) -> str:
         return "▶ "
     if editor.kind in {"japanese", "dictionary_japanese_pronunciation"}:
         return "▶ "
-    if editor.kind == "english_word":
+    if editor.kind in {"english_word", "english_punctuation"}:
         return "▶ "
     if editor.kind in {"section_text", "add_section"}:
         return "▶ "

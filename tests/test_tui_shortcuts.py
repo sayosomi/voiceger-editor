@@ -60,6 +60,10 @@ class TuiShortcutTests(unittest.TestCase):
                 "d": "dictionary", "e": "edit_text", "x": "delete_section",
                 "c": "clear", "r": "reset",
             },
+            "english_punctuation": {
+                "p": "preview", "a": "apply", "e": "edit_text",
+                "x": "delete_section", "r": "reset",
+            },
             "section_text": {
                 "p": "preview", "a": "apply", "r": "reset",
                 "x": "delete_section",
@@ -308,6 +312,11 @@ class TuiShortcutTests(unittest.TestCase):
                 {"label": "hello"},
                 "HH AH1",
             ),
+            "english_punctuation": (
+                "phonemes",
+                {"label": "."},
+                ".",
+            ),
             "section_text": (
                 "draft",
                 {"language": "ja", "draft": "雨", "can_delete": True},
@@ -407,7 +416,7 @@ class TuiShortcutTests(unittest.TestCase):
                         )
 
     def test_dynamic_delete_shortcut_exists_only_when_delete_is_selectable(self):
-        for kind in ("japanese", "english_word", "section_text"):
+        for kind in ("japanese", "english_word", "english_punctuation", "section_text"):
             with self.subTest(kind=kind):
                 hidden = menu_items(kind, {"can_delete": False})
                 visible = menu_items(kind, {"can_delete": True})

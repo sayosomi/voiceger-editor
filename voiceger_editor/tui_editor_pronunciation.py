@@ -37,7 +37,11 @@ from .tui_editor_common import (
     SaveToDictionaryIntent,
     UpdateStatusIntent,
 )
-from .tui_editor_english import EnglishGroupingCache
+from .tui_editor_english import (
+    EDITABLE_ENGLISH_PUNCTUATION,
+    EnglishGroupingCache,
+    is_english_punctuation_group,
+)
 from .tui_status import EMPTY_STATUS, error_status
 from .voicevox_api_models import AudioQuery
 
@@ -84,6 +88,17 @@ def _punctuation_suffixes(value: str) -> tuple[str, ...]:
         else:
             raise ValueError(f"unsupported pronunciation item: {item!r}")
     return tuple(suffixes)
+
+
+def _english_draft_phonemes(editor: EditorState) -> tuple[str, ...]:
+    """Validate the editable phonemes, preserving punctuation-slot identity."""
+
+    tokens = editor.input_value.split()
+    if editor.kind == "english_punctuation" and (
+        len(tokens) != 1 or tokens[0] not in EDITABLE_ENGLISH_PUNCTUATION
+    ):
+        raise ValueError("Enter one supported punctuation mark: . , ! ? …")
+    return tuple(normalize_english_phonemes(tokens))
 
 
 class TuiPronunciationEditorOwner(EditorOwnerBase):
@@ -225,7 +240,13 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                                 model_segment_index=model_index,
                                 first_in_segment=first,
                                 group_index=group_index,
-                                word=group.label,
+                                word=(
+                                    group.phonemes[0]
+                                    if is_english_punctuation_group(
+                                        group.label, group.phonemes
+                                    )
+                                    else group.label
+                                ),
                                 phonemes=group.phonemes,
                                 vowel_offset=vowel_offset,
                                 grouping=grouping,
@@ -322,8 +343,11 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                         error_status(f"Cannot edit English word pronunciation: {exc}")
                     ),
                 )
+            punctuation = is_english_punctuation_group(
+                group.label, phonemes
+            )
             self.editor = EditorState(
-                kind="english_word",
+                kind="english_punctuation" if punctuation else "english_word",
                 title="EDIT PRONUNCIATION",
                 origin=origin,
                 selection="phonemes",
@@ -331,7 +355,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                     "segment_index": row.model_segment_index,
                     "group_index": row.group_index,
                     "grouping": row.grouping,
-                    "label": group.label,
+                    "label": phonemes[0] if punctuation else group.label,
                     "section_text": query.voicegerSegments[row.model_segment_index].text,
                     "can_delete": can_delete,
                     "opening_draft": " ".join(phonemes),
@@ -404,7 +428,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
         """Validate a pronunciation draft and emit a transient query intent."""
 
         editor = self.editor
-        if editor is None or editor.kind not in {"japanese", "english_word"}:
+        if editor is None or editor.kind not in {"japanese", "english_word", "english_punctuation"}:
             return ()
         try:
             if query is None:
@@ -423,9 +447,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                 )
             else:
                 grouping: EnglishGroupingCache = editor.payload["grouping"]
-                draft_phonemes = normalize_english_phonemes(
-                    editor.input_value.split()
-                )
+                draft_phonemes = _english_draft_phonemes(editor)
                 preview_query = english_word_preview_query(
                     query,
                     segment_index=editor.payload["segment_index"],
@@ -482,7 +504,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                 ),
             )
 
-        if editor.kind == "english_word":
+        if editor.kind in {"english_word", "english_punctuation"}:
             index = editor.payload["segment_index"]
             group_index = editor.payload["group_index"]
             grouping: EnglishGroupingCache = editor.payload["grouping"]
@@ -490,9 +512,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                 if query is None:
                     raise ValueError("There is no active utterance")
                 groups = list(grouping.groups)
-                edited_phones = tuple(
-                    normalize_english_phonemes(editor.input_value.split())
-                )
+                edited_phones = _english_draft_phonemes(editor)
                 current_phones = tuple(
                     normalize_english_phonemes(
                         groups[group_index].phonemes
@@ -500,7 +520,9 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                 )
                 if edited_phones == current_phones:
                     return self._close_editor(
-                        "English phonemes unchanged."
+                        "English punctuation unchanged."
+                        if editor.kind == "english_punctuation"
+                        else "English phonemes unchanged."
                     )
                 groups[group_index] = replace(
                     groups[group_index],
@@ -524,9 +546,11 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
             return (
                 ReplaceQueryIntent(
                     query=updated,
-                    editor_kind="english_word",
+                    editor_kind=editor.kind,
                     success_status=(
-                        "English word pronunciation updated; old takes cleared."
+                        "English punctuation updated; old takes cleared."
+                        if editor.kind == "english_punctuation"
+                        else "English word pronunciation updated; old takes cleared."
                     ),
                     grouping_index=index,
                     accepted_grouping=accepted_grouping,
@@ -595,7 +619,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                 return self.cancel()
             return ()
 
-        if editor.kind == "english_word":
+        if editor.kind in {"english_word", "english_punctuation"}:
             if selected == "phonemes":
                 return self.begin_field(
                     "phonemes", editor.input_value
@@ -604,7 +628,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                 return self.preview(query)
             if selected == "apply":
                 return self.apply_pronunciation(query)
-            if selected == "save_dictionary":
+            if selected == "save_dictionary" and editor.kind == "english_word":
                 return (
                     SaveToDictionaryIntent(
                         language="en",
@@ -612,7 +636,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                         pronunciation=editor.input_value,
                     ),
                 )
-            if selected == "dictionary":
+            if selected == "dictionary" and editor.kind == "english_word":
                 return (OpenDictionaryIntent(),)
             if selected == "edit_text":
                 return self.open_section_text(
@@ -622,7 +646,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                 )
             if selected == "delete_section":
                 return self.open_delete_confirmation(query)
-            if selected == "clear":
+            if selected == "clear" and editor.kind == "english_word":
                 self._set_pronunciation_draft(editor, "")
                 editor.error = EMPTY_STATUS
                 return (
@@ -637,7 +661,9 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                 editor.error = EMPTY_STATUS
                 return (
                     UpdateStatusIntent(
-                        "English phoneme draft reset."
+                        "English punctuation draft reset."
+                        if editor.kind == "english_punctuation"
+                        else "English phoneme draft reset."
                     ),
                 )
             if selected == "back":
@@ -649,7 +675,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
         if (
             editor is None
             or editor.active_field is None
-            or editor.kind not in {"japanese", "english_word"}
+            or editor.kind not in {"japanese", "english_word", "english_punctuation"}
         ):
             return ()
         name = editor.active_field

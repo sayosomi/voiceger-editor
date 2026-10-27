@@ -154,6 +154,24 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("reset", "Reset", "r", "action", "activate"),
         _escape_action("back", "Back"),
     ),
+    "english_punctuation": (
+        MenuItem(
+            "phonemes",
+            "Punctuation",
+            None,
+            "editable",
+            no_shortcut_reason="Enter edits the punctuation mark.",
+        ),
+        MenuItem("preview", "Preview", "p", "action", "activate"),
+        MenuItem("apply", "Apply", "a", "action", "activate"),
+        MenuItem("edit_text", "Edit text", "e", "action", "activate"),
+        MenuItem(
+            "delete_section", "Delete section", "x", "action", "activate",
+            condition_key="can_delete",
+        ),
+        MenuItem("reset", "Reset", "r", "action", "activate"),
+        _escape_action("back", "Back"),
+    ),
     "section_text": (
         MenuItem(
             "draft",
