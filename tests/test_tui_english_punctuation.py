@@ -12,6 +12,9 @@ from voiceger_editor.tui_editors import (
 from voiceger_editor.tui_rendering_navigation import navigation_document
 from voiceger_editor.voicevox_api_models import AudioQuery, VoicegerSegment
 from tests.tui_editor_test_support import EditorControllerTestCase, segments
+from tests.tui_app_test_support import (
+    TuiAppTestCase, candidate, set_navigation_focus,
+)
 from tests.tui_rendering_test_support import FakeSession, render_state
 
 
@@ -175,6 +178,54 @@ class EnglishPunctuationTests(EditorControllerTestCase):
         rows = controller.pronunciation_rows(query, segments(query))
         self.assertEqual(rows, ())
         self.assertIn("Cannot align English", controller.grouping_error)
+
+
+class EnglishPunctuationAppTests(TuiAppTestCase):
+    def test_punctuation_only_apply_invalidates_takes_but_not_caption(self):
+        source = "Wait. What?"
+        app = self.make_app(
+            query=english_query(source, CASES[source]),
+            groups=CASES[source],
+            candidates=(candidate(1),),
+        )
+        opening_caption = app.session.caption
+        set_navigation_focus(app, ("pronunciation", 1))
+        app._handle_key("\n")
+        editor = app._editor_controller.editor
+        self.assertEqual(editor.kind, "english_punctuation")
+        editor.input_value = ","
+        app._handle_key("\n")
+        app._handle_key("a")
+
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(len(app.session.replace_query_calls), 1)
+        self.assertEqual(app.session.candidates, ())
+        self.assertEqual(app.session.caption, opening_caption)
+        self.assertEqual(app.session.query.voicegerSegments[0].text, source)
+        self.assertEqual(
+            app.session.query.voicegerSegments[0].phonemes,
+            [*WAIT, ",", *WHAT, "?"],
+        )
+
+        lines = app._renderer.navigation_document(app._render_state(), 80)
+        self.assertTrue(any(
+            line.key == ("pronunciation", 1) and line.text.endswith(",")
+            for line in lines
+        ))
+
+    def test_punctuation_noop_keeps_existing_take(self):
+        source = "Wait. What?"
+        app = self.make_app(
+            query=english_query(source, CASES[source]),
+            groups=CASES[source],
+            candidates=(candidate(1),),
+        )
+        set_navigation_focus(app, ("pronunciation", 1))
+        app._handle_key("\n")
+        app._handle_key("\n")
+        app._handle_key("a")
+        self.assertEqual(len(app.session.replace_query_calls), 0)
+        self.assertEqual(len(app.session.candidates), 1)
 
 
 if __name__ == "__main__":
