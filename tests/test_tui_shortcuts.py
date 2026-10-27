@@ -416,7 +416,7 @@ class TuiShortcutTests(unittest.TestCase):
                         )
 
     def test_dynamic_delete_shortcut_exists_only_when_delete_is_selectable(self):
-        for kind in ("japanese", "english_word", "section_text"):
+        for kind in ("japanese", "english_word", "english_punctuation", "section_text"):
             with self.subTest(kind=kind):
                 hidden = menu_items(kind, {"can_delete": False})
                 visible = menu_items(kind, {"can_delete": True})
