@@ -661,7 +661,9 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                 editor.error = EMPTY_STATUS
                 return (
                     UpdateStatusIntent(
-                        "English pronunciation draft reset."
+                        "English punctuation draft reset."
+                        if editor.kind == "english_punctuation"
+                        else "English phoneme draft reset."
                     ),
                 )
             if selected == "back":
