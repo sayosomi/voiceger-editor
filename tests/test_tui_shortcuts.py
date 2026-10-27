@@ -60,6 +60,10 @@ class TuiShortcutTests(unittest.TestCase):
                 "d": "dictionary", "e": "edit_text", "x": "delete_section",
                 "c": "clear", "r": "reset",
             },
+            "english_punctuation": {
+                "p": "preview", "a": "apply", "e": "edit_text",
+                "x": "delete_section", "r": "reset",
+            },
             "section_text": {
                 "p": "preview", "a": "apply", "r": "reset",
                 "x": "delete_section",
@@ -307,6 +311,11 @@ class TuiShortcutTests(unittest.TestCase):
                 "phonemes",
                 {"label": "hello"},
                 "HH AH1",
+            ),
+            "english_punctuation": (
+                "phonemes",
+                {"label": "."},
+                ".",
             ),
             "section_text": (
                 "draft",
