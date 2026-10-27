@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from voiceger_editor import api
+from voiceger_editor import __version__, api
 from voiceger_editor.compatibility import SUPPORTED_VOICEGER_REVISION
 from voiceger_editor.tui import main
 from voiceger_editor.voiceger_environment import (
@@ -41,7 +41,7 @@ def _make_valid_voiceger(root: Path) -> None:
 
 def _report(*checks: EnvironmentCheck, root: Path = Path("/voiceger")):
     return VoicegerEnvironmentReport(
-        adapter_version="0.1.0",
+        adapter_version=__version__,
         python_version="3.9.0",
         voiceger_root=root,
         root_source="explicit",
@@ -214,7 +214,7 @@ class VoicegerEnvironmentFrontendTests(unittest.TestCase):
             result = main(["--check"])
 
         self.assertEqual(result, 0)
-        self.assertIn("voiceger-editor 0.1.0", output.getvalue())
+        self.assertIn(f"voiceger-editor {__version__}", output.getvalue())
         self.assertIn("READY: YES", output.getvalue())
 
     def test_normal_tui_stops_before_curses_on_setup_error(self):
