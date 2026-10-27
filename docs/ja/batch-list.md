@@ -24,9 +24,11 @@ BATCH LIST · 2/3 selected · 4 takes · Accepted 0/3
 
 `BATCH LIST` の上部には、共通設定と音声ファイルの保存先が表示されます。
 
+例えば、次のように表示されます。
+
 ```text
 [S] Settings Takes 4 | WAV LAB TXT
-[F] Output: /Users/yosomi/output
+[F] Output: output
 ```
 
 `Settings` には、標準のTake数と、保存するファイル形式が表示されます。

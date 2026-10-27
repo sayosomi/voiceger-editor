@@ -44,7 +44,7 @@ LABを使用しない通常の音声生成には、これらの追加環境は�
 
 ## LAB出力を有効にする
 
-1. `S` キーで `EDIT SETTINGS` を開きます。
+1. `BATCH LIST`で`S`キーを押し、`EDIT SETTINGS`を開きます。
 2. `[O] File format & naming` から `AUDIO OUTPUT` を開きます。
 3. `[L] LAB` を `ON` に変更します。
 4. `EDIT SETTINGS` に戻り、`[A] Apply and save` で保存します。

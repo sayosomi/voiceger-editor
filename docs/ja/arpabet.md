@@ -158,6 +158,22 @@ V EH0 R IY1
 
 対応していない音素を入力した場合は、PreviewやApplyの際にエラーとなり、変更は反映されません。
 
+### 句読点を編集する
+
+英語のPronunciationでは、カンマ（`,`）、ピリオド（`.`）、感嘆符（`!`）、疑問符（`?`）、三点リーダー（`…`）も、単語とは別の行として表示されます。
+
+![句読点を個別の行に表示したBATCH ITEM](images/arpabet/03-english-punctuation-row.png)
+
+句読点の行を選択してEnterを押すと、`EDIT PRONUNCIATION`が開きます。
+
+`Punctuation`を編集し、変更したい句読点を1つ入力してEnterで確定します。
+
+![ピリオドをカンマに変更するEDIT PRONUNCIATION](images/arpabet/04-english-punctuation-editor.png)
+
+`[P] Preview`で変更後の音声を確認し、`[A] Apply`で反映します。
+
+句読点を変更してもCaptionの文章は変わりません。一方、発音への変更は音声生成に影響するため、既存のTakeはクリアされます。変更しなかった場合は、既存のTakeが維持されます。
+
 ### 編集画面の機能
 
 **Preview** は、編集中の発音を一時的に音声生成して確認する機能です。現在の発音情報は変更されず、通常のTakeも作成されません。

@@ -52,7 +52,7 @@ FFmpegのバージョン情報が表示されれば、コマンドラインか�
 
 ## MP3出力を有効にする
 
-1. `S` キーで `EDIT SETTINGS` を開く。
+1. `BATCH LIST`で`S`キーを押し、`EDIT SETTINGS`を開きます。
 2. `[O] File format & naming` から `AUDIO OUTPUT` を開く。
 3. `Format` を `MP3` に変更する。
 4. `Bitrate` を選択する。

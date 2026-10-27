@@ -2,7 +2,7 @@
 
 Voiceger Editorでは、音声生成に使用するStyleやSpeed、Take数、保存するファイルの形式などを設定できます。
 
-`BATCH LIST` または `BATCH ITEM` で `S` を押すと、`EDIT SETTINGS` が開きます。
+共通設定を開くには、`BATCH LIST`で`S`を押して`EDIT SETTINGS`を開きます。`BATCH ITEM`で`S`を押すと、現在のCaptionのStyleを選択します。
 
 Up / Downで項目を選択し、Left / Rightで値を変更できます。項目によってはEnterで直接入力できます。
 

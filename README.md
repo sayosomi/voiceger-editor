@@ -140,6 +140,7 @@ See [HTTP API](docs/en/api.md).
 - [LAB Output](docs/en/lab-output.md)
 - [HTTP API](docs/en/api.md)
 - [Compatibility](docs/en/compatibility.md)
+- [Japanese User Documentation (日本語ドキュメント)](docs/ja/README.md)
 
 See [User Documentation](docs/en/README.md) for the full index.
 
