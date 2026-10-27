@@ -14,33 +14,36 @@ from voiceger_editor.filename import (
 class FileNameTests(unittest.TestCase):
     timestamp = datetime(2026, 10, 7, 19, 45, 23)
 
-    def test_default_template_preserves_existing_minute_resolution_name(self):
-        self.assertEqual(DEFAULT_FILENAME_TEMPLATE, "{YYYYMMDDHHmm}_{text}")
+    def test_default_template_includes_style_at_minute_resolution(self):
+        self.assertEqual(DEFAULT_FILENAME_TEMPLATE, "{YYYYMMDDHHmm}_{style}_{caption}")
         self.assertEqual(
             build_output_filename(
                 text="今日はhelloと言うよ。",
+                style="Neutral",
                 timestamp=self.timestamp,
             ),
-            "202610071945_今日はhelloと言うよ。.wav",
+            "202610071945_Neutral_今日はhelloと言うよ。.wav",
         )
 
     def test_default_template_ignores_seconds(self):
         source = "同じ分です。"
         first = build_output_filename(
             text=source,
+            style="Neutral",
             timestamp=datetime(2026, 10, 1, 20, 45, 0),
         )
         second = build_output_filename(
             text=source,
+            style="Neutral",
             timestamp=datetime(2026, 10, 1, 20, 45, 59),
         )
-        self.assertEqual(first, "202610012045_同じ分です。.wav")
+        self.assertEqual(first, "202610012045_Neutral_同じ分です。.wav")
         self.assertEqual(second, first)
 
     def test_supported_date_time_tokens_and_named_variables_render_together(self):
         self.assertEqual(
             render_output_basename(
-                template="{YYYY}-{MM}-{DD}_{HH}{mm}{ss}_{style}_{text}",
+                template="{YYYY}-{MM}-{DD}_{HH}{mm}{ss}_{style}_{caption}",
                 text="今日は雨なのだ。",
                 style="Neutral",
                 timestamp=self.timestamp,
@@ -66,6 +69,7 @@ class FileNameTests(unittest.TestCase):
             "{time}",
             "{take}",
             "{unknown}",
+            "{text}",
             "{YY}",
             "{hh}",
             "{YYYYQQ}",
@@ -78,9 +82,16 @@ class FileNameTests(unittest.TestCase):
                 with self.assertRaises(FilenameTemplateError):
                     validate_filename_template(template)
 
+    def test_removed_text_variable_has_explicit_error(self):
+        with self.assertRaisesRegex(
+            FilenameTemplateError,
+            r"variable \{text\} is no longer supported; use \{caption\}",
+        ):
+            validate_filename_template("{text}")
+
     def test_extension_is_added_outside_template(self):
         basename = render_output_basename(
-            template="{style}_{text}",
+            template="{style}_{caption}",
             text="hello",
             style="Neutral",
             timestamp=self.timestamp,
@@ -91,7 +102,7 @@ class FileNameTests(unittest.TestCase):
                 text="hello",
                 style="Neutral",
                 timestamp=self.timestamp,
-                filename_template="{style}_{text}",
+                filename_template="{style}_{caption}",
             ),
             "Neutral_hello.wav",
         )
@@ -100,18 +111,19 @@ class FileNameTests(unittest.TestCase):
         source = "12345678901とても長い発話です。"
         result = build_output_filename(
             text=source,
+            style="Neutral",
             timestamp=datetime(2026, 9, 27, 17, 55, 6),
         )
         self.assertEqual(
             result,
-            f"202609271755_{source}.wav",
+            f"202609271755_Neutral_{source}.wav",
         )
         self.assertNotIn("…", result)
 
     def test_rendered_user_fields_use_existing_sanitization(self):
         self.assertEqual(
             render_output_basename(
-                template="{style}_{text}",
+                template="{style}_{caption}",
                 text='a/b:c?"d*e|f123456',
                 style="Neu:tral",
                 timestamp=self.timestamp,

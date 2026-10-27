@@ -64,6 +64,7 @@ class FakeDictionaryCore:
     def __init__(self):
         self.japanese = {}
         self.english = {}
+        self.pitch_events = {}
         self.next_id = 1
 
     def list_japanese_entries(self):
@@ -71,6 +72,12 @@ class FakeDictionaryCore:
 
     def list_english_entries(self):
         return dict(self.english)
+
+    def list_japanese_pitch_events(self):
+        return dict(self.pitch_events)
+
+    def get_japanese_pitch_events(self, word_uuid):
+        return self.pitch_events.get(word_uuid, ())
 
     def add_japanese_word(self, **values):
         word_uuid = f"word-{self.next_id}"
@@ -82,6 +89,8 @@ class FakeDictionaryCore:
             priority=values["priority"],
             word_type=values["word_type"],
         )
+        if values.get("pitch_events"):
+            self.pitch_events[word_uuid] = tuple(values["pitch_events"])
         return word_uuid
 
     def update_japanese_word(self, word_uuid, **values):
@@ -92,9 +101,35 @@ class FakeDictionaryCore:
             priority=values["priority"],
             word_type=values["word_type"],
         )
+        if "pitch_events" in values:
+            if values["pitch_events"]:
+                self.pitch_events[word_uuid] = tuple(values["pitch_events"])
+            else:
+                self.pitch_events.pop(word_uuid, None)
+
+    def update_japanese_accents(self, accents):
+        from copy import deepcopy
+        from voiceger_editor.pronunciation import PitchEvent
+        for word_uuid, accent in accents.items():
+            word = deepcopy(self.japanese[word_uuid])
+            word.accent_type = accent
+            self.japanese[word_uuid] = word
+            if word_uuid in self.pitch_events:
+                events = list(self.pitch_events[word_uuid])
+                i = next(i for i, event in enumerate(events) if event.symbol == "]")
+                events[i] = PitchEvent(accent, "]")
+                self.pitch_events[word_uuid] = tuple(events)
 
     def delete_japanese_word(self, word_uuid):
         del self.japanese[word_uuid]
+        self.pitch_events.pop(word_uuid, None)
+
+    def update_english_stresses(self, updates):
+        from copy import deepcopy
+        for surface, phonemes in updates.items():
+            entry = deepcopy(self.english[surface])
+            entry.phonemes = list(phonemes)
+            self.english[surface] = entry
 
     def set_english_entry(self, surface, phonemes):
         key = surface.strip().casefold()

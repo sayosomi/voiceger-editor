@@ -188,6 +188,59 @@ class TakeBatchTests(unittest.TestCase):
             self.assertTrue(replacement.wav_path.is_file())
             batch.close()
 
+    def test_changed_generation_recipe_keeps_old_take_metadata_and_updates_replacements(self):
+        calls = []
+
+        def synthesize_old():
+            calls.append("old")
+            return {"audio": object(), "sampling_rate": 32000}
+
+        def synthesize_new():
+            calls.append("new")
+            return {"audio": object(), "sampling_rate": 32000}
+
+        with tempfile.TemporaryDirectory() as directory:
+            batch = self.make_batch(
+                directory, take_count=2, synthesize_one=synthesize_old
+            )
+            batch._query = SimpleNamespace(speedScale=1.0)
+            with patch.dict(
+                "sys.modules", {"soundfile": self.fake_soundfile_module()}
+            ):
+                first, old_second = list(batch.generate_all())
+                original_path = first.wav_path
+                batch.set_generation(
+                    synthesize_new,
+                    style_name="Happy",
+                    query=SimpleNamespace(speedScale=1.10),
+                )
+                self.assertEqual(batch.candidates, (first, old_second))
+                self.assertEqual(first.style_name, "Neutral")
+                self.assertEqual(first.query.speedScale, 1.0)
+                updated = batch.regenerate(2)
+                self.assertEqual(batch.candidates, (first, updated))
+                self.assertEqual(updated.style_name, "Happy")
+                self.assertEqual(updated.query.speedScale, 1.10)
+                self.assertEqual(first.wav_path, original_path)
+                self.assertTrue(first.wav_path.is_file())
+                self.assertFalse(old_second.wav_path.exists())
+                with patch(
+                    "voiceger_editor.takes.save_output_audio",
+                    return_value=SavedOutput(Path("/tmp/saved.wav"), text_path=None),
+                ) as save:
+                    batch.accept(
+                        1, caption="example", output_dir=Path(directory),
+                        save_text=False,
+                    )
+                self.assertEqual(save.call_args.kwargs["style_name"], "Neutral")
+                later = list(batch.regenerate_all())
+                self.assertEqual([x.style_name for x in later], ["Happy", "Happy"])
+                self.assertEqual(
+                    [x.query.speedScale for x in later], [1.10, 1.10]
+                )
+                self.assertEqual(calls, ["old", "old", "new", "new", "new"])
+            batch.close()
+
     def test_full_regeneration_requires_initial_generation(self):
         calls = []
 
@@ -213,6 +266,90 @@ class TakeBatchTests(unittest.TestCase):
             self.assertEqual(
                 [candidate.number for candidate in candidates], [1, 2, 3]
             )
+            batch.close()
+
+    def test_multiple_accepted_takes_save_distinct_audio_and_txt_without_overwrite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output_dir = Path(directory) / "output"
+            batch = self.make_batch(directory, take_count=4)
+            with patch.dict(
+                "sys.modules", {"soundfile": self.fake_soundfile_module()}
+            ):
+                candidates = list(batch.generate_all())
+            original_bytes = {
+                entry.number: entry.wav_path.read_bytes() for entry in candidates
+            }
+
+            saved = [
+                batch.accept(
+                    number,
+                    caption="same caption",
+                    output_dir=output_dir,
+                    save_text=True,
+                    filename_template="{caption}",
+                )
+                for number in (1, 3, 4)
+            ]
+
+            self.assertEqual(
+                [output.wav_path.name for output in saved],
+                ["same caption.wav", "same caption-2.wav", "same caption-3.wav"],
+            )
+            self.assertEqual(
+                [output.text_path.name for output in saved],
+                ["same caption.txt", "same caption-2.txt", "same caption-3.txt"],
+            )
+            for number, output in zip((1, 3, 4), saved):
+                self.assertEqual(output.wav_path.read_bytes(), original_bytes[number])
+                self.assertEqual(output.text_path.read_text(encoding="utf-8"), "same caption")
+            self.assertEqual(
+                [entry.wav_path.read_bytes() for entry in batch.candidates],
+                [original_bytes[number] for number in range(1, 5)],
+            )
+            batch.close()
+            self.assertTrue(all(output.wav_path.is_file() for output in saved))
+
+    def test_accepted_slots_survive_single_bulk_growth_and_failed_shrink(self):
+        calls = []
+
+        def synthesize_one():
+            calls.append(len(calls))
+            return {"audio": object(), "sampling_rate": 32000}
+
+        with tempfile.TemporaryDirectory() as directory:
+            batch = self.make_batch(directory, take_count=3, synthesize_one=synthesize_one)
+            with patch.dict("sys.modules", {"soundfile": self.fake_soundfile_module()}):
+                original = list(batch.generate_all())
+                before = [(entry, entry.wav_path.read_bytes()) for entry in original]
+                protected = frozenset({1, 3})
+
+                with self.assertRaisesRegex(ValueError, "accepted"):
+                    batch.regenerate(1, protected_numbers=protected)
+                with self.assertRaisesRegex(ValueError, "accepted Take 3"):
+                    batch.regenerate_all(2, protected_numbers=protected)
+                self.assertEqual(len(calls), 3)
+
+                replacements = list(batch.regenerate_all(3, protected_numbers=protected))
+                self.assertEqual([entry.number for entry in replacements], [2])
+                self.assertEqual(len(calls), 4)
+                self.assertEqual(batch.candidates[0], original[0])
+                self.assertEqual(batch.candidates[2], original[2])
+                self.assertFalse(original[1].wav_path.exists())
+
+                self.assertEqual(
+                    list(batch.regenerate_all(3, protected_numbers=frozenset({1, 2, 3}))),
+                    [],
+                )
+                self.assertEqual(len(calls), 4)
+
+                grown = list(batch.regenerate_all(5, protected_numbers=protected))
+                self.assertEqual([entry.number for entry in grown], [2, 4, 5])
+                self.assertEqual([entry.number for entry in batch.candidates], [1, 2, 3, 4, 5])
+                self.assertEqual(batch.take_count, 5)
+                for entry, data in (before[0], before[2]):
+                    self.assertTrue(entry.wav_path.is_file())
+                    self.assertEqual(entry.wav_path.read_bytes(), data)
+                    self.assertIn(entry, batch.candidates)
             batch.close()
 
     def test_full_regeneration_uses_only_existing_partial_slots_in_order(self):
@@ -322,6 +459,64 @@ class TakeBatchTests(unittest.TestCase):
             self.assertTrue(
                 all(not candidate.wav_path.exists() for candidate in old)
             )
+            batch.close()
+
+    def test_shrink_commits_when_worker_closes_after_last_yield(self):
+        with tempfile.TemporaryDirectory() as directory:
+            batch = self.make_batch(directory, take_count=4)
+            with patch.dict("sys.modules", {"soundfile": self.fake_soundfile_module()}):
+                original = list(batch.generate_all())
+                worker_values = batch.regenerate_all(
+                    2, protected_numbers=frozenset({1})
+                )
+                replacement = next(worker_values)
+                self.assertEqual(replacement.number, 2)
+                worker_values.close()
+
+            self.assertEqual(batch.take_count, 2)
+            self.assertEqual(
+                [candidate.number for candidate in batch.candidates], [1, 2]
+            )
+            self.assertIs(batch.candidates[0], original[0])
+            self.assertTrue(original[0].wav_path.is_file())
+            self.assertFalse(original[2].wav_path.exists())
+            self.assertFalse(original[3].wav_path.exists())
+            batch.close()
+
+    def test_shrink_to_accepted_only_removes_unaccepted_excess_without_synthesis(self):
+        calls = []
+
+        def synthesize_one():
+            calls.append(len(calls) + 1)
+            return {"audio": object(), "sampling_rate": 32000}
+
+        with tempfile.TemporaryDirectory() as directory:
+            batch = self.make_batch(
+                directory, take_count=2, synthesize_one=synthesize_one
+            )
+            with patch.dict(
+                "sys.modules", {"soundfile": self.fake_soundfile_module()}
+            ):
+                original = list(batch.generate_all())
+                before = len(calls)
+                replacements = list(
+                    batch.regenerate_all(
+                        1, protected_numbers=frozenset({1})
+                    )
+                )
+
+            self.assertEqual(replacements, [])
+            self.assertEqual(len(calls), before)
+            self.assertEqual(batch.candidates, (original[0],))
+            self.assertEqual(batch.take_count, 1)
+            self.assertTrue(original[0].wav_path.is_file())
+            self.assertFalse(original[1].wav_path.exists())
+            self.assertEqual(
+                list(batch.regenerate_all(1, protected_numbers=frozenset({1}))),
+                [],
+            )
+            self.assertEqual(len(calls), before)
+            self.assertTrue(original[0].wav_path.is_file())
             batch.close()
 
     def test_failed_shrink_keeps_excess_existing_candidates(self):
@@ -478,18 +673,20 @@ class TakeBatchTests(unittest.TestCase):
             with patch(
                 "voiceger_editor.takes.save_output_audio", return_value=saved
             ) as save_output_audio:
-                result = batch.accept(2, output_dir=Path(directory), save_text=True)
+                result = batch.accept(
+                    2, caption="Accept-time Caption", output_dir=Path(directory), save_text=True
+                )
 
             self.assertIs(result, saved)
             save_output_audio.assert_called_once_with(
                 wav_source=temporary_paths[1],
-                source_text="generated source",
+                source_text="Accept-time Caption",
                 style_name="Sweet",
                 output_dir=Path(directory),
                 output_format="wav",
                 output_encoding="source",
                 save_text=True,
-                filename_template="{YYYYMMDDHHmm}_{text}",
+                filename_template="{YYYYMMDDHHmm}_{style}_{caption}",
             )
             self.assertTrue(all(path.exists() for path in temporary_paths))
             self.assertTrue(temporary_directory.exists())
@@ -512,7 +709,7 @@ class TakeBatchTests(unittest.TestCase):
                 side_effect=OSError("save failed"),
             ):
                 with self.assertRaisesRegex(OSError, "save failed"):
-                    batch.accept(1, output_dir=Path(directory), save_text=False)
+                    batch.accept(1, caption="Caption", output_dir=Path(directory), save_text=False)
 
             self.assertEqual(batch.candidates, tuple(candidates))
             self.assertTrue(all(candidate.wav_path.is_file() for candidate in candidates))
@@ -603,7 +800,7 @@ class TakeBatchTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 batch.regenerate_all()
             with self.assertRaises(RuntimeError):
-                batch.accept(1, output_dir=Path(directory), save_text=False)
+                batch.accept(1, caption="Caption", output_dir=Path(directory), save_text=False)
 
     def test_context_manager_closes_batch(self):
         with tempfile.TemporaryDirectory() as directory:

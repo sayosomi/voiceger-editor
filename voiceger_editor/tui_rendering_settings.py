@@ -32,7 +32,6 @@ _OUTPUT_ENCODING_LABELS = {
 def build_document(builder: EditorDocumentBuilder) -> bool:
     editor = builder.editor
     state = builder.state
-    width = builder.width
     lines = builder.lines
     plain = builder.plain
     wrap = builder.wrap
@@ -173,7 +172,6 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
             )
             lines.append((f"{marker}{item.display_label:<14}{value}", key))
         plain()
-        plain("Tokens: YYYY MM DD HH mm ss · {text} {style}")
         selectable("back")
     else:
         return False

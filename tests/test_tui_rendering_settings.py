@@ -107,7 +107,7 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
                     "output_format": "wav",
                     "wav_encoding": "source",
                     "flac_encoding": "pcm16",
-                    "filename_template": "{style}_{text}",
+                    "filename_template": "{style}_{caption}",
                     "save_text": True,
                     "save_lab": False,
                 },
@@ -133,14 +133,15 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
         self.assertIn("< WAV >", visible)
         self.assertIn("Encoding", visible)
         self.assertIn("< Source >", visible)
-        self.assertIn("Filename template  {style}_{text}", visible)
+        self.assertIn("Filename template  {style}_{caption}", visible)
         self.assertIn("Preview", visible)
         self.assertIn("Neutral_今日は雨.wav", visible)
         self.assertIn("[X] TXT", visible)
         self.assertIn("ON", visible)
         self.assertIn("[L] LAB", visible)
         self.assertIn("OFF", visible)
-        self.assertIn("YYYY MM DD HH mm ss · {text} {style}", visible)
+        self.assertNotIn("Tokens:", visible)
+        self.assertNotIn("Hint:", visible)
         self.assertEqual(
             [key for _line, key in document if key is not None],
             [
@@ -148,6 +149,69 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
                 "save_text", "save_lab", "back",
             ],
         )
+
+    def test_audio_output_has_no_help_at_any_selection_or_during_editing(self):
+        editor = SimpleNamespace(
+            kind="audio_output_settings",
+            title="AUDIO OUTPUT",
+            selection="output_format",
+            payload={
+                "draft_settings": {
+                    "output_format": "wav",
+                    "wav_encoding": "source",
+                    "filename_template": "{YYYYMMDDHHmm}_{style}_{caption}",
+                    "save_text": False,
+                    "save_lab": True,
+                },
+                "filename_preview": "202610121333_Neutral_Sample text.wav",
+                "filename_preview_error": "",
+            },
+            active_field=None,
+            input_value="",
+            input_cursor=0,
+            error="",
+            scroll=0,
+        )
+        state = render_state(editor=editor)
+        selectable_keys = [
+            "output_format", "output_encoding", "filename_template",
+            "save_text", "save_lab", "back",
+        ]
+        for selection in selectable_keys:
+            with self.subTest(selection=selection):
+                editor.selection = selection
+                document, _, _ = self.renderer.editor_document(state, 80)
+                visible = "\n".join(line for line, _key in document)
+                self.assertNotIn("Hint:", visible)
+                self.assertNotIn("Tokens:", visible)
+                self.assertNotIn("Date/time tokens", visible)
+                self.assertNotIn("Filename template help", visible)
+                self.assertEqual(
+                    [key for _line, key in document if key is not None],
+                    selectable_keys,
+                )
+
+        editor.selection = "filename_template"
+        editor.active_field = "filename_template"
+        editor.input_value = "{take}_{caption}"
+        editor.input_cursor = len(editor.input_value)
+        editor.payload["filename_preview_error"] = "unsupported date/time token"
+        for width in (80, 24):
+            with self.subTest(editing_width=width):
+                document, cursor_line, cursor_column = self.renderer.editor_document(
+                    state, width
+                )
+                visible = "\n".join(line for line, _key in document)
+                self.assertIn("Invalid:", visible)
+                self.assertNotIn("Hint:", visible)
+                self.assertNotIn("Date/time tokens", visible)
+                self.assertNotIn("Filename template help", visible)
+                self.assertTrue(0 <= cursor_line < len(document))
+                self.assertTrue(0 <= cursor_column < width)
+                self.assertEqual(
+                    [key for _line, key in document if key is not None][0:2],
+                    ["output_format", "output_encoding"],
+                )
 
     def test_audio_output_renders_flac_specific_encoding(self):
         editor = SimpleNamespace(
@@ -159,7 +223,7 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
                     "output_format": "flac",
                     "wav_encoding": "float32",
                     "flac_encoding": "pcm24",
-                    "filename_template": "{text}",
+                    "filename_template": "{caption}",
                     "save_text": False,
                     "save_lab": False,
                 },
@@ -193,7 +257,7 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
                     "wav_encoding": "source",
                     "flac_encoding": "pcm16",
                     "mp3_bitrate": "256k",
-                    "filename_template": "{text}",
+                    "filename_template": "{caption}",
                     "save_text": False,
                     "save_lab": False,
                 },
@@ -234,7 +298,7 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
                     "output_format": "flac",
                     "wav_encoding": "source",
                     "flac_encoding": "pcm24",
-                    "filename_template": "{text}",
+                    "filename_template": "{caption}",
                     "save_text": False,
                     "save_lab": False,
                 },
@@ -244,8 +308,8 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
                 "filename_preview_error": "unsupported date/time token in {take}",
             },
             active_field="filename_template",
-            input_value="{take}_{text}",
-            input_cursor=len("{take}_{text}"),
+            input_value="{take}_{caption}",
+            input_cursor=len("{take}_{caption}"),
             error="",
             scroll=0,
         )
@@ -255,9 +319,11 @@ class SettingsRenderingDocumentTests(RenderingTestCase):
             80,
         )
         visible = "\n".join(line for line, _key in document)
-        self.assertIn("▶ Filename template  {take}_{text}", visible)
+        self.assertIn("▶ Filename template  {take}_{caption}", visible)
         self.assertIn("Invalid:", visible)
         self.assertIn("unsupported date/time token", visible)
+        self.assertNotIn("Hint:", visible)
+        self.assertNotIn("Date/time tokens", visible)
         self.assertIsNotNone(cursor_line)
 
     def test_settings_style_display_falls_back_to_id_when_unresolved(self):

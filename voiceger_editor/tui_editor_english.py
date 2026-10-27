@@ -22,6 +22,22 @@ from .tui_status import Status, error_status
 from .voicevox_api_models import AudioQuery
 
 
+EDITABLE_ENGLISH_PUNCTUATION = frozenset({".", ",", "!", "?", "…"})
+
+
+def is_english_punctuation_group(
+    label: str, phonemes: Sequence[str],
+) -> bool:
+    """Identify a tokenizer punctuation slot with an editable Voiceger token."""
+
+    return (
+        bool(label)
+        and all(mark in EDITABLE_ENGLISH_PUNCTUATION for mark in label)
+        and len(phonemes) == 1
+        and phonemes[0] in EDITABLE_ENGLISH_PUNCTUATION
+    )
+
+
 @dataclass(frozen=True)
 class EnglishWordGroup:
     """A source word and its editable or fixed ARPAbet token group."""
@@ -82,15 +98,40 @@ class TuiEnglishEditorOwner(EditorOwnerBase):
             EnglishWordGroup(
                 label=label,
                 phonemes=tuple(phonemes),
-                editable=any(character.isalpha() for character in label),
+                editable=(
+                    any(character.isalpha() for character in label)
+                    or is_english_punctuation_group(label, phonemes)
+                ),
             )
             for label, phonemes in raw_groups
         )
         grouped_flat = tuple(phone for group in groups for phone in group.phonemes)
-        if not groups or grouped_flat != canonical_flat:
-            raise ValueError(
-                "Voiceger word groups do not exactly match the current English segment"
-            )
+        if not groups:
+            raise ValueError("Voiceger returned no English word groups")
+        if grouped_flat != canonical_flat:
+            # The AudioQuery is the durable pronunciation authority. Following a
+            # punctuation-only edit, the source tokenizer still returns the old
+            # mark. Rebind only existing punctuation slots by position; never
+            # conceal mismatched word phonemes or invent token boundaries.
+            rebound: list[EnglishWordGroup] = []
+            offset = 0
+            for group in groups:
+                end = offset + len(group.phonemes)
+                actual = canonical_flat[offset:end]
+                if len(actual) != len(group.phonemes) or (
+                    actual != group.phonemes
+                    and not is_english_punctuation_group(group.label, actual)
+                ):
+                    raise ValueError(
+                        "Voiceger word groups do not exactly match the current English segment"
+                    )
+                rebound.append(replace(group, phonemes=actual))
+                offset = end
+            if offset != len(canonical_flat):
+                raise ValueError(
+                    "Voiceger word groups do not exactly match the current English segment"
+                )
+            groups = tuple(rebound)
         cache = EnglishGroupingCache(segment.text, groups)
         self.grouping_cache[segment_index] = cache
         return cache

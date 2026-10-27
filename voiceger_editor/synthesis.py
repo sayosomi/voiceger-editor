@@ -190,6 +190,11 @@ def synthesize_audio_query(
             "top_p": top_p,
             "temperature": temperature,
         }
+        if plan.text_language == "Japanese-English Mixed":
+            mixed_kwargs["language_segments"] = tuple(
+                (segment.language, segment.text)
+                for segment in query.voicegerSegments
+            )
         if (
             capture_mixed_lab_provenance
             and {segment.language for segment in query.voicegerSegments}
@@ -203,6 +208,7 @@ def synthesize_audio_query(
         query.accent_phrases,
         punctuation=query.pronunciationPunctuation,
         terminator=_query_terminator(query),
+        pitch_events=query.pronunciationPitchEvents,
     )
     resolved_pronunciation = format_pronunciation(pronunciation)
     synthesis_text = pronunciation_to_spoken_text(pronunciation)

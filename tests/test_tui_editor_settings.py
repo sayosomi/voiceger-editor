@@ -60,7 +60,10 @@ class TuiSettingsEditorOwnerTests(EditorControllerTestCase):
             self.settings(), origin=("settings", None), busy=False
         )
         self.assertEqual(controller.editor.selection, "style_id")
-        self.assertEqual(controller.adjust_settings(-1), (ClearAdjustmentFeedbackIntent(),))
+        self.assertEqual(controller.adjust_settings(-1), (AdjustmentPressedIntent("settings", "style_id", -1),))
+        self.assertEqual(controller.editor.payload["draft_settings"]["style_id"], "22")
+        self.assertEqual(controller.adjust_settings(1), (AdjustmentPressedIntent("settings", "style_id", 1),))
+        self.assertEqual(controller.editor.payload["draft_settings"]["style_id"], "3")
         self.assertEqual(controller.adjust_settings(1), (AdjustmentPressedIntent("settings", "style_id", 1),))
         self.assertEqual(controller.editor.payload["draft_settings"]["style_id"], "1")
         self.assertEqual(controller.adjust_settings(1), (AdjustmentPressedIntent("settings", "style_id", 1),))
@@ -233,7 +236,7 @@ class TuiSettingsEditorOwnerTests(EditorControllerTestCase):
         controller.handle_key(
             "\n", settings=settings, query=None, current_caption="今日は雨"
         )
-        editor.input_value = "{take}_{text}"
+        editor.input_value = "{take}_{caption}"
         self.assertEqual(
             controller.handle_key(
                 "\n", settings=settings, query=None, current_caption="今日は雨"
@@ -243,14 +246,14 @@ class TuiSettingsEditorOwnerTests(EditorControllerTestCase):
         self.assertEqual(editor.active_field, "filename_template")
         self.assertIn("Filename template is invalid", str(editor.error))
 
-        editor.input_value = "{YYYY-MM-DD}_{style}_{text}"
+        editor.input_value = "{YYYY-MM-DD}_{style}_{caption}"
         controller.handle_key(
             "\n", settings=settings, query=None, current_caption="今日は雨"
         )
         self.assertIsNone(editor.active_field)
         self.assertEqual(
             editor.payload["draft_settings"]["filename_template"],
-            "{YYYY-MM-DD}_{style}_{text}",
+            "{YYYY-MM-DD}_{style}_{caption}",
         )
 
         controller.handle_key(
@@ -259,7 +262,7 @@ class TuiSettingsEditorOwnerTests(EditorControllerTestCase):
         self.assertIs(controller.editor, parent)
         self.assertEqual(
             parent.payload["draft_settings"]["filename_template"],
-            "{YYYY-MM-DD}_{style}_{text}",
+            "{YYYY-MM-DD}_{style}_{caption}",
         )
 
     @patch(
@@ -583,7 +586,7 @@ class TuiSettingsEditorOwnerTests(EditorControllerTestCase):
                 "speed": "1.2",
                 "take_count": "6",
                 "output_dir": "/tmp/opening-output",
-                "filename_template": "{YYYYMMDDHHmm}_{text}",
+                "filename_template": "{YYYYMMDDHHmm}_{style}_{caption}",
                 "output_format": "wav",
                 "wav_encoding": "source",
                 "flac_encoding": "pcm16",

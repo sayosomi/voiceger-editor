@@ -64,15 +64,15 @@ the same basename.
 WAV example:
 
 ```text
-202610020307_今日は雨なのだ。.wav
-202610020307_今日は雨なのだ。.lab
+202610020307_Neutral_今日は雨なのだ。.wav
+202610020307_Neutral_今日は雨なのだ。.lab
 ```
 
 FLAC example:
 
 ```text
-202610020307_今日は雨なのだ。.flac
-202610020307_今日は雨なのだ。.lab
+202610020307_Neutral_今日は雨なのだ。.flac
+202610020307_Neutral_今日は雨なのだ。.lab
 ```
 
 MP3 uses the same rule when ffmpeg-backed MP3 output is available.
@@ -80,7 +80,7 @@ MP3 uses the same rule when ffmpeg-backed MP3 output is available.
 If TXT is also enabled:
 
 ```text
-202610020307_今日は雨なのだ。.txt
+202610020307_Neutral_今日は雨なのだ。.txt
 ```
 
 All sidecars use the same collision-safe basename.
@@ -102,7 +102,7 @@ Accepted-Take naming is controlled by **Settings -> File format & naming**.
 The default basename template is:
 
 ```text
-{YYYYMMDDHHmm}_{text}
+{YYYYMMDDHHmm}_{style}_{caption}
 ```
 
 The audio extension comes from the selected Format: WAV, FLAC, or MP3 when MP3
@@ -110,11 +110,11 @@ is available. TXT and LAB sidecars use the same final basename and collision
 suffix.
 
 The template can also use `{style}` and the supported date/time tokens described
-in [Settings](settings.md). The default template does not include Style.
+in [Settings](settings.md). The default template includes Style.
 
 Characters that are invalid in filenames are removed.
 
-Voiceger Editor does not silently shorten source text if the resulting filename is too long. Saving fails with a clear filename-too-long error instead.
+Voiceger Editor does not silently shorten Caption text if the resulting filename is too long. Saving fails with a clear filename-too-long error instead.
 
 ## LAB format
 

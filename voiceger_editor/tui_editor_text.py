@@ -286,14 +286,42 @@ class TuiTextEditorOwner(EditorOwnerBase):
             ),
         )
 
-    def open_delete_confirmation(self) -> tuple[EditorIntent, ...]:
+    def open_delete_confirmation(
+        self, query: AudioQuery | None
+    ) -> tuple[EditorIntent, ...]:
+        """Confirm deletion of the whole section behind either editor kind."""
         editor = self.editor
         if (
             editor is None
-            or editor.kind != "section_text"
-            or not editor.payload["can_delete"]
+            or editor.kind not in {"section_text", "japanese", "english_word"}
+            or not editor.payload.get("can_delete", False)
         ):
             return ()
+        segment_index = editor.payload["segment_index"]
+        language = (
+            editor.payload["language"]
+            if editor.kind == "section_text"
+            else ("ja" if editor.kind == "japanese" else "en")
+        )
+        opening_text = (
+            editor.payload["opening_text"]
+            if editor.kind == "section_text"
+            else editor.payload["section_text"]
+        )
+        segments = query.voicegerSegments if query is not None else None
+        if (
+            segments is None
+            or len(segments) <= 1
+            or type(segment_index) is not int
+            or not 0 <= segment_index < len(segments)
+            or segments[segment_index].language != language
+            or segments[segment_index].text != opening_text
+        ):
+            editor.error = error_status(
+                "Selected section changed; reopen the editor before deleting."
+            )
+            return ()
+
         self.editor = EditorState(
             kind="delete_confirmation",
             title="DELETE SECTION?",
@@ -301,6 +329,9 @@ class TuiTextEditorOwner(EditorOwnerBase):
             selection="cancel",
             payload={
                 "warning": "This section will be removed from the synthesized utterance.",
+                "target_segment_index": segment_index,
+                "target_language": language,
+                "target_text": opening_text,
                 "parent_editor": deepcopy(editor),
             },
         )
@@ -318,9 +349,17 @@ class TuiTextEditorOwner(EditorOwnerBase):
         try:
             if query is None:
                 raise ValueError("There is no active utterance")
-            segment_index = section_editor.payload["segment_index"]
-            if type(segment_index) is not int:
-                raise ValueError("pure Japanese utterances cannot delete their only section")
+            segment_index = confirmation.payload["target_segment_index"]
+            segments = query.voicegerSegments
+            if (
+                segments is None
+                or len(segments) <= 1
+                or type(segment_index) is not int
+                or not 0 <= segment_index < len(segments)
+                or segments[segment_index].language != confirmation.payload["target_language"]
+                or segments[segment_index].text != confirmation.payload["target_text"]
+            ):
+                raise ValueError("selected section changed; reopen the editor")
             updated, pure_text = delete_utterance_section(
                 query,
                 segment_index=segment_index,
@@ -436,7 +475,7 @@ class TuiTextEditorOwner(EditorOwnerBase):
                 editor.error = EMPTY_STATUS
                 return (UpdateStatusIntent("Section text draft reset."),)
             if selected == "delete_section":
-                return self.open_delete_confirmation()
+                return self.open_delete_confirmation(query)
             if selected == "back":
                 return self.cancel()
             return ()

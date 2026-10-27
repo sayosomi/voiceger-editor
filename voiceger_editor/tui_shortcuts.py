@@ -48,14 +48,14 @@ class MainShortcut:
 
 
 _MAIN_SHORTCUTS: tuple[MainShortcut, ...] = (
-    MainShortcut("output", "Output", PATH_EDIT_SHORTCUT),
     MainShortcut("caption", "Caption", "e"),
     MainShortcut("build_pronunciation", "Build pronunciation", "p"),
     MainShortcut("add_section", "Add section", "a"),
     MainShortcut("generate", "Generate", "g"),
     MainShortcut("clear_candidates", "Clear candidates", "c"),
     MainShortcut("delete_caption", "Delete caption", "x"),
-    MainShortcut("settings", "Settings", "s"),
+    MainShortcut("item_style", "Style", "s"),
+    MainShortcut("item_speed", "Speed", "v"),
     MainShortcut("dictionary", "Dictionary", "d"),
     MainShortcut("help", "Help", "?"),
     MainShortcut("quit", "Quit", "q"),
@@ -67,6 +67,7 @@ _BATCH_LIST_SHORTCUTS: tuple[MainShortcut, ...] = (
     MainShortcut("read_batch", "Read batch", "r"),
     MainShortcut("write_batch", "Write batch", "w"),
     MainShortcut("settings", "Settings", "s"),
+    MainShortcut("output", "Output", PATH_EDIT_SHORTCUT),
     MainShortcut("dictionary", "Dictionary", "d"),
     MainShortcut("help", "Help", "?"),
     MainShortcut("quit", "Quit", "q"),
@@ -124,6 +125,10 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("save_dictionary", "Save to dictionary", "s", "action", "activate"),
         MenuItem("dictionary", "Dictionary menu", "d", "action", "activate"),
         MenuItem("edit_text", "Edit text", "e", "action", "activate"),
+        MenuItem(
+            "delete_section", "Delete section", "x", "action", "activate",
+            condition_key="can_delete",
+        ),
         MenuItem("clear", "Clear", "c", "action", "activate"),
         MenuItem("reset", "Reset", "r", "action", "activate"),
         _escape_action("back", "Back"),
@@ -141,7 +146,29 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("save_dictionary", "Save to dictionary", "s", "action", "activate"),
         MenuItem("dictionary", "Dictionary menu", "d", "action", "activate"),
         MenuItem("edit_text", "Edit text", "e", "action", "activate"),
+        MenuItem(
+            "delete_section", "Delete section", "x", "action", "activate",
+            condition_key="can_delete",
+        ),
         MenuItem("clear", "Clear", "c", "action", "activate"),
+        MenuItem("reset", "Reset", "r", "action", "activate"),
+        _escape_action("back", "Back"),
+    ),
+    "english_punctuation": (
+        MenuItem(
+            "phonemes",
+            "Punctuation",
+            None,
+            "editable",
+            no_shortcut_reason="Enter edits the punctuation mark.",
+        ),
+        MenuItem("preview", "Preview", "p", "action", "activate"),
+        MenuItem("apply", "Apply", "a", "action", "activate"),
+        MenuItem("edit_text", "Edit text", "e", "action", "activate"),
+        MenuItem(
+            "delete_section", "Delete section", "x", "action", "activate",
+            condition_key="can_delete",
+        ),
         MenuItem("reset", "Reset", "r", "action", "activate"),
         _escape_action("back", "Back"),
     ),
@@ -159,7 +186,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem(
             "delete_section",
             "Delete section",
-            "d",
+            "x",
             "action",
             "activate",
             condition_key="can_delete",
@@ -244,8 +271,8 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
     "dictionary_menu": (
         MenuItem("japanese", "Japanese", "j", "action", "activate"),
         MenuItem("english", "English", "e", "action", "activate"),
-        MenuItem("import", "Import dictionary", "i", "action", "activate"),
-        MenuItem("export", "Export dictionary", "x", "action", "activate"),
+        MenuItem("import", "Import dictionary (Merge)", "i", "action", "activate"),
+        MenuItem("export", "Export dictionary", "o", "action", "activate"),
         _escape_action("back", "Back"),
     ),
     "dictionary_export": (
@@ -264,6 +291,10 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         MenuItem("clear_selection", "Clear selection", "c", "action", "activate"),
         _escape_action("back", "Back"),
     ),
+    "dictionary_voicevox_loss_confirmation": (
+        MenuItem("export", "Export without extra peaks", "e", "action", "activate"),
+        _escape_action("cancel", "Cancel"),
+    ),
     "dictionary_import_japanese_detail": (
         MenuItem(
             "word_type",
@@ -280,6 +311,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
     "dictionary_japanese_list": (
         MenuItem("sort", "Sort", "s", "adjustable", "activate"),
         MenuItem("filter", "Filter", "f", "adjustable", "activate"),
+        MenuItem("preview", "Preview", "p", "action", "activate"),
         MenuItem("add", "Add", "a", "action", "activate"),
         MenuItem(
             "delete",
@@ -294,6 +326,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
     "dictionary_english_list": (
         MenuItem("sort", "Sort", "s", "adjustable", "activate"),
         MenuItem("filter", "Filter", "f", "adjustable", "activate"),
+        MenuItem("preview", "Preview", "p", "action", "activate"),
         MenuItem("add", "Add", "a", "action", "activate"),
         MenuItem(
             "delete",
@@ -342,6 +375,17 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
     "dictionary_japanese_duplicates": (
         _escape_action("back", "Back"),
     ),
+    "dictionary_japanese_pronunciation": (
+        MenuItem(
+            "pronunciation", "Pronunciation", None, "editable",
+            no_shortcut_reason="Enter edits the pronunciation field.",
+        ),
+        MenuItem("preview", "Preview", "p", "action", "activate"),
+        MenuItem("apply", "Apply", "a", "action", "activate"),
+        MenuItem("clear", "Clear", "c", "action", "activate"),
+        MenuItem("reset", "Reset", "r", "action", "activate"),
+        _escape_action("back", "Back"),
+    ),
     "dictionary_japanese_entry": (
         MenuItem(
             "surface",
@@ -362,7 +406,7 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
             "Pronunciation",
             None,
             "adjustable",
-            no_shortcut_reason="Enter edits reading; Left/Right moves accent.",
+            no_shortcut_reason="Enter opens the pronunciation editor; Left/Right moves a single accent.",
         ),
         MenuItem(
             "word_type",

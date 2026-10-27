@@ -209,7 +209,9 @@ class TuiEditorController:
         if editor is None:
             return ()
 
-        if preview_busy and editor.kind in {"japanese", "english_word", "section_text"}:
+        if preview_busy and editor.kind in {
+            "japanese", "english_word", "english_punctuation", "section_text"
+        }:
             return (
                 UpdateStatusIntent(
                     "Wait for Preview to finish before editing section text."
@@ -229,6 +231,7 @@ class TuiEditorController:
                     "japanese",
                     "settings",
                     "english_word",
+                    "english_punctuation",
                     "section_text",
                     "add_section",
                 }:
@@ -272,6 +275,7 @@ class TuiEditorController:
                 elif edit.text_changed and editor.kind in {
                     "japanese",
                     "english_word",
+                    "english_punctuation",
                     "section_text",
                     "add_section",
                 }:
@@ -362,12 +366,11 @@ class TuiEditorController:
         if editor.kind in {"caption", "section_text", "add_section"}:
             return self._text.activate_selection(query, current_caption)
 
-        if editor.kind in {"japanese", "english_word"}:
+        if editor.kind in {"japanese", "english_word", "english_punctuation"}:
             return self._pronunciation.activate_selection(query)
 
         if editor.kind in {"settings", "audio_output_settings"}:
             return self._settings.activate_selection(settings, current_caption)
-
         selected = editor.selection
         if editor.kind == "build_confirmation":
             if selected == "rebuild":
@@ -458,7 +461,7 @@ class TuiEditorController:
             return ()
         if editor.kind in {"settings", "audio_output_settings"}:
             return self._settings.finish_field()
-        if editor.kind in {"japanese", "english_word"}:
+        if editor.kind in {"japanese", "english_word", "english_punctuation"}:
             return self._pronunciation.finish_field()
 
         name = editor.active_field
@@ -481,7 +484,7 @@ class TuiEditorController:
             return ()
         if editor.kind == "caption":
             return self._text.apply_caption(current_caption)
-        if editor.kind in {"japanese", "english_word"}:
+        if editor.kind in {"japanese", "english_word", "english_punctuation"}:
             return self._pronunciation.apply_pronunciation(query)
         if editor.kind == "settings":
             return self._settings._apply_settings(settings)
@@ -508,6 +511,7 @@ class TuiEditorController:
             error_prefix = {
                 "japanese": "Pronunciation was not changed",
                 "english_word": "English pronunciation was not changed",
+                "english_punctuation": "English punctuation was not changed",
                 "section_text": "Section text was not changed",
                 "add_section": "Section was not added",
                 "delete_section": "Section was not deleted",
@@ -585,6 +589,7 @@ class TuiEditorController:
             "japanese": "Japanese pronunciation draft discarded.",
             "settings": "Settings draft discarded.",
             "english_word": "English word draft discarded.",
+            "english_punctuation": "English punctuation draft discarded.",
             "add_section": "New section draft discarded.",
             "clear_candidates_confirmation": "Candidate clearing cancelled.",
         }.get(editor.kind, "Editor draft discarded.")

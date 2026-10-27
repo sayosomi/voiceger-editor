@@ -9,6 +9,7 @@ from .english_stress import (
     EnglishPhonemeEditorState,
     english_phonemes_to_editor_state,
 )
+from .pronunciation import AccentPhrase as CoreAccentPhrase, PitchEvent
 
 
 _VOWELS = frozenset(
@@ -164,13 +165,34 @@ def _english_display_tokens(phonemes: Sequence[str]) -> list[str]:
 def _japanese_mora_tokens(
     morae: Sequence[str],
     accent: int,
+    pitch_events: Sequence[PitchEvent] | None = None,
 ) -> list[str]:
-    """Show a Japanese phrase as complete, space-separated mora tokens."""
+    """Show complete, spaced mora tokens and all explicit high spans."""
 
-    return [
-        f"[{mora}]" if index == accent else mora
-        for index, mora in enumerate(morae, start=1)
-    ]
+    if pitch_events is None:
+        return [
+            f"[{mora}]" if index == accent else mora
+            for index, mora in enumerate(morae, start=1)
+        ]
+
+    # Share the core parser's event and legacy-accent validation.
+    phrase = CoreAccentPhrase(tuple(morae), accent, tuple(pitch_events))
+    events = phrase.pitch_events
+    assert events is not None
+    by_mora = {event.after_mora: event.symbol for event in events}
+    count = len(morae)
+    tokens: list[str] = []
+    for index, mora in enumerate(morae, start=1):
+        leading = "[" if (
+            (index == 1 and events[0].symbol == "]")
+            or by_mora.get(index - 1) == "["
+        ) else ""
+        trailing = "]" if (
+            by_mora.get(index) == "]"
+            or (index == count and events[-1].symbol == "[")
+        ) else ""
+        tokens.append(f"{leading}{mora}{trailing}")
+    return tokens
 
 
 def _wrap_tokens_with_prefixes(

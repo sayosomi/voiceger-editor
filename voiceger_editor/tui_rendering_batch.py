@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from .caption_batch import CaptionBatch
-from .tui_display import _adjustable_value, _display_width, _wrap_text
-from .tui_rendering_shared import NavigationLine, _numbered_shortcut_token
+from .settings import Settings
+from .tui_display import _display_width, _wrap_active_input, _wrap_text
+from .tui_rendering_shared import NavigationLine, OutputPathEditRenderState, _numbered_shortcut_token
 from .tui_shortcuts import batch_list_shortcut
 
 def batch_list_document(
@@ -14,6 +15,8 @@ def batch_list_document(
     pressed_adjustment: tuple[str, str, int] | None = None,
     active_generation: tuple[str, int, int] | None = None,
     generation_busy: bool = False,
+    settings: Settings | None = None,
+    output_path_edit: OutputPathEditRenderState | None = None,
 ) -> list[NavigationLine]:
     """Build the top-level Batch List document."""
 
@@ -26,19 +29,52 @@ def batch_list_document(
         marker = "▶ " if key == focus_key else "  "
         lines.append(NavigationLine(marker + label, key, key))
 
-    take_direction = (
-        pressed_adjustment[2]
-        if (
-            pressed_adjustment is not None
-            and pressed_adjustment[:2] == ("batch_list", "takes")
+    global_settings = settings if settings is not None else Settings()
+    enabled_formats = [global_settings.output_format.upper()]
+    if global_settings.save_lab:
+        enabled_formats.append("LAB")
+    if global_settings.save_text:
+        enabled_formats.append("TXT")
+    summary = (
+        f"[S] Settings Takes {batch.default_take_count}"
+        f" | {' '.join(enabled_formats)}"
+    )
+    summary_key = ("settings", None)
+    summary_marker = "▶ " if focus_key == summary_key else "  "
+    summary_width = max(1, width - 1 - _display_width(summary_marker))
+    summary_lines = _wrap_text(summary, summary_width) or [summary]
+    lines.append(
+        NavigationLine(
+            summary_marker + summary_lines[0], summary_key, summary_key
         )
-        else None
     )
-    action(
-        ("takes", None),
-        f"Takes {_adjustable_value(str(batch.default_take_count), take_direction)}",
+    for continuation in summary_lines[1:]:
+        lines.append(NavigationLine("  " + continuation, None, summary_key))
+
+    output_key = ("output", None)
+    editing_output = (
+        output_path_edit is not None and output_path_edit.owner == "batch_list"
     )
+    output_marker = "▶ " if focus_key == output_key or editing_output else "  "
+    output_prefix = "[F] Output: "
+    output_width = max(1, width - 1 - _display_width(output_marker + output_prefix))
+    if editing_output:
+        pieces, cursor_row, _cursor_cells = _wrap_active_input(
+            output_path_edit.value, output_path_edit.cursor, output_width
+        )
+        lines.append(NavigationLine(
+            output_marker + output_prefix + pieces[min(cursor_row, len(pieces) - 1)],
+            output_key,
+            output_key,
+        ))
+    else:
+        pieces = _wrap_text(str(global_settings.output_dir), output_width) or [""]
+        lines.append(NavigationLine(output_marker + output_prefix + pieces[0], output_key, output_key))
+        indentation = " " * _display_width(output_marker + output_prefix)
+        for piece in pieces[1:]:
+            lines.append(NavigationLine(indentation + piece, None, output_key))
     plain()
+    plain("Captions")
 
     for index, item in enumerate(batch.items):
         key = ("caption", index)
@@ -55,7 +91,8 @@ def batch_list_document(
             percent = round(completed * 100 / total)
             review_state = f"[{percent}%] "
         elif item.is_accepted:
-            review_state = "[✓] "
+            accepted_count = len(item.accepted_take_numbers)
+            review_state = f"[✓{accepted_count}] " if accepted_count > 1 else "[✓] "
         elif item.generation_outcome in {"cancelled", "failed"}:
             review_state = "[⚠] "
         elif item.generation_outcome == "completed":
@@ -78,7 +115,7 @@ def batch_list_document(
     action_groups = (
         ("add_captions", "generate_selected"),
         ("read_batch", "write_batch"),
-        ("settings", "dictionary"),
+        ("dictionary",),
         ("help", "quit"),
     )
     for group_index, names in enumerate(action_groups):

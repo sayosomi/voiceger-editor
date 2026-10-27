@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 import sys
 from threading import RLock
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from .english_stress import normalize_english_phonemes
 from .mixed_lab_capture import MixedLabCapture
@@ -68,6 +68,8 @@ def pronunciation_to_spoken_text(value: Pronunciation) -> str:
 def resolve_pronunciation(
     text: str,
     pronunciation: Optional[str] = None,
+    *,
+    pitch_words: Any | None = None,
 ) -> tuple[str, Pronunciation, str]:
     """Resolve target text and pronunciation without loading Voiceger."""
 
@@ -76,7 +78,8 @@ def resolve_pronunciation(
     synthesis_text = source if trailing is not None else source + "。"
 
     if pronunciation is None:
-        parsed = text_to_pronunciation(synthesis_text)
+        parsed = (text_to_pronunciation(synthesis_text, pitch_words=pitch_words)
+                  if pitch_words else text_to_pronunciation(synthesis_text))
     else:
         parsed = parse_pronunciation(pronunciation)
         if parsed.trailing_punctuation is None:
@@ -402,6 +405,8 @@ class VoicegerAdapter:
         synthesis_text, parsed, resolved = resolve_pronunciation(
             source_text,
             pronunciation,
+            pitch_words=(self.user_dictionary.japanese_multi_peak_snapshot()
+                         if pronunciation is None else None),
         )
         tokens = pronunciation_to_voiceger_tokens(parsed)
 
@@ -487,11 +492,17 @@ class VoicegerAdapter:
         temperature: float = 1.0,
         speed: float = 1.0,
         mixed_lab_query: Any | None = None,
+        language_segments: Sequence[tuple[str, str]] | None = None,
     ) -> dict[str, Any]:
         """Synthesize mixed-language text with Japanese/English G2P overrides."""
 
         require_current_acceptance()
         synthesis_text = _ensure_single_utterance(text)
+        if language_segments is not None and (
+            text_language != "Japanese-English Mixed"
+            or "".join(value for _, value in language_segments) != synthesis_text
+        ):
+            raise ValueError("JA/EN runtime segments must match the source Caption")
 
         selected_ref_wav = Path(
             ref_wav_path or self.default_ref_wav
@@ -530,13 +541,14 @@ class VoicegerAdapter:
             )
             capture = MixedLabCapture(inference_webui, mixed_lab_query)
 
-            with scoped_mixed_runtime_hooks(
-                japanese=japanese,
-                inference_webui=inference_webui,
-                overrides=overrides,
-                capture=capture,
-            ):
-                with LANGSEGMENT_LOCK:
+            with LANGSEGMENT_LOCK:
+                with scoped_mixed_runtime_hooks(
+                    japanese=japanese,
+                    inference_webui=inference_webui,
+                    overrides=overrides,
+                    capture=capture,
+                    language_segments=language_segments,
+                ):
                     with _pushd(self.sovits_dir):
                         with self._runtime["MhaPatched"]():
                             results = list(

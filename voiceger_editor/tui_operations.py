@@ -63,6 +63,22 @@ if TYPE_CHECKING:
     from .tui_dictionary_operations import DictionaryOperationIntent
 
 
+def _finish_protected_shrink(
+    session: UtteranceSession,
+    *,
+    take_count: int,
+    protected_numbers: frozenset[int],
+) -> None:
+    """Prune excess unaccepted slots without synthesizing protected slots."""
+    values = session.regenerate_all_takes(
+        take_count=take_count, protected_numbers=protected_numbers,
+    )
+    for _ in values:
+        raise RuntimeError(
+            "shrink-only regeneration unexpectedly generated a Take"
+        )
+
+
 class TuiOperations:
     """Own operation state and return typed effects for app-owned actions."""
 
@@ -130,11 +146,50 @@ class TuiOperations:
                 ),
             )
 
-        plan = tuple(
-            (item, batch.effective_take_count(item))
-            for item in selected
-        )
-        overall_total = sum(take_total for _item, take_total in plan)
+        plan_rows = []
+        shrink_only_rows = []
+        for item in selected:
+            take_total = batch.effective_take_count(item)
+            accepted = item.accepted_take_numbers
+            if item.session.has_active_batch and any(
+                number > take_total for number in accepted
+            ):
+                return (UpdateStatusEffect(
+                    f"Cannot reduce Caption Takes to {take_total}: "
+                    "an accepted Take would be removed. Increase Take count first."
+                ),)
+            numbers = tuple(
+                number for number in range(1, take_total + 1)
+                if not item.session.has_active_batch or number not in accepted
+            )
+            if numbers:
+                plan_rows.append((item, take_total, numbers, accepted))
+            elif item.session.has_active_batch and any(
+                candidate.number > take_total for candidate in item.session.candidates
+            ):
+                shrink_only_rows.append((item, take_total, accepted))
+
+        for item, take_total, accepted in shrink_only_rows:
+            try:
+                _finish_protected_shrink(
+                    item.session,
+                    take_count=take_total,
+                    protected_numbers=accepted,
+                )
+            except Exception as exc:
+                return (UpdateStatusEffect(error_status(
+                    f"Could not reduce selected Caption Takes: {exc}"
+                )),)
+
+        if not plan_rows:
+            return (UpdateStatusEffect(
+                "Reduced selected Caption Takes; accepted Takes preserved."
+                if shrink_only_rows else
+                "All selected Takes are accepted; nothing to regenerate."
+            ),)
+
+        plan = tuple(plan_rows)
+        overall_total = sum(len(numbers) for _, _, numbers, _ in plan)
         first_take_total = plan[0][1]
 
         self.stop_playback()
@@ -143,13 +198,13 @@ class TuiOperations:
         self.worker_operation = "batch_generate"
         self.worker_target = None
         self._worker_item_id = None
-        self._owned_item_ids = frozenset(item.item_id for item, _take_total in plan)
+        self._owned_item_ids = frozenset(item.item_id for item, _, _, _ in plan)
         self._operation_serial += 1
         self._active_operation_id = self._operation_serial
         self._batch_progress_item_id = plan[0][0].item_id
         self._batch_progress_caption_number = 1
         self._batch_progress_caption_total = len(plan)
-        self._batch_progress_take_number = 1
+        self._batch_progress_take_number = plan[0][2][0]
         self._batch_progress_take_completed = 0
         self._batch_progress_take_total = first_take_total
         self.worker_error = None
@@ -178,7 +233,7 @@ class TuiOperations:
             UpdateStatusEffect(
                 f"Generating {len(plan)} selected Caption(s), "
                 f"{overall_total} take(s) total · "
-                f"Caption 1/{len(plan)} · Take 1/{first_take_total} · "
+                f"Caption 1/{len(plan)} · Take {plan[0][2][0]}/{first_take_total} · "
                 f"Overall 0/{overall_total}",
                 channel="background",
             ),
@@ -227,12 +282,17 @@ class TuiOperations:
         take_count: int,
         navigation_revision: int,
         item_id: str | None = None,
+        protected_numbers: frozenset[int] = frozenset(),
     ) -> tuple[OperationEffect, ...]:
         conflict = self.resource_conflict_status(f"Regenerate Take {number}")
         if conflict is not None:
             return (UpdateStatusEffect(conflict),)
         if session is None:
             return ()
+        if number in protected_numbers:
+            return (UpdateStatusEffect(
+                f"Take {number} is accepted and cannot be regenerated."
+            ),)
         self.stop_playback()
         self.current_take = number
         return self.run_worker(
@@ -252,23 +312,57 @@ class TuiOperations:
         take_count: int,
         navigation_revision: int,
         item_id: str | None = None,
+        protected_numbers: frozenset[int] = frozenset(),
     ) -> tuple[OperationEffect, ...]:
         conflict = self.resource_conflict_status("Regenerate all Takes")
         if conflict is not None:
             return (UpdateStatusEffect(conflict),)
         if session is None:
             return ()
+        if any(number > take_count for number in protected_numbers):
+            return (UpdateStatusEffect(
+                f"Cannot reduce Takes to {take_count}: an accepted Take would "
+                "be removed. Increase Take count first."
+            ),)
+        remaining = take_count - len(protected_numbers)
+        if protected_numbers and remaining == 0:
+            # An accepted slot can be the only target even while higher,
+            # unaccepted candidates still exist from the previous take count.
+            # Finish the core shrink without starting a synthesis worker.
+            if any(candidate.number > take_count for candidate in session.candidates):
+                try:
+                    _finish_protected_shrink(
+                        session,
+                        take_count=take_count,
+                        protected_numbers=protected_numbers,
+                    )
+                except Exception as exc:
+                    return (UpdateStatusEffect(
+                        error_status(f"Could not reduce Takes: {exc}")
+                    ),)
+                return (UpdateStatusEffect(
+                    f"Reduced Takes to {take_count}; accepted Takes preserved."
+                ),)
+            return (UpdateStatusEffect(
+                "All Takes are accepted; nothing to regenerate."
+            ),)
         try:
-            values = session.regenerate_all_takes()
+            values = (
+                session.regenerate_all_takes(
+                    take_count=take_count, protected_numbers=protected_numbers
+                )
+                if protected_numbers else session.regenerate_all_takes()
+            )
         except Exception as exc:
             return (
                 UpdateStatusEffect(error_status(f"Could not regenerate all takes: {exc}")),
             )
+        operation_total = remaining if protected_numbers else take_count
         return self.run_worker(
             lambda: values,
-            f"Regenerating 1/{take_count}",
+            f"Regenerating 1/{operation_total}",
             operation="regenerate_all",
-            take_count=take_count,
+            take_count=operation_total,
             navigation_revision=navigation_revision,
             item_id=item_id,
         )
@@ -388,7 +482,16 @@ class TuiOperations:
         )
 
         self._pending_worker = (work, "voiceger-tui-dictionary")
-        return (UpdateStatusEffect(intent.status),)
+        # Inline list autosave has its own visible progress row; do not
+        # overwrite an unrelated foreground Status message on every debounce.
+        channel = (
+            "background"
+            if intent.request.operation in {
+                "save_japanese_list_accents", "save_english_list_stresses"
+            }
+            else "status"
+        )
+        return (UpdateStatusEffect(intent.status, channel=channel),)
 
     def start_pending_worker(self) -> None:
         """Start work deferred until its in-progress Status has been rendered."""
@@ -824,7 +927,7 @@ class TuiOperations:
                         number=event.take_number,
                     )
                 )
-            if event.take_number == event.take_total:
+            if event.item_finished or event.take_number == event.take_total:
                 effects.append(
                     GenerationOutcomeEffect(event.item_id, "completed")
                 )

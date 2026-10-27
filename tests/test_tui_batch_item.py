@@ -21,7 +21,6 @@ from voiceger_editor.tui_navigation import (
     TuiNavigation,
 )
 from voiceger_editor.tui_operations import UpdateStatusEffect
-from voiceger_editor.tui_output_path import BeginOutputPathEditIntent
 from voiceger_editor.tui_status import error_status, warning_status
 
 
@@ -157,14 +156,12 @@ class TuiBatchItemControllerTests(unittest.TestCase):
             (ClearAdjustmentFeedbackIntent(),)
         )
 
-    def test_file_shortcut_starts_inline_shared_output_edit(self):
+    def test_file_shortcut_is_not_available_inside_batch_item(self):
         subject, _batch, bindings, _state = self.make_subject()
 
         subject.handle_key("f", bindings)
 
-        bindings.actions.dispatch_editor_intents.assert_called_once_with(
-            (BeginOutputPathEditIntent("batch_item"),)
-        )
+        bindings.actions.dispatch_editor_intents.assert_not_called()
         bindings.actions.open_settings_editor.assert_not_called()
 
     def test_open_item_focus_prefers_accepted_then_first_candidate(self):
@@ -225,10 +222,10 @@ class TuiBatchItemControllerTests(unittest.TestCase):
         self.assertEqual(batch.item_position, (2, 2))
         self.assertEqual(bindings.actions.navigation.focus_key, ("caption", None))
 
-        bindings.actions.navigation.focus_key = ("output", None)
+        bindings.actions.navigation.focus_key = ("item_style", None)
         subject.move_open_item(-1, bindings)
         self.assertEqual(batch.item_position, (1, 2))
-        self.assertEqual(bindings.actions.navigation.focus_key, ("output", None))
+        self.assertEqual(bindings.actions.navigation.focus_key, ("item_style", None))
 
     def test_candidate_focus_keeps_same_take_or_falls_back_to_target_priority(self):
         subject, batch, bindings, state = self.make_subject()
@@ -397,6 +394,43 @@ class TuiBatchItemControllerTests(unittest.TestCase):
 
         self.assertEqual(subject.pronunciation_rows(bindings), ())
         bindings.actions.editor_controller.pronunciation_rows.assert_not_called()
+
+    def test_complete_preparation_rejects_empty_pronunciation_rows(self):
+        subject, _batch, bindings, state = self.make_subject()
+        subject.complete_preparation(
+            state["session"], rebuild=True, error=None, bindings=bindings
+        )
+        self.assertEqual(
+            state["status"],
+            error_status(
+                "Pronunciation was not fully prepared: some Caption "
+                "sections have no editable pronunciation."
+            ),
+        )
+        bindings.actions.operations.stop_playback.assert_not_called()
+
+    def test_complete_preparation_rejects_partial_section_rows(self):
+        subject, _batch, bindings, state = self.make_subject()
+        state["session"].caption = "今日はhello"
+        state["session"].query = SimpleNamespace(voicegerSegments=[
+            SimpleNamespace(language="ja", text="今日は"),
+            SimpleNamespace(language="en", text="hello"),
+        ])
+        bindings.actions.editor_controller.pronunciation_rows.return_value = (
+            SimpleNamespace(language="ja", source_segment_index=0, phrase_index=0),
+        )
+        subject.complete_preparation(
+            state["session"], rebuild=True, error=None, bindings=bindings
+        )
+        self.assertIn("not fully prepared", state["status"])
+
+    def test_complete_preparation_rejects_editor_grouping_errors(self):
+        subject, _batch, bindings, state = self.make_subject()
+        bindings.actions.editor_controller.grouping_error = error_status("Cannot align English words.")
+        subject.complete_preparation(
+            state["session"], rebuild=True, error=None, bindings=bindings
+        )
+        self.assertEqual(state["status"], error_status("Cannot align English words."))
 
     def test_preparation_failure_is_visible_and_explicit_build_can_retry(self):
         subject, _batch, bindings, state = self.make_subject()
@@ -638,6 +672,28 @@ class TuiBatchItemIntegrationTests(TuiAppTestCase):
             item_id=app._batch.open_item_id,
         )
 
+    def test_accepted_take_cannot_regenerate_and_bulk_passes_protected_membership(self):
+        app = self.make_app(query=mixed_query(), candidates=(candidate(1), candidate(2)))
+        item = app._batch.batch.items[0]
+        item.mark_accepted(1)
+        app._operations.start_regeneration = Mock(return_value=())
+        app._operations.start_regenerate_all = Mock(return_value=())
+
+        focus_candidate(app, 1)
+        app._handle_key("r")
+        app._operations.start_regeneration.assert_not_called()
+        self.assertIn("accepted", app._status)
+        self.assertEqual(item.accepted_take_numbers, frozenset({1}))
+
+        app._handle_key("g")
+        app._operations.start_regenerate_all.assert_called_once_with(
+            app.session,
+            take_count=app.settings.take_count,
+            navigation_revision=app._navigation.revision,
+            item_id=app._batch.open_item_id,
+            protected_numbers=frozenset({1}),
+        )
+
     def test_busy_candidate_remains_playable_without_inline_unavailable_cues(self):
         app = self.make_app(candidates=(candidate(1), candidate(2)))
         app._operations.play_take = Mock(return_value=())
@@ -689,6 +745,50 @@ class TuiBatchItemIntegrationTests(TuiAppTestCase):
         self.assertIs(app.session, session)
         self.assertEqual(app._navigation.focus_key, ("candidate", 1))
 
+    def test_multiple_take_acceptance_duplicate_noop_and_failed_new_save(self):
+        app = self.make_app(
+            query=mixed_query(),
+            candidates=(candidate(1), candidate(2), candidate(3), candidate(4)),
+        )
+        session = app.session
+        item = app._batch.batch.items[0]
+        app._operations.play_take = Mock(return_value=())
+
+        for number in (1, 3, 4):
+            focus_candidate(app, number)
+            app._handle_key("\n")
+            self.assertFalse(item.is_take_accepted(number))
+            app._operations.start_pending_worker()
+            app._operations.join_worker()
+            app._consume_events()
+            self.assertTrue(item.is_take_accepted(number))
+
+        self.assertEqual(session.accept_calls, [1, 3, 4])
+        self.assertEqual(item.accepted_take_numbers, frozenset({1, 3, 4}))
+        self.assertFalse(app._operations.busy)
+
+        focus_candidate(app, 3)
+        app._handle_key("\n")
+        self.assertEqual(session.accept_calls, [1, 3, 4])
+        self.assertFalse(app._operations.busy)
+        self.assertIn("already accepted", app._status)
+        self.assertEqual(item.accepted_take_numbers, frozenset({1, 3, 4}))
+
+        session.accept_error = RuntimeError("disk full")
+        focus_candidate(app, 2)
+        app._handle_key("\n")
+        app._operations.start_pending_worker()
+        app._operations.join_worker()
+        app._consume_events()
+        self.assertEqual(session.accept_calls, [1, 3, 4, 2])
+        self.assertEqual(item.accepted_take_numbers, frozenset({1, 3, 4}))
+        self.assertIn("Take 2 was not saved", app._status)
+
+        focus_candidate(app, 3)
+        app._handle_key("r")
+        self.assertIn("cannot be regenerated", app._status)
+        self.assertEqual(item.accepted_take_numbers, frozenset({1, 3, 4}))
+
     def test_primary_batch_item_shortcuts_activate_settled_visible_actions(self):
         caption = self.make_app(query=mixed_query())
         caption._handle_key("e")
@@ -730,11 +830,10 @@ class TuiBatchItemIntegrationTests(TuiAppTestCase):
         output = self.make_app(query=mixed_query())
         output._handle_key("f")
         self.assertIsNone(output._editor_controller.editor)
-        self.assertTrue(output._output_path_controller.active)
-        self.assertEqual(output._output_path_controller.state.owner, "batch_item")
+        self.assertFalse(output._output_path_controller.active)
 
         for removed in (
-            curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "x", "l"
+            curses.KEY_F5, "\x07", "R", "b", "t", "n", "x", "l"
         ):
             with self.subTest(removed=removed):
                 legacy = self.make_app(query=mixed_query())
@@ -751,9 +850,8 @@ class TuiBatchItemIntegrationTests(TuiAppTestCase):
         self.assertEqual(app._editor_controller.editor.kind, "caption")
         app._handle_key("\x1b")
         app._handle_key("s")
-        self.assertEqual(app._editor_controller.editor.kind, "settings")
-        self.assertEqual(app._editor_controller.editor.selection, "style_id")
-        app._handle_key("\x1b")
+        self.assertIsNone(app._editor_controller.editor)
+        self.assertEqual(app._navigation.focus_key, ("item_style", None))
         app._operations.play_take = Mock(return_value=())
         focus_candidate(app, 1)
         navigation_revision = app._navigation.revision

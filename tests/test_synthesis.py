@@ -376,6 +376,7 @@ class SynthesisTests(unittest.TestCase):
             japanese_overrides=list(plan.japanese_overrides),
             text_language=plan.text_language,
             english_overrides=list(plan.english_overrides),
+            language_segments=(("ja", "今日は"), ("en", "hello")),
             ref_wav_path=Path("/voiceger/reference/reference.wav"),
             prompt_text="style prompt",
             speed=0.87,

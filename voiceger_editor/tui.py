@@ -100,6 +100,7 @@ class TuiApp:
             set_status=lambda status: setattr(self, "_status", status),
             save=lambda value, path: save_settings(value, path),
             clear_generation_outcomes=self._batch.clear_generation_outcomes,
+            clear_acceptances=self._batch.clear_acceptances,
         )
         self._output_path_controller = TuiOutputPathController(
             get_output_dir=lambda: self.settings.output_dir,
@@ -133,7 +134,10 @@ class TuiApp:
         self._renderer = TuiRenderer()
         self._input = TuiInputReader()
         self._interrupt_controller = TuiInterruptController()
-        self._batch_item_controller = TuiBatchItemController(self._batch)
+        self._batch_item_controller = TuiBatchItemController(
+            self._batch,
+            available_styles=lambda: available_styles(self.adapter.voiceger_root),
+        )
         self._batch_action_bindings = tui_batch.BatchActionBindings(
             operations=self._operations,
             navigation=self._navigation,
@@ -396,6 +400,11 @@ class TuiApp:
         )
 
     def _activate_quit(self) -> None:
+        if self._dictionary_controller.has_unsaved_list_accents:
+            self._dispatch_editor_intents(
+                self._dictionary_controller.defer_quit_for_accents()
+            )
+            return
         self._help_controller.close()
         self._exit_requested = True
         self._dispatch_operation_effects(self._operations.request_shutdown())
@@ -629,6 +638,11 @@ class TuiApp:
             batch=self._batch.batch,
         )
         self._dispatch_operation_effects(effects)
+        self._dispatch_editor_intents(
+            self._dictionary_controller.pending_accent_commit(
+                operation_busy=self._operations.busy
+            )
+        )
 
     def _dispatch_operation_effects(
         self,
@@ -698,8 +712,10 @@ class TuiApp:
                         effect.item_id,
                         effect.number,
                     )
-                elif self._batch.open_item_accepted_take_number == effect.number:
-                    self._batch.clear_open_item_acceptance()
+                elif self._batch.open_item_id is not None:
+                    self._batch.invalidate_acceptance_for_replacement(
+                        self._batch.open_item_id, effect.number,
+                    )
 
     def _render_state(
         self,
@@ -731,7 +747,7 @@ class TuiApp:
                 if self._dictionary_controller.active
                 else self._editor_controller.editor
             ),
-            accepted_take_number=self._batch.open_item_accepted_take_number,
+            accepted_take_numbers=self._batch.open_item_accepted_take_numbers,
             batch_item_position=(
                 self._batch.item_position if self._batch.in_item else None
             ),
@@ -743,6 +759,7 @@ class TuiApp:
                 self._operations.can_cancel_batch,
             ),
             output_path_edit=self._output_path_controller.state,
+            item_speed_edit=self._batch_item_controller.speed_edit,
             batch_item_number_jump_active=(
                 self._batch_item_controller.number_jump_active
             ),
@@ -824,6 +841,8 @@ class TuiApp:
                 background_status=background_status,
                 number_jump_active=self._batch.number_jump_active,
                 number_jump_value=self._batch.number_jump_value,
+                settings=self.settings,
+                output_path_edit=self._output_path_controller.state,
             )
         else:
             self._dispatch_navigation_actions(

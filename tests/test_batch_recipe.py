@@ -171,7 +171,7 @@ class BatchRecipeTests(unittest.TestCase):
         self.adapter = FakeAdapter(self.root)
         self.runtime_settings = Settings(
             output_dir=self.root / "runtime-output",
-            filename_template="{style}_{text}",
+            filename_template="{style}_{caption}",
             output_format="flac",
             wav_encoding="pcm24",
             flac_encoding="pcm24",

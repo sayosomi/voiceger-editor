@@ -45,7 +45,7 @@ class OutputSaveTests(unittest.TestCase):
                 timestamp=self.timestamp,
             )
 
-    def test_style_does_not_change_output_basename(self):
+    def test_default_output_basename_includes_voice_style(self):
         source_text = "ファイル名"
         with (
             tempfile.TemporaryDirectory() as first_directory,
@@ -62,8 +62,8 @@ class OutputSaveTests(unittest.TestCase):
                 style_name="Sweet",
             )
 
-        self.assertEqual(first.wav_path.name, "202609271755_ファイル名.wav")
-        self.assertEqual(second.wav_path.name, first.wav_path.name)
+        self.assertEqual(first.wav_path.name, "202609271755_Neutral_ファイル名.wav")
+        self.assertEqual(second.wav_path.name, "202609271755_Sweet_ファイル名.wav")
 
     def test_custom_template_uses_style_and_keeps_extension_outside_template(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -79,7 +79,7 @@ class OutputSaveTests(unittest.TestCase):
                     style_name="Neutral",
                     output_dir=root,
                     timestamp=datetime(2026, 10, 7, 19, 45, 23),
-                    filename_template="{YYYY-MM-DD}_{HHmmss}_{style}_{text}",
+                    filename_template="{YYYY-MM-DD}_{HHmmss}_{style}_{caption}",
                 )
 
         self.assertEqual(
@@ -93,6 +93,7 @@ class OutputSaveTests(unittest.TestCase):
             root = Path(directory)
             existing = root / build_output_filename(
                 text=source_text,
+                style="Neutral",
                 timestamp=self.timestamp,
             )
             existing.write_bytes(b"keep existing")
@@ -108,6 +109,7 @@ class OutputSaveTests(unittest.TestCase):
         source_text = "雨です。\r\n 次です。"
         initial_wav = build_output_filename(
             text=source_text,
+            style="Neutral",
             timestamp=self.timestamp,
         )
         initial_stem = Path(initial_wav).stem
@@ -182,6 +184,7 @@ class OutputSaveTests(unittest.TestCase):
 
             expected_name = build_output_filename(
                 text=source_text,
+                style="Sweet",
                 timestamp=self.timestamp,
             )
             self.assertEqual(saved.wav_path.name, expected_name)
@@ -199,6 +202,7 @@ class OutputSaveTests(unittest.TestCase):
             output_dir.mkdir()
             initial_name = build_output_filename(
                 text=source_text,
+                style="Neutral",
                 timestamp=self.timestamp,
             )
             existing = output_dir / initial_name

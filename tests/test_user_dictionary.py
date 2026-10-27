@@ -96,6 +96,54 @@ class UserDictionaryTests(unittest.TestCase):
         values.update(kwargs)
         return self.core.add_japanese_word(**values)
 
+    def test_bulk_accent_update_preserves_dictionary_and_commits_once(self):
+        first = self.add_word(surface="ずんだもん")
+        second = self.add_word(surface="きりたん", pronunciation="キリタン")
+        before = self.core.list_japanese_entries()
+        before_keys = tuple(before)
+        apply_before = len([event for event in self.backend.events if event[0] == "apply"])
+
+        self.core.update_japanese_accents({first: 1, second: 2})
+        after = self.core.list_japanese_entries()
+
+        self.assertEqual(tuple(after), before_keys)
+        self.assertEqual(after[first].accent_type, 1)
+        self.assertEqual(after[second].accent_type, 2)
+        for identity in before:
+            old_fields = before[identity].model_dump(exclude={"accent_type"})
+            new_fields = after[identity].model_dump(exclude={"accent_type"})
+            self.assertEqual(old_fields, new_fields)
+            self.assertEqual(self.backend.active[identity], after[identity])
+        apply_after = len([event for event in self.backend.events if event[0] == "apply"])
+        self.assertEqual(apply_after - apply_before, 1)
+
+        reread = UserDictionaryCore(
+            self.voiceger_root,
+            data_directory=self.data_dir,
+            openjtalk_dictionary=FakeBackend(),
+        )
+        self.assertEqual(reread.list_japanese_entries(), after)
+
+    def test_bulk_accent_update_failure_rolls_back_all_entries(self):
+        first = self.add_word()
+        second = self.add_word(surface="きりたん", pronunciation="キリタン")
+        before = self.core.list_japanese_entries()
+        before_file = self.core.japanese_path.read_bytes()
+        self.backend.fail_compile = True
+
+        with self.assertRaises(OpenJTalkDictionaryError):
+            self.core.update_japanese_accents({first: 1, second: 2})
+
+        self.assertEqual(self.core.list_japanese_entries(), before)
+        self.assertEqual(self.backend.active, before)
+        self.assertEqual(self.core.japanese_path.read_bytes(), before_file)
+
+        with self.assertRaises(UserDictionaryInputError):
+            self.core.update_japanese_accents({first: 1, second: 500})
+        with self.assertRaises(UserDictionaryInputError):
+            self.core.update_japanese_accents({first: True})
+        self.assertEqual(self.core.list_japanese_entries(), before)
+
     def test_create_list_update_delete_and_defaults(self):
         word_uuid = self.add_word()
         listed = self.core.list_japanese_entries()
@@ -641,6 +689,36 @@ class UserDictionaryTests(unittest.TestCase):
             self.assertIs(openjtalk_dictionary._ACTIVE_COMPILATION, compiled)
             compiled.close()
 
+
+    def test_inline_english_stress_updates_are_atomic_and_preserve_order(self):
+        self.core.set_english_entry("Zulu", ["Z", "UW1", "L", "UW0"])
+        self.core.set_english_entry("Alpha", ["AE1", "L", "F", "AH2"])
+        self.core.update_english_stresses({
+            "Zulu": ["Z", "UW0", "L", "UW1"],
+            "Alpha": ["AE2", "L", "F", "AH1"],
+        })
+        self.assertEqual(list(self.core.list_english_entries()), ["Zulu", "Alpha"])
+        self.assertEqual(
+            self.core.lookup_english_entry("zulu"), ["Z", "UW0", "L", "UW1"]
+        )
+        reloaded = UserDictionaryCore(
+            self.voiceger_root,
+            data_directory=self.data_dir,
+            openjtalk_dictionary=FakeBackend(),
+        )
+        self.assertEqual(
+            reloaded.lookup_english_entry("Alpha"), ["AE2", "L", "F", "AH1"]
+        )
+        with self.assertRaises(UserDictionaryInputError):
+            self.core.update_english_stresses({"missing": ["AE1"]})
+        with self.assertRaises(UserDictionaryInputError):
+            self.core.update_english_stresses({"Zulu": ["INVALID"]})
+        before = self.core.list_english_entries()
+        with patch("voiceger_editor.user_dictionary._atomic_write", side_effect=OSError("full")):
+            with self.assertRaises(Exception):
+                self.core.update_english_stresses({"Zulu": ["Z", "UW1", "L", "UW0"]})
+        self.assertEqual(self.core.list_english_entries(), before)
+        self.assertEqual(self.backend.events, [])
 
     def test_english_file_order_is_canonical_through_mutations(self):
         self.core.english_path.parent.mkdir(parents=True, exist_ok=True)

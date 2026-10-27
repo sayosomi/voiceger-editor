@@ -14,6 +14,7 @@ Keyboard interaction and presentation conventions are documented separately in [
 | `voiceger_editor/tui_batch_recipe.py` | Batch recipe Read input-path editing, Write file-name state, replacement-confirmation interaction state, and delegation to the frontend-neutral recipe core; Write resolves its target under the shared Output directory and owns no JSON/schema policy. |
 | `voiceger_editor/tui_batch_item.py` | Batch Item key interpretation and action routing; same-level Caption movement; stable-item mutation conflict routing; candidate review/accept/regeneration coordination; Build pronunciation and Take-count interaction policy; Batch Item segment/pronunciation-row derivation. |
 | `voiceger_editor/tui_dictionary.py` | Dictionary coordination and routing: top-level menu and export flow, Japanese / English list coordination, sort / filter interaction with `DictionaryListStateOwner`, shared editor and parent-stack coordination, key routing between Dictionary owners, and guarded background-operation dispatch. |
+| `voiceger_editor/tui_dictionary_export.py` | Dictionary Export screen, native-ZIP/VOICEVOX worker requests, pre-VOICEVOX pitch-loss confirmation and export outcomes. |
 | `voiceger_editor/tui_dictionary_import.py` | Dictionary Import path, review, and detail interaction state; item identity and selection policy; Japanese word-type adjustment; load / commit requests; and UI-thread application of Import completion, Status, and error outcomes. |
 | `voiceger_editor/tui_dictionary_entry.py` | Japanese / English Dictionary entry editors and drafts; quick-save resolution; validation, dirty-state, and entry navigation policy; pronunciation and preview requests; save / delete confirmation and requests; and UI-thread application of entry-operation outcomes with stable list-focus restoration. |
 | `voiceger_editor/tui_dictionary_operations.py` | Typed Dictionary background-operation identity, language, request, and intent boundary; snapshots worker input while retaining the originating editor identity. |
@@ -53,7 +54,14 @@ Keyboard interaction and presentation conventions are documented separately in [
 | `voiceger_editor/tui_rendering_editor.py` | Editor document dispatch and shared title/Dictionary-entry navigator construction. |
 | `voiceger_editor/tui_rendering_editor_general.py` | General editor-family documents: confirmations, Caption/pronunciation editors, batch-recipe path screens, and section text/add flows. |
 | `voiceger_editor/tui_rendering_settings.py` | Settings and Audio Output Settings document construction. |
-| `voiceger_editor/tui_rendering_dictionary.py` | Dictionary menu/import/list/filter/entry/detail document construction and Dictionary-specific row formatting. |
+| `voiceger_editor/tui_rendering_dictionary.py` | Dictionary menu/import/filter/detail document dispatch and delegation to focused entry/word-list renderers. |
+| `voiceger_editor/tui_rendering_dictionary_import.py` | Dictionary Import review and word-detail documents, including paired-language ZIP Merge summaries. |
+| `voiceger_editor/tui_rendering_dictionary_entry.py` | Japanese Dictionary entry fields and dedicated EDIT PRONUNCIATION text-editor rendering, delegated by Dictionary document dispatch. |
+| `voiceger_editor/tui_rendering_dictionary_list.py` | Japanese/English Dictionary word-list rendering, preview action placement, pending-accent save presentation, list row layout/formatting, and list sort labels. |
+| `voiceger_editor/tui_dictionary_accent.py` | Japanese Dictionary word-list mora-bounded inline accent adjustments and optimistic visible overlay; persistence is delegated to UserDictionaryCore. |
+| `voiceger_editor/tui_dictionary_pitch.py` | Japanese Dictionary display formatting for single accent and multi-peak pitch events; only the detailed pronunciation editor can modify multiple events. |
+| `voiceger_editor/tui_dictionary_stress.py` | English Dictionary word-list vowel-bounded primary stress adjustments using the existing ARPAbet stress helpers and optimistic visible overlay; persistence is delegated to UserDictionaryCore. |
+| `voiceger_editor/tui_dictionary_inline_edits.py` | Shared Japanese/English Dictionary list debounce/coalescing, pending edit snapshots, serialization through the existing Dictionary worker, and completion reconciliation / rollback. |
 | `voiceger_editor/tui_display.py` | Pure display-cell width; wrapping and truncation; cursor movement across wrapped input; phoneme and display-formatting helpers. |
 
 ## Dependency direction

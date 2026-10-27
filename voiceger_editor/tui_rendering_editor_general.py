@@ -27,6 +27,7 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         "batch_recipe_replace_confirmation",
         "dictionary_delete_confirmation",
         "dictionary_discard_confirmation",
+        "dictionary_voicevox_loss_confirmation",
         "delete_confirmation",
         "clear_candidates_confirmation",
     }:
@@ -35,6 +36,16 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
             details = (
                 ConfirmationDetail("Path", str(editor.payload["path"])),
             )
+        elif editor.kind == "delete_confirmation":
+            if "target_text" in editor.payload:
+                language = (
+                    "Japanese"
+                    if editor.payload["target_language"] == "ja"
+                    else "English"
+                )
+                details = (
+                    ConfirmationDetail(f"{language} section", editor.payload["target_text"]),
+                )
         elif editor.kind == "dictionary_delete_confirmation":
             if editor.payload["language"] == "ja":
                 pronunciation = " ".join(
@@ -86,12 +97,15 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         selectable("save_dictionary")
         selectable("dictionary")
         selectable("edit_text")
+        if editor.payload.get("can_delete", False):
+            selectable("delete_section")
         selectable("clear")
         selectable("reset")
         selectable("back")
-    elif editor.kind == "english_word":
+    elif editor.kind in {"english_word", "english_punctuation"}:
+        punctuation = editor.kind == "english_punctuation"
         plain()
-        plain("Word")
+        plain("Punctuation" if punctuation else "Word")
         plain(f"  {editor.payload['label']}")
         plain()
         input_field(
@@ -101,10 +115,14 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         plain()
         selectable("preview")
         selectable("apply")
-        selectable("save_dictionary")
-        selectable("dictionary")
+        if not punctuation:
+            selectable("save_dictionary")
+            selectable("dictionary")
         selectable("edit_text")
-        selectable("clear")
+        if editor.payload.get("can_delete", False):
+            selectable("delete_section")
+        if not punctuation:
+            selectable("clear")
         selectable("reset")
         selectable("back")
     elif editor.kind == "batch_recipe_read_path":

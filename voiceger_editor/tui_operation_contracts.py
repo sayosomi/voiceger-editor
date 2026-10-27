@@ -175,6 +175,7 @@ class BatchCandidateReadyEvent:
     overall_completed: int
     overall_total: int
     replacing_existing: bool
+    item_finished: bool = False
 
 
 @dataclass(frozen=True)

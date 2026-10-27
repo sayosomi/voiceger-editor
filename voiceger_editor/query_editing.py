@@ -21,11 +21,14 @@ from .pronunciation import (
 from .openjtalk_converter import text_to_pronunciation
 from .mixed_language import resolve_japanese_segment_terminator
 from .synthesis import _query_terminator
-from .voicevox_api_models import AudioQuery, VoicegerSegment
+from .voicevox_api_models import AudioQuery, PronunciationPitchEvents, VoicegerSegment
 from .voicevox_query import (
     accent_phrases_to_pronunciation,
     pronunciation_punctuation,
     pronunciation_to_accent_phrases,
+    pronunciation_pitch_events,
+    pronunciation_to_legacy_kana,
+    pitch_events_for_range,
 )
 
 
@@ -184,6 +187,36 @@ def merge_english_section_text_groups(
     return retain_unchanged_english_word_phonemes(old, new_groups)
 
 
+def _replace_pitch_events(
+    query: AudioQuery,
+    *,
+    start: int,
+    old_count: int,
+    new_count: int,
+    added: Sequence[PronunciationPitchEvents] | None = None,
+) -> None:
+    """Rebase optional global metadata when a phrase range changes."""
+
+    delta = new_count - old_count
+    records: list[PronunciationPitchEvents] = []
+    for entry in query.pronunciationPitchEvents or ():
+        index = entry.accentPhraseIndex
+        if index < start:
+            records.append(entry)
+        elif index >= start + old_count:
+            records.append(entry.model_copy(
+                update={"accentPhraseIndex": index + delta}, deep=True
+            ))
+    for entry in added or ():
+        if entry.accentPhraseIndex >= new_count:
+            raise ValueError("new pitch events refer beyond replacement range")
+        records.append(entry.model_copy(
+            update={"accentPhraseIndex": start + entry.accentPhraseIndex}, deep=True
+        ))
+    records.sort(key=lambda entry: entry.accentPhraseIndex)
+    query.pronunciationPitchEvents = records or None
+
+
 def japanese_pronunciation(
     query: AudioQuery,
     *,
@@ -198,6 +231,7 @@ def japanese_pronunciation(
             query.accent_phrases,
             punctuation=query.pronunciationPunctuation,
             terminator=_pure_japanese_terminator(query),
+            pitch_events=query.pronunciationPitchEvents,
         )
         return format_pronunciation(pronunciation)
 
@@ -208,6 +242,9 @@ def japanese_pronunciation(
         query.accent_phrases[start : start + count],
         punctuation=segment.pronunciationPunctuation,
         terminator=resolve_japanese_segment_terminator(segment),
+        pitch_events=pitch_events_for_range(
+            query.pronunciationPitchEvents, start, count
+        ),
     )
     return format_pronunciation(pronunciation)
 
@@ -226,8 +263,9 @@ def replace_japanese_pronunciation(
         parsed = _parse_replacement(pronunciation)
         updated = query.model_copy(deep=True)
         updated.accent_phrases = pronunciation_to_accent_phrases(parsed)
-        updated.kana = format_pronunciation(parsed)
+        updated.kana = pronunciation_to_legacy_kana(parsed)
         updated.pronunciationPunctuation = pronunciation_punctuation(parsed)
+        updated.pronunciationPitchEvents = pronunciation_pitch_events(parsed)
         return updated
 
     parsed = _parse_replacement(pronunciation)
@@ -240,6 +278,10 @@ def replace_japanese_pronunciation(
         updated.accent_phrases[:start]
         + pronunciation_to_accent_phrases(parsed)
         + updated.accent_phrases[start + count :]
+    )
+    _replace_pitch_events(
+        updated, start=start, old_count=count, new_count=len(parsed.phrases),
+        added=pronunciation_pitch_events(parsed),
     )
     assert updated.voicegerSegments is not None
     updated.voicegerSegments[segment_index].pronunciationTerminator = (
@@ -296,12 +338,18 @@ def japanese_preview_query(
         phrases,
         punctuation=segment.pronunciationPunctuation,
         terminator=resolve_japanese_segment_terminator(segment),
+        pitch_events=pitch_events_for_range(
+            updated.pronunciationPitchEvents, start, count
+        ),
     )
 
     preview = updated.model_copy(deep=True)
     preview.accent_phrases = preview.accent_phrases[start : start + count]
+    preview.pronunciationPitchEvents = pitch_events_for_range(
+        updated.pronunciationPitchEvents, start, count
+    )
     preview.voicegerSegments = None
-    preview.kana = format_pronunciation(pronunciation_value)
+    preview.kana = pronunciation_to_legacy_kana(pronunciation_value)
     preview.pronunciationPunctuation = pronunciation_punctuation(
         pronunciation_value
     )
@@ -325,10 +373,11 @@ def replace_japanese_section_text(
 
     if segment is None:
         updated.accent_phrases = replacement_phrases
-        updated.kana = format_pronunciation(pronunciation)
+        updated.kana = pronunciation_to_legacy_kana(pronunciation)
         updated.pronunciationPunctuation = pronunciation_punctuation(
             pronunciation
         )
+        updated.pronunciationPitchEvents = pronunciation_pitch_events(pronunciation)
         return updated
 
     start = segment.accentPhraseStart
@@ -338,6 +387,10 @@ def replace_japanese_section_text(
         updated.accent_phrases[:start]
         + replacement_phrases
         + updated.accent_phrases[start + count :]
+    )
+    _replace_pitch_events(
+        updated, start=start, old_count=count, new_count=len(replacement_phrases),
+        added=pronunciation_pitch_events(pronunciation),
     )
     assert updated.voicegerSegments is not None
     changed_segment = updated.voicegerSegments[segment_index]
@@ -379,10 +432,16 @@ def _isolated_japanese_segment_query(
         phrases,
         punctuation=segment.pronunciationPunctuation,
         terminator=resolve_japanese_segment_terminator(segment),
+        pitch_events=pitch_events_for_range(
+            query.pronunciationPitchEvents, start, count
+        ),
     )
     preview.accent_phrases = phrases
+    preview.pronunciationPitchEvents = pitch_events_for_range(
+        query.pronunciationPitchEvents, start, count
+    )
     preview.voicegerSegments = None
-    preview.kana = format_pronunciation(pronunciation)
+    preview.kana = pronunciation_to_legacy_kana(pronunciation)
     preview.pronunciationPunctuation = pronunciation_punctuation(pronunciation)
     return preview
 
@@ -464,6 +523,7 @@ def english_section_text_preview_query(
     assert updated.voicegerSegments is not None
     preview = updated.model_copy(deep=True)
     preview.accent_phrases = []
+    preview.pronunciationPitchEvents = None
     preview.voicegerSegments = [
         preview.voicegerSegments[segment_index].model_copy(deep=True)
     ]
@@ -579,6 +639,9 @@ def delete_utterance_section(
             updated.accent_phrases[:start]
             + updated.accent_phrases[start + count :]
         )
+        _replace_pitch_events(
+            updated, start=start, old_count=count, new_count=0
+        )
     updated.voicegerSegments.pop(segment_index)
 
     next_offset = 0
@@ -603,9 +666,10 @@ def delete_utterance_section(
             updated.accent_phrases,
             punctuation=remaining.pronunciationPunctuation,
             terminator=resolve_japanese_segment_terminator(remaining),
+            pitch_events=updated.pronunciationPitchEvents,
         )
         updated.voicegerSegments = None
-        updated.kana = format_pronunciation(pronunciation)
+        updated.kana = pronunciation_to_legacy_kana(pronunciation)
         updated.pronunciationPunctuation = pronunciation_punctuation(
             pronunciation
         )
@@ -636,8 +700,9 @@ def _refresh_pure_japanese_kana(query: AudioQuery) -> None:
         query.accent_phrases,
         punctuation=query.pronunciationPunctuation,
         terminator=_pure_japanese_terminator(query),
+        pitch_events=query.pronunciationPitchEvents,
     )
-    query.kana = format_pronunciation(pronunciation)
+    query.kana = pronunciation_to_legacy_kana(pronunciation)
 
 
 def move_japanese_accent(
@@ -664,6 +729,11 @@ def move_japanese_accent(
     if not start <= accent_phrase_index < start + count:
         raise ValueError("accent phrase is outside the selected Japanese segment")
 
+    if any(
+        entry.accentPhraseIndex == accent_phrase_index
+        for entry in query.pronunciationPitchEvents or ()
+    ):
+        raise ValueError("moving a legacy accent would discard multi-peak events")
     phrase = query.accent_phrases[accent_phrase_index]
     updated_accent = phrase.accent + direction
     if not 1 <= updated_accent <= len(phrase.moras):
@@ -720,6 +790,9 @@ def replace_japanese_accent_phrase(
 
     updated = query.model_copy(deep=True)
     updated.accent_phrases[accent_phrase_index] = replacement
+    _replace_pitch_events(
+        updated, start=accent_phrase_index, old_count=1, new_count=1
+    )
     _refresh_pure_japanese_kana(updated)
     return updated
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import fields, replace
 import os
 from typing import Any, Callable, Sequence
 
@@ -49,6 +49,7 @@ class TuiSettingsController:
         set_status: Callable[[Status], None],
         save: Callable[[Settings, str | os.PathLike[str] | None], Any],
         clear_generation_outcomes: Callable[[], None] = lambda: None,
+        clear_acceptances: Callable[[], None] = lambda: None,
     ) -> None:
         self.settings = settings
         self.persisted_settings = persisted_settings or settings
@@ -60,6 +61,7 @@ class TuiSettingsController:
         self._set_status = set_status
         self._save = save
         self._clear_generation_outcomes = clear_generation_outcomes
+        self._clear_acceptances = clear_acceptances
 
     def change(
         self,
@@ -89,9 +91,14 @@ class TuiSettingsController:
             if synthesis_changed:
                 self._operations.stop_playback()
             for session in self._sessions():
-                session.replace_settings(updated)
+                scoped = replace(
+                    session.settings,
+                    **{name: getattr(updated, name) for name in changed_names},
+                )
+                session.replace_settings(scoped)
             if synthesis_changed:
                 self._clear_generation_outcomes()
+                self._clear_acceptances()
         except (SettingsError, ValueError) as exc:
             self._set_status(error_status(f"Settings were not changed: {exc}"))
             return False
@@ -138,14 +145,41 @@ class TuiSettingsController:
     def apply_target(self, target: Settings) -> SettingsApplicationResult:
         """Apply and persist the complete Settings target from the editor."""
 
-        session = self._active_session()
-        baseline = session.settings if session is not None else self.settings
-        runtime_changed = target != self.settings or target != baseline
-        synthesis_changed = self._synthesis_changed(target, baseline)
+        baseline = self.settings
+        global_changes = {
+            field.name
+            for field in fields(Settings)
+            if getattr(target, field.name) != getattr(baseline, field.name)
+        }
+        # A full Settings Apply reconciles shared values, even when a loaded
+        # batch has older sampling values. Local Style/Speed survive unless
+        # that particular global field was explicitly changed.
+        applied_fields = {
+            field.name: getattr(target, field.name)
+            for field in fields(Settings)
+            if field.name not in {"style_id", "speed"}
+            or field.name in global_changes
+        }
+        sessions = tuple(self._sessions())
+        updated_sessions = tuple(
+            (session, replace(session.settings, **applied_fields))
+            for session in sessions
+        )
+        runtime_changed = bool(global_changes) or any(
+            updated != session.settings for session, updated in updated_sessions
+        )
+        synthesis_changed = self._synthesis_changed(target, baseline) or any(
+            self._synthesis_changed(updated, session.settings)
+            for session, updated in updated_sessions
+        )
         changed_names = tuple(
             name
             for name in _OPERATION_RELEVANT_SETTING_NAMES
-            if getattr(target, name) != getattr(self.settings, name)
+            if name in global_changes
+            or any(
+                getattr(updated, name) != getattr(session.settings, name)
+                for session, updated in updated_sessions
+            )
         )
         conflict = self._operations.settings_change_conflict_status(
             changed_names
@@ -158,10 +192,11 @@ class TuiSettingsController:
             try:
                 if synthesis_changed:
                     self._operations.stop_playback()
-                for owned_session in self._sessions():
-                    owned_session.replace_settings(target)
+                for owned_session, scoped in updated_sessions:
+                    owned_session.replace_settings(scoped)
                 if synthesis_changed:
                     self._clear_generation_outcomes()
+                    self._clear_acceptances()
             except (SettingsError, ValueError) as exc:
                 status = error_status(f"Settings were not changed: {exc}")
                 self._set_status(status)

@@ -238,11 +238,14 @@ class TuiSettingsIntegrationTests(TuiAppTestCase):
         with tempfile.TemporaryDirectory() as directory:
             app = self.make_app(query=mixed_query())
             app.config_path = Path(directory) / "config.json"
-            for _ in range(len(navigation_items(app))):
-                if app._navigation.focus_key == ("settings", None):
+            session = app.session
+            app._handle_key("\x1b")
+            self.assertFalse(app._batch.in_item)
+            for _ in range(len(app._batch.navigation_items())):
+                if app._batch.focus_key == ("settings", None):
                     break
-                app._handle_key(curses.KEY_DOWN)
-            self.assertEqual(app._navigation.focus_key, ("settings", None))
+                app._handle_key(curses.KEY_UP)
+            self.assertEqual(app._batch.focus_key, ("settings", None))
             app._handle_key("\n")
             self.assertEqual(app._editor_controller.editor.kind, "settings")
             editor = app._editor_controller.editor
@@ -258,7 +261,7 @@ class TuiSettingsIntegrationTests(TuiAppTestCase):
                 "/tmp/settings-output",
             )
             self.assertEqual(app.settings.output_dir, Settings().output_dir)
-            self.assertEqual(app.session.replace_settings_calls, [])
+            self.assertEqual(session.replace_settings_calls, [])
             self.assertFalse(app.config_path.exists())
             editor.selection = "apply"
             app._handle_key("\n")
@@ -282,7 +285,7 @@ class TuiSettingsIntegrationTests(TuiAppTestCase):
 
             editor.selection = "filename_template"
             app._handle_key("\n")
-            editor.input_value = "{style}_{text}_{HHmmss}"
+            editor.input_value = "{style}_{caption}_{HHmmss}"
             app._handle_key("\n")
             editor.selection = "save_text"
             app._handle_key(curses.KEY_RIGHT)
@@ -295,11 +298,11 @@ class TuiSettingsIntegrationTests(TuiAppTestCase):
             app._handle_key("\n")
 
             self.assertIsNone(app._editor_controller.editor)
-            self.assertEqual(app.settings.filename_template, "{style}_{text}_{HHmmss}")
+            self.assertEqual(app.settings.filename_template, "{style}_{caption}_{HHmmss}")
             self.assertTrue(app.settings.save_text)
             self.assertTrue(app.settings.save_lab)
             saved = json.loads(app.config_path.read_text())
-            self.assertEqual(saved["filename_template"], "{style}_{text}_{HHmmss}")
+            self.assertEqual(saved["filename_template"], "{style}_{caption}_{HHmmss}")
             self.assertTrue(saved["save_text"])
             self.assertTrue(saved["save_lab"])
 

@@ -24,6 +24,29 @@ elsewhere in the TUI. Keys `1` through `9` open the matching visible word
 directly. With 10 or more visible words, `0` opens explicit number entry; type
 the target number and press Enter.
 
+On a focused word row in either language, press `Space` or `P` to Preview
+without opening its editor. The `[P] Preview` action also appears in the list.
+Preview uses the currently displayed pronunciation, even before an auto-save
+completes.
+
+In the Japanese list, Left / Right moves a **single-accent** word's accent
+one mora at a time without wrapping. For **multi-peak** words, Left / Right
+does nothing: edit the complete sequence in the detailed pronunciation editor.
+Multi-peak words display the compact `[` (rise) / `]` (fall) notation
+used during text editing, without extra mora spaces or a peak-count suffix.
+
+In the English list, Left / Right moves the single primary ARPAbet stress
+(`1`) to the previous / next vowel, following BATCH ITEM's rule. The
+primary-stressed vowel is enclosed in square brackets, as on BATCH ITEM
+(for example, `Z [UW1] N D AA0 M OW0 N`). English words with zero or
+multiple primary stresses, or fewer than two vowels, are not adjustable.
+
+Changes appear immediately and are automatically saved in the background;
+rapid adjustments are combined. Leaving a list or opening an editor waits until
+the pending save is complete. A save failure restores the last committed values
+and reports an error. Left / Right on Sort and Filter keep their existing
+meanings.
+
 Both lists expose `[S] Sort` and `[F] Filter`. Sort can be cycled with the
 shortcut or with Left / Right while focused. Japanese sort modes are Surface
 ascending/descending, Word type, Priority ascending/descending, and Added
@@ -60,30 +83,45 @@ Example:
 
 ### Pronunciation and accent
 
-Japanese dictionary pronunciation is stored as katakana with one accent phrase.
+Japanese dictionary pronunciation is stored as katakana within one accent phrase.
+Hiragana typed in the Pronunciation editor is automatically converted to
+katakana when editing finishes; pitch markers remain in place. Surface keeps
+its original spelling, including hiragana.
+A word may have multiple pitch-accent peaks without splitting that phrase.
 
-You can generate a pronunciation from the Surface and then edit it.
+Generate a pronunciation from Surface, then select the Pronunciation row.
+For a single-accent word, Left / Right moves the accent one mora at a time.
+For multi-peak words, Left / Right does not modify the reading.
 
-On the Pronunciation row:
+Press Enter on Pronunciation to open **EDIT PRONUNCIATION**, using the
+same direct text-editing layout as BATCH ITEM. Edit the string, then select
+**Preview** to listen, **Apply** to accept the draft back into the Dictionary
+entry, **Clear** or **Reset** as needed, or **Esc** to return without applying.
+Save the dictionary word separately in the parent entry.
 
-- Left / Right moves the accent;
-- Enter edits the reading directly.
+Single-accent words retain their existing notation (`ア'メ` / `アメ'`)
+and behavior. For multiple peaks, use explicit `[` rise and `]` fall
+markers, for example `ス[タ]ック[チャ]ン`. Both rise and fall positions
+are typed directly: no new notation, special marker-selection shortcut,
+or automatic conversion is required. Markers must follow complete morae;
+`チャ` is one mora. An optional leading `[` makes an initially high
+mora explicit (`[シ]コク[メ]タン` equals `シ]コク[メ]タン`). A trailing
+`]` may close a high span continuing through the final mora, for example
+`[シ]コク[メタン]`. These edge delimiters are accepted and displayed, but
+do not add extra pitch events or phrase boundaries.
 
-Example:
+Dictionary readings remain a single accent phrase. A slash `/` splits
+phrases and is not valid within one dictionary word. Additional pitch
+events live in Voiceger Editor metadata, while the first fall stays in the
+VOICEVOX-compatible `accent_type`. Preview, Save, and Quick Save preserve
+every pitch event, and existing single-accent words are not upgraded
+automatically.
 
-```text
-ア'メ
-```
-
-and:
-
-```text
-アメ'
-```
-
-represent different accent positions.
-
-Use Preview to listen before saving.
+Select Preview to listen before saving. New entries default to Priority 5.
+Invalid text or failed saves keep a retryable draft. See
+[Pronunciation](pronunciation.md) for general phrase separators,
+[Compatibility](compatibility.md) for VOICEVOX limitations, and the
+export/import instructions below for lossless backups.
 
 ### Word type
 
@@ -145,73 +183,89 @@ Then:
 
 English dictionary matching ignores letter case.
 
-## Import a dictionary
+## Import a dictionary (Merge)
 
-Choose **Import dictionary** from the top-level Dictionary screen, enter the JSON
-file path, and open the review.
+Choose **Import dictionary (Merge)** from the Dictionary menu. Enter the path
+to a native ZIP backup or an older JSON dictionary file, then select
+**Review file**.
 
-Supported files are detected from their contents rather than the filename:
+Native ZIP backups include Japanese, English, and optional additional
+Japanese pitch events. Both languages are reviewed together in a numbered
+list grouped under Japanese and English headings. The list shows each word's
+pronunciation and pitch or stress, using the same notation and alignment as
+the dictionary lists. Keys 1–9 directly open the corresponding word; with
+10 or more candidates, 0 starts an explicit number jump. New entries start
+selected; conflicts start unselected and carry `!`; exact duplicates are
+omitted from the review list and counted separately. The top summary shows
+the number selected out of all reviewable words. A selected conflict replaces
+the matching logical entry without deleting unrelated local words. Review
+each word with Enter, toggle its selection using Space, then choose **Import
+selected**.
 
-- Japanese VOICEVOX user dictionaries using the UUID-keyed expanded
-  `UserDictWord` JSON format;
-- Japanese dictionaries exported by Voiceger Editor in the same format;
-- Voiceger Editor English dictionaries using
-  `{"surface": ["ARPABET", "TOKENS"]}`.
+Import detail screens share the Dictionary editor's Surface, Pronunciation,
+Word type and Priority row layout. Japanese accent (including extra pitch
+events) is displayed on the Pronunciation row using the regular Dictionary
+notation rather than numeric Accent values. Only Japanese Word type is
+adjustable in the Import detail; changing it updates conflict detection.
+When a local entry exists, an **Existing — differences only** section shows
+only fields whose values differ. English details use stressed ARPAbet
+notation and are read-only. Local words not selected for replacement remain
+intact. Changes for both languages and all selected pitch events are committed
+as one recoverable operation.
 
-Japanese VOICEVOX dictionaries do not need conversion before import.
+Standalone JSON remains supported:
 
-The review list omits exact duplicates and counts them as already existing.
-New entries start selected. Conflicting entries start unselected and are marked
-with `!` immediately after the checkbox. Use Space to select or deselect the
-focused entry, Enter to inspect its details, **Import selected** to commit the
-current selection, or **Clear selection** to deselect all review entries.
+- Japanese VOICEVOX-style UUID-keyed `UserDictWord` JSON;
+- earlier Voiceger Editor Japanese JSON, including the declared three-file
+  pitch-metadata backup (select its `user_dict_with_pitch_events` file with
+  the matching pitch-events sidecar in the same folder);
+- Voiceger Editor English JSON (`{"surface": ["ARPABET", "TOKENS"]}`).
 
-Japanese import detail shows Surface, Pronunciation, Accent, Word type, and
-Priority. Only Word type can be changed during import review; Left / Right
-changes it and immediately recalculates whether that entry is new, conflicting,
-or an exact duplicate. Pronunciation, Accent, and Priority are read-only.
-English import detail is entirely read-only.
-
-When a selected Japanese conflict replaces an existing logical entry, the
-existing UUID and its canonical position are preserved. Newly imported entries
-are appended in input-file order. The import is committed as one logical
-operation and reports imported, replaced, and skipped counts when complete.
-
-The Import File path starts at the saved Output directory for convenience.
-It is an input-only path: changing it does not change `Settings.output_dir`.
-
-Invalid or unsupported input is rejected before the active dictionary is
-changed. Back exits the import workflow without committing the review.
+Standalone JSON files still import only their respective language. Their
+existing preview, conflict resolution, and commit behavior is unchanged.
+The Import path starts at `Settings.output_dir`, but changing an import
+file path never changes that setting. Invalid files are rejected before
+local dictionary data is changed.
 
 ## Export a dictionary
 
-Choose **Export dictionary** from the top-level Dictionary screen.
+Choose **[O] Export dictionary** (or press O) from the top-level Dictionary screen.
+The Export screen shows the current shared output directory as
+**[F] Output**. Press F or Enter while the row is selected to change
+`Settings.output_dir` in place.
 
-The Export screen shows the shared saved output directory as **[F] Output**.
-Select that row and press Enter, or press **F**, to edit
-`Settings.output_dir` in place without leaving Export.
+**Voiceger Editor** writes one complete native backup:
 
-**Voiceger Editor** export writes the current dictionaries as two separate
-native JSON files:
+    YYYYMMDDHHMM_voiceger_editor_dictionary.zip
 
-    YYYYMMDDHHMM_user_dict.json
-    YYYYMMDDHHMM_english_user_dict.json
+The archive contains `manifest.json` (version 1, member names, SHA-256
+checksums), unchanged canonical `user_dict.json`, unchanged
+`english_user_dict.json`, and optional unchanged
+`user_dict_pitch_events.json` for additional Japanese pitch events.
+All files are checked as a complete set on import. Damaged, unsupported,
+incomplete or unsafe archives are rejected without changing the dictionary.
+A completed ZIP is published without overwriting an existing file; a
+collision adds `-2`, `-3`, and so on before `.zip`.
 
-There is no combined bundle format. The Japanese and English files preserve
-their canonical dictionary order.
-
-**VOICEVOX** export writes the Japanese dictionary only, using the same
-UUID-keyed expanded UserDictWord JSON shape used for Japanese import:
+**VOICEVOX** writes only the standard Japanese single-accent JSON:
 
     YYYYMMDDHHMM_voicevox_user_dict.json
 
-The English dictionary is not included in VOICEVOX export.
+VOICEVOX exports never include English words or additional Japanese pitch
+events. If additional pitch peaks exist, a warning appears **before**
+export; cancellation leaves no export file. Confirming creates the normal
+single-accent VOICEVOX JSON. Choose the native ZIP backup to preserve every
+pitch event.
 
-Exports are written to the current Settings.output_dir, the same configured
-output directory used for accepted audio. Existing files are never overwritten.
-If a name already exists, Voiceger Editor adds -2, -3, and so on before the
-.json extension. A paired Voiceger Editor export always uses the same suffix
-for both files.
+Additional Japanese pitch events are stored locally in
+`user_dict_pitch_events.json` beside `user_dict.json`. The version-1
+pitch sidecar is UUID-keyed, includes reading and mora alignment, and binds
+to the exact canonical Japanese dictionary bytes with a SHA-256 checksum.
+Neither VOICEVOX JSON nor OpenJTalk CSV contains the extra events.
+
+Native ZIP backups replace the older two- or three-JSON export format,
+but already-exported standalone JSON and the three-file native pitch
+backup remain importable. They are not complete ZIP backups.
 
 ## Save from a pronunciation editor
 

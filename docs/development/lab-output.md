@@ -24,9 +24,9 @@ save_lab: false
 When an accepted take is saved with LAB enabled, the accepted WAV and sidecars share one basename:
 
 ```text
-YYYYMMDDHHMM_{text}.wav
-YYYYMMDDHHMM_{text}.txt
-YYYYMMDDHHMM_{text}.lab
+YYYYMMDDHHMM_{caption}.wav
+YYYYMMDDHHMM_{caption}.txt
+YYYYMMDDHHMM_{caption}.lab
 ```
 
 The TXT file exists only when `save_text` is enabled.

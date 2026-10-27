@@ -52,17 +52,21 @@ class TuiShortcutTests(unittest.TestCase):
             "build_confirmation": {"r": "rebuild"},
             "japanese": {
                 "p": "preview", "a": "apply", "s": "save_dictionary",
-                "d": "dictionary", "e": "edit_text",
+                "d": "dictionary", "e": "edit_text", "x": "delete_section",
                 "c": "clear", "r": "reset",
             },
             "english_word": {
                 "p": "preview", "a": "apply", "s": "save_dictionary",
-                "d": "dictionary", "e": "edit_text",
+                "d": "dictionary", "e": "edit_text", "x": "delete_section",
                 "c": "clear", "r": "reset",
+            },
+            "english_punctuation": {
+                "p": "preview", "a": "apply", "e": "edit_text",
+                "x": "delete_section", "r": "reset",
             },
             "section_text": {
                 "p": "preview", "a": "apply", "r": "reset",
-                "d": "delete_section",
+                "x": "delete_section",
             },
             "add_section": {"a": "add", "c": "clear", "r": "reset"},
             "settings": {
@@ -74,7 +78,7 @@ class TuiShortcutTests(unittest.TestCase):
             },
             "audio_output_settings": {"x": "save_text", "l": "save_lab"},
             "dictionary_menu": {
-                "j": "japanese", "e": "english", "i": "import", "x": "export",
+                "j": "japanese", "e": "english", "i": "import", "o": "export",
             },
             "batch_recipe_read_path": {"f": "path", "r": "read"},
             "batch_recipe_write_path": {"f": "output", "w": "write"},
@@ -84,13 +88,14 @@ class TuiShortcutTests(unittest.TestCase):
             "dictionary_import_review": {
                 "i": "import_selected", "c": "clear_selection",
             },
+            "dictionary_voicevox_loss_confirmation": {"e": "export"},
             "dictionary_import_japanese_detail": {},
             "dictionary_import_english_detail": {},
             "dictionary_japanese_list": {
-                "s": "sort", "f": "filter", "a": "add", "x": "delete",
+                "s": "sort", "f": "filter", "p": "preview", "a": "add", "x": "delete",
             },
             "dictionary_english_list": {
-                "s": "sort", "f": "filter", "a": "add", "x": "delete",
+                "s": "sort", "f": "filter", "p": "preview", "a": "add", "x": "delete",
             },
             "dictionary_sort": {},
             "dictionary_japanese_filter": {"a": "apply", "c": "clear"},
@@ -129,14 +134,14 @@ class TuiShortcutTests(unittest.TestCase):
 
     def test_main_shortcuts_match_issue_49_contract_and_share_display_metadata(self):
         expected = {
-            "f": "output",
             "e": "caption",
             "p": "build_pronunciation",
             "a": "add_section",
             "g": "generate",
             "c": "clear_candidates",
             "x": "delete_caption",
-            "s": "settings",
+            "s": "item_style",
+            "v": "item_speed",
             "d": "dictionary",
             "?": "help",
             "q": "quit",
@@ -152,7 +157,7 @@ class TuiShortcutTests(unittest.TestCase):
                     f"[{shortcut.upper()}] "
                 ))
 
-        for removed in (curses.KEY_F5, "\x07", "R", "b", "t", "v", "n", "l", "o"):
+        for removed in (curses.KEY_F5, "\x07", "R", "b", "t", "n", "l", "o"):
             with self.subTest(removed=removed):
                 self.assertIsNone(resolve_main_shortcut(removed))
 
@@ -163,6 +168,7 @@ class TuiShortcutTests(unittest.TestCase):
             "r": "read_batch",
             "w": "write_batch",
             "s": "settings",
+            "f": "output",
             "d": "dictionary",
             "?": "help",
             "q": "quit",
@@ -306,6 +312,11 @@ class TuiShortcutTests(unittest.TestCase):
                 {"label": "hello"},
                 "HH AH1",
             ),
+            "english_punctuation": (
+                "phonemes",
+                {"label": "."},
+                ".",
+            ),
             "section_text": (
                 "draft",
                 {"language": "ja", "draft": "雨", "can_delete": True},
@@ -405,14 +416,18 @@ class TuiShortcutTests(unittest.TestCase):
                         )
 
     def test_dynamic_delete_shortcut_exists_only_when_delete_is_selectable(self):
-        hidden = menu_items("section_text", {"can_delete": False})
-        visible = menu_items("section_text", {"can_delete": True})
-        self.assertNotIn("delete_section", [item.key for item in hidden])
-        self.assertIn("delete_section", [item.key for item in visible])
-        self.assertIsNone(resolve_shortcut("section_text", "d", {"can_delete": False}))
-        target = resolve_shortcut("section_text", "d", {"can_delete": True})
-        self.assertIsNotNone(target)
-        self.assertEqual(target.key, "delete_section")
+        for kind in ("japanese", "english_word", "english_punctuation", "section_text"):
+            with self.subTest(kind=kind):
+                hidden = menu_items(kind, {"can_delete": False})
+                visible = menu_items(kind, {"can_delete": True})
+                self.assertNotIn("delete_section", [item.key for item in hidden])
+                self.assertIn("delete_section", [item.key for item in visible])
+                self.assertIsNone(resolve_shortcut(kind, "x", {"can_delete": False}))
+                target = resolve_shortcut(kind, "x", {"can_delete": True})
+                self.assertIsNotNone(target)
+                self.assertEqual(target.key, "delete_section")
+                if kind == "section_text":
+                    self.assertIsNone(resolve_shortcut(kind, "d", {"can_delete": True}))
 
     def test_controller_selection_order_comes_from_shared_metadata(self):
         controller = self.make_controller()

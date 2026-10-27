@@ -95,6 +95,41 @@ class TuiDictionaryImportTests(DictionaryControllerTestCase):
         self.key("\n")
         self.assertEqual(self.controller.editor.kind, "dictionary_menu")
 
+    def test_import_review_number_shortcuts_and_explicit_ten_jump(self):
+        review = EnglishDictionaryImportReview(
+            {},
+            [
+                EnglishUserDictionaryEntry(
+                    surface=f"Word{index:02d}",
+                    phonemes=["W", "ER1", "D"],
+                )
+                for index in range(1, 13)
+            ],
+        )
+        self.controller.open_menu()
+        self._open_import_review(review)
+
+        self.key("3")
+        self.assertEqual(self.controller.editor.kind, "dictionary_import_english_detail")
+        self.assertEqual(self.controller.editor.payload["item_index"], 2)
+        self.key("\x1b")
+        self.assertEqual(self.controller.editor.selection, ("import_entry", 2))
+
+        self.key("0")
+        self.assertTrue(self.controller.editor.payload["number_jump_active"])
+        self.key("i")
+        self.assertEqual(self.controller.editor.kind, "dictionary_import_review")
+        self.key("1")
+        self.key("0")
+        self.assertEqual(self.controller.editor.payload["number_jump_value"], "10")
+        self.key("\n")
+        self.assertEqual(self.controller.editor.kind, "dictionary_import_english_detail")
+        self.assertEqual(self.controller.editor.payload["item_index"], 9)
+        self.key("\x1b")
+        self.assertEqual(self.controller.editor.selection, ("import_entry", 9))
+        self.key(" ")
+        self.assertFalse(review.items[9].selected)
+
     def test_import_japanese_detail_only_adjusts_word_type_and_reclassifies(self):
         existing = import_ja_word(
             "雨",
@@ -128,6 +163,8 @@ class TuiDictionaryImportTests(DictionaryControllerTestCase):
         )
         self.assertEqual(self.controller.editor.selection, "word_type")
         self.assertEqual(self.controller.editor.payload["word_type_label"], "普通名詞")
+        self.assertEqual(self.controller.editor.payload["incoming_pitch_events"], ())
+        self.assertEqual(self.controller.editor.payload["existing_pitch_events"], ())
         before = self.controller.editor.payload["item"]
         self.assertIs(before.relation, DictionaryImportRelation.NEW)
 

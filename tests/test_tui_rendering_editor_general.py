@@ -305,6 +305,54 @@ class GeneralEditorRenderingDocumentTests(RenderingTestCase):
             ],
         )
 
+    def test_pronunciation_editors_show_direct_delete_only_when_allowed(self):
+        for kind, payload, field, value in (
+            ("japanese", {"source_text": "なのだ。"}, "pronunciation", "ナ' ノダ'。"),
+            ("english_word", {"label": "hello"}, "phonemes", "HH AH1 L OW2"),
+        ):
+            for can_delete in (False, True):
+                with self.subTest(kind=kind, can_delete=can_delete):
+                    editor = SimpleNamespace(
+                        kind=kind, title="EDIT PRONUNCIATION",
+                        selection=field, payload={**payload, "can_delete": can_delete},
+                        active_field=field, input_value=value,
+                        input_cursor=len(value), error="", scroll=0,
+                    )
+                    document, _, _ = self.renderer.editor_document(
+                        render_state(editor=editor), 80
+                    )
+                    labels = [line for line, _key in document]
+                    self.assertEqual(
+                        "  [X] Delete section" in labels,
+                        can_delete,
+                    )
+                    self.assertIn("  [E] Edit text", labels)
+
+    def test_delete_section_confirmation_wraps_full_language_labeled_text(self):
+        for language, title in (("ja", "Japanese"), ("en", "English")):
+            with self.subTest(language=language):
+                value = "Very sweet indeed! And some more words."
+                editor = SimpleNamespace(
+                    kind="delete_confirmation", title="DELETE SECTION?",
+                    selection="cancel",
+                    payload={
+                        "warning": "This section will be removed from the synthesized utterance.",
+                        "target_language": language,
+                        "target_text": value,
+                    },
+                    active_field=None, input_value="", input_cursor=0,
+                    error="", scroll=0,
+                )
+                document, _, _ = self.renderer.editor_document(
+                    render_state(editor=editor), 25
+                )
+                labels = [line for line, _key in document]
+                self.assertIn(f"{title} section", labels)
+                self.assertTrue(any("Very sweet" in line for line in labels))
+                self.assertTrue(any("some more words" in line for line in labels))
+                self.assertIn("  [D] Delete", labels)
+                self.assertIn("▶ [Esc] Cancel", labels)
+
     def test_section_text_editor_document_has_language_and_local_actions(self):
         editor = SimpleNamespace(
             kind="section_text",
@@ -334,7 +382,7 @@ class GeneralEditorRenderingDocumentTests(RenderingTestCase):
                 "  [P] Preview",
                 "  [A] Apply",
                 "  [R] Reset",
-                "  [D] Delete section",
+                "  [X] Delete section",
                 "  [Esc] Back",
             ],
         )
