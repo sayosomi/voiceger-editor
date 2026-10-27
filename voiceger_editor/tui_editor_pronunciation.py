@@ -93,13 +93,12 @@ def _punctuation_suffixes(value: str) -> tuple[str, ...]:
 def _english_draft_phonemes(editor: EditorState) -> tuple[str, ...]:
     """Validate the editable phonemes, preserving punctuation-slot identity."""
 
-    phonemes = tuple(normalize_english_phonemes(editor.input_value.split()))
+    tokens = editor.input_value.split()
     if editor.kind == "english_punctuation" and (
-        len(phonemes) != 1
-        or phonemes[0] not in EDITABLE_ENGLISH_PUNCTUATION
+        len(tokens) != 1 or tokens[0] not in EDITABLE_ENGLISH_PUNCTUATION
     ):
         raise ValueError("Enter one supported punctuation mark: . , ! ? …")
-    return phonemes
+    return tuple(normalize_english_phonemes(tokens))
 
 
 class TuiPronunciationEditorOwner(EditorOwnerBase):
