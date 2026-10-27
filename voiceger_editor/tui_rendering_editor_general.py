@@ -102,9 +102,10 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         selectable("clear")
         selectable("reset")
         selectable("back")
-    elif editor.kind == "english_word":
+    elif editor.kind in {"english_word", "english_punctuation"}:
+        punctuation = editor.kind == "english_punctuation"
         plain()
-        plain("Word")
+        plain("Punctuation" if punctuation else "Word")
         plain(f"  {editor.payload['label']}")
         plain()
         input_field(
@@ -114,12 +115,14 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         plain()
         selectable("preview")
         selectable("apply")
-        selectable("save_dictionary")
-        selectable("dictionary")
+        if not punctuation:
+            selectable("save_dictionary")
+            selectable("dictionary")
         selectable("edit_text")
         if editor.payload.get("can_delete", False):
             selectable("delete_section")
-        selectable("clear")
+        if not punctuation:
+            selectable("clear")
         selectable("reset")
         selectable("back")
     elif editor.kind == "batch_recipe_read_path":
