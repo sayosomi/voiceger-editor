@@ -90,6 +90,9 @@ class MobileBatchTests(unittest.TestCase):
         moved = self.edit("PATCH", f"/items/{ids[2]}/position", {"index": 0})
         self.assertEqual(moved.status_code, 200)
         self.assertEqual([i["id"] for i in moved.json()["items"]], [ids[2], ids[0], ids[1]])
+        to_end = self.edit("PATCH", f"/items/{ids[2]}/position", {"index": 2})
+        self.assertEqual(to_end.status_code, 200, to_end.text)
+        self.assertEqual([i["id"] for i in to_end.json()["items"]], ids)
 
         included = self.edit("PATCH", f"/items/{ids[0]}/included", {"included": False})
         self.assertEqual(included.status_code, 200)
