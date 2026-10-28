@@ -50,7 +50,7 @@
     return true;
   }
   function showView(name, bypassDraftGuard) {
-    if (busy || viewNames.indexOf(name) === -1) return false;
+    if ((busy && !bypassDraftGuard) || viewNames.indexOf(name) === -1) return false;
     if (!bypassDraftGuard && name !== currentView && !guardDraft()) return false;
     currentView = name;
     viewNames.forEach(function (viewName) {
@@ -165,8 +165,7 @@
   }
   function openItem(id) {
     if (busy || !batch) return;
-    if (currentView !== "item" && !guardDraft()) return;
-    if (currentView === "item" && !guardDraft()) return;
+    if (!guardDraft()) return;
     selectedId = id;
     renderItem(false);
     showView("item", true);
