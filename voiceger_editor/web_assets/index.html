@@ -44,17 +44,24 @@
             
             <h2 id="batch-title" tabindex="-1">Batch List</h2>
           </div>
-          <div class="list-toolbar"><span id="batch-count" class="counter">0 Captions</span><button type="button" id="toggle-reorder" class="reorder-toggle" aria-pressed="false">並べ替え</button></div>
+          <div class="list-toolbar">
+            <span id="batch-count" class="counter" hidden>0件</span>
+            <button type="button" id="toggle-reorder" class="reorder-toggle" aria-pressed="false">並べ替え</button>
+            <button type="button" id="toggle-delete" class="reorder-toggle" aria-pressed="false">削除</button>
+          </div>
         </div>
-        <p id="list-help" class="help-text compact-note">Captionをタップすると詳細を編集できます。</p>
-        <p id="reorder-help" class="help-text compact-note" hidden>右端のハンドルを押したまま移動し、移動先で離してください。キーボードではハンドルにフォーカスして上下キーでも移動できます。</p>
+        
+        <p id="reorder-help" class="help-text compact-note" hidden>ハンドルをドラッグして移動できます。</p>
         <ol id="caption-list" class="caption-list" aria-label="Caption一覧"></ol>
         <div id="empty-state" class="empty-state">
           <p>Captionはまだありません。</p>
-          <p class="help-text">下のボタンから1行ずつ追加できます。</p>
+          
         </div>
-        <div class="sticky-action">
+        <div class="sticky-action" id="add-action">
           <button type="button" id="open-add" class="primary-button full-button">＋ Captionを追加</button>
+        </div>
+        <div class="sticky-action" id="delete-action" hidden>
+          <button type="button" id="delete-selected" class="danger-button full-button" disabled>0件を削除</button>
         </div>
       </section>
 
