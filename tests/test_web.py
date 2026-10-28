@@ -38,7 +38,8 @@ class WebFoundationTests(unittest.TestCase):
         self.assertIn('aria-disabled="true"', response.text)
         self.assertIn('src="/assets/app.js"', response.text)
         self.assertIn('href="/assets/app.css"', response.text)
-        self.assertNotIn("<form", response.text)
+        self.assertIn('id="auth-form"', response.text)
+        self.assertIn('id="caption-list"', response.text)
 
     def test_static_assets_have_correct_types(self):
         css = self.client.get("/assets/app.css")
