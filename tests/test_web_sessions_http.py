@@ -222,7 +222,7 @@ class WebSessionRouteTests(unittest.TestCase):
                 f"/api/web/sessions/{session_id}/operations/synthesis",
                 headers=self.write_headers,
             ).status_code,
-            404,
+            405,  # Read-only operation-detail path does not accept POST.
         )
         self.assertEqual(
             self.client.post("/api/web/health", headers=self.write_headers).status_code, 405
