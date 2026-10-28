@@ -13,6 +13,7 @@ import time
 from typing import Any, Callable
 
 from .caption_batch import CaptionBatch
+from .web_batch import WebBatchMixin
 from .voiceger_environment import check_voiceger_environment
 
 
@@ -59,6 +60,7 @@ class _Operation:
 class _WebSession:
     identifier: str
     touched: float
+    revision: int = 0
     batch: CaptionBatch = field(default_factory=lambda: CaptionBatch(default_take_count=4))
     operations: dict[str, _Operation] = field(default_factory=dict)
 
@@ -72,7 +74,7 @@ class _WebSession:
         }
 
 
-class WebSessionOperations:
+class WebSessionOperations(WebBatchMixin):
     """Thread-safe, in-process session registry with one worker across sessions."""
 
     def __init__(
@@ -83,6 +85,7 @@ class WebSessionOperations:
         max_sessions: int = 8,
         idle_seconds: float = 3600,
         history_limit: int = 8,
+        caption_factory: Callable[[str], Any] | None = None,
     ) -> None:
         if max_sessions < 1 or idle_seconds <= 0 or history_limit < 1:
             raise ValueError("session limits must be positive")
@@ -91,6 +94,9 @@ class WebSessionOperations:
         self._max_sessions = max_sessions
         self._idle_seconds = idle_seconds
         self._history_limit = history_limit
+        self._caption_factory = caption_factory
+        self._batch_adapter = None
+        self._batch_settings = None
         self._lock = threading.RLock()
         self._sessions: dict[str, _WebSession] = {}
         self._active: tuple[str, str] | None = None
