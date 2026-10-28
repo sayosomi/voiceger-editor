@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#f6f7f6">
-  <meta name="description" content="Voiceger Editor モバイルWeb UI。Captionを編集・整理します。">
   <title>Voiceger Editor — Mobile Web</title>
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/assets/app.js" defer></script>
@@ -14,116 +13,144 @@
   <div class="app-shell">
     <header class="app-header">
       <div class="brand">
-        <div class="brand-symbol" aria-hidden="true">
-          <span></span><span></span><span></span><span></span>
-        </div>
+        <div class="brand-symbol" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
         <div>
           <p class="eyebrow">VOICEGER EDITOR</p>
-          <h1>モバイルWeb UI</h1>
+          <h1 id="screen-name">接続</h1>
         </div>
       </div>
-      <span class="stage-label">開発プレビュー</span>
+      <button type="button" id="header-session" class="header-action" hidden>接続・設定</button>
     </header>
     <main>
-      <section class="intro" aria-labelledby="welcome-title">
-        <p class="section-kicker">BATCH LIST</p>
-        <h2 id="welcome-title">スマホからCaptionを整理</h2>
-        <p>Captionの追加・編集・並べ替えができます。音声生成・発音編集・Take管理はまだ利用できません。作業はMacのWebサーバー内に一時保存され、サーバー終了で失われます。</p>
-      </section>
+      <p id="feedback" class="feedback" role="status" aria-live="polite" hidden></p>
 
-      <section class="connection-card" aria-labelledby="connection-title">
-        <div class="connection-heading">
-          <div>
-            <p class="card-kicker">CONNECTION</p>
-            <h2 id="connection-title">サーバー接続</h2>
-          </div>
-          <span class="connection-indicator" aria-hidden="true"></span>
+      <section id="view-connect" class="screen" aria-labelledby="connect-title">
+        <div class="screen-heading">
+          <p class="section-kicker">MOBILE WEB</p>
+          <h2 id="connect-title" tabindex="-1">MacのVoiceger Editorに接続</h2>
+          <p class="supporting">アクセストークンを入力するとBatch Listが開きます。トークンは保存されません。</p>
         </div>
-        <p class="connection-status" id="connection-status" role="status" aria-live="polite">接続状態を確認中…</p>
-        <p class="server-version" id="server-version">Voiceger Editor Web</p>
-      </section>
-
-      <section class="web-panel" aria-labelledby="access-title">
-        <h2 id="access-title">Webセッション</h2>
-        <form id="auth-form">
+        <form id="auth-form" class="field-stack">
           <label for="web-token">Webアクセストークン</label>
-          <input id="web-token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" required minlength="32" placeholder="Mac側に設定したトークン">
-          <p class="panel-help">認証用トークンはこのページのメモリだけに保持します。再読み込み時は再入力が必要です。</p>
-          <button type="submit" class="primary-button" id="connect-button">接続してBatchを開く</button>
+          <input id="web-token" type="password" minlength="32" required autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Mac側で表示されたトークン">
+          <button type="submit" id="connect-button" class="primary-button">接続する</button>
         </form>
-        <p id="auth-status" role="status" aria-live="polite" class="message">未接続</p>
-        <div id="session-controls" class="button-row" hidden>
-          <button type="button" id="refresh-batch">更新</button>
-          <button type="button" id="disconnect-session">切断</button>
-          <button type="button" id="close-session" class="danger-button">セッションを終了</button>
-        </div>
+        <p id="auth-status" class="help-text" role="status" aria-live="polite">未接続</p>
+        <p class="help-text">サーバー再起動後は作業中のBatchが失われます。</p>
       </section>
 
-      <section class="web-panel" id="batch-panel" aria-labelledby="batch-title" hidden>
+      <section id="view-list" class="screen" aria-labelledby="batch-title" hidden>
         <div class="section-top">
-          <h2 id="batch-title">Batch List</h2>
+          <div>
+            <p class="section-kicker">BATCH</p>
+            <h2 id="batch-title" tabindex="-1">Batch List</h2>
+          </div>
           <span id="batch-count" class="counter">0 Captions</span>
         </div>
-        <form id="add-form" class="field-stack">
-          <label for="new-captions">Captionを追加</label>
-          <textarea id="new-captions" rows="3" maxlength="32000" placeholder="1行につき1つのCaption"></textarea>
-          <button type="submit" class="primary-button">追加する</button>
-        </form>
-        <form id="default-takes-form" class="inline-form">
-          <label for="default-takes">標準Take数</label>
-          <input id="default-takes" type="number" min="1" max="100" step="1" required>
-          <button type="submit">変更</button>
-        </form>
-        <p id="batch-message" class="message" role="status" aria-live="polite"></p>
-        <ol id="caption-list" class="caption-list"></ol>
-        <p id="empty-message" class="empty-message">Captionはまだありません。</p>
-
-        <section id="item-panel" class="item-panel" aria-labelledby="item-title" hidden>
-          <div class="section-top">
-            <h3 id="item-title">Batch Item</h3>
-            <button type="button" id="back-to-list">一覧に戻る</button>
-          </div>
-          <form id="edit-caption-form" class="field-stack">
-            <label for="edit-caption">Caption</label>
-            <textarea id="edit-caption" rows="3" maxlength="2000" required></textarea>
-            <button type="submit" class="primary-button">Captionを保存</button>
-          </form>
-          <form id="item-takes-form" class="inline-form">
-            <label for="item-takes">この項目のTake数</label>
-            <select id="item-takes-mode">
-              <option value="default">標準Take数を使う</option>
-              <option value="custom">個別に指定する</option>
-            </select>
-            <input id="item-takes" type="number" min="1" max="100" step="1" required hidden>
-            <button type="submit">変更</button>
-          </form>
-          <p class="panel-help">発音・スタイル・音声生成・Takeの確認は後続の開発で追加します。</p>
-        </section>
+        <p class="help-text compact-note">Captionをタップすると詳細を編集できます。</p>
+        <ol id="caption-list" class="caption-list" aria-label="Caption一覧"></ol>
+        <div id="empty-state" class="empty-state">
+          <p>Captionはまだありません。</p>
+          <p class="help-text">下のボタンから1行ずつ追加できます。</p>
+        </div>
+        <div class="sticky-action">
+          <button type="button" id="open-add" class="primary-button full-button">＋ Captionを追加</button>
+        </div>
       </section>
 
-      <section class="features" aria-labelledby="features-title">
-        <div class="features-heading">
-          <h2 id="features-title">開発予定の画面</h2>
-          <p>以下の機能はまだ利用できません。</p>
+      <section id="view-add" class="screen" aria-labelledby="add-title" hidden>
+        <button type="button" id="add-back" class="back-button">← Batch List</button>
+        <div class="screen-heading">
+          <p class="section-kicker">BATCH LIST</p>
+          <h2 id="add-title" tabindex="-1">Captionを追加</h2>
+          <p class="supporting">1行ごとに1件のCaptionになります。空行は無視します。</p>
         </div>
-        <div class="feature-list">
-          <div class="feature-item" aria-disabled="true">
-            <span class="feature-icon" aria-hidden="true">02</span>
-            <span class="feature-text"><strong>Dictionary</strong><small>日本語・英語のユーザー辞書</small></span>
-            <span class="coming-soon">未実装</span>
+        <form id="add-form" class="field-stack">
+          <label for="new-captions">Caption</label>
+          <textarea id="new-captions" rows="7" maxlength="32000" placeholder="こんにちはなのだ！&#10;今日はいい天気なのだ。"></textarea>
+          <button type="submit" class="primary-button full-button">Batch Listに追加</button>
+        </form>
+      </section>
+
+      <section id="view-item" class="screen" aria-labelledby="item-title" hidden>
+        <button type="button" id="item-back" class="back-button">← Batch List</button>
+        <div class="section-top">
+          <div>
+            <p class="section-kicker">BATCH ITEM</p>
+            <h2 id="item-title" tabindex="-1">Caption 01</h2>
           </div>
-          <div class="feature-item" aria-disabled="true">
-            <span class="feature-icon" aria-hidden="true">03</span>
-            <span class="feature-text"><strong>Settings</strong><small>音声生成・保存形式・出力先</small></span>
-            <span class="coming-soon">未実装</span>
+          <span id="item-position" class="counter"></span>
+        </div>
+        <form id="edit-caption-form" class="field-stack">
+          <label for="edit-caption">Caption</label>
+          <textarea id="edit-caption" rows="4" maxlength="2000" required></textarea>
+          <button type="submit" class="primary-button">Captionを保存</button>
+        </form>
+        <div class="setting-section">
+          <label class="check-row" for="item-included">
+            <input id="item-included" type="checkbox">
+            <span>生成対象に含める</span>
+          </label>
+        </div>
+        <form id="item-takes-form" class="setting-section">
+          <label for="item-takes-mode">Take数</label>
+          <select id="item-takes-mode">
+            <option value="default">標準Take数を使う</option>
+            <option value="custom">個別に指定</option>
+          </select>
+          <input id="item-takes" type="number" min="1" max="100" step="1" required hidden aria-label="個別Take数">
+          <button type="submit">Take数を保存</button>
+        </form>
+        <div class="setting-section">
+          <h3>並べ替え</h3>
+          <div class="button-row">
+            <button type="button" id="move-up">↑ 1つ上へ</button>
+            <button type="button" id="move-down">↓ 1つ下へ</button>
           </div>
+        </div>
+        <div class="item-navigation">
+          <button type="button" id="previous-item">← 前のCaption</button>
+          <button type="button" id="next-item">次のCaption →</button>
+        </div>
+        <div class="danger-zone">
+          <button type="button" id="delete-item" class="danger-button">このCaptionを削除</button>
+        </div>
+        <p class="help-text">音声生成・発音編集・Takeの再生は開発中です。</p>
+      </section>
+
+      <section id="view-session" class="screen" aria-labelledby="session-title" hidden>
+        <button type="button" id="session-back" class="back-button">← Batch List</button>
+        <div class="screen-heading">
+          <p class="section-kicker">SESSION</p>
+          <h2 id="session-title" tabindex="-1">接続・Batch設定</h2>
+        </div>
+        <div class="setting-section">
+          <p class="field-title">Webサーバー</p>
+          <p id="connection-status" class="connection-status" role="status" aria-live="polite">接続状態を確認中…</p>
+          <p id="server-version" class="help-text">Voiceger Editor Web</p>
+        </div>
+        <form id="default-takes-form" class="setting-section">
+          <label for="default-takes">標準Take数</label>
+          <input id="default-takes" type="number" min="1" max="100" step="1" required>
+          <button type="submit">変更を保存</button>
+        </form>
+        <div class="setting-section">
+          <h3>セッション</h3>
+          <p class="help-text">BatchはMac上のWebサーバーに一時的に保持されます。サーバー再起動時は復元されません。</p>
+          <div class="button-row">
+            <button type="button" id="refresh-batch">Batchを再取得</button>
+            <button type="button" id="disconnect-session">切断</button>
+          </div>
+        </div>
+        <div class="danger-zone">
+          <button type="button" id="close-session" class="danger-button">セッションを終了・破棄</button>
+        </div>
+        <div class="setting-section">
+          <h3>今後追加する機能</h3>
+          <p class="help-text" aria-disabled="true">Dictionary・Settings・音声生成は未実装です。</p>
         </div>
       </section>
     </main>
-    <footer class="app-footer">
-      <span>Voiceger Editor</span>
-      <span>音声生成は未実装・未保存データは一時的</span>
-    </footer>
   </div>
 </body>
 </html>
