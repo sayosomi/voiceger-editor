@@ -201,7 +201,13 @@
       if (error.code === 409) {
         try { await refresh(); } catch (_ignored) { /* Keep conflict feedback. */ }
       }
-      if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
+      if (error.code === 404 || error.code === 401) {
+        resetLocal(error.code === 404);
+      } else if (batch) {
+        // Restore server-owned values for controls such as the include checkbox.
+        renderList();
+        if (selectedId) renderItem(true);
+      }
       feedback(error.message);
       return false;
     } finally { setBusy(false); }
