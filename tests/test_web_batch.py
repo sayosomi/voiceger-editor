@@ -250,6 +250,25 @@ class MobileBatchTests(unittest.TestCase):
         self.assertIn("web-token", parser.screens["view-connect"])
 
 
+    def test_mobile_javascript_syntax_when_node_is_available(self):
+        import shutil
+        import subprocess
+        from pathlib import Path
+
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("Node.js is not installed in this test environment")
+        script = Path(__file__).resolve().parents[1] / "voiceger_editor" / "web_assets" / "app.js"
+        result = subprocess.run(
+            [node, "--check", str(script)],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+
 
 if __name__ == "__main__":
     unittest.main()
