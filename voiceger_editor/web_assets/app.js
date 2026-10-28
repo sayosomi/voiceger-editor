@@ -465,6 +465,27 @@
     else { reorderMode = true; renderList(); }
     feedback(reorderMode ? "右端のハンドルを上下へドラッグして並べ替えます。" : "");
   });
+  $("toggle-delete").addEventListener("click", function () {
+    if (busy || !batch || reorderMode || dragState) return;
+    if (deleteMode) endDeleteMode();
+    else {
+      if (!batch.items.length) return;
+      deleteMode = true;
+      selectedForDelete.clear();
+      renderList();
+    }
+  });
+  $("delete-selected").addEventListener("click", async function () {
+    if (busy || !deleteMode || !batch || selectedForDelete.size === 0) return;
+    var ids = Array.from(selectedForDelete);
+    if (!window.confirm(ids.length + "件のCaptionを削除しますか？\nこの操作は取り消せません。")) return;
+    var ok = await mutate("POST", "/items/bulk-delete", { ids: ids },
+      ids.length + "件のCaptionを削除しました。");
+    if (ok) {
+      endDeleteMode();
+      feedback(ids.length + "件のCaptionを削除しました。");
+    }
+  });
   $("open-add").addEventListener("click", function () { showView("add"); });
   $("add-back").addEventListener("click", function () { showView("list"); });
   $("item-back").addEventListener("click", function () { showView("list"); });
