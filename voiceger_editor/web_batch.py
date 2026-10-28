@@ -128,6 +128,27 @@ class WebBatchMixin:
             batch.remove_item(item_id)
         return self._edit_batch(identifier, expected_revision, action)
 
+    def remove_captions(self, identifier: str, expected_revision: int, item_ids: list[str]):
+        """Atomically validate a selection before removing any Batch items.
+
+        Reuse the existing per-item Take disposal owner. The revision guard and
+        single-worker exclusion are provided by _edit_batch.
+        """
+        if (not isinstance(item_ids, list) or not 1 <= len(item_ids) <= MAX_BATCH_ITEMS
+                or any(not isinstance(item_id, str) or not item_id for item_id in item_ids)
+                or len(set(item_ids)) != len(item_ids)):
+            raise WebBatchValidation("Select unique Caption IDs to delete")
+
+        def action(batch):
+            # Resolve every ID before mutating the list or cleaning Takes.
+            items = [batch.get_item(item_id) for item_id in item_ids]
+            for item in items:
+                item.session.discard_takes()
+            for item in items:
+                batch.remove_item(item.item_id)
+
+        return self._edit_batch(identifier, expected_revision, action)
+
     def move_caption(self, identifier: str, expected_revision: int, item_id: str, new_index: int):
         def action(batch):
             if isinstance(new_index, bool) or not isinstance(new_index, int) or not 0 <= new_index < len(batch):
