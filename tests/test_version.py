@@ -11,7 +11,7 @@ from voiceger_editor.tui_cli import build_argument_parser
 
 class VersionTests(unittest.TestCase):
     def test_version_source_drives_runtime_surfaces(self):
-        self.assertEqual(__version__, "0.1.0")
+        self.assertEqual(__version__, "0.1.1")
         self.assertEqual(app.version, __version__)
         self.assertEqual(root()["version"], __version__)
         self.assertEqual(version(), __version__)
