@@ -9,6 +9,8 @@
   var selectedId = "";
   var currentView = "connect";
   var busy = false;
+  var reorderMode = false;
+  var dragState = null;
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
   var viewNames = ["connect", "list", "add", "item", "session"];
@@ -52,6 +54,7 @@
   function showView(name, bypassDraftGuard) {
     if ((busy && !bypassDraftGuard) || viewNames.indexOf(name) === -1) return false;
     if (!bypassDraftGuard && name !== currentView && !guardDraft()) return false;
+    if (name !== "list" && reorderMode) endReorderMode();
     currentView = name;
     viewNames.forEach(function (viewName) {
       $("view-" + viewName).hidden = viewName !== name;
@@ -105,13 +108,22 @@
     $("empty-state").hidden = batch.items.length !== 0;
     var list = $("caption-list");
     list.replaceChildren();
+    list.classList.toggle("reorder-mode", reorderMode);
+    $("list-help").hidden = reorderMode;
+    $("reorder-help").hidden = !reorderMode;
+    $("toggle-reorder").textContent = reorderMode ? "完了" : "並べ替え";
+    $("toggle-reorder").setAttribute("aria-pressed", String(reorderMode));
+    setFixed("toggle-reorder", !reorderMode && batch.items.length < 2);
     batch.items.forEach(function (item, index) {
       var li = document.createElement("li");
       li.className = "caption-card" + (item.included ? "" : " is-excluded");
+      li.dataset.index = String(index);
+      li.dataset.itemId = item.id;
       var button = document.createElement("button");
       button.type = "button";
       button.className = "caption-open";
-      button.disabled = busy;
+      button.dataset.fixedDisabled = reorderMode ? "true" : "false";
+      button.disabled = busy || reorderMode;
       button.setAttribute("aria-label", (index + 1) + "番目のCaptionを編集: " + item.caption);
       var number = document.createElement("span");
       number.className = "caption-index";
@@ -133,6 +145,21 @@
       button.append(number, content, chevron);
       button.addEventListener("click", function () { openItem(item.id); });
       li.append(button);
+      if (reorderMode) {
+        var grip = document.createElement("button");
+        grip.type = "button";
+        grip.className = "reorder-handle";
+        grip.textContent = "⠿";
+        grip.disabled = busy;
+        grip.setAttribute("aria-label", (index + 1) + "番目のCaptionを移動: " + item.caption);
+        grip.setAttribute("aria-keyshortcuts", "ArrowUp ArrowDown Home End");
+        grip.addEventListener("pointerdown", function (event) { beginDrag(event, item, index); });
+        grip.addEventListener("pointermove", trackDrag);
+        grip.addEventListener("pointerup", dropDrag);
+        grip.addEventListener("pointercancel", cancelDrag);
+        grip.addEventListener("keydown", function (event) { moveByKeyboard(event, item.id, index); });
+        li.append(grip);
+      }
       list.append(li);
     });
   }
@@ -153,8 +180,6 @@
     $("item-takes").value = String(item.take_count_override === null ?
       batch.default_take_count : item.take_count_override);
     $("item-takes").hidden = item.take_count_override === null;
-    setFixed("move-up", index === 0);
-    setFixed("move-down", index === batch.items.length - 1);
     setFixed("previous-item", index === 0);
     setFixed("next-item", index === batch.items.length - 1);
   }
@@ -292,15 +317,6 @@
         { count: count }, "Take数を更新しました。");
     } catch (error) { feedback(error.message); }
   });
-  function move(delta) {
-    if (!batch || !selectedId) return;
-    var position = batch.items.findIndex(function (item) { return item.id === selectedId; });
-    if (position < 0 || position + delta < 0 || position + delta >= batch.items.length) return;
-    mutate("PATCH", "/items/" + encodeURIComponent(selectedId) + "/position",
-      { index: position + delta }, "順序を変更しました。");
-  }
-  $("move-up").addEventListener("click", function () { move(-1); });
-  $("move-down").addEventListener("click", function () { move(1); });
   function adjacent(delta) {
     if (!batch || !selectedId || busy) return;
     var position = batch.items.findIndex(function (item) { return item.id === selectedId; });
