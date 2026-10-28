@@ -184,7 +184,11 @@ class MobileBatchTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('id="auth-form"', response.text)
         self.assertIn('id="caption-list"', response.text)
-        self.assertIn('id="item-panel"', response.text)
+        self.assertIn('id="view-item"', response.text)
+        self.assertIn('id="view-list"', response.text)
+        self.assertIn('id="view-add"', response.text)
+        self.assertIn('id="view-session"', response.text)
+        self.assertIn('id="item-back"', response.text)
         self.assertIn('type="password"', response.text)
         self.assertNotIn(_TOKEN, response.text)
         js = self.client.get("/assets/app.js").text
@@ -193,6 +197,56 @@ class MobileBatchTests(unittest.TestCase):
         self.assertNotIn("localStorage", js)
         self.assertIn("textContent = item.caption", js)
         self.assertNotIn("innerHTML", js)
+        self.assertIn('function showView(name, bypassDraftGuard)', js)
+        self.assertIn('function guardDraft()', js)
+        self.assertIn('showView("list", true)', js)
+        self.assertIn('caption.textContent = item.caption', js)
+        self.assertNotIn('control("削除"', js)
+        self.assertNotIn('control("編集"', js)
+        self.assertIn('id="open-add"', response.text)
+        self.assertIn('id="previous-item"', response.text)
+        self.assertIn('id="next-item"', response.text)
+        self.assertIn('id="move-up"', response.text)
+        self.assertIn('id="move-down"', response.text)
+
+    def test_mobile_screen_navigation_is_separate_from_list_controls(self):
+        from html.parser import HTMLParser
+
+        class Structure(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.screens = {}
+                self.current_screen = None
+                self.stack = []
+
+            def handle_starttag(self, tag, attrs):
+                attributes = dict(attrs)
+                if tag == "section" and attributes.get("id", "").startswith("view-"):
+                    self.current_screen = attributes["id"]
+                    self.screens[self.current_screen] = []
+                self.stack.append((tag, attributes.get("id")))
+                if self.current_screen and attributes.get("id"):
+                    self.screens[self.current_screen].append(attributes["id"])
+
+            def handle_endtag(self, tag):
+                if self.stack:
+                    opening_tag, identity = self.stack.pop()
+                    if opening_tag == "section" and identity == self.current_screen:
+                        self.current_screen = None
+
+        parser = Structure()
+        parser.feed(self.client.get("/").text)
+        self.assertIn("caption-list", parser.screens["view-list"])
+        self.assertIn("open-add", parser.screens["view-list"])
+        self.assertNotIn("edit-caption", parser.screens["view-list"])
+        self.assertNotIn("default-takes", parser.screens["view-list"])
+        self.assertIn("edit-caption", parser.screens["view-item"])
+        self.assertIn("item-included", parser.screens["view-item"])
+        self.assertIn("new-captions", parser.screens["view-add"])
+        self.assertIn("default-takes", parser.screens["view-session"])
+        self.assertNotIn("web-token", parser.screens["view-list"])
+        self.assertIn("web-token", parser.screens["view-connect"])
+
 
 
 if __name__ == "__main__":
