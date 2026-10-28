@@ -149,12 +149,14 @@
       batch = await request(method, path, payload);
       render();
       message(success);
+      return true;
     } catch (error) {
       message(error.message);
       if (error.code === 409) {
         try { await refresh(); } catch (_ignored) { /* Show original conflict. */ }
       }
       if (error.code === 404) disconnect();
+      return false;
     } finally { setPending(false); }
   }
   function disconnect() {
@@ -199,8 +201,11 @@
       authMessage("接続済み · このブラウザのセッション");
       message("Captionの編集を開始できます。");
     } catch (error) {
-      authMessage(error.message);
-      disconnect();
+      token = "";
+      batch = null;
+      sessionId = "";
+      $("batch-panel").hidden = true;
+      $("session-controls").hidden = true;
       authMessage(error.message);
     } finally { setPending(false); }
   });
@@ -209,7 +214,7 @@
     var value = $("new-captions").value;
     if (!value.trim()) { message("Captionを入力してください。"); return; }
     mutate("POST", "/items", { text: value }, "Captionを追加しました。")
-      .then(function () { if (batch) $("new-captions").value = ""; });
+      .then(function (ok) { if (ok) $("new-captions").value = ""; });
   });
   $("default-takes-form").addEventListener("submit", function (event) {
     event.preventDefault();
