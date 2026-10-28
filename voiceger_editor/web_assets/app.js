@@ -293,7 +293,10 @@
           mutate("PATCH", "/items/" + encodeURIComponent(item.id) + "/included",
             { included: this.checked }, "生成対象を更新しました。");
         });
-        li.append(included);
+        var includeControl = document.createElement("label");
+        includeControl.className = "include-control";
+        includeControl.append(included);
+        li.append(includeControl);
       }
       var button = document.createElement("button");
       button.type = "button";
