@@ -27,7 +27,7 @@
     pending = value;
     var container = $("batch-panel");
     container.querySelectorAll("button, input, textarea, select").forEach(function (control) {
-      control.disabled = value;
+      control.disabled = value || control.dataset.fixedDisabled === "true";
     });
     $("session-controls").querySelectorAll("button").forEach(function (button) {
       button.disabled = value;
@@ -58,11 +58,12 @@
   function batchPath() {
     return "/api/web/sessions/" + encodeURIComponent(sessionId) + "/batch";
   }
-  function control(label, action, disabled, className) {
+  function control(label, action, disabled, className, fixedDisabled) {
     var button = document.createElement("button");
     button.type = "button";
     button.textContent = label;
     button.disabled = !!disabled;
+    button.dataset.fixedDisabled = fixedDisabled ? "true" : "false";
     if (className) button.className = className;
     button.addEventListener("click", action);
     return button;
@@ -110,11 +111,11 @@
         control("↑", function () {
           mutate("PATCH", "/items/" + encodeURIComponent(item.id) + "/position",
             { index: index - 1 }, "順序を変更しました。");
-        }, pending || index === 0),
+        }, pending || index === 0, "", index === 0),
         control("↓", function () {
           mutate("PATCH", "/items/" + encodeURIComponent(item.id) + "/position",
             { index: index + 1 }, "順序を変更しました。");
-        }, pending || index === batch.items.length - 1),
+        }, pending || index === batch.items.length - 1, "", index === batch.items.length - 1),
         control("削除", function () {
           if (!window.confirm("このCaptionを削除しますか？")) return;
           mutate("DELETE", "/items/" + encodeURIComponent(item.id), undefined,
