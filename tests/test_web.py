@@ -32,7 +32,7 @@ class WebFoundationTests(unittest.TestCase):
         self.assertTrue(response.headers["content-type"].startswith("text/html"))
         self.assertIn('<html lang="ja">', response.text)
         self.assertIn('name="viewport"', response.text)
-        for title in ("Batch", "Dictionary", "Settings"):
+        for title in ("Batch List", "Captionを追加", "設定"):
             self.assertIn(title, response.text)
         self.assertIn("未実装", response.text)
         self.assertIn('aria-disabled="true"', response.text)
