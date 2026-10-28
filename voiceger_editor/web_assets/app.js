@@ -351,10 +351,8 @@
       return;
     }
     var item = batch.items[index];
-    $("item-title").textContent = "Caption " + String(index + 1).padStart(2, "0");
-    $("item-position").textContent = (index + 1) + " / " + batch.items.length;
+    $("item-title").textContent = (index + 1) + " / " + batch.items.length;
     if (!keepCaptionDraft) $("edit-caption").value = item.caption;
-    $("item-included").checked = item.included;
     $("item-takes-mode").value = item.take_count_override === null ? "default" : "custom";
     $("item-takes").value = String(item.take_count_override === null ?
       batch.default_take_count : item.take_count_override);
@@ -375,6 +373,7 @@
     showView("item", true);
   }
   function resetLocal(clearSessionId) {
+    endDeleteMode();
     token = "";
     sessionId = "";
     batch = null;
@@ -403,6 +402,8 @@
       return true;
     } catch (error) {
       if (error.code === 409) {
+        // A stale deletion selection must not be applied to a refreshed Batch.
+        if (deleteMode) selectedForDelete.clear();
         try { await refresh(); } catch (_ignored) { /* Keep conflict feedback. */ }
       }
       if (error.code === 404 || error.code === 401) {
@@ -485,11 +486,6 @@
     mutate("PATCH", "/items/" + encodeURIComponent(selectedId) + "/caption",
       { caption: $("edit-caption").value }, "Captionを保存しました。", { saveCaption: true });
   });
-  $("item-included").addEventListener("change", function () {
-    if (!selectedId) return;
-    mutate("PATCH", "/items/" + encodeURIComponent(selectedId) + "/included",
-      { included: this.checked }, "生成対象を更新しました。");
-  });
   $("item-takes-mode").addEventListener("change", function () {
     $("item-takes").hidden = this.value !== "custom";
   });
@@ -511,17 +507,6 @@
   }
   $("previous-item").addEventListener("click", function () { adjacent(-1); });
   $("next-item").addEventListener("click", function () { adjacent(1); });
-  $("delete-item").addEventListener("click", async function () {
-    if (!selectedId || !window.confirm("このCaptionを削除しますか？")) return;
-    var id = selectedId;
-    var ok = await mutate("DELETE", "/items/" + encodeURIComponent(id), undefined,
-      "Captionを削除しました。");
-    if (ok) {
-      selectedId = "";
-      showView("list", true);
-      feedback("Captionを削除しました。");
-    }
-  });
   $("default-takes-form").addEventListener("submit", function (event) {
     event.preventDefault();
     try {
