@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#f6f7f6">
-  <meta name="description" content="Voiceger Editor モバイルWeb UI の接続確認画面">
   <title>Voiceger Editor — Mobile Web</title>
   <link rel="stylesheet" href="/assets/app.css">
   <script src="/assets/app.js" defer></script>
@@ -14,64 +13,132 @@
   <div class="app-shell">
     <header class="app-header">
       <div class="brand">
-        <div class="brand-symbol" aria-hidden="true">
-          <span></span><span></span><span></span><span></span>
-        </div>
+        <div class="brand-symbol" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
         <div>
-          <p class="eyebrow">VOICEGER EDITOR</p>
-          <h1>モバイルWeb UI</h1>
+          <h1>Voiceger Editor</h1>
         </div>
       </div>
-      <span class="stage-label">基盤プレビュー</span>
+      <button type="button" id="header-session" class="header-action" hidden>設定</button>
     </header>
-
     <main>
-      <section class="intro" aria-labelledby="welcome-title">
-        <p class="section-kicker">セットアップ確認</p>
-        <h2 id="welcome-title">スマホとMac miniをつなぐ準備画面</h2>
-        <p>Voiceger Editorのモバイル操作画面を開発しています。現在はWebサーバーとの接続確認のみ利用できます。音声生成や編集はまだできません。</p>
+      <p id="feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+
+      <section id="view-connect" class="screen" aria-labelledby="connect-title">
+        <div class="screen-heading">
+          
+          <h2 id="connect-title" tabindex="-1">MacのVoiceger Editorに接続</h2>
+          <p class="supporting">アクセストークンを入力するとBatch Listが開きます。トークンは保存されません。</p>
+        </div>
+        <form id="auth-form" class="field-stack">
+          <label for="web-token">Webアクセストークン</label>
+          <input id="web-token" type="password" minlength="32" required autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Mac側で表示されたトークン">
+          <button type="submit" id="connect-button" class="primary-button">接続する</button>
+        </form>
+        <p id="auth-status" class="help-text" role="status" aria-live="polite">未接続</p>
+        <p class="help-text">サーバー再起動後は作業中のBatchが失われます。</p>
       </section>
 
-      <section class="connection-card" aria-labelledby="connection-title">
-        <div class="connection-heading">
+      <section id="view-list" class="screen" aria-labelledby="batch-title" hidden>
+        <div class="section-top">
           <div>
-            <p class="card-kicker">CONNECTION</p>
-            <h2 id="connection-title">サーバー接続</h2>
+            
+            <h2 id="batch-title" tabindex="-1">Batch List</h2>
           </div>
-          <span class="connection-indicator" aria-hidden="true"></span>
+          <div class="list-toolbar">
+            <span id="batch-count" class="counter" hidden>0件</span>
+            <button type="button" id="toggle-reorder" class="reorder-toggle" aria-pressed="false">並べ替え</button>
+            <button type="button" id="toggle-delete" class="reorder-toggle" aria-pressed="false">削除</button>
+          </div>
         </div>
-        <p class="connection-status" id="connection-status" role="status" aria-live="polite">接続状態を確認中…</p>
-        <p class="server-version" id="server-version">Voiceger Editor Web</p>
+        
+        <p id="reorder-help" class="help-text compact-note" hidden>ハンドルをドラッグして移動できます。</p>
+        <ol id="caption-list" class="caption-list" aria-label="Caption一覧"></ol>
+        <div id="empty-state" class="empty-state">
+          <p>Captionはまだありません。</p>
+          
+        </div>
+        <div class="sticky-action" id="add-action">
+          <button type="button" id="open-add" class="primary-button full-button">＋ Captionを追加</button>
+        </div>
+        <div class="sticky-action" id="delete-action" hidden>
+          <button type="button" id="delete-selected" class="danger-button full-button" disabled>0件を削除</button>
+        </div>
       </section>
 
-      <section class="features" aria-labelledby="features-title">
-        <div class="features-heading">
-          <h2 id="features-title">開発予定の画面</h2>
-          <p>以下の機能はまだ利用できません。</p>
+      <section id="view-add" class="screen" aria-labelledby="add-title" hidden>
+        <button type="button" id="add-back" class="back-button">← 戻る</button>
+        <div class="screen-heading">
+          
+          <h2 id="add-title" tabindex="-1">Captionを追加</h2>
+          <p class="supporting">1行ごとに1件のCaptionになります。空行は無視します。</p>
         </div>
-        <nav class="feature-list" aria-label="開発予定の画面">
-          <div class="feature-item" aria-disabled="true">
-            <span class="feature-icon" aria-hidden="true">01</span>
-            <span class="feature-text"><strong>Batch</strong><small>Caption・音声生成・Take管理</small></span>
-            <span class="coming-soon">未実装</span>
+        <form id="add-form" class="field-stack">
+          <label for="new-captions">Caption</label>
+          <textarea id="new-captions" rows="7" maxlength="32000" placeholder="こんにちはなのだ！&#10;今日はいい天気なのだ。"></textarea>
+          <button type="submit" class="primary-button full-button">追加</button>
+        </form>
+      </section>
+
+      <section id="view-item" class="screen" aria-labelledby="item-title" hidden>
+        <button type="button" id="item-back" class="back-button">← 戻る</button>
+        <div class="section-top">
+          <div>
+            
+            <h2 id="item-title" tabindex="-1">Caption</h2>
           </div>
-          <div class="feature-item" aria-disabled="true">
-            <span class="feature-icon" aria-hidden="true">02</span>
-            <span class="feature-text"><strong>Dictionary</strong><small>日本語・英語のユーザー辞書</small></span>
-            <span class="coming-soon">未実装</span>
+        </div>
+        <form id="edit-caption-form" class="field-stack">
+          <label for="edit-caption">Caption</label>
+          <textarea id="edit-caption" rows="4" maxlength="2000" required></textarea>
+          <button type="submit" class="primary-button">Captionを保存</button>
+        </form>
+        <form id="item-takes-form" class="setting-section">
+          <label for="item-takes-mode">Take数</label>
+          <select id="item-takes-mode">
+            <option value="default">標準Take数を使う</option>
+            <option value="custom">個別に指定</option>
+          </select>
+          <input id="item-takes" type="number" min="1" max="100" step="1" required hidden aria-label="個別Take数">
+          <button type="submit">保存</button>
+        </form>
+        <div class="item-navigation">
+          <button type="button" id="previous-item">← 前のCaption</button>
+          <button type="button" id="next-item">次のCaption →</button>
+        </div>
+      </section>
+
+      <section id="view-session" class="screen" aria-labelledby="session-title" hidden>
+        <button type="button" id="session-back" class="back-button">← Batch List</button>
+        <div class="screen-heading">
+          
+          <h2 id="session-title" tabindex="-1">設定</h2>
+        </div>
+        <div class="setting-section">
+          <p class="field-title">Webサーバー</p>
+          <p id="connection-status" class="connection-status" role="status" aria-live="polite">接続状態を確認中…</p>
+          <p id="server-version" class="help-text">Voiceger Editor Web</p>
+        </div>
+        <form id="default-takes-form" class="setting-section">
+          <label for="default-takes">標準Take数</label>
+          <input id="default-takes" type="number" min="1" max="100" step="1" required>
+          <button type="submit">保存</button>
+        </form>
+        <div class="setting-section">
+          <h3>セッション</h3>
+          <p class="help-text">BatchはMac上のWebサーバーに一時的に保持されます。サーバー再起動時は復元されません。</p>
+          <div class="button-row">
+            <button type="button" id="refresh-batch">Batchを再取得</button>
+            <button type="button" id="disconnect-session">切断</button>
           </div>
-          <div class="feature-item" aria-disabled="true">
-            <span class="feature-icon" aria-hidden="true">03</span>
-            <span class="feature-text"><strong>Settings</strong><small>音声生成・保存形式・出力先</small></span>
-            <span class="coming-soon">未実装</span>
-          </div>
-        </nav>
+        </div>
+        <div class="danger-zone">
+          <button type="button" id="close-session" class="danger-button">セッションを終了・破棄</button>
+        </div>
+        <div class="setting-section">
+          <p class="help-text" aria-disabled="true">音声生成・発音編集・辞書は未実装です。</p>
+        </div>
       </section>
     </main>
-    <footer class="app-footer">
-      <span>Voiceger Editor</span>
-      <span>この画面では音声は生成されません</span>
-    </footer>
   </div>
 </body>
 </html>

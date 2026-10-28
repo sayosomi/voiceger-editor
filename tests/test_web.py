@@ -32,13 +32,14 @@ class WebFoundationTests(unittest.TestCase):
         self.assertTrue(response.headers["content-type"].startswith("text/html"))
         self.assertIn('<html lang="ja">', response.text)
         self.assertIn('name="viewport"', response.text)
-        for title in ("Batch", "Dictionary", "Settings"):
+        for title in ("Batch List", "Captionを追加", "設定"):
             self.assertIn(title, response.text)
         self.assertIn("未実装", response.text)
         self.assertIn('aria-disabled="true"', response.text)
         self.assertIn('src="/assets/app.js"', response.text)
         self.assertIn('href="/assets/app.css"', response.text)
-        self.assertNotIn("<form", response.text)
+        self.assertIn('id="auth-form"', response.text)
+        self.assertIn('id="caption-list"', response.text)
 
     def test_static_assets_have_correct_types(self):
         css = self.client.get("/assets/app.css")

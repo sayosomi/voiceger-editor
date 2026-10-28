@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ._version import __version__
 from .web_routes import build_web_session_router
+from .web_batch_routes import build_web_batch_router
 from .web_sessions import WebSessionOperations
 
 
@@ -42,6 +43,7 @@ def create_web_app(*, service: WebSessionOperations | None = None) -> FastAPI:
     web_app.add_event_handler("shutdown", session_service.shutdown)
     web_app.mount("/assets", StaticFiles(directory=str(ASSETS)), name="web-assets")
     web_app.include_router(build_web_session_router(session_service))
+    web_app.include_router(build_web_batch_router(session_service))
 
     @web_app.middleware("http")
     async def add_security_headers(request, call_next):
