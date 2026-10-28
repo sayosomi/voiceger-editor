@@ -126,3 +126,57 @@ body { margin: 0; min-width: 280px; }
 @media (prefers-reduced-motion: no-preference) {
   .connection-indicator { transition: background-color .2s ease; }
 }
+
+
+/* Touch-sized, accessible Web Batch controls. */
+.web-panel {
+  margin-top: 22px; padding: 22px; background: #fff;
+  border: 1px solid #dfe8e3; border-radius: 20px;
+}
+.web-panel h2 { font-size: 17px; margin: 0 0 16px; }
+.web-panel h3 { font-size: 15px; margin: 0; }
+.web-panel label { display: block; color: #4b6860; font-size: 13px; font-weight: 700; margin-bottom: 7px; }
+.web-panel input, .web-panel textarea, .web-panel select {
+  width: 100%; max-width: 100%; min-height: 46px;
+  padding: 12px 13px; border: 1px solid #ccdcd5; border-radius: 12px;
+  font: inherit; font-size: 15px; color: #253c35; background: #fff;
+}
+.web-panel textarea { resize: vertical; min-height: 86px; line-height: 1.5; }
+.web-panel button, .caption-actions button {
+  min-height: 44px; border: 1px solid #c9dcd4; border-radius: 11px;
+  padding: 9px 13px; color: #28574b; font: inherit; font-size: 13px;
+  font-weight: 700; background: #f4f8f5; cursor: pointer;
+}
+.web-panel button.primary-button { color: white; background: #23675a; border-color: #23675a; }
+.web-panel button.danger-button, .caption-actions button.danger-button { color: #99554d; }
+.web-panel button:disabled { opacity: .47; cursor: default; }
+.web-panel input:focus-visible, .web-panel textarea:focus-visible,
+.web-panel select:focus-visible, .web-panel button:focus-visible,
+.caption-actions button:focus-visible { outline: 3px solid #63ab92; outline-offset: 2px; }
+#auth-form { display: grid; gap: 9px; }
+.panel-help { margin: 2px 0 12px; font-size: 12px; line-height: 1.65; color: #657f75; }
+.message { font-size: 13px; line-height: 1.6; margin: 13px 0 0; color: #506e63; }
+.button-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.section-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.section-top h2 { margin: 0; }
+.counter { border-radius: 100px; padding: 5px 9px; background: #ecf4ef; color: #3b6b58; font-size: 11px; font-weight: 700; }
+.field-stack { display: grid; gap: 9px; margin-top: 20px; }
+.inline-form { display: grid; gap: 9px; margin-top: 20px; }
+.inline-form select { min-width: 0; }
+.caption-list { padding: 0; list-style: none; margin: 20px 0 0; display: grid; gap: 11px; }
+.caption-card { padding: 14px; background: #f7faf8; border: 1px solid #e0eae4; border-radius: 15px; }
+.caption-card-heading { display: flex; gap: 11px; align-items: start; }
+.caption-number { flex: none; font-size: 12px; font-weight: 800; color: #5d7d70; padding-top: 2px; }
+.caption-text { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 14px; line-height: 1.6; }
+.caption-meta { font-size: 11px; color: #607b70; margin: 7px 0 10px 31px; }
+.caption-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.caption-actions button { padding: 9px 10px; min-width: 44px; }
+.empty-message { color: #6f877d; font-size: 13px; padding: 16px 0 3px; }
+.item-panel { border-top: 1px solid #e2eae5; margin-top: 22px; padding-top: 22px; }
+.item-panel .section-top { margin-bottom: 14px; }
+[hidden] { display: none !important; }
+@media (max-width: 380px) {
+  .web-panel { padding: 16px; }
+  .caption-actions { gap: 5px; }
+  .caption-actions button { padding: 8px; }
+}
