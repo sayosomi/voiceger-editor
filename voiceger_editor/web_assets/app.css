@@ -75,7 +75,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   border-radius: 18px; color: #526d61; }
 .empty-state p { margin: 0 0 6px; }
 
-.list-toolbar { display: flex; align-items: center; gap: 9px; }
+#view-list .section-top { flex-wrap: wrap; }
+#view-list .section-top > div:first-child { min-width: 110px; flex: 1 1 110px; }
+.list-toolbar { display: flex; align-items: center; gap: 9px; margin-left: auto; }
 .reorder-toggle {
   min-height: 44px; padding: 9px 12px;
   border: 1px solid #c9dbd2; border-radius: 11px;
