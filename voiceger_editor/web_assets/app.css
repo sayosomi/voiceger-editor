@@ -85,7 +85,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   font: inherit; font-size: 12px; font-weight: 750;
 }
 .reorder-toggle[aria-pressed="true"] { background: #dfeee5; border-color: #85b69d; }
-.reorder-mode .caption-card { display: flex; align-items: stretch; gap: 8px; }
+.reorder-mode .caption-card {
+  display: flex; align-items: stretch; gap: 8px;
+  background: transparent; border: none; border-radius: 0;
+}
+.reorder-mode .caption-open { background: #fff; border: 1px solid #e0e9e3; }
+.reorder-mode .caption-card.is-excluded .caption-open { background: #f0f3f1; }
 .reorder-mode .caption-open { flex: 1; min-width: 0; }
 .reorder-mode .caption-open:disabled { opacity: 1; }
 .reorder-handle {
@@ -110,10 +115,13 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 
 .caption-list { list-style: none; margin: 0; padding: 0 0 26px; display: grid; gap: 9px; }
-.caption-card { margin: 0; }
+.caption-card {
+  margin: 0; display: flex; align-items: stretch; gap: 5px;
+  background: #fff; border: 1px solid #e0e9e3; border-radius: 14px;
+}
 .caption-open {
-  width: 100%; min-height: 74px; display: flex; align-items: center; gap: 11px;
-  text-align: left; background: white; color: #244035; border: 1px solid #e0e9e3;
+  flex: 1; min-width: 0; min-height: 74px; display: flex; align-items: center; gap: 11px;
+  text-align: left; background: transparent; color: #244035; border: 0;
   border-radius: 14px; padding: 13px; font-size: 14px;
 }
 .caption-open:disabled { opacity: .55; }
@@ -122,7 +130,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .caption-text { display: block; overflow-wrap: anywhere; line-height: 1.5; font-weight: 650; }
 .caption-meta { display: block; margin-top: 6px; font-size: 11px; color: #71857b; }
 .caption-chevron { flex: none; color: #71877d; font-size: 20px; line-height: 1; }
-.caption-card.is-excluded .caption-open { background: #f0f3f1; }
+.caption-card.is-excluded { background: #f0f3f1; }
 .caption-card.is-excluded .caption-text { color: #77877e; }
 .sticky-action {
   position: sticky; bottom: 0; padding: 14px 0 max(8px, env(safe-area-inset-bottom));
@@ -152,4 +160,22 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 @media (prefers-reduced-motion: reduce) {
   button:not(:disabled):active { transform: none; }
+}
+
+.include-control {
+  display: flex; align-items: center; justify-content: center;
+  flex: none; width: 48px; min-height: 60px; cursor: pointer;
+}
+.include-check, .delete-check {
+  width: 23px; height: 23px; margin: 0; flex: none; accent-color: #23675a;
+}
+.delete-mode .caption-card { padding: 0; }
+.delete-select-row {
+  display: flex; align-items: center; gap: 13px; width: 100%;
+  min-height: 74px; padding: 13px 16px; cursor: pointer;
+}
+.delete-mode .caption-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+#delete-selected.danger-button {
+  border: 1px solid #c87e70; background: #a74b3d; color: #fff;
+  min-height: 49px; border-radius: 13px; font-weight: 750; padding: 12px 18px;
 }
