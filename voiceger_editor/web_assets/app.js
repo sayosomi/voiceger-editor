@@ -222,23 +222,79 @@
     if (to !== from) moveToIndex(id, to);
   }
 
+  function endDeleteMode() {
+    deleteMode = false;
+    selectedForDelete.clear();
+    if (batch) renderList();
+  }
+  function updateDeleteAction() {
+    var count = selectedForDelete.size;
+    $("delete-selected").textContent = count + "件を削除";
+    setFixed("delete-selected", count === 0);
+  }
   function renderList() {
     if (!batch) return;
-    $("batch-count").textContent = batch.items.length + " Captions";
-    $("empty-state").hidden = batch.items.length !== 0;
+    var count = batch.items.length;
+    $("batch-count").textContent = count + "件";
+    $("batch-count").hidden = count === 0 || deleteMode;
+    $("empty-state").hidden = count !== 0;
+    $("batch-title").textContent = deleteMode ? "削除" : "Batch List";
+    $("toggle-reorder").hidden = deleteMode;
+    $("toggle-delete").hidden = reorderMode;
+    $("toggle-delete").textContent = deleteMode ? "キャンセル" : "削除";
+    $("toggle-delete").setAttribute("aria-pressed", String(deleteMode));
+    $("add-action").hidden = reorderMode || deleteMode;
+    $("delete-action").hidden = !deleteMode;
+    $("reorder-help").hidden = !reorderMode;
     var list = $("caption-list");
     list.replaceChildren();
     list.classList.toggle("reorder-mode", reorderMode);
-    $("list-help").hidden = reorderMode;
-    $("reorder-help").hidden = !reorderMode;
-    $("toggle-reorder").textContent = reorderMode ? "完了" : "並べ替え";
-    $("toggle-reorder").setAttribute("aria-pressed", String(reorderMode));
-    setFixed("toggle-reorder", !reorderMode && batch.items.length < 2);
+    list.classList.toggle("delete-mode", deleteMode);
+    setFixed("toggle-reorder", !reorderMode && count < 2);
+    setFixed("toggle-delete", !deleteMode && count === 0);
+
     batch.items.forEach(function (item, index) {
       var li = document.createElement("li");
       li.className = "caption-card" + (item.included ? "" : " is-excluded");
       li.dataset.index = String(index);
       li.dataset.itemId = item.id;
+
+      if (deleteMode) {
+        var choice = document.createElement("label");
+        choice.className = "delete-select-row";
+        var mark = document.createElement("input");
+        mark.type = "checkbox";
+        mark.className = "delete-check";
+        mark.checked = selectedForDelete.has(item.id);
+        mark.disabled = busy;
+        mark.setAttribute("aria-label", item.caption + "を削除対象に選ぶ");
+        mark.addEventListener("change", function () {
+          if (this.checked) selectedForDelete.add(item.id);
+          else selectedForDelete.delete(item.id);
+          updateDeleteAction();
+        });
+        var labelText = document.createElement("span");
+        labelText.className = "caption-text";
+        labelText.textContent = String(index + 1).padStart(2, "0") + "　" + item.caption;
+        choice.append(mark, labelText);
+        li.append(choice);
+        list.append(li);
+        return;
+      }
+
+      if (!reorderMode) {
+        var included = document.createElement("input");
+        included.type = "checkbox";
+        included.className = "include-check";
+        included.checked = item.included;
+        included.disabled = busy;
+        included.setAttribute("aria-label", item.caption + "を生成対象に含める");
+        included.addEventListener("change", function () {
+          mutate("PATCH", "/items/" + encodeURIComponent(item.id) + "/included",
+            { included: this.checked }, "生成対象を更新しました。");
+        });
+        li.append(included);
+      }
       var button = document.createElement("button");
       button.type = "button";
       button.className = "caption-open";
@@ -253,11 +309,13 @@
       var caption = document.createElement("span");
       caption.className = "caption-text";
       caption.textContent = item.caption;
-      var meta = document.createElement("span");
-      meta.className = "caption-meta";
-      meta.textContent = (item.included ? "生成対象" : "対象外") +
-        " · Take " + item.effective_take_count;
-      content.append(caption, meta);
+      content.append(caption);
+      if (item.take_count_override !== null) {
+        var meta = document.createElement("span");
+        meta.className = "caption-meta";
+        meta.textContent = "Take " + item.take_count_override;
+        content.append(meta);
+      }
       var chevron = document.createElement("span");
       chevron.className = "caption-chevron";
       chevron.setAttribute("aria-hidden", "true");
@@ -282,6 +340,7 @@
       }
       list.append(li);
     });
+    updateDeleteAction();
   }
   function renderItem(keepCaptionDraft) {
     if (!batch || !selectedId) return;
