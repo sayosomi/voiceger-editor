@@ -217,21 +217,23 @@ class MobileBatchTests(unittest.TestCase):
                 super().__init__()
                 self.screens = {}
                 self.current_screen = None
-                self.stack = []
+                self.section_depth = 0
 
             def handle_starttag(self, tag, attrs):
                 attributes = dict(attrs)
                 if tag == "section" and attributes.get("id", "").startswith("view-"):
                     self.current_screen = attributes["id"]
                     self.screens[self.current_screen] = []
-                self.stack.append((tag, attributes.get("id")))
+                    self.section_depth = 1
+                elif tag == "section" and self.current_screen:
+                    self.section_depth += 1
                 if self.current_screen and attributes.get("id"):
                     self.screens[self.current_screen].append(attributes["id"])
 
             def handle_endtag(self, tag):
-                if self.stack:
-                    opening_tag, identity = self.stack.pop()
-                    if opening_tag == "section" and identity == self.current_screen:
+                if tag == "section" and self.current_screen:
+                    self.section_depth -= 1
+                    if self.section_depth == 0:
                         self.current_screen = None
 
         parser = Structure()
