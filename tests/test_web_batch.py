@@ -152,6 +152,64 @@ class MobileBatchTests(unittest.TestCase):
         self.assertEqual(self.edit("DELETE", "/items/nonexistent").status_code, 404)
         self.assertEqual(self.client.get(self.path + "/nonexistent", headers=self.read).status_code, 404)
 
+    def test_bulk_delete_validates_every_id_before_mutation(self):
+        initial = self.edit("POST", "/items", {"text": "ひとつ\nふたつ\nみっつ"})
+        self.assertEqual(initial.status_code, 200, initial.text)
+        rows = initial.json()["items"]
+        ids = [row["id"] for row in rows]
+        before = self.read_batch()
+        original_revision = before["revision"]
+
+        missing = self.edit("POST", "/items/bulk-delete",
+                            {"ids": [ids[0], "missing-item"]})
+        self.assertEqual(missing.status_code, 404)
+        self.assertEqual(self.read_batch(), before)
+        self.assertTrue(all(x.discards == 0 for x in self.sessions))
+
+        for invalid in ([], [ids[0], ids[0]]):
+            response = self.edit("POST", "/items/bulk-delete", {"ids": invalid})
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(self.read_batch(), before)
+
+        stale = self.edit("POST", "/items/bulk-delete",
+                          {"ids": ids[:2]}, revision=original_revision - 1)
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(self.read_batch(), before)
+
+        selected = self.edit("POST", "/items/bulk-delete", {"ids": [ids[0], ids[2]]})
+        self.assertEqual(selected.status_code, 200, selected.text)
+        self.assertEqual(selected.json()["revision"], original_revision + 1)
+        self.assertEqual([row["id"] for row in selected.json()["items"]], [ids[1]])
+        self.assertEqual([x.discards for x in self.sessions], [1, 0, 1])
+
+    def test_bulk_delete_rejects_unauthorized_and_active_worker(self):
+        initial = self.edit("POST", "/items", {"text": "守る\n残す"})
+        self.assertEqual(initial.status_code, 200)
+        ids = [item["id"] for item in self.read_batch()["items"]]
+        payload = {"ids": ids}
+        self.assertEqual(self.edit("POST", "/items/bulk-delete", payload,
+                                   headers=self.read).status_code, 403)
+        self.assertEqual(self.edit("POST", "/items/bulk-delete", payload,
+                                   headers={**self.write, "Origin": "https://evil.example"}).status_code, 403)
+        started, release = threading.Event(), threading.Event()
+
+        def checker():
+            started.set()
+            release.wait(2)
+            return SimpleNamespace(ready=True)
+        self.service._runtime_checker = checker
+        try:
+            operation = self.client.post(
+                f"/api/web/sessions/{self.sid}/operations/runtime-check",
+                headers=self.write,
+            )
+            self.assertEqual(operation.status_code, 202)
+            self.assertTrue(started.wait(1))
+            self.assertEqual(self.edit("POST", "/items/bulk-delete", payload).status_code, 409)
+            self.assertEqual(len(self.read_batch()["items"]), 2)
+        finally:
+            release.set()
+
     def test_authorization_origin_csrf_and_invalid_input(self):
         self.assertEqual(self.client.get(self.path).status_code, 401)
         self.assertEqual(self.client.get(self.path, headers={"Authorization": "Bearer wrong"}).status_code, 401)
@@ -192,6 +250,9 @@ class MobileBatchTests(unittest.TestCase):
         self.assertIn('id="view-add"', response.text)
         self.assertIn('id="view-session"', response.text)
         self.assertIn('id="item-back"', response.text)
+        self.assertIn('id="toggle-delete"', response.text)
+        self.assertIn('id="delete-selected"', response.text)
+        self.assertIn('id="delete-action"', response.text)
         self.assertIn('type="password"', response.text)
         self.assertNotIn(_TOKEN, response.text)
         js = self.client.get("/assets/app.js").text
@@ -204,6 +265,14 @@ class MobileBatchTests(unittest.TestCase):
         self.assertIn('function guardDraft()', js)
         self.assertIn('showView("list", true)', js)
         self.assertIn('caption.textContent = item.caption', js)
+        self.assertIn('included.checked = item.included', js)
+        self.assertIn('included.addEventListener("change"', js)
+        self.assertIn('meta.textContent = "Take " + item.take_count_override', js)
+        self.assertNotIn('"生成対象" : "対象外"', js)
+        self.assertIn('function endDeleteMode()', js)
+        self.assertIn('selectedForDelete.clear()', js)
+        self.assertIn('"/items/bulk-delete"', js)
+        self.assertIn('window.confirm(ids.length', js)
         self.assertNotIn('control("削除"', js)
         self.assertNotIn('control("編集"', js)
         self.assertIn('id="open-add"', response.text)
@@ -264,7 +333,10 @@ class MobileBatchTests(unittest.TestCase):
         self.assertNotIn("edit-caption", parser.screens["view-list"])
         self.assertNotIn("default-takes", parser.screens["view-list"])
         self.assertIn("edit-caption", parser.screens["view-item"])
-        self.assertIn("item-included", parser.screens["view-item"])
+        self.assertNotIn("item-included", parser.screens["view-item"])
+        self.assertNotIn("delete-item", parser.screens["view-item"])
+        self.assertIn("toggle-delete", parser.screens["view-list"])
+        self.assertIn("delete-selected", parser.screens["view-list"])
         self.assertIn("new-captions", parser.screens["view-add"])
         self.assertIn("default-takes", parser.screens["view-session"])
         self.assertNotIn("web-token", parser.screens["view-list"])
