@@ -177,6 +177,7 @@
     selectedId = "";
     $("web-token").value = "";
     $("new-captions").value = "";
+    $("auth-status").textContent = "未接続";
     if (clearSessionId) remember("");
     showView("connect", true);
   }
