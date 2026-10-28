@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, StrictBool, StrictInt, StrictStr
@@ -40,7 +40,7 @@ class CountPayload(BaseModel):
 
 
 class OptionalCountPayload(BaseModel):
-    count: StrictInt | None
+    count: Optional[StrictInt]
 
 
 def _call(action: Callable):
