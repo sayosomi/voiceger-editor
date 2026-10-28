@@ -64,4 +64,4 @@ Python package: voiceger_editor
 
 Generated Voiceger:Zundamon audio is not covered by the MIT License of Voiceger Editor.
 
-The important generated-audio terms and license boundary are kept directly in the root [README](../../README.md).
+The important generated-audio terms and license boundary are kept directly in the English [README](../../README.en.md).
