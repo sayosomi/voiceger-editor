@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, StrictBool, StrictInt, StrictStr
@@ -21,6 +21,10 @@ from .web_sessions import (
 
 class CaptionsPayload(BaseModel):
     text: StrictStr = Field(max_length=32000)
+
+
+class DeleteSelectionPayload(BaseModel):
+    ids: List[StrictStr] = Field(min_items=1, max_items=200)
 
 
 class CaptionPayload(BaseModel):
@@ -69,6 +73,16 @@ def build_web_batch_router(service: WebSessionOperations) -> APIRouter:
         return _call(
             lambda: service.add_captions(session_id, expected_revision, payload.text)
         )
+
+    @router.post("/{session_id}/batch/items/bulk-delete",
+                 dependencies=[Depends(require_web_mutation)])
+    def delete_selected_captions(
+        session_id: str, payload: DeleteSelectionPayload,
+        expected_revision: int = Query(..., ge=0),
+    ):
+        return _call(lambda: service.remove_captions(
+            session_id, expected_revision, payload.ids
+        ))
 
     @router.patch("/{session_id}/batch/items/{item_id}/caption",
                   dependencies=[Depends(require_web_mutation)])
