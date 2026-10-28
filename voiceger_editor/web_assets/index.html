@@ -45,9 +45,10 @@
             <p class="section-kicker">BATCH</p>
             <h2 id="batch-title" tabindex="-1">Batch List</h2>
           </div>
-          <span id="batch-count" class="counter">0 Captions</span>
+          <div class="list-toolbar"><span id="batch-count" class="counter">0 Captions</span><button type="button" id="toggle-reorder" class="reorder-toggle" aria-pressed="false">並べ替え</button></div>
         </div>
-        <p class="help-text compact-note">Captionをタップすると詳細を編集できます。</p>
+        <p id="list-help" class="help-text compact-note">Captionをタップすると詳細を編集できます。</p>
+        <p id="reorder-help" class="help-text compact-note" hidden>右端のハンドルを押したまま移動し、移動先で離してください。キーボードではハンドルにフォーカスして上下キーでも移動できます。</p>
         <ol id="caption-list" class="caption-list" aria-label="Caption一覧"></ol>
         <div id="empty-state" class="empty-state">
           <p>Captionはまだありません。</p>
@@ -101,13 +102,6 @@
           <input id="item-takes" type="number" min="1" max="100" step="1" required hidden aria-label="個別Take数">
           <button type="submit">Take数を保存</button>
         </form>
-        <div class="setting-section">
-          <h3>並べ替え</h3>
-          <div class="button-row">
-            <button type="button" id="move-up">↑ 1つ上へ</button>
-            <button type="button" id="move-down">↓ 1つ下へ</button>
-          </div>
-        </div>
         <div class="item-navigation">
           <button type="button" id="previous-item">← 前のCaption</button>
           <button type="button" id="next-item">次のCaption →</button>
