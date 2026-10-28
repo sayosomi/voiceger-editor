@@ -102,6 +102,123 @@
     }
     return number;
   }
+  // Reordering happens in the list, never inside Batch Item. The server's
+  // existing versioned move endpoint remains the authoritative owner.
+  function clearDropMarker() {
+    $("caption-list").querySelectorAll(".drop-before, .drop-after").forEach(function (node) {
+      node.classList.remove("drop-before", "drop-after");
+    });
+  }
+  function cleanupDrag() {
+    if (!dragState) return;
+    var state = dragState;
+    dragState = null;
+    clearDropMarker();
+    state.row.classList.remove("drag-source");
+    if (state.ghost.parentNode) state.ghost.remove();
+    try {
+      if (state.handle.hasPointerCapture(state.pointerId)) {
+        state.handle.releasePointerCapture(state.pointerId);
+      }
+    } catch (_ignored) { /* Pointer capture may already be gone. */ }
+  }
+  function cancelDrag(event) {
+    if (!dragState || (event && event.pointerId !== dragState.pointerId)) return;
+    cleanupDrag();
+  }
+  function endReorderMode() {
+    cancelDrag();
+    reorderMode = false;
+    if (batch) renderList();
+  }
+  async function moveToIndex(itemId, index) {
+    if (!reorderMode || !batch || busy || dragState) return;
+    var from = batch.items.findIndex(function (item) { return item.id === itemId; });
+    if (from < 0 || index < 0 || index >= batch.items.length || index === from) return;
+    var ok = await mutate(
+      "PATCH", "/items/" + encodeURIComponent(itemId) + "/position",
+      { index: index }, "Captionの順序を変更しました。"
+    );
+    if (ok && reorderMode) {
+      var row = Array.from($("caption-list").children).find(function (node) {
+        return node.dataset.itemId === itemId;
+      });
+      if (row) row.querySelector(".reorder-handle").focus();
+    }
+  }
+  function moveByKeyboard(event, itemId, index) {
+    var destination = index;
+    if (event.key === "ArrowUp") destination--;
+    else if (event.key === "ArrowDown") destination++;
+    else if (event.key === "Home") destination = 0;
+    else if (event.key === "End" && batch) destination = batch.items.length - 1;
+    else return;
+    event.preventDefault();
+    moveToIndex(itemId, destination);
+  }
+  function positionGhost(event) {
+    if (!dragState) return;
+    var width = Math.min(280, Math.max(160, window.innerWidth - 48));
+    dragState.ghost.style.width = width + "px";
+    dragState.ghost.style.left = Math.max(8, Math.min(window.innerWidth - width - 8,
+      event.clientX - width / 2)) + "px";
+    dragState.ghost.style.top = Math.max(8, Math.min(window.innerHeight - 60,
+      event.clientY - 28)) + "px";
+  }
+  function beginDrag(event, item, index) {
+    if (!reorderMode || busy || dragState || !event.isPrimary ||
+        (event.pointerType === "mouse" && event.button !== 0)) return;
+    event.preventDefault();
+    var handle = event.currentTarget;
+    var row = handle.closest(".caption-card");
+    if (!row) return;
+    var ghost = document.createElement("div");
+    ghost.className = "reorder-ghost";
+    ghost.textContent = item.caption;
+    ghost.setAttribute("aria-hidden", "true");
+    document.body.append(ghost);
+    dragState = {
+      id: item.id, from: index, destination: index,
+      pointerId: event.pointerId, handle: handle, row: row, ghost: ghost
+    };
+    row.classList.add("drag-source");
+    positionGhost(event);
+    try { handle.setPointerCapture(event.pointerId); }
+    catch (_ignored) { cancelDrag(); }
+  }
+  function trackDrag(event) {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    positionGhost(event);
+    // Keep the list scrollable with normal gestures; only the grip blocks panning.
+    if (event.clientY < 88) window.scrollBy(0, -15);
+    else if (event.clientY > window.innerHeight - 88) window.scrollBy(0, 15);
+    var hit = document.elementFromPoint(event.clientX, event.clientY);
+    var target = hit ? hit.closest(".caption-card") : null;
+    if (!target || !target.hasAttribute("data-index")) return;
+    var targetIndex = Number(target.dataset.index);
+    clearDropMarker();
+    if (targetIndex === dragState.from) {
+      dragState.destination = dragState.from;
+      return;
+    }
+    var rectangle = target.getBoundingClientRect();
+    var before = event.clientY < rectangle.top + rectangle.height / 2;
+    var destination = dragState.from < targetIndex ?
+      targetIndex - (before ? 1 : 0) : targetIndex + (before ? 0 : 1);
+    dragState.destination = Math.max(0, Math.min(batch.items.length - 1, destination));
+    target.classList.add(before ? "drop-before" : "drop-after");
+  }
+  function dropDrag(event) {
+    if (!dragState || event.pointerId !== dragState.pointerId) return;
+    event.preventDefault();
+    var id = dragState.id;
+    var from = dragState.from;
+    var to = dragState.destination;
+    cleanupDrag();
+    if (to !== from) moveToIndex(id, to);
+  }
+
   function renderList() {
     if (!batch) return;
     $("batch-count").textContent = batch.items.length + " Captions";
@@ -277,6 +394,13 @@
       setBusy(false);
     }
     showView("list", true);
+  });
+  $("toggle-reorder").addEventListener("click", function () {
+    if (busy || !batch || dragState) return;
+    if (!reorderMode && batch.items.length < 2) return;
+    if (reorderMode) endReorderMode();
+    else { reorderMode = true; renderList(); }
+    feedback(reorderMode ? "右端のハンドルを上下へドラッグして並べ替えます。" : "");
   });
   $("open-add").addEventListener("click", function () { showView("add"); });
   $("add-back").addEventListener("click", function () { showView("list"); });
