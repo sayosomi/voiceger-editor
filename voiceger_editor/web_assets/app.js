@@ -10,6 +10,8 @@
   var currentView = "connect";
   var busy = false;
   var reorderMode = false;
+  var deleteMode = false;
+  var selectedForDelete = new Set();
   var dragState = null;
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
@@ -55,11 +57,12 @@
     if ((busy && !bypassDraftGuard) || viewNames.indexOf(name) === -1) return false;
     if (!bypassDraftGuard && name !== currentView && !guardDraft()) return false;
     if (name !== "list" && reorderMode) endReorderMode();
+    if (name !== "list" && deleteMode) endDeleteMode();
     currentView = name;
     viewNames.forEach(function (viewName) {
       $("view-" + viewName).hidden = viewName !== name;
     });
-    $("screen-name").textContent = screenTitles[name];
+
     $("header-session").hidden = !sessionId || name === "connect" || name === "session";
     feedback("");
     if (name === "item") renderItem(false);
