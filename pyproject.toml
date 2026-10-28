@@ -21,6 +21,10 @@ api = [
   "uvicorn==0.34.2",
   "soundfile==0.13.1",
 ]
+web = [
+  "fastapi==0.112.1",
+  "uvicorn==0.34.2",
+]
 tui = [
   "soundfile==0.13.1",
   "windows-curses==2.4.2; sys_platform == 'win32'",
@@ -42,3 +46,6 @@ include = ["voiceger_editor*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "voiceger_editor._version.__version__"}
+
+[tool.setuptools.package-data]
+voiceger_editor = ["web_assets/*.html", "web_assets/*.css", "web_assets/*.js"]
