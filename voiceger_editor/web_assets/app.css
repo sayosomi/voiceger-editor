@@ -251,3 +251,36 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .take-accept { padding: 8px; }
   .take-accepted { font-size: 11px; }
 }
+
+
+/* Slice 5: direct Japanese notation editor; no graphical pitch controls. */
+.item-pronunciation { padding: 12px 0; border-bottom: 1px solid #e0e8e2; }
+.item-pronunciation h3 { margin: 0; }
+.pronunciation-value {
+  margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere;
+  font-size: 15px; line-height: 1.7; color: #203b34;
+}
+.pronunciation-caption { font-size: 13px; color: #627a71; overflow-wrap: anywhere; }
+#pronunciation-form { margin-top: 20px; }
+#pronunciation-text { font-size: 17px; line-height: 1.7; }
+.pronunciation-assists { display: flex; gap: 6px; min-width: 0; }
+.pronunciation-assists button {
+  flex: 1 1 0; min-width: 0; min-height: 50px; padding: 6px 4px;
+  border: 1px solid #c8dbd1; border-radius: 11px;
+  background: #f1f7f3; color: #285e4f; font-size: 20px; font-weight: 750;
+}
+.pronunciation-assists [data-pronunciation-insert=" "] { flex: 1.5 1 0; font-size: 13px; }
+.pronunciation-actions { display: flex; gap: 10px; margin-top: 12px; }
+.pronunciation-actions button {
+  flex: 1; min-width: 0; min-height: 49px; border-radius: 12px; padding: 10px 12px;
+}
+#preview-pronunciation { border: 1px solid #c8dbd1; background: #eff6f2;
+  color: #285e4f; font-weight: 750; }
+.pronunciation-actions-secondary { display: flex; gap: 8px; justify-content: space-between; }
+.pronunciation-actions-secondary button { min-height: 44px; padding: 10px 13px;
+  border: 1px solid #d0ded4; border-radius: 10px; background: #fff; color: #285e4f; }
+#phone-player:not([hidden]) { display: block; margin: 10px 20px; width: calc(100% - 40px); }
+
+#pronunciation-operation-panel { margin: 16px 0 8px; }
+#cancel-pronunciation-audio { min-height: 44px; border: 1px solid #c8dbd1;
+  background: #f1f7f3; color: #285e4f; border-radius: 10px; padding: 9px 14px; }
