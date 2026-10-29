@@ -87,37 +87,55 @@
             <h2 id="item-title" tabindex="-1">Caption</h2>
           </div>
         </div>
-        <form id="edit-caption-form" class="field-stack">
+        <div id="caption-display" class="item-caption">
+          <div class="section-top item-caption-header">
+            <p id="caption-text" class="item-caption-text"></p>
+            <button type="button" id="open-caption-edit" class="item-link">編集</button>
+          </div>
+        </div>
+        <form id="edit-caption-form" class="field-stack item-inline-form" hidden>
           <label for="edit-caption">Caption</label>
           <textarea id="edit-caption" rows="4" maxlength="2000" required></textarea>
-          <button type="submit" class="primary-button">Captionを保存</button>
+          <div class="button-row">
+            <button type="submit" class="primary-button">保存</button>
+            <button type="button" id="cancel-caption-edit">キャンセル</button>
+          </div>
         </form>
-        <form id="item-takes-form" class="setting-section">
+        <div class="item-quick-actions">
+          <button type="button" id="preview-audio" hidden>▶ Preview</button>
+          <button type="button" id="edit-take-count" class="item-link">Take数</button>
+        </div>
+        <form id="item-takes-form" class="field-stack item-inline-form" hidden>
           <label for="item-takes-mode">Take数</label>
           <select id="item-takes-mode">
             <option value="default">標準Take数を使う</option>
             <option value="custom">個別に指定</option>
           </select>
           <input id="item-takes" type="number" min="1" max="100" step="1" required hidden aria-label="個別Take数">
-          <button type="submit">保存</button>
-        </form>
-        <section class="setting-section" aria-label="音声とTake">
           <div class="button-row">
-            <button type="button" id="prepare-audio">発音を準備</button>
-            <button type="button" id="preview-audio" hidden>Preview</button>
-            <button type="button" id="generate-audio" hidden>Takeを生成</button>
+            <button type="submit" class="primary-button">保存</button>
+            <button type="button" id="cancel-take-count">キャンセル</button>
           </div>
-          <p id="spoken-source" class="help-text" hidden></p>
-          <div id="operation-panel" class="operation-panel" hidden>
-            <p id="operation-progress" role="status" aria-live="polite"></p>
-            <button type="button" id="cancel-audio" hidden>キャンセル</button>
+        </form>
+        <div id="operation-panel" class="operation-panel" hidden>
+          <p id="operation-progress" role="status" aria-live="polite"></p>
+          <button type="button" id="cancel-audio" hidden>キャンセル</button>
+        </div>
+        <button type="button" id="prepare-retry" class="item-link" hidden>発音準備を再試行</button>
+        <section class="item-takes-section" aria-label="音声とTake">
+          <div class="item-takes-heading">
+            <h3>Takes</h3>
+            <span id="take-count-label" class="item-take-count"></span>
+            <button type="button" id="open-take-menu" class="item-menu-button" aria-label="Take全体の操作" aria-expanded="false" hidden>⋯</button>
           </div>
+          <div id="take-menu" class="item-take-menu" hidden>
+            <button type="button" id="regenerate-unaccepted" hidden>未採用Takeを再生成</button>
+            <button type="button" id="clear-takes" hidden>候補をクリア</button>
+            <button type="button" id="reprepare-audio">発音を再準備</button>
+          </div>
+          <button type="button" id="generate-audio" class="primary-button full-button" hidden>Takeを生成</button>
           <audio id="phone-player" controls preload="none" hidden aria-label="スマホで音声を再生"></audio>
           <ol id="take-list" class="take-list" aria-label="生成したTake"></ol>
-          <div class="button-row" id="take-actions" hidden>
-            <button type="button" id="regenerate-unaccepted">未採用Takeを再生成</button>
-            <button type="button" id="clear-takes">候補をクリア</button>
-          </div>
         </section>
         <div class="item-navigation">
           <button type="button" id="previous-item">← 前のCaption</button>

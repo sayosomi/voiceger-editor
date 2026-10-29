@@ -654,5 +654,69 @@ const scenarios = [
         self.assertNotIn('response.status === 409 ? "別の画面で変更されています', source)
 
 
+    def test_mobile_compact_take_ui_and_auto_prepare_contract(self):
+        html = self.client.get("/").text
+        js = self.client.get("/assets/app.js").text
+        css = self.client.get("/assets/app.css").text
+        for element in (
+            'id="caption-display"', 'id="open-caption-edit"',
+            'id="edit-caption-form"', 'id="cancel-caption-edit"',
+            'id="edit-take-count"', 'id="item-takes-form"',
+            'id="prepare-retry"', 'id="open-take-menu"',
+            'id="regenerate-unaccepted"', 'id="clear-takes"',
+            'id="reprepare-audio"', 'id="take-list"',
+        ):
+            with self.subTest(element=element):
+                self.assertIn(element, html)
+        self.assertIn('function maybePrepareOnOpen(item)', js)
+        self.assertIn('startAudio(item.id, "/audio/prepare", { rebuild: false }, true)', js)
+        self.assertIn('if (!item || item.is_prepared || autoPrepareFailures.has(item.id)) return;', js)
+        self.assertIn('autoPrepareFailures.add(itemId)', js)
+        self.assertIn('autoPrepareFailures.delete(itemId)', js)
+        self.assertNotIn('"発音準備済み"', js)
+        self.assertNotIn('id="prepare-audio"', html)
+        self.assertIn('className = "take-play"', js)
+        self.assertIn('className = "take-accepted"', js)
+        self.assertIn('className = "take-regenerate"', js)
+        self.assertIn('.take-regenerate', css)
+
+    def test_mobile_first_open_auto_prepare_is_idempotent_and_failure_gated(self):
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("Node is not installed; source contract remains covered")
+        path = (
+            Path(__file__).resolve().parents[1]
+            / "voiceger_editor" / "web_assets" / "app.js"
+        )
+        script = r"""
+const fs = require("fs");
+const source = fs.readFileSync(process.argv[1], "utf8");
+const start = source.indexOf("  function maybePrepareOnOpen(");
+const end = source.indexOf("  function renderItem(", start);
+if (start < 0 || end < start) throw new Error("auto prepare helper missing");
+const failures = new Set();
+const calls = [];
+const auto = new Function("autoPrepareFailures", "startAudio",
+  source.slice(start, end) + "; return maybePrepareOnOpen;")(
+    failures, (...args) => calls.push(args));
+auto({id:"one", is_prepared:true});
+if (calls.length !== 0) throw new Error("prepared item rebuilt");
+auto({id:"one", is_prepared:false});
+if (calls.length !== 1 || calls[0][1] !== "/audio/prepare" ||
+    calls[0][2].rebuild !== false || calls[0][3] !== true) {
+  throw new Error("first open did not prepare");
+}
+failures.add("one");
+auto({id:"one", is_prepared:false});
+if (calls.length !== 1) throw new Error("failure auto-retried");
+auto({id:"two", is_prepared:false});
+if (calls.length !== 2) throw new Error("new item not prepared");
+"""
+        completed = subprocess.run(
+            [node, "-e", script, str(path)],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
 if __name__ == "__main__":
     unittest.main()

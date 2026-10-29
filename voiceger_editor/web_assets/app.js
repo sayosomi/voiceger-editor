@@ -15,6 +15,10 @@
   var dragState = null;
   var audioOperation = null;
   var playingUrl = "";
+  var captionEditMode = false;
+  var takeCountEditMode = false;
+  var takeMenuOpen = false;
+  var autoPrepareFailures = new Set();
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
   var viewNames = ["connect", "list", "add", "item", "session"];
@@ -368,6 +372,11 @@
     });
     updateDeleteAction();
   }
+  // Only first-time preparation is automatic; failures require an explicit retry.
+  function maybePrepareOnOpen(item) {
+    if (!item || item.is_prepared || autoPrepareFailures.has(item.id)) return;
+    startAudio(item.id, "/audio/prepare", { rebuild: false }, true);
+  }
   function renderItem(keepCaptionDraft) {
     if (!batch || !selectedId) return;
     var index = batch.items.findIndex(function (entry) { return entry.id === selectedId; });
@@ -378,11 +387,17 @@
     }
     var item = batch.items[index];
     $("item-title").textContent = (index + 1) + " / " + batch.items.length;
+    $("caption-text").textContent = item.caption;
+    $("caption-display").hidden = captionEditMode;
+    $("edit-caption-form").hidden = !captionEditMode;
     if (!keepCaptionDraft) $("edit-caption").value = item.caption;
     $("item-takes-mode").value = item.take_count_override === null ? "default" : "custom";
     $("item-takes").value = String(item.take_count_override === null ?
       batch.default_take_count : item.take_count_override);
     $("item-takes").hidden = item.take_count_override === null;
+    $("item-takes-form").hidden = !takeCountEditMode;
+    $("edit-take-count").hidden = takeCountEditMode;
+    $("edit-take-count").textContent = "Take数 " + item.effective_take_count;
     setFixed("previous-item", index === 0);
     setFixed("next-item", index === batch.items.length - 1);
     renderTakes(item);
@@ -398,14 +413,22 @@
     if (selectedId !== id) {
       clearPlayer();
       $("operation-panel").hidden = true;
+      captionEditMode = false;
+      takeCountEditMode = false;
+      takeMenuOpen = false;
     }
     selectedId = id;
     renderItem(false);
     showView("item", true);
+    maybePrepareOnOpen(batch.items.find(function (item) { return item.id === id; }));
   }
   function resetLocal(clearSessionId) {
     clearPlayer();
     audioOperation = null;
+    autoPrepareFailures.clear();
+    captionEditMode = false;
+    takeCountEditMode = false;
+    takeMenuOpen = false;
     endDeleteMode();
     token = "";
     sessionId = "";
@@ -429,6 +452,8 @@
       var path = batchPath() + suffix + "?expected_revision=" +
         encodeURIComponent(batch.revision);
       batch = await request(method, path, payload);
+      if (options && options.saveCaption) captionEditMode = false;
+      if (options && options.saveCount) takeCountEditMode = false;
       renderList();
       if (selectedId) renderItem(!options || !options.saveCaption);
       feedback(success);
@@ -476,47 +501,71 @@
   function renderTakes(item) {
     var prepared = Boolean(item.is_prepared);
     var takes = item.takes || [];
-    $("prepare-audio").textContent = prepared ? "発音を再準備" : "発音を準備";
     $("preview-audio").hidden = !prepared;
     $("generate-audio").hidden = !prepared || takes.length !== 0;
-    $("spoken-source").hidden = !prepared;
-    if (prepared) {
-      var spoken = item.spoken_text || "";
-      $("spoken-source").textContent = spoken === item.caption ?
-        "発音準備済み" : "読み上げ: " + spoken;
-    }
-    $("take-actions").hidden = takes.length === 0;
+    $("generate-audio").textContent = item.effective_take_count + "本生成";
+    $("prepare-retry").hidden = prepared || !autoPrepareFailures.has(item.id);
+    $("take-count-label").textContent = takes.length ? takes.length + "本" : "";
+    $("open-take-menu").hidden = !prepared;
+    $("open-take-menu").setAttribute("aria-expanded", String(takeMenuOpen));
+    $("take-menu").hidden = !prepared || !takeMenuOpen;
+    $("regenerate-unaccepted").hidden = takes.length === 0;
+    $("clear-takes").hidden = takes.length === 0;
     var list = $("take-list");
     list.replaceChildren();
     takes.forEach(function (take) {
       var row = document.createElement("li");
       row.className = "take-card";
-      var heading = document.createElement("div");
-      heading.className = "take-head";
-      var name = document.createElement("strong");
-      name.textContent = "Take " + take.number;
-      var detail = document.createElement("span");
-      detail.textContent = take.accepted ? "採用済み" : take.duration_seconds + "秒";
-      heading.append(name, detail);
-      var actions = document.createElement("div");
-      actions.className = "button-row";
-      actions.append(
-        takeButton("再生", function () {
-          playAudio(itemAudioPath(item.id) + "/takes/" + take.number + "/audio", item.id);
-        }, false),
-        takeButton("採用", function () {
+      var play = takeButton("▶  Take " + take.number, function () {
+        playAudio(itemAudioPath(item.id) + "/takes/" + take.number + "/audio", item.id);
+      }, false);
+      play.className = "take-play";
+      play.setAttribute("aria-label", "Take " + take.number + "を再生");
+      var duration = document.createElement("span");
+      duration.className = "take-duration";
+      duration.textContent = take.duration_seconds + "秒";
+      row.append(play, duration);
+      if (take.accepted) {
+        var accepted = document.createElement("span");
+        accepted.className = "take-accepted";
+        accepted.textContent = "✓ 採用済み";
+        row.append(accepted);
+      } else {
+        var accept = takeButton("採用", function () {
           startAudio(item.id, "/takes/" + take.number + "/accept");
-        }, take.accepted),
-        takeButton("再生成", function () {
+        }, false);
+        accept.className = "take-accept";
+        row.append(accept);
+        var extra = document.createElement("div");
+        extra.className = "take-extra";
+        var more = takeButton("⋯", function () {
+          var expand = regenerate.hidden;
+          list.querySelectorAll(".take-regenerate").forEach(function (control) {
+            control.hidden = true;
+          });
+          list.querySelectorAll(".take-extra > button").forEach(function (control) {
+            control.setAttribute("aria-expanded", "false");
+          });
+          regenerate.hidden = !expand;
+          more.setAttribute("aria-expanded", String(expand));
+        }, false);
+        more.className = "take-more";
+        more.setAttribute("aria-label", "Take " + take.number + "の操作");
+        more.setAttribute("aria-expanded", "false");
+        var regenerate = takeButton("再生成", function () {
           startAudio(item.id, "/takes/" + take.number + "/regenerate");
-        }, take.accepted)
-      );
-      row.append(heading, actions);
+        }, false);
+        regenerate.className = "take-regenerate";
+        regenerate.hidden = true;
+        extra.append(more, regenerate);
+        row.append(extra);
+      }
       list.append(row);
     });
-    setFixed("prepare-audio", false);
+    setFixed("prepare-retry", prepared);
     setFixed("preview-audio", !prepared);
     setFixed("generate-audio", !prepared || takes.length !== 0);
+    setFixed("open-take-menu", !prepared);
     setFixed("regenerate-unaccepted", takes.length === 0);
     setFixed("clear-takes", takes.length === 0);
   }
@@ -547,7 +596,7 @@
   function displayAudioProgress(op) {
     $("operation-panel").hidden = false;
     var names = {
-      prepare: "発音を準備", preview: "Preview", generate: "Take生成",
+      prepare: "発音を解析中", preview: "Preview", generate: "Take生成",
       "regenerate-one": "Take再生成", "regenerate-all": "未採用Take再生成",
       accept: "Take採用"
     };
@@ -558,7 +607,7 @@
       op.status !== "running";
     $("cancel-audio").disabled = op.status !== "running";
   }
-  async function startAudio(itemId, suffix, payload) {
+  async function startAudio(itemId, suffix, payload, automaticPrepare) {
     if (busy || !batch || !selectedId || itemId !== selectedId) return;
     var item = batch.items.find(function (entry) { return entry.id === itemId; });
     if (!item) return;
@@ -567,6 +616,8 @@
       return;
     }
     clearPlayer();
+    takeMenuOpen = false;
+    $("take-menu").hidden = true;
     setBusy(true);
     try {
       var op = await request("POST", itemAudioPath(itemId) + suffix +
@@ -579,6 +630,10 @@
           encodeURIComponent(sessionId) + "/operations/" + encodeURIComponent(op.id));
         audioOperation = op;
         displayAudioProgress(op);
+      }
+      if (suffix === "/audio/prepare") {
+        if (op.status === "succeeded") autoPrepareFailures.delete(itemId);
+        else autoPrepareFailures.add(itemId);
       }
       await refresh();
       if (op.status === "succeeded") {
@@ -597,6 +652,7 @@
           encodeURIComponent(op.result.preview_id), itemId);
       }
     } catch (error) {
+      if (suffix === "/audio/prepare") autoPrepareFailures.add(itemId);
       if (error.conflictCode === "revision_conflict") {
         try { await refresh(); } catch (_ignored) { /* Preserve original error. */ }
       }
@@ -604,18 +660,29 @@
       feedback(error.message);
     } finally {
       audioOperation = null;
+      $("operation-panel").hidden = true;
       setBusy(false);
       if (batch && currentView === "item") renderItem(true);
     }
   }
-  $("prepare-audio").addEventListener("click", function () {
+  $("prepare-retry").addEventListener("click", function () {
+    if (!selectedId) return;
+    autoPrepareFailures.delete(selectedId);
+    startAudio(selectedId, "/audio/prepare", { rebuild: false });
+  });
+  $("reprepare-audio").addEventListener("click", function () {
     if (!batch || !selectedId) return;
     var item = batch.items.find(function (entry) { return entry.id === selectedId; });
-    if (!item) return;
-    if (item.is_prepared && !window.confirm(
+    if (!item || !item.is_prepared || !window.confirm(
       "発音を再準備すると、既存のTake候補と採用状態がクリアされます。保存済み音声は残ります。続けますか？"
     )) return;
-    startAudio(selectedId, "/audio/prepare", { rebuild: Boolean(item.is_prepared) });
+    startAudio(selectedId, "/audio/prepare", { rebuild: true });
+  });
+  $("open-take-menu").addEventListener("click", function () {
+    if (busy) return;
+    takeMenuOpen = !takeMenuOpen;
+    $("take-menu").hidden = !takeMenuOpen;
+    this.setAttribute("aria-expanded", String(takeMenuOpen));
   });
   $("preview-audio").addEventListener("click", function () {
     startAudio(selectedId, "/audio/preview");
@@ -631,6 +698,8 @@
       "Take候補と採用状態をクリアしますか？保存済み音声は削除されません。"
     )) return;
     clearPlayer();
+    takeMenuOpen = false;
+    $("take-menu").hidden = true;
     await mutate("DELETE", "/items/" + encodeURIComponent(selectedId) + "/takes",
       undefined, "候補をクリアしました。");
   });
@@ -728,11 +797,36 @@
       feedback("Captionを追加しました。");
     }
   });
+  $("open-caption-edit").addEventListener("click", function () {
+    if (busy) return;
+    captionEditMode = true;
+    $("edit-caption-form").hidden = false;
+    $("caption-display").hidden = true;
+    $("edit-caption").focus();
+  });
+  $("cancel-caption-edit").addEventListener("click", function () {
+    if (busy) return;
+    var item = batch && batch.items.find(function (entry) { return entry.id === selectedId; });
+    if (!item) return;
+    $("edit-caption").value = item.caption;
+    captionEditMode = false;
+    renderItem(false);
+  });
   $("edit-caption-form").addEventListener("submit", function (event) {
     event.preventDefault();
     if (!selectedId) return;
     mutate("PATCH", "/items/" + encodeURIComponent(selectedId) + "/caption",
       { caption: $("edit-caption").value }, "Captionを保存しました。", { saveCaption: true });
+  });
+  $("edit-take-count").addEventListener("click", function () {
+    if (busy) return;
+    takeCountEditMode = true;
+    renderItem(true);
+  });
+  $("cancel-take-count").addEventListener("click", function () {
+    if (busy) return;
+    takeCountEditMode = false;
+    renderItem(true);
   });
   $("item-takes-mode").addEventListener("change", function () {
     $("item-takes").hidden = this.value !== "custom";
@@ -744,7 +838,7 @@
       var count = $("item-takes-mode").value === "default" ? null :
         validCount($("item-takes").value);
       mutate("PATCH", "/items/" + encodeURIComponent(selectedId) + "/take-count",
-        { count: count }, "Take数を更新しました。");
+        { count: count }, "Take数を更新しました。", { saveCount: true });
     } catch (error) { feedback(error.message); }
   });
   function adjacent(delta) {
