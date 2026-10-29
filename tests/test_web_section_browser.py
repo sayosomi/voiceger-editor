@@ -69,7 +69,19 @@ assert(html.indexOf('id="add-section"') < html.indexOf('id="pronunciation-sectio
   assert.equal(dom.filter(n=>n.textContent==="編集").length,0,
                "Do not repeat Edit labels beside pronunciation");
   assert.equal(dom.filter(n=>n.className==="pronunciation-entry").length,3);
-  assert.equal(dom.filter(n=>n.className==="section-edit-indicator").length,3);
+  assert.equal(dom.filter(n=>n.className==="section-edit-indicator").length,0,
+               "Pencil markers must be absent");
+  const chevrons=dom.filter(n=>n.className==="section-header-chevron");
+  assert.equal(chevrons.length,3,"One subtle chevron per section header");
+  assert(chevrons.every(n=>n.textContent==="›" && n.attrs["aria-hidden"]==="true"));
+  for(const [i,button] of textButtons.entries()) {
+    assert.equal(button.children.length,3,"Entire header is one tap target");
+    assert.equal(button.children[0].tag,"strong");
+    assert.equal(button.children[0].textContent,item.pronunciation_sections[i].language.toUpperCase());
+    assert.equal(button.children[1].className,"section-source-text");
+    assert.equal(button.children[1].textContent,item.pronunciation_sections[i].text);
+    assert.equal(button.children[2].className,"section-header-chevron");
+  }
   textButtons[1].click();
   assert.deepEqual(selected,[1],"Tap text => direct text editor");
   dom.filter(n=>n.className==="pronunciation-entry")[1].click();
@@ -216,3 +228,19 @@ runAsyncTests().then(()=>console.log("WEB_SECTION_BROWSER_PASS"))
         )
         self.assertEqual(result.returncode, 0, result.stdout + "\n" + result.stderr)
         self.assertIn("WEB_SECTION_BROWSER_PASS", result.stdout)
+
+    def test_banded_header_keeps_wrapping_and_touch_targets(self):
+        css = (Path(__file__).resolve().parents[1] /
+               "voiceger_editor" / "web_assets" / "app.css").read_text(encoding="utf-8")
+        header = css.split(".pronunciation-source-button {", 1)[1].split("}", 1)[0]
+        card = css.split(".pronunciation-section {", 1)[1].split("}", 1)[0]
+        source = css.split(".pronunciation-source-button .section-source-text {", 1)[1].split("}", 1)[0]
+        entry = css.split(".pronunciation-entry {", 1)[1].split("}", 1)[0]
+        self.assertIn("width: 100%", header)
+        self.assertIn("min-height: 48px", header)
+        self.assertIn("background: #f1f6f3", header)
+        self.assertIn("overflow: hidden", card)
+        self.assertIn("overflow-wrap: anywhere", source)
+        self.assertIn("white-space: pre-wrap", source)
+        self.assertIn("min-height: 44px", entry)
+        self.assertNotIn(".section-edit-indicator", css)
