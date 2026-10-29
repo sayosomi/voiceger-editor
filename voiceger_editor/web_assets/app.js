@@ -519,8 +519,16 @@
           "日本語セクション", section.notation);
       } else if (section.language === "en" && section.groups) {
         section.groups.forEach(function (group) {
-          edit({ language: "en", segmentIndex: section.index, groupIndex: group.index },
-            group.label, group.label + "　" + group.display);
+          var notation = group.label + "　" + (group.display || "（音素なし）");
+          if (group.editable === false) {
+            var staticRow = document.createElement("div");
+            staticRow.className = "pronunciation-entry pronunciation-entry-static";
+            staticRow.textContent = notation;
+            panel.appendChild(staticRow);
+          } else {
+            edit({ language: "en", segmentIndex: section.index, groupIndex: group.index },
+              group.label, notation);
+          }
         });
       } else {
         var error = document.createElement("p");
