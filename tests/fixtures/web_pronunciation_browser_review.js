@@ -350,6 +350,7 @@ async function applyTests() {
       'function feedback(s){messages.push(s);}',
       'function setFixed(a,b){fixed.push([a,b]);}',
       'function itemAudioPath(){return "/items/i";} function cancelActiveAudio(){}',
+      'const document={querySelectorAll(){return [];}};',
       'async function refresh(){}',
       slice('  function pronunciationEndpoint(preview) {',
             '  async function applyPronunciation(event) {'),
