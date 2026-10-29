@@ -1331,6 +1331,11 @@
         index: found.index, opening: found.text };
     }
     if (!showView("section", true)) return false;
+    // A previously confirmed Caption draft discard must not block Preview
+    // or reappear when returning to Batch Item.
+    captionEditMode = false;
+    takeCountEditMode = false;
+    $("edit-caption").value = item.caption;
     sectionTarget = target;
     sectionOpening = add ? "" : target.opening;
     sectionItemId = item.id;
