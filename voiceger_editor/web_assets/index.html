@@ -101,6 +101,24 @@
           <input id="item-takes" type="number" min="1" max="100" step="1" required hidden aria-label="個別Take数">
           <button type="submit">保存</button>
         </form>
+        <section class="setting-section" aria-label="音声とTake">
+          <div class="button-row">
+            <button type="button" id="prepare-audio">発音を準備</button>
+            <button type="button" id="preview-audio" hidden>Preview</button>
+            <button type="button" id="generate-audio" hidden>Takeを生成</button>
+          </div>
+          <p id="spoken-source" class="help-text" hidden></p>
+          <div id="operation-panel" class="operation-panel" hidden>
+            <p id="operation-progress" role="status" aria-live="polite"></p>
+            <button type="button" id="cancel-audio" hidden>キャンセル</button>
+          </div>
+          <audio id="phone-player" controls preload="none" hidden aria-label="スマホで音声を再生"></audio>
+          <ol id="take-list" class="take-list" aria-label="生成したTake"></ol>
+          <div class="button-row" id="take-actions" hidden>
+            <button type="button" id="regenerate-unaccepted">未採用Takeを再生成</button>
+            <button type="button" id="clear-takes">候補をクリア</button>
+          </div>
+        </section>
         <div class="item-navigation">
           <button type="button" id="previous-item">← 前のCaption</button>
           <button type="button" id="next-item">次のCaption →</button>
@@ -135,7 +153,7 @@
           <button type="button" id="close-session" class="danger-button">セッションを終了・破棄</button>
         </div>
         <div class="setting-section">
-          <p class="help-text" aria-disabled="true">音声生成・発音編集・辞書は未実装です。</p>
+          <p class="help-text" aria-disabled="true">発音編集・辞書・各種設定は今後追加されます。</p>
         </div>
       </section>
     </main>
