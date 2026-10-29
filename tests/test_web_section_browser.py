@@ -151,7 +151,7 @@ assert(html.indexOf('id="add-section"') < html.indexOf('id="pronunciation-sectio
 }
 {
   let decisions=[false,true],requests=[],messages=[],destinations=[];
-  let response={batch:{revision:9,items:[]}};
+  let response={batch:{revision:9,items:[{id:"item",pronunciation_sections:[{index:null,language:"ja",text:"雨"}]}]}};
   const nodes={},$=id=>nodes[id] ||= node();
   const win={confirm(s){messages.push(s);return decisions.shift();}};
   const setup=[
