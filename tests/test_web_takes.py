@@ -736,6 +736,174 @@ if (!fn(make())) throw new Error("Cmd+Enter did not submit");
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
 
+    def test_browser_playback_states_and_stale_requests(self):
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("Node is not installed; interactive browser tests require Node")
+        path = (
+            Path(__file__).resolve().parents[1]
+            / "voiceger_editor" / "web_assets" / "app.js"
+        )
+        script = r"""const fs = require("fs");
+const source = fs.readFileSync(process.argv[1], "utf8");
+const begin = source.indexOf("  function clearPlayer() {");
+const end = source.indexOf("  function displayAudioProgress(op) {", begin);
+if (begin < 0 || end < begin) throw new Error("Playback code not found");
+const playbackSource = source.slice(begin, end);
+function assert(condition, message) { if (!condition) throw new Error(message); }
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((ok, no) => { resolve = ok; reject = no; });
+  return {promise, resolve, reject};
+}
+function setup() {
+  const events = {};
+  const calls = {pause:0, play:0, feedback:[], revoked:[], created:0};
+  const player = {
+    paused:true, ended:false, duration:10, currentTime:0, hidden:true, src:"",
+    playResult:null,
+    addEventListener(name, callback) {
+      (events[name] || (events[name] = [])).push(callback);
+    },
+    emit(name) { for (const callback of (events[name] || [])) callback(); },
+    pause() { calls.pause++; this.paused = true; this.emit("pause"); },
+    removeAttribute(key) { if (key === "src") this.src = ""; },
+    load() { this.ended = false; this.currentTime = 0; },
+    play() {
+      calls.play++;
+      if (this.playResult) return this.playResult();
+      this.paused = false;
+      this.emit("play");
+      this.emit("playing");
+      return Promise.resolve();
+    }
+  };
+  const row = {
+    dataset: {takeNumber:"1"}, labels:{}, children:{},
+    classList: {
+      values:new Set(),
+      toggle(name, active) {
+        if (active) this.values.add(name);
+        else this.values.delete(name);
+      },
+      contains(name) { return this.values.has(name); }
+    },
+    querySelector(selector) { return this.children[selector]; }
+  };
+  const icon = {textContent:""};
+  const button = {labels:{}, querySelector() { return icon; },
+    setAttribute(key,value) { this.labels[key] = value; }};
+  const indicator = {hidden:true, textContent:""};
+  const progress = {hidden:true, firstElementChild:{style:{width:""}}};
+  row.children = {
+    ".take-play":button, ".take-play-state":indicator, ".take-progress":progress
+  };
+  const preview = {textContent:"",labels:{},setAttribute(k,v){this.labels[k]=v;}};
+  const nodes = {
+    "phone-player":player, "preview-audio":preview,
+    "take-list":{querySelectorAll() {return [row];}}
+  };
+  let fetchResponse = async () => ({
+    ok:true, blob:async()=>({type:"audio/wav",size:32})
+  });
+  const objectUrl = {
+    createObjectURL() {return "blob:mock-" + ++calls.created;},
+    revokeObjectURL(url) {calls.revoked.push(url);}
+  };
+  const factory = new Function("$", "fetch", "URL", "setBusy", "feedback",
+    "token", "selectedId", "currentView", playbackSource +
+    ";return {clearPlayer,updatePlaybackUI,togglePlayback,playAudio," +
+    "getState:()=>playback,getUrl:()=>playingUrl,getRequest:()=>playbackRequestId};");
+  // Playback source relies on these variables as it does in the app closure.
+  const create = new Function("$","fetch","URL","feedback","setBusy",
+    "let playback = null; let playbackRequestId = 0; let playingUrl = '';" +
+    "let busy = false; const token='token'; const selectedId='item';" +
+    "const currentView='item';" + playbackSource +
+    ";return {clearPlayer,updatePlaybackUI,togglePlayback,playAudio," +
+    "getState:()=>playback,getUrl:()=>playingUrl};");
+  const app = create(key=>nodes[key], (...args)=>fetchResponse(...args),
+    objectUrl,msg=>calls.feedback.push(msg),_=>{});
+  return {app,player,row,indicator,button,preview,progress,calls,
+    setFetch(callback){fetchResponse=callback;}};
+}
+(async()=>{
+  const env = setup(), {app,player,row,indicator,button,calls}=env;
+  await app.playAudio("/one","item","take",1);
+  assert(app.getState().phase === "playing", "Take 1 did not play");
+  assert(row.classList.contains("is-playing"), "Take 1 missing playing highlight");
+  const originalUrl = app.getUrl();
+  // F-05: old audio must stop before the new network fetch completes.
+  const outstanding = deferred();
+  env.setFetch(()=>outstanding.promise);
+  const pending = app.playAudio("/two","item","take",2);
+  assert(player.paused, "old Take continues while replacement fetch pending");
+  assert(calls.revoked.includes(originalUrl), "old blob URL not released");
+  assert(!row.classList.contains("is-playing"), "old Take is still highlighted");
+  outstanding.resolve({ok:false,status:503});
+  await pending;
+  assert(app.getState() === null, "failed switch retained stale Take state");
+  assert(app.getUrl() === "", "failed switch retained blob URL");
+  assert(calls.feedback.some(s=>s.includes("取得できません")), "failure not reported");
+  // F-06: rejected play() is never represented as normal pause.
+  env.setFetch(async()=>({ok:true,blob:async()=>({type:"audio/wav",size:12})}));
+  player.playResult=()=>Promise.reject(new Error("autoplay blocked"));
+  await app.playAudio("/one","item","take",1);
+  assert(app.getState().phase==="failed", "play rejection not marked failed");
+  assert(indicator.textContent==="再生失敗", "play rejection shown as pause");
+  assert(!row.classList.contains("is-paused"), "play rejection has paused styling");
+  assert(player.hidden===false, "native media controls not shown after rejection");
+  assert(button.labels["aria-label"].includes("再取得"), "retry action inaccessible");
+  // A subsequent tap must be able to retry by fetching afresh.
+  player.playResult=null;
+  await app.playAudio("/one","item","take",1);
+  assert(app.getState().phase==="playing", "retry did not resume playback");
+  player.currentTime=4;player.emit("timeupdate");
+  assert(progress.firstElementChild.style.width==="40%", "progress is incorrect");
+  assert(app.togglePlayback("take","item",1), "pause tap not recognized");
+  assert(app.getState().phase==="paused", "pause event not reflected");
+  assert(indicator.textContent==="一時停止", "pause status missing");
+  assert(app.togglePlayback("take","item",1), "resume tap not recognized");
+  await Promise.resolve();
+  assert(app.getState().phase==="playing", "resume failed");
+  player.paused=true;player.ended=true;player.emit("ended");
+  assert(app.getState()===null, "ended retains active state");
+  // Media errors are distinct from pause even after playback started.
+  player.paused=false;player.ended=false;
+  await app.playAudio("/one","item","take",1);
+  player.emit("error");
+  assert(app.getState().phase==="failed", "media error was not represented");
+  assert(indicator.textContent==="再生失敗", "media error not shown");
+  // Late fetch completions must not revive a disposed player.
+  const late=deferred();
+  env.setFetch(()=>late.promise);
+  const pendingLate=app.playAudio("/one","item","take",1);
+  app.clearPlayer();
+  const createdBefore=calls.created;
+  late.resolve({ok:true,blob:async()=>({type:"audio/wav",size:16})});
+  await pendingLate;
+  assert(app.getState()===null, "late fetch revived disposed player");
+  assert(calls.created===createdBefore, "late fetch created blob URL");
+  // A late rejection from an abandoned play promise must not reinstate failure.
+  const rejected=deferred();
+  env.setFetch(async()=>({ok:true,blob:async()=>({type:"audio/wav",size:20})}));
+  player.playResult=()=>rejected.promise;
+  const pendingPlay=app.playAudio("/one","item","take",1);
+  await Promise.resolve();await Promise.resolve();await Promise.resolve();
+  app.clearPlayer();
+  const feedbackBefore=calls.feedback.length;
+  rejected.reject(new Error("stale"));
+  await pendingPlay;
+  assert(app.getState()===null, "stale play rejection revived state");
+  assert(calls.feedback.length===feedbackBefore, "stale play rejection reported as current");
+  console.log("BROWSER_PLAYBACK_STATE_TESTS_PASS");
+})().catch(error=>{console.error(error);process.exitCode=1;});"""
+        completed = subprocess.run(
+            [node, "-e", script, str(path)], capture_output=True,
+            text=True, timeout=15, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("BROWSER_PLAYBACK_STATE_TESTS_PASS", completed.stdout)
+
     def test_mobile_first_open_auto_prepare_is_idempotent_and_failure_gated(self):
         node = shutil.which("node")
         if node is None:

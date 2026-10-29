@@ -15,6 +15,7 @@
   var dragState = null;
   var audioOperation = null;
   var playingUrl = "";
+  var playbackRequestId = 0;
   var playback = null;
   var captionEditMode = false;
   var takeCountEditMode = false;
@@ -482,8 +483,10 @@
     return batchPath() + "/items/" + encodeURIComponent(id);
   }
   function clearPlayer() {
-    var player = $("phone-player");
+    // Invalidate outstanding fetches and play() promises before releasing audio.
+    playbackRequestId += 1;
     playback = null;
+    var player = $("phone-player");
     player.pause();
     player.removeAttribute("src");
     player.load();
@@ -495,44 +498,86 @@
   function updatePlaybackUI() {
     var player = $("phone-player");
     var active = playback && playback.itemId === selectedId && currentView === "item";
-    var isPlaying = Boolean(active && !player.paused && !player.ended);
+    var phase = active ? playback.phase : "";
+    var playing = phase === "playing" && !player.paused && !player.ended;
     var preview = Boolean(active && playback.kind === "preview");
+    var previewLabels = {
+      loading: "Preview取得中", starting: "Preview再生待ち",
+      ready: "▶ Preview再開", paused: "▶ Preview再開", failed: "▶ Preview再試行"
+    };
     $("preview-audio").textContent = preview ?
-      (isPlaying ? "⏸ Preview再生中" : "▶ Preview再開") : "▶ Preview";
+      (playing ? "⏸ Preview再生中" : (previewLabels[phase] || "▶ Preview")) : "▶ Preview";
     $("preview-audio").setAttribute("aria-label", preview ?
-      (isPlaying ? "Previewを一時停止" : "Previewを再開") : "Previewを生成して再生");
+      (playing ? "Previewを一時停止" : phase === "failed" ?
+        "Previewを再取得して再生" : "Previewを再開") : "Previewを生成して再生");
     $("take-list").querySelectorAll(".take-card").forEach(function (row) {
       var match = Boolean(active && playback.kind === "take" &&
         row.dataset.takeNumber === String(playback.takeNumber));
-      row.classList.toggle("is-playing", match && isPlaying);
-      row.classList.toggle("is-paused", match && !isPlaying);
+      var state = match ? phase : "";
+      var isPlaying = match && playing;
+      row.classList.toggle("is-playing", isPlaying);
+      row.classList.toggle("is-paused", match && state === "paused");
+      row.classList.toggle("is-loading", match &&
+        (state === "loading" || state === "starting" || state === "ready"));
+      row.classList.toggle("is-failed", match && state === "failed");
       var button = row.querySelector(".take-play");
-      button.querySelector(".take-play-icon").textContent = match && isPlaying ? "⏸" : "▶";
-      var state = row.querySelector(".take-play-state");
-      state.hidden = !match;
-      state.textContent = match ? (isPlaying ? "再生中" : "一時停止") : "";
-      button.setAttribute("aria-label", "Take " + row.dataset.takeNumber +
-        (match ? (isPlaying ? "を一時停止" : "を再開") : "を再生"));
+      button.querySelector(".take-play-icon").textContent = isPlaying ? "⏸" : "▶";
+      var indicator = row.querySelector(".take-play-state");
+      var states = {
+        loading: "取得中", starting: "再生待ち", ready: "再生待ち",
+        playing: "再生中", paused: "一時停止", failed: "再生失敗"
+      };
+      indicator.hidden = !match;
+      indicator.textContent = match ? states[state] || "" : "";
+      var action = isPlaying ? "を一時停止" :
+        state === "paused" ? "を再開" :
+        state === "failed" ? "を再取得して再生" :
+        state === "loading" || state === "starting" ? "を読み込み中" : "を再生";
+      button.setAttribute("aria-label", "Take " + row.dataset.takeNumber + action);
       var progress = row.querySelector(".take-progress");
-      progress.hidden = !match;
+      progress.hidden = !match || state === "loading" || state === "failed";
       var duration = player.duration;
       var fraction = match && Number.isFinite(duration) && duration > 0 ?
         Math.max(0, Math.min(1, player.currentTime / duration)) : 0;
       progress.firstElementChild.style.width = (fraction * 100) + "%";
     });
   }
+  async function beginPlayback(requestId) {
+    if (!playback || requestId !== playbackRequestId) return;
+    var player = $("phone-player");
+    playback.phase = "starting";
+    updatePlaybackUI();
+    try {
+      await player.play();
+      if (requestId !== playbackRequestId || !playback) return;
+      if (player.ended) playback = null;
+      else if (player.paused) playback.phase = playback.started ? "paused" : "ready";
+      else {
+        playback.started = true;
+        playback.phase = "playing";
+      }
+    } catch (_ignored) {
+      if (requestId !== playbackRequestId || !playback) return;
+      playback.phase = "failed";
+      player.hidden = false;
+      feedback("音声の再生を開始できませんでした。プレイヤーから再生するか、再試行してください。");
+    }
+    updatePlaybackUI();
+  }
   function togglePlayback(kind, itemId, takeNumber) {
     if (busy || !playback || !playingUrl || itemId !== selectedId ||
         playback.kind !== kind || playback.itemId !== itemId ||
-        (kind === "take" && playback.takeNumber !== takeNumber)) return false;
+        (kind === "take" && playback.takeNumber !== takeNumber) ||
+        playback.phase === "failed" || playback.phase === "loading" ||
+        playback.phase === "starting") return false;
     var player = $("phone-player");
     if (player.paused) {
-      player.play().catch(function () {
-        player.hidden = false;
-        feedback("音声プレイヤーの再生ボタンを押してください。");
-      });
+      // beginPlayback handles the rejected play() case and updates the row.
+      void beginPlayback(playbackRequestId);
     } else {
       player.pause();
+      if (playback) playback.phase = "paused";
+      updatePlaybackUI();
     }
     return true;
   }
@@ -646,6 +691,14 @@
   }
   async function playAudio(path, itemId, kind, takeNumber) {
     if (busy || !token || itemId !== selectedId) return;
+    // Stop the old Take immediately, even if the new fetch fails.
+    clearPlayer();
+    var requestId = playbackRequestId;
+    playback = {
+      kind: kind, itemId: itemId, takeNumber: takeNumber,
+      phase: "loading", started: false
+    };
+    updatePlaybackUI();
     setBusy(true);
     try {
       var response = await fetch(path, {
@@ -657,27 +710,41 @@
       if (bytes.type.indexOf("audio/") !== 0 || !bytes.size) {
         throw new Error("音声データが無効です。");
       }
-      if (selectedId !== itemId) return;
-      clearPlayer();
+      if (requestId !== playbackRequestId || selectedId !== itemId || !token) return;
       playingUrl = URL.createObjectURL(bytes);
-      playback = { kind: kind, itemId: itemId, takeNumber: takeNumber };
       var player = $("phone-player");
       player.src = playingUrl;
-      updatePlaybackUI();
-      try { await player.play(); }
-      catch (_ignored) {
-        player.hidden = false;
-        feedback("音声プレイヤーの再生ボタンを押してください。");
+      await beginPlayback(requestId);
+    } catch (error) {
+      if (requestId === playbackRequestId) {
+        clearPlayer();
+        feedback(error.message);
       }
-    } catch (error) { feedback(error.message); }
-    finally { setBusy(false); }
+    } finally { setBusy(false); }
   }
   $("phone-player").addEventListener("play", updatePlaybackUI);
-  $("phone-player").addEventListener("pause", updatePlaybackUI);
+  $("phone-player").addEventListener("playing", function () {
+    if (playback) {
+      playback.started = true;
+      playback.phase = "playing";
+    }
+    updatePlaybackUI();
+  });
+  $("phone-player").addEventListener("pause", function () {
+    if (playback && playback.phase === "playing") playback.phase = "paused";
+    updatePlaybackUI();
+  });
   $("phone-player").addEventListener("timeupdate", updatePlaybackUI);
   $("phone-player").addEventListener("loadedmetadata", updatePlaybackUI);
   $("phone-player").addEventListener("ended", function () {
     playback = null;
+    updatePlaybackUI();
+  });
+  $("phone-player").addEventListener("error", function () {
+    if (!playback) return;
+    playback.phase = "failed";
+    $("phone-player").hidden = false;
+    feedback("音声を再生できませんでした。再試行してください。");
     updatePlaybackUI();
   });
   function displayAudioProgress(op) {

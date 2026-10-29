@@ -231,6 +231,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .take-card { position: relative; }
 .take-card.is-playing { border-color: #288765; border-width: 2px; background: #eaf5ee; padding-bottom: 14px; }
 .take-card.is-paused { border-color: #6b9680; background: #f0f7f3; padding-bottom: 14px; }
+.take-card.is-loading { border-color: #9eb9ac; background: #f6f9f6; }
+.take-card.is-failed { border-color: #bb7c70; background: #fff6f3; }
 .take-play { display: flex; gap: 8px; align-items: center; }
 .take-play-icon { width: 22px; flex: none; font-size: 15px; }
 .take-play-state { font-size: 11px; font-weight: 750; color: #196748; white-space: nowrap; }
