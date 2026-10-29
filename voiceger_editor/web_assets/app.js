@@ -60,6 +60,7 @@
     if (!bypassDraftGuard && name !== currentView && !guardDraft()) return false;
     if (name !== "list" && reorderMode) endReorderMode();
     if (name !== "list" && deleteMode) endDeleteMode();
+    if (currentView === "item" && name !== "item") clearPlayer();
     currentView = name;
     viewNames.forEach(function (viewName) {
       $("view-" + viewName).hidden = viewName !== name;
@@ -374,6 +375,7 @@
   function openItem(id) {
     if (busy || !batch) return;
     if (!guardDraft()) return;
+    if (selectedId !== id) clearPlayer();
     selectedId = id;
     renderItem(false);
     showView("item", true);
@@ -443,6 +445,7 @@
     var button = document.createElement("button");
     button.type = "button";
     button.textContent = text;
+    button.dataset.fixedDisabled = disabled ? "true" : "false";
     button.disabled = busy || disabled;
     button.addEventListener("click", action);
     return button;
