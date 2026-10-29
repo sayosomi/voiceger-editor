@@ -106,6 +106,34 @@ class WebSectionsTests(unittest.TestCase):
             time.sleep(.005)
         self.fail("Web worker timed out")
 
+    def test_japanese_text_preview_is_noncommitting_and_isolated(self):
+        original = deepcopy(self.fake.query.model_dump())
+        payload = {"language": "ja", "index": 0, "opening": "雨", "text": "水"}
+        with patch("voiceger_editor.query_editing.text_to_pronunciation",
+                   return_value=parse_pronunciation("ミ'ズ！")):
+            op = self.finish(self.request("POST", "/sections/text/preview", payload))
+        self.assertEqual(op["status"], "succeeded")
+        preview = self.fake.preview_queries[-1]
+        self.assertIsNone(preview.voicegerSegments)
+        self.assertEqual(len(preview.accent_phrases), 1)
+        self.assertEqual(self.fake.query.model_dump(), original)
+        self.assertEqual(self.fake.caption, "字幕の文章")
+        self.assertFalse(self.output.exists())
+
+    def test_english_noop_is_independent_of_new_g2p(self):
+        self.batch()  # Cache current canonical English group boundaries.
+        current = self.batch()
+        def fail(_text):
+            raise ValueError("G2P unexpectedly offline")
+        self.service._english_group_provider = fail
+        response = self.request("PATCH", "/sections/text", {
+            "language": "en", "index": 1,
+            "opening": "very sweet!", "text": "very sweet!",
+        })
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertFalse(response.json()["changed"])
+        self.assertEqual(self.batch(), current)
+
     def test_english_text_preview_and_apply_retain_manual_word_edits(self):
         change_stress = self.request(
             "PATCH", "/pronunciation/english/1/0",
