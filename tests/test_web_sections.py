@@ -18,6 +18,17 @@ from voiceger_editor.web import create_web_app
 from voiceger_editor.web_sessions import WebSessionOperations
 
 
+class SectionFake(MixedFake):
+    @property
+    def pure_japanese_utterance_text(self):
+        return self._spoken_text if self._query.voicegerSegments is None else None
+
+    def replace_query(self, query, *, pure_japanese_utterance_text=None):
+        super().replace_query(query)
+        if query.voicegerSegments is None and pure_japanese_utterance_text is not None:
+            self._spoken_text = pure_japanese_utterance_text
+
+
 class WebSectionsTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -26,7 +37,7 @@ class WebSectionsTests(unittest.TestCase):
         self.fake = None
 
         def factory(caption):
-            self.fake = MixedFake(caption, self.output)
+            self.fake = SectionFake(caption, self.output)
             return self.fake
 
         def provider(text):
