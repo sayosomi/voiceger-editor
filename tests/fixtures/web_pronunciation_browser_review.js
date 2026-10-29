@@ -117,7 +117,7 @@ function historyHarness() {
   };
   const setup=[
     'let currentView="pronunciation",pronunciationOpening="ア\'メ";',
-    'let pronunciationHistoryActive=true,pronunciationExitPending=null;',
+    'let pronunciationHistoryActive=true,pronunciationExitPending=null; let sectionHistoryActive=false,sectionExitPending=null;',
     'let pronunciationReturnView="item",pronunciationTarget=null;',
     'let pronunciationItemId="i",pronunciationStale=false;',
     'let busy=false, selectedId="i",batch={items:[{id:"i",caption:"雨"}]};',
@@ -203,7 +203,7 @@ async function asyncHistoryTests() {
   };
   const setup=[
     'let currentView="item",pronunciationOpening=null,pronunciationItemId="";',
-    'let pronunciationHistoryActive=false,pronunciationExitPending=null;',
+    'let pronunciationHistoryActive=false,pronunciationExitPending=null; let sectionHistoryActive=false,sectionExitPending=null;',
     'let pronunciationReturnView="item",pronunciationStale=false,pronunciationTarget=null;',
     'let busy=false, selectedId="i",sessionId="s",token="t";',
     'let captionEditMode=false,takeCountEditMode=false,reorderMode=false,deleteMode=false;',
@@ -343,7 +343,7 @@ async function applyTests() {
     const code=[
       'let busy=false,pronunciationStale=false;',
       'let pronunciationItemId="i",selectedId="i",pronunciationOpening="ア\'メ。";',
-      'let pronunciationHistoryActive=false,pronunciationExitPending=null;',
+      'let pronunciationHistoryActive=false,pronunciationExitPending=null; let sectionHistoryActive=false,sectionExitPending=null;',
       'let batch={revision:7,items:[{id:"i",candidate_count:4}]};',
       'function setBusy(v){busy=v;}',
       'function clearPlayer(){} function renderList(){} function showView(){}',
