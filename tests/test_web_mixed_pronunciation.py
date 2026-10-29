@@ -246,6 +246,31 @@ class MixedPronunciationWebTests(unittest.TestCase):
         self.assertEqual(self.fake.query.model_dump(), new_base)
         self.assertNotEqual(before, new_base)
 
+    def test_uneditable_source_punctuation_is_never_hidden(self):
+        # Hyphen is canonical Voiceger ARPAbet punctuation, but is not one
+        # of the five user-editable punctuation choices in Slice 6a.
+        self.fake._query = AudioQuery(
+            accent_phrases=[], kana=None,
+            voicegerSegments=[VoicegerSegment(
+                language="en", text="hi-world",
+                phonemes=["HH", "AY1", "-", "W", "ER1", "L", "D"],
+            )],
+        )
+        self.service._english_group_provider = lambda _text: (
+            ("hi", ("HH", "AY1")), ("-", ("-",)),
+            ("world", ("W", "ER1", "L", "D")),
+        )
+        groups = self.batch()["items"][0]["pronunciation_sections"][0]["groups"]
+        self.assertEqual([entry["index"] for entry in groups], [0, 1, 2])
+        self.assertEqual(groups[1]["notation"], "-")
+        self.assertFalse(groups[1]["editable"])
+        self.assertTrue(groups[0]["editable"])
+        self.assertTrue(groups[2]["editable"])
+        self.assertEqual(self.action(
+            "PATCH", "/pronunciation/english/0/1",
+            self.english_payload("-", "."),
+        ).status_code, 422)
+
     def test_english_only_and_grouping_mismatch_not_silent(self):
         self.fake._query = AudioQuery(
             accent_phrases=[], kana=None,
