@@ -80,11 +80,9 @@ assert.equal((html.match(/id="add-section"/g)||[]).length,1);
 {
   const nodes={},$=id=>nodes[id] ||= node();
   const pushes=[];
-  let currentView="item",sectionTarget=null,sectionOpening=null,
-      sectionItemId="",sectionStale=false,sectionHistoryActive=false;
   const win={history:{pushState(s){pushes.push(s);}}};
   const code=[
-    'let busy=false;',
+    'let busy=false,currentView="item",sectionTarget=null,sectionOpening=null,sectionItemId="",sectionStale=false,sectionHistoryActive=false;',
     'function showView(v){currentView=v;return true;}',
     'function sectionHistoryState(){return {id:sectionItemId};}',
     'function setFixed(){}',
@@ -110,11 +108,10 @@ assert.equal((html.match(/id="add-section"/g)||[]).length,1);
 }
 {
   const $=id=>({value:id==="section-text"?"draft":"ja"});
-  let currentView="section",sectionOpening="original",
-      sectionTarget={mode:"edit",language:"ja"},decisions=[false,true];
+  let decisions=[false,true];
   const win={confirm(){return decisions.shift();}};
   const code=[
-    'let batch=null,selectedId="";',
+    'let batch=null,selectedId="",currentView="section",sectionOpening="original",sectionTarget={mode:"edit",language:"ja"};',
     'function pronunciationDirty(){return false;}',
     cut('  function sectionDirty() {','  function showView(name, bypassDraftGuard) {'),
     'return {guardDraft,sectionDirty};'
