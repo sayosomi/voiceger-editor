@@ -501,15 +501,20 @@
     var phase = active ? playback.phase : "";
     var playing = phase === "playing" && !player.paused && !player.ended;
     var preview = Boolean(active && playback.kind === "preview");
+    // Visible and accessible labels share the same playback-phase definition.
     var previewLabels = {
-      loading: "Preview取得中", starting: "Preview再生待ち",
-      ready: "▶ Preview再開", paused: "▶ Preview再開", failed: "▶ Preview再試行"
+      loading: ["Preview取得中", "Preview音声を取得中"],
+      starting: ["Preview再生待ち", "Previewの再生開始待ち"],
+      ready: ["▶ Preview再生", "Previewを再生"],
+      playing: ["⏸ Preview再生中", "Previewを一時停止"],
+      paused: ["▶ Preview再開", "Previewを再開"],
+      failed: ["▶ Preview再試行", "Previewを再取得して再生"]
     };
-    $("preview-audio").textContent = preview ?
-      (playing ? "⏸ Preview再生中" : (previewLabels[phase] || "▶ Preview")) : "▶ Preview";
-    $("preview-audio").setAttribute("aria-label", preview ?
-      (playing ? "Previewを一時停止" : phase === "failed" ?
-        "Previewを再取得して再生" : "Previewを再開") : "Previewを生成して再生");
+    var previewLabel = preview ?
+      (previewLabels[playing ? "playing" : phase] || ["▶ Preview", "Previewを生成して再生"]) :
+      ["▶ Preview", "Previewを生成して再生"];
+    $("preview-audio").textContent = previewLabel[0];
+    $("preview-audio").setAttribute("aria-label", previewLabel[1]);
     $("take-list").querySelectorAll(".take-card").forEach(function (row) {
       var match = Boolean(active && playback.kind === "take" &&
         row.dataset.takeNumber === String(playback.takeNumber));
