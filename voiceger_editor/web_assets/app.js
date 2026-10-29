@@ -1335,14 +1335,14 @@
     sectionOpening = add ? "" : target.opening;
     sectionItemId = item.id;
     sectionStale = false;
-    $("section-title").textContent = add ? "セクションを追加" : "読み上げ文を変更";
-    $("section-context").textContent = add ? "新しいセクションを末尾に追加" :
-      target.language.toUpperCase() + " セクション";
+    $("section-title").textContent = add ? "セクションを追加" : "読み上げ文";
     $("section-language-field").hidden = !add;
     setSectionLanguage(target.language);
     $("section-text").value = sectionOpening;
     $("preview-section").hidden = add;
-    $("reset-section").hidden = add;
+    $("delete-section").hidden = add || target.index === null ||
+      (item.pronunciation_sections || []).length <= 1;
+    $("reset-section").hidden = true;
     $("apply-section").textContent = add ? "追加" : "反映";
     setFixed("apply-section", false);
     $("section-text").focus({ preventScroll: true });
@@ -1356,27 +1356,43 @@
     }
     return true;
   }
-  function deleteSection(item, section) {
-    if (busy || !batch || !item || !guardDraft() ||
-        (item.pronunciation_sections || []).length < 2 || section.index === null) return;
-    if (!window.confirm("次のセクション全体を削除しますか？\n\n" + section.text +
-        "\n\nTake候補と採用状態はクリアされます。Captionや保存済み音声は変更されません。")) return;
+  async function deleteSectionFromEditor() {
+    if (busy || sectionStale || !batch || !sectionTarget ||
+        sectionTarget.mode !== "edit" || sectionItemId !== selectedId) return;
+    var item = batch.items.find(function (row) { return row.id === sectionItemId; });
+    var target = sectionTarget;
+    var sections = item && item.pronunciation_sections || [];
+    if (sections.length <= 1 || target.index === null ||
+        !sections.some(function (section) {
+          return section.index === target.index &&
+            section.language === target.language && section.text === target.opening;
+        })) return;
+    if (!window.confirm("このセクションを削除しますか？\n\n" + target.opening +
+        "\n\nTake候補と採用状態はクリアされます。Captionと保存済み音声は残ります。")) return;
     setBusy(true);
-    request("POST", itemAudioPath(item.id) + "/sections/delete?expected_revision=" +
-      batch.revision, { language: section.language, index: section.index,
-        opening: section.text }).then(function (response) {
+    try {
+      var response = await request(
+        "POST", itemAudioPath(item.id) + "/sections/delete?expected_revision=" + batch.revision,
+        { language: target.language, index: target.index, opening: target.opening });
       clearPlayer();
       batch = response.batch;
       renderList();
-      renderItem(false);
-      feedback("セクションを削除しました。");
-    }).catch(async function (error) {
+      var message = "セクションを削除しました。";
+      if (sectionHistoryActive) sectionExitPending = { destination: "item", message: message };
+      showView("item", true);
+      if (!sectionHistoryActive) feedback(message);
+    } catch (error) {
       if (error.conflictCode === "revision_conflict") {
-        try { await refresh(); } catch (_ignored) {}
+        sectionStale = true;
+        setFixed("apply-section", true);
+        setFixed("delete-section", true);
+        try { await refresh(); } catch (_ignored) { /* Preserve original error. */ }
       }
       if (error.code === 401 || error.code === 404) resetLocal(error.code === 404);
       feedback(error.message);
-    }).finally(function () { setBusy(false); });
+    } finally {
+      setBusy(false);
+    }
   }
   $("add-section").addEventListener("click", function () {
     if (busy || !batch || !selectedId || !guardDraft()) return;
@@ -1390,14 +1406,20 @@
     });
   });
   $("section-back").addEventListener("click", function () { showView("item"); });
-  $("cancel-section").addEventListener("click", function () { showView("item"); });
+  $("delete-section").addEventListener("click", deleteSectionFromEditor);
+  function updateSectionReset() {
+    $("reset-section").hidden = !sectionTarget || sectionTarget.mode !== "edit" ||
+      $("section-text").value === sectionOpening;
+  }
   $("reset-section").addEventListener("click", function () {
     if (busy || sectionStale) return;
     $("section-text").value = sectionOpening || "";
+    updateSectionReset();
     $("section-text").focus({ preventScroll: true });
     if (playback && playback.kind === "preview") clearPlayer();
   });
   $("section-text").addEventListener("input", function () {
+    updateSectionReset();
     if (playback && playback.kind === "preview") clearPlayer();
   });
   $("preview-section").addEventListener("click", function () {
