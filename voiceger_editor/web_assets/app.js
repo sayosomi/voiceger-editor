@@ -491,6 +491,12 @@
     player.removeAttribute("src");
     player.load();
     player.hidden = true;
+    // A fresh media element prevents old-source events from reaching new playback.
+    var fresh = player.cloneNode(false);
+    fresh.removeAttribute("src");
+    fresh.hidden = true;
+    player.replaceWith(fresh);
+    bindPlayerEvents(fresh, playbackRequestId);
     if (playingUrl) URL.revokeObjectURL(playingUrl);
     playingUrl = "";
     updatePlaybackUI();
@@ -707,15 +713,15 @@
   }
   async function playAudio(path, itemId, kind, takeNumber) {
     if (busy || !token || itemId !== selectedId) return;
-    // Stop the old Take immediately, even if the new fetch fails.
     clearPlayer();
     var requestId = playbackRequestId;
     playback = {
       kind: kind, itemId: itemId, takeNumber: takeNumber,
       phase: "loading", started: false
     };
-    updatePlaybackUI();
     setBusy(true);
+    updatePlaybackUI();
+    var ready = false;
     try {
       var response = await fetch(path, {
         headers: { Authorization: "Bearer " + token },
@@ -728,45 +734,64 @@
       }
       if (requestId !== playbackRequestId || selectedId !== itemId || !token) return;
       playingUrl = URL.createObjectURL(bytes);
-      var player = $("phone-player");
-      player.src = playingUrl;
-      await beginPlayback(requestId);
+      $("phone-player").src = playingUrl;
+      ready = true;
     } catch (error) {
       if (requestId === playbackRequestId) {
         clearPlayer();
         feedback(error.message);
       }
-    } finally { setBusy(false); }
-  }
-  $("phone-player").addEventListener("play", updatePlaybackUI);
-  $("phone-player").addEventListener("playing", function () {
-    var player = $("phone-player");
-    // A delayed event from the previous source must not revive a loading Take.
-    if (playback && playingUrl && player.src === playingUrl &&
-        !player.paused && !player.ended && playback.phase !== "loading") {
-      playback.started = true;
-      playback.phase = "playing";
+    } finally {
+      // Fetch is globally exclusive, but play() may remain pending indefinitely.
+      setBusy(false);
+      updatePlaybackUI();
     }
-    updatePlaybackUI();
-  });
-  $("phone-player").addEventListener("pause", function () {
-    if (playback && $("phone-player").paused && playback.phase === "playing")
-      playback.phase = "paused";
-    updatePlaybackUI();
-  });
-  $("phone-player").addEventListener("timeupdate", updatePlaybackUI);
-  $("phone-player").addEventListener("loadedmetadata", updatePlaybackUI);
-  $("phone-player").addEventListener("ended", function () {
-    if (playback && playingUrl && $("phone-player").ended) playback = null;
-    updatePlaybackUI();
-  });
-  $("phone-player").addEventListener("error", function () {
-    if (!playback || !playingUrl) return;
-    playback.phase = "failed";
-    $("phone-player").hidden = false;
-    feedback("音声を再生できませんでした。再試行してください。");
-    updatePlaybackUI();
-  });
+    if (ready && requestId === playbackRequestId && playback) {
+      void beginPlayback(requestId);
+    }
+  }
+  function bindPlayerEvents(player, requestId) {
+    function current() {
+      return player === $("phone-player") && requestId === playbackRequestId;
+    }
+    player.addEventListener("play", function () {
+      if (current()) updatePlaybackUI();
+    });
+    player.addEventListener("playing", function () {
+      if (!current()) return;
+      if (playback && playingUrl && player.src === playingUrl &&
+          !player.paused && !player.ended && playback.phase !== "loading") {
+        playback.started = true;
+        playback.phase = "playing";
+      }
+      updatePlaybackUI();
+    });
+    player.addEventListener("pause", function () {
+      if (!current()) return;
+      if (playback && player.paused && playback.phase === "playing")
+        playback.phase = "paused";
+      updatePlaybackUI();
+    });
+    player.addEventListener("timeupdate", function () {
+      if (current()) updatePlaybackUI();
+    });
+    player.addEventListener("loadedmetadata", function () {
+      if (current()) updatePlaybackUI();
+    });
+    player.addEventListener("ended", function () {
+      if (!current()) return;
+      if (playback && playingUrl && player.ended) playback = null;
+      updatePlaybackUI();
+    });
+    player.addEventListener("error", function () {
+      if (!current() || !playback || !playingUrl) return;
+      playback.phase = "failed";
+      player.hidden = false;
+      feedback("音声を再生できませんでした。再試行してください。");
+      updatePlaybackUI();
+    });
+  }
+  bindPlayerEvents($("phone-player"), playbackRequestId);
   function displayAudioProgress(op) {
     $("operation-panel").hidden = false;
     var names = {
