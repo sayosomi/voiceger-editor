@@ -1379,7 +1379,7 @@
     if (busy || !batch || !item || !guardDraft() ||
         (item.pronunciation_sections || []).length < 2 || section.index === null) return;
     if (!window.confirm("次のセクション全体を削除しますか？\n\n" + section.text +
-        "\n\nCaptionや保存済み音声は変更されません。")) return;
+        "\n\nTake候補と採用状態はクリアされます。Captionや保存済み音声は変更されません。")) return;
     setBusy(true);
     request("POST", itemAudioPath(item.id) + "/sections/delete?expected_revision=" +
       batch.revision, { language: section.language, index: section.index,
