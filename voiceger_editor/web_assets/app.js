@@ -20,13 +20,18 @@
   var captionEditMode = false;
   var takeCountEditMode = false;
   var takeMenuOpen = false;
+  var pronunciationOpening = null;
+  var pronunciationItemId = "";
+  var pronunciationStale = false;
+  var pronunciationComposing = false;
+  var pronunciationSelection = { start: 0, end: 0 };
   var autoPrepareFailures = new Set();
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
-  var viewNames = ["connect", "list", "add", "item", "session"];
+  var viewNames = ["connect", "list", "add", "item", "pronunciation", "session"];
   var screenTitles = {
     connect: "接続", list: "Batch List", add: "Caption追加",
-    item: "Batch Item", session: "接続・設定"
+    item: "Batch Item", pronunciation: "発音編集", session: "接続・設定"
   };
 
   function savedSession() {
@@ -59,6 +64,10 @@
         return window.confirm("未保存のCaption変更を破棄して移動しますか？");
       }
     }
+    if (currentView === "pronunciation" && pronunciationOpening !== null &&
+        $("pronunciation-text").value !== pronunciationOpening) {
+      return window.confirm("未反映の発音変更を破棄して移動しますか？");
+    }
     return true;
   }
   function showView(name, bypassDraftGuard) {
@@ -66,7 +75,13 @@
     if (!bypassDraftGuard && name !== currentView && !guardDraft()) return false;
     if (name !== "list" && reorderMode) endReorderMode();
     if (name !== "list" && deleteMode) endDeleteMode();
-    if (currentView === "item" && name !== "item") clearPlayer();
+    if ((currentView === "item" && name !== "item") ||
+        (currentView === "pronunciation" && name !== "pronunciation")) clearPlayer();
+    if (currentView === "pronunciation" && name !== "pronunciation") {
+      pronunciationOpening = null;
+      pronunciationItemId = "";
+      pronunciationStale = false;
+    }
     currentView = name;
     viewNames.forEach(function (viewName) {
       $("view-" + viewName).hidden = viewName !== name;
@@ -92,7 +107,7 @@
     });
     if (!response.ok) {
       var conflictCode = "";
-      if (response.status === 409) {
+      if (response.status === 409 || response.status === 422) {
         try {
           var problem = await response.json();
           if (problem && problem.detail && typeof problem.detail.code === "string") {
@@ -109,13 +124,18 @@
         already_accepted: "このTakeはすでに採用済みです。",
         conflict: "この操作は現在実行できません。状態を確認してください。"
       };
+      var invalidPronunciation = {
+        invalid_pronunciation: "発音形式が正しくありません。各アクセント句に ' または正しい [ ] を指定し、句の区切りには空白を使ってください。",
+        unsupported_pronunciation: "日本語以外・日英混在の発音編集は次のSliceで対応します。"
+      };
       var error = new Error(
         response.status === 401 ? "認証できません。トークンを確認してください。" :
         response.status === 503 ? "Mac側の接続設定を確認してください。" :
         response.status === 409 ?
           (conflictMessages[conflictCode] || conflictMessages.conflict) :
         response.status === 404 ? "セッションが見つかりません。再接続してください。" :
-        response.status === 422 ? "入力内容を確認してください。" :
+        response.status === 422 ?
+          (invalidPronunciation[conflictCode] || "入力内容を確認してください。") :
         "操作を完了できませんでした。"
       );
       error.code = response.status;
@@ -400,6 +420,10 @@
     $("item-takes-form").hidden = !takeCountEditMode;
     $("edit-take-count").hidden = takeCountEditMode;
     $("edit-take-count").textContent = "Take数 " + item.effective_take_count;
+    $("item-pronunciation").hidden = !item.is_prepared;
+    $("pronunciation-value").textContent = item.pronunciation ||
+      "日本語以外・日英混在の編集は次のSliceで対応します。";
+    $("open-pronunciation").hidden = !item.pronunciation;
     setFixed("previous-item", index === 0);
     setFixed("next-item", index === batch.items.length - 1);
     renderTakes(item);
@@ -431,6 +455,10 @@
     captionEditMode = false;
     takeCountEditMode = false;
     takeMenuOpen = false;
+    pronunciationOpening = null;
+    pronunciationItemId = "";
+    pronunciationStale = false;
+    pronunciationComposing = false;
     endDeleteMode();
     token = "";
     sessionId = "";
@@ -503,7 +531,8 @@
   }
   function updatePlaybackUI() {
     var player = $("phone-player");
-    var active = playback && playback.itemId === selectedId && currentView === "item";
+    var active = playback && playback.itemId === selectedId &&
+      (currentView === "item" || currentView === "pronunciation");
     var phase = active ? playback.phase : "";
     var playing = phase === "playing" && !player.paused && !player.ended;
     var preview = Boolean(active && playback.kind === "preview");
@@ -527,6 +556,12 @@
     previewControl.disabled = busy ||
       (previewControl.dataset && previewControl.dataset.fixedDisabled === "true") ||
       (preview && awaitingPlayback);
+    var editorPreview = $("preview-pronunciation");
+    if (editorPreview) {
+      editorPreview.textContent = previewLabel[0];
+      editorPreview.setAttribute("aria-label", previewLabel[1]);
+      editorPreview.disabled = busy || (preview && awaitingPlayback);
+    }
     $("take-list").querySelectorAll(".take-card").forEach(function (row) {
       var match = Boolean(active && playback.kind === "take" &&
         row.dataset.takeNumber === String(playback.takeNumber));
@@ -795,7 +830,8 @@
   function displayAudioProgress(op) {
     $("operation-panel").hidden = false;
     var names = {
-      prepare: "発音を解析中", preview: "Preview", generate: "Take生成",
+      prepare: "発音を解析中", preview: "Preview",
+      "pronunciation-preview": "編集中の発音をPreview", generate: "Take生成",
       "regenerate-one": "Take再生成", "regenerate-all": "未採用Take再生成",
       accept: "Take採用"
     };
@@ -838,13 +874,15 @@
       if (op.status === "succeeded") {
         feedback(op.kind === "accept" ?
           "保存しました: " + op.result.audio_name :
-          op.kind === "preview" ? "Previewを生成しました。" : "音声操作が完了しました。");
+          (op.kind === "preview" || op.kind === "pronunciation-preview") ?
+          "Previewを生成しました。" : "音声操作が完了しました。");
       } else {
         feedback(op.status === "cancelled" ?
           "キャンセルしました。生成済みのTakeは保持されています。" :
           (op.error || "音声操作に失敗しました。"));
       }
-      if (op.status === "succeeded" && op.kind === "preview" &&
+      if (op.status === "succeeded" &&
+          (op.kind === "preview" || op.kind === "pronunciation-preview") &&
           op.result && op.result.preview_id) {
         setBusy(false);
         await playAudio(itemAudioPath(itemId) + "/audio/preview/" +
@@ -862,8 +900,126 @@
       $("operation-panel").hidden = true;
       setBusy(false);
       if (batch && currentView === "item") renderItem(true);
+      updatePlaybackUI();
     }
   }
+
+  function rememberPronunciationSelection() {
+    var input = $("pronunciation-text");
+    pronunciationSelection = { start: input.selectionStart, end: input.selectionEnd };
+  }
+  function editPronunciationAtCaret(mark, backspace) {
+    if (busy || pronunciationComposing || currentView !== "pronunciation" ||
+        pronunciationStale) return;
+    var input = $("pronunciation-text");
+    var a = Math.min(pronunciationSelection.start, input.value.length);
+    var b = Math.min(pronunciationSelection.end, input.value.length);
+    if (backspace && a === b && a > 0) {
+      // The Intl grapheme boundary preserves emoji, combining sequences, etc.
+      var previous = 0;
+      if (typeof Intl.Segmenter === "function") {
+        var segments = new Intl.Segmenter("ja", { granularity: "grapheme" }).segment(
+          input.value.slice(0, a));
+        for (var segment of segments) previous = segment.index;
+      } else {
+        previous = Array.from(input.value.slice(0, a)).slice(0, -1).join("").length;
+      }
+      a = previous;
+    }
+    input.setRangeText(backspace ? "" : mark, a, b, "end");
+    input.focus({ preventScroll: true });
+    rememberPronunciationSelection();
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  function openPronunciation() {
+    if (busy || !batch || !selectedId || !guardDraft()) return;
+    var item = batch.items.find(function (row) { return row.id === selectedId; });
+    if (!item || typeof item.pronunciation !== "string") return;
+    if (!showView("pronunciation", true)) return;
+    pronunciationOpening = item.pronunciation;
+    pronunciationItemId = item.id;
+    pronunciationStale = false;
+    $("pronunciation-text").value = pronunciationOpening;
+    $("pronunciation-caption").textContent = item.caption;
+    setFixed("apply-pronunciation", false);
+    $("pronunciation-text").focus({ preventScroll: true });
+    $("pronunciation-text").setSelectionRange(pronunciationOpening.length, pronunciationOpening.length);
+    rememberPronunciationSelection();
+  }
+  async function applyPronunciation(event) {
+    event.preventDefault();
+    if (busy || pronunciationStale || !batch || !pronunciationItemId ||
+        pronunciationItemId !== selectedId) return;
+    var item = batch.items.find(function (row) { return row.id === selectedId; });
+    if (!item) return;
+    var notation = $("pronunciation-text").value;
+    if (notation !== pronunciationOpening && item.candidate_count > 0 && !window.confirm(
+      "発音を変更するとTake候補と採用状態がクリアされます。保存済み音声は残ります。反映しますか？"
+    )) return;
+    setBusy(true);
+    try {
+      var response = await request("PATCH", itemAudioPath(selectedId) +
+        "/pronunciation?expected_revision=" + batch.revision, { notation: notation });
+      clearPlayer();
+      batch = response.batch;
+      renderList();
+      showView("item", true);
+      feedback(response.changed ? "発音を反映しました。Take候補はクリアされました。" :
+        "発音は変更されていません。Take候補は維持されました。");
+    } catch (error) {
+      if (error.conflictCode === "revision_conflict") {
+        pronunciationStale = true;
+        try { await refresh(); } catch (_ignored) { /* Keep conflict feedback. */ }
+        feedback("別の画面で変更されています。編集をキャンセルし、最新の発音を開き直してください。");
+        setFixed("apply-pronunciation", true);
+      } else {
+        if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
+        feedback(error.message);
+      }
+    } finally { setBusy(false); }
+  }
+  $("open-pronunciation").addEventListener("click", openPronunciation);
+  $("pronunciation-back").addEventListener("click", function () { showView("item"); });
+  $("cancel-pronunciation").addEventListener("click", function () { showView("item"); });
+  $("pronunciation-text").addEventListener("compositionstart", function () {
+    pronunciationComposing = true;
+  });
+  $("pronunciation-text").addEventListener("compositionend", function () {
+    pronunciationComposing = false;
+    rememberPronunciationSelection();
+  });
+  ["select", "keyup", "mouseup", "touchend", "input"].forEach(function (type) {
+    $("pronunciation-text").addEventListener(type, rememberPronunciationSelection);
+  });
+  $("view-pronunciation").querySelectorAll("[data-pronunciation-insert], [data-pronunciation-backspace]")
+    .forEach(function (button) {
+      // Mouse buttons must not steal textarea focus. Touch preserves selection
+      // before the system keyboard may dismiss on button activation.
+      button.addEventListener("mousedown", function (event) { event.preventDefault(); });
+      button.addEventListener("pointerdown", function () {
+        if (!pronunciationComposing) rememberPronunciationSelection();
+      });
+      button.addEventListener("click", function () {
+        editPronunciationAtCaret(button.dataset.pronunciationInsert || "",
+          button.hasAttribute("data-pronunciation-backspace"));
+      });
+    });
+  $("reset-pronunciation").addEventListener("click", function () {
+    if (busy || pronunciationOpening === null) return;
+    $("pronunciation-text").value = pronunciationOpening;
+    $("pronunciation-text").focus({ preventScroll: true });
+    $("pronunciation-text").setSelectionRange(pronunciationOpening.length, pronunciationOpening.length);
+    rememberPronunciationSelection();
+  });
+  $("preview-pronunciation").addEventListener("click", function () {
+    if (pronunciationStale || pronunciationItemId !== selectedId) return;
+    if (togglePlayback("preview", selectedId)) return;
+    startAudio(selectedId, "/pronunciation/preview", {
+      notation: $("pronunciation-text").value
+    });
+  });
+  $("pronunciation-form").addEventListener("submit", applyPronunciation);
+
   $("prepare-retry").addEventListener("click", function () {
     if (!selectedId) return;
     autoPrepareFailures.delete(selectedId);

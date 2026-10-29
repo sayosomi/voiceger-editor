@@ -101,6 +101,13 @@
             <button type="button" id="cancel-caption-edit">キャンセル</button>
           </div>
         </form>
+        <section id="item-pronunciation" class="item-pronunciation" hidden aria-label="発音">
+          <div class="section-top">
+            <h3>発音</h3>
+            <button type="button" id="open-pronunciation" class="item-link">編集</button>
+          </div>
+          <p id="pronunciation-value" class="pronunciation-value"></p>
+        </section>
         <div class="item-quick-actions">
           <button type="button" id="preview-audio" hidden>▶ Preview</button>
           <button type="button" id="edit-take-count" class="item-link">Take数</button>
@@ -134,13 +141,37 @@
             <button type="button" id="reprepare-audio">発音を再準備</button>
           </div>
           <button type="button" id="generate-audio" class="primary-button full-button" hidden>Takeを生成</button>
-          <audio id="phone-player" controls preload="none" hidden aria-label="スマホで音声を再生"></audio>
           <ol id="take-list" class="take-list" aria-label="生成したTake"></ol>
         </section>
         <div class="item-navigation">
           <button type="button" id="previous-item">← 前のCaption</button>
           <button type="button" id="next-item">次のCaption →</button>
         </div>
+      </section>
+
+      <section id="view-pronunciation" class="screen" aria-labelledby="pronunciation-title" hidden>
+        <button type="button" id="pronunciation-back" class="back-button">← Batch Item</button>
+        <h2 id="pronunciation-title" tabindex="-1">発音編集</h2>
+        <p id="pronunciation-caption" class="pronunciation-caption"></p>
+        <form id="pronunciation-form" class="field-stack">
+          <label for="pronunciation-text">発音</label>
+          <textarea id="pronunciation-text" rows="4" maxlength="2000" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+          <div class="pronunciation-assists" role="group" aria-label="発音入力アシスト">
+            <button type="button" data-pronunciation-insert="'" aria-label="アクセント記号を挿入">'</button>
+            <button type="button" data-pronunciation-insert="[" aria-label="上昇記号を挿入">[</button>
+            <button type="button" data-pronunciation-insert="]" aria-label="下降記号を挿入">]</button>
+            <button type="button" data-pronunciation-insert=" " aria-label="半角スペースを挿入">空白</button>
+            <button type="button" data-pronunciation-backspace aria-label="バックスペース">⌫</button>
+          </div>
+          <div class="pronunciation-actions">
+            <button type="button" id="preview-pronunciation">▶ Preview</button>
+            <button type="submit" id="apply-pronunciation" class="primary-button">反映</button>
+          </div>
+          <div class="pronunciation-actions-secondary">
+            <button type="button" id="reset-pronunciation">リセット</button>
+            <button type="button" id="cancel-pronunciation">キャンセル</button>
+          </div>
+        </form>
       </section>
 
       <section id="view-session" class="screen" aria-labelledby="session-title" hidden>
@@ -174,6 +205,7 @@
           <p class="help-text" aria-disabled="true">発音編集・辞書・各種設定は今後追加されます。</p>
         </div>
       </section>
+      <audio id="phone-player" controls preload="none" hidden aria-label="スマホで音声を再生"></audio>
     </main>
   </div>
 </body>
