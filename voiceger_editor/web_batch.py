@@ -43,7 +43,8 @@ def _row(batch: CaptionBatch, item: CaptionBatchItem) -> dict[str, Any]:
         "accepted_take_numbers": sorted(item.accepted_take_numbers),
         "generation_outcome": item.generation_outcome,
         "spoken_text": (
-            item.session.synthesis_source_text if item.session.is_prepared else None
+            getattr(item.session, "synthesis_source_text", None)
+            if item.session.is_prepared else None
         ),
         "takes": [
             {
