@@ -292,7 +292,9 @@ class WebAudioTests(unittest.TestCase):
         self.assertEqual(response.status_code, 202)
         try:
             self.assertTrue(started.wait(2))
-            self.assertEqual(self.action("POST", "/takes/generate").status_code, 409)
+            blocked = self.action("POST", "/takes/generate")
+            self.assertEqual(blocked.status_code, 409)
+            self.assertEqual(blocked.json()["detail"], {"code": "worker_busy"})
             self.assertEqual(self.action("DELETE", "/takes").status_code, 409)
             cancel = self.client.post(
                 self.root + "/operations/" + response.json()["id"] + "/cancel",
@@ -304,6 +306,7 @@ class WebAudioTests(unittest.TestCase):
             release.set()
         terminal = self.finish_terminal(response.json()["id"])
         self.assertEqual(terminal["status"], "cancelled")
+        self.assertIsNone(terminal["error"])
         self.assertEqual(terminal["completed"], 1)
         self.assertEqual(self.batch()["items"][0]["candidate_count"], 1)
         self.fakes[0].begin = None
@@ -504,6 +507,23 @@ class WebAudioTests(unittest.TestCase):
                 self.fail("Take shutdown cleanup did not finish")
         self.assertTrue(all(not path.exists() for path in old_candidates))
         self.assertTrue(all(path.exists() for path in preserved))
+
+
+    def test_idle_expiry_cleans_actual_take_candidates_not_saved_outputs(self):
+        self.generate()
+        self.finish(self.action("POST", "/takes/1/accept"))
+        candidate_paths = [c.wav_path for c in self.fakes[0].candidates]
+        saved = tuple(self.output.iterdir())
+        clock = [100.0]
+        with self.service._lock:
+            self.service._clock = lambda: clock[0]
+            self.service._idle_seconds = 3
+            self.service._sessions[self.sid].touched = clock[0]
+        clock[0] += 4
+        gone = self.client.get(self.root, headers=self.read)
+        self.assertEqual(gone.status_code, 404)
+        self.assertTrue(all(not p.exists() for p in candidate_paths))
+        self.assertTrue(all(p.exists() for p in saved))
 
     def test_mobile_conflict_messages_are_allowlisted(self):
         source = (
