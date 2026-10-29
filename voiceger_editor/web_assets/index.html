@@ -189,13 +189,11 @@
           <button type="button" id="cancel-section-audio" hidden>キャンセル</button>
         </div>
         <form id="section-form" class="field-stack">
-          <div id="section-language-field" class="field-stack" hidden>
-            <label for="section-language">言語</label>
-            <select id="section-language">
-              <option value="ja">日本語（JA）</option>
-              <option value="en">英語（EN）</option>
-            </select>
-          </div>
+          <fieldset id="section-language-field" class="section-language-choices" hidden>
+            <legend>言語</legend>
+            <label><input type="radio" name="section-language" value="ja" checked> 日本語（JA）</label>
+            <label><input type="radio" name="section-language" value="en"> 英語（EN）</label>
+          </fieldset>
           <label for="section-text">読み上げる文章</label>
           <textarea id="section-text" rows="4" maxlength="2000" autocomplete="off" spellcheck="false"></textarea>
           <div class="pronunciation-actions">
