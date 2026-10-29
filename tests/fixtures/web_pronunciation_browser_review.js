@@ -118,6 +118,7 @@ function historyHarness() {
   const setup=[
     'let currentView="pronunciation",pronunciationOpening="ア\'メ";',
     'let pronunciationHistoryActive=true,pronunciationExitPending=null;',
+    'let pronunciationReturnView="item";',
     'let pronunciationItemId="i",pronunciationStale=false;',
     'let busy=false, selectedId="i",batch={items:[{id:"i",caption:"雨"}]};',
     'let sessionId="s",reorderMode=false,deleteMode=false;',
@@ -171,6 +172,130 @@ function historyHarness() {
   v.win.history.back(); // completed Apply may unwind while busy flag settles
   assert.equal(v.h.getView(),"item");
   assert.equal(v.getNotes().at(-1),"発音を反映しました。");
+}
+
+
+async function asyncHistoryTests() {
+  // The browser's popstate is asynchronous. Exercise actual showView,
+  // openPronunciation/enterPronunciation and popstate production functions.
+  const events={};
+  const nodes={};
+  const $=id=>(nodes[id] ||= node(id==="edit-caption"?"雨":""));
+  const entries=[null];
+  let index=0, pushes=0, confirms=[], reply=true, renders=0;
+  const win={
+    addEventListener(type,fn){events[type]=fn;},
+    confirm(message){confirms.push(message);return reply;},
+    scrollTo(){},
+    history:{
+      pushState(state){entries.splice(index+1);entries.push(state);index++;pushes++;},
+      back(){
+        if(index===0)return;
+        index--;
+        queueMicrotask(()=>events.popstate({state:entries[index]}));
+      },
+      forward(){
+        if(index>=entries.length-1)return;
+        index++;
+        queueMicrotask(()=>events.popstate({state:entries[index]}));
+      }
+    }
+  };
+  const setup=[
+    'let currentView="item",pronunciationOpening=null,pronunciationItemId="";',
+    'let pronunciationHistoryActive=false,pronunciationExitPending=null;',
+    'let pronunciationReturnView="item",pronunciationStale=false;',
+    'let busy=false, selectedId="i",sessionId="s",token="t";',
+    'let captionEditMode=false,takeCountEditMode=false,reorderMode=false,deleteMode=false;',
+    'let batch={items:[{id:"i",caption:"雨",pronunciation:"ア\'メ。"}]};',
+    'let pronunciationSelection={start:0,end:0};',
+    'let viewNames=["connect","list","add","item","pronunciation","session"];',
+    'function clearPlayer(){} function endReorderMode(){} function endDeleteMode(){}',
+    'function renderItem(){renderCount();} function feedback(){}',
+    'function setFixed(){} function rememberPronunciationSelection(){}',
+    slice('  function pronunciationDirty() {','  async function request(method, path, payload) {'),
+    slice('  function enterPronunciation(item, fromHistory) {',
+          '  async function applyPronunciation(event) {'),
+    'return {openPronunciation,showView, getView:()=>currentView,',
+    '  getText:()=>$("pronunciation-text").value,',
+    '  getActive:()=>pronunciationHistoryActive,',
+    '  setSession:s=>{sessionId=s;}};'
+  ].join("\n");
+  const h=new Function("$","window","renderCount",setup)($,win,()=>renders++);
+  const settle=()=>new Promise(resolve=>setImmediate(resolve));
+
+  // Back -> Forward restores actual current server-owned query, never
+  // the discarded uncommitted text; Back again returns visibly to Item.
+  h.openPronunciation();
+  assert.equal(index,1);
+  assert.equal(h.getView(),"pronunciation");
+  assert.equal(entries[1].sessionId,"s");
+  assert.equal(entries[1].itemId,"i");
+  $("pronunciation-text").value="アメ'"; // unsaved draft
+  assert(h.showView("item")); // user approves discarding
+  await settle();
+  assert.equal(h.getView(),"item");
+  assert.equal(index,0);
+  assert.equal(entries.length,2);
+  win.history.forward();
+  await settle();
+  assert.equal(index,1);
+  assert.equal(h.getView(),"pronunciation");
+  assert.equal(h.getText(),"ア'メ。","Forward must not restore discarded draft");
+  assert.equal(entries.length,2,"Forward must not push a duplicate history entry");
+  win.history.back();
+  await settle();
+  assert.equal(h.getView(),"item");
+  assert.equal(index,0);
+
+  // An app transition to Session must be restored as the return screen
+  // after Forward, and new editing must replace the old forward entry.
+  win.history.forward();
+  await settle();
+  assert.equal(h.getView(),"pronunciation");
+  assert(h.showView("session"));
+  await settle();
+  assert.equal(h.getView(),"session");
+  win.history.forward();
+  await settle();
+  assert.equal(h.getView(),"pronunciation");
+  win.history.back();
+  await settle();
+  assert.equal(h.getView(),"session");
+  assert(h.showView("item"));
+  h.openPronunciation();
+  assert.equal(index,1);
+  assert.equal(entries.length,2,"reopening should replace abandoned Forward entry");
+  win.history.back();
+  await settle();
+  assert.equal(h.getView(),"item");
+
+  // Declining Back keeps the draft and re-pushes an editor entry.
+  h.openPronunciation();
+  reply=false;
+  $("pronunciation-text").value="ナ'ツ";
+  win.history.back();
+  await settle();
+  assert.equal(h.getView(),"pronunciation");
+  assert.equal(h.getText(),"ナ'ツ");
+  assert.equal(index,1);
+  reply=true;
+  win.history.back();
+  await settle();
+  assert.equal(h.getView(),"item");
+
+  // Old session history must not resurrect a discarded cross-session draft.
+  win.history.forward();
+  await settle();
+  assert.equal(h.getView(),"pronunciation");
+  win.history.back();
+  await settle();
+  h.setSession("other-session");
+  win.history.forward();
+  await settle();
+  assert.equal(h.getView(),"item","stale-session editor must not reopen");
+  assert.equal(index,0,"stale Forward entry should bounce to base");
+  assert(confirms.length>=2,"history edits must require unsaved confirmation");
 }
 
 async function stalePlaybackTests() {
@@ -248,5 +373,5 @@ async function applyTests() {
   await stale.fn.applyPronunciation({preventDefault(){}});
   assert.equal(stale.getRequests(),1,"no stale re-Apply");
 }
-Promise.all([applyTests(), stalePlaybackTests()]).then(()=>console.log("WEB_PRONUNCIATION_BROWSER_REVIEW_PASS"))
+Promise.all([applyTests(), stalePlaybackTests(), asyncHistoryTests()]).then(()=>console.log("WEB_PRONUNCIATION_BROWSER_REVIEW_PASS"))
   .catch(e=>{console.error(e);process.exitCode=1;});
