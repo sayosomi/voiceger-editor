@@ -102,7 +102,7 @@ class DictionaryExportTests(unittest.TestCase):
                 english = json.loads(archive.read("english_user_dict.json"))
             self.assertEqual(list(japanese), list(core.japanese))
             self.assertEqual(list(english), list(core.english))
-            self.assertEqual(list(output.iterdir()), [existing, result.paths[0]])
+            self.assertCountEqual(list(output.iterdir()), [existing, result.paths[0]])
 
     def test_pitch_metadata_is_optional_and_stays_canonical(self):
         core = FakeDictionaryCore()
