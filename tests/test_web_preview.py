@@ -45,7 +45,8 @@ function check(phase, visible, accessible, disabled) {
     itemId:"item", kind:"preview", phase,
     started:phase === "paused"
   };
-  setBusy(disabled);
+  // Derive disabled from the production phase, not a test-supplied expected value.
+  setBusy(false);
   const render = new Function("$","playback","selectedId","currentView",
     source.slice(renderStart,renderEnd) + ";return updatePlaybackUI;")(
       key=>nodes[key], playback, "item", "item");
