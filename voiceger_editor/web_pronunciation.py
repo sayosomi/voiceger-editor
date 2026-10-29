@@ -74,20 +74,36 @@ class WebPronunciationMixin:
             preview_query = japanese_preview_query(item.session.query,
                 notation.replace("　", "/").replace(" ", "/"))
 
+            # Stage bytes privately. Publish only in the worker's terminal
+            # callback, under the *same lock* that resolves cancellation and
+            # sets the final operation status (see WebTakeMixin._run_take_work).
+            staged: tuple[str, bytes] | None = None
+
             def work(operation):
+                nonlocal staged
                 if operation.cancellation.is_set():
                     return {}
                 result = item.session.preview_synthesis(preview_query)
                 data = _wav_bytes(result["audio"], int(result["sampling_rate"]))
                 handle = secrets.token_urlsafe(18)
-                with self._lock:
-                    if not operation.cancellation.is_set():
-                        session.preview_audio = (item_id, handle, data)
-                        operation.completed = 1
+                staged = (handle, data)
                 return {"preview_id": handle}
+
+            def on_terminal(status: str) -> None:
+                nonlocal staged
+                if status == "succeeded" and staged is not None:
+                    handle, data = staged
+                    session.preview_audio = (item_id, handle, data)
+                    # This callback and terminal operation state are atomic.
+                    operation = session.operations.get(
+                        self._active[1]) if self._active is not None else None
+                    if operation is not None:
+                        operation.completed = 1
+                staged = None
 
             return self._start_take_work(
                 session_id, session, kind="pronunciation-preview", total=1, run=work,
+                on_terminal=on_terminal,
             )
 
     def apply_japanese_pronunciation(
