@@ -108,6 +108,7 @@
           </div>
           <p id="pronunciation-value" class="pronunciation-value"></p>
           <div id="pronunciation-sections" class="pronunciation-sections" hidden></div>
+          <button type="button" id="add-section" class="item-link" hidden>＋ セクションを追加</button>
         </section>
         <div class="item-quick-actions">
           <button type="button" id="preview-audio" hidden>▶ Preview</button>
@@ -175,6 +176,35 @@
           <div class="pronunciation-actions-secondary">
             <button type="button" id="reset-pronunciation">リセット</button>
             <button type="button" id="cancel-pronunciation">キャンセル</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="view-section" class="screen" aria-labelledby="section-title" hidden>
+        <button type="button" id="section-back" class="back-button">← Batch Item</button>
+        <h2 id="section-title" tabindex="-1">読み上げ文を変更</h2>
+        <p id="section-context" class="pronunciation-caption"></p>
+        <div id="section-operation-panel" class="operation-panel" hidden>
+          <p id="section-operation-progress" role="status" aria-live="polite"></p>
+          <button type="button" id="cancel-section-audio" hidden>キャンセル</button>
+        </div>
+        <form id="section-form" class="field-stack">
+          <div id="section-language-field" class="field-stack" hidden>
+            <label for="section-language">言語</label>
+            <select id="section-language">
+              <option value="ja">日本語（JA）</option>
+              <option value="en">英語（EN）</option>
+            </select>
+          </div>
+          <label for="section-text">読み上げる文章</label>
+          <textarea id="section-text" rows="4" maxlength="2000" autocomplete="off" spellcheck="false"></textarea>
+          <div class="pronunciation-actions">
+            <button type="button" id="preview-section">▶ Preview</button>
+            <button type="submit" id="apply-section" class="primary-button">反映</button>
+          </div>
+          <div class="pronunciation-actions-secondary">
+            <button type="button" id="reset-section">リセット</button>
+            <button type="button" id="cancel-section">キャンセル</button>
           </div>
         </form>
       </section>
