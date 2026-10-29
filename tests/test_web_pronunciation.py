@@ -218,6 +218,67 @@ class JapaneseWebTests(unittest.TestCase):
         self.assertEqual(self.batch(), before)
         self.assertFalse(self.output.exists())
 
+    def test_cancel_between_synthesis_completion_and_terminal_is_atomic(self):
+        """The exact former publication/cancellation race cannot leak audio."""
+        from threading import Event
+
+        completed_synthesis, allow_terminal = Event(), Event()
+        original_worker = self.service._run_take_work
+        sid = self.root.rsplit("/", 1)[-1]
+        before = self.batch()
+
+        def delayed_terminal(session_id, operation, run, on_terminal=None):
+            def staged_but_blocked(op):
+                value = run(op)
+                completed_synthesis.set()
+                if not allow_terminal.wait(5):
+                    raise RuntimeError("test terminal-release timed out")
+                return value
+            return original_worker(session_id, operation, staged_but_blocked,
+                                   on_terminal)
+
+        with patch.object(self.service, "_run_take_work",
+                          side_effect=delayed_terminal):
+            response = self.action("POST", "/pronunciation/preview",
+                                   {"notation": "アメ'！"})
+            self.assertEqual(response.status_code, 202, response.text)
+            self.assertTrue(completed_synthesis.wait(3),
+                            "Synthesis did not reach terminal barrier")
+            try:
+                with self.service._lock:
+                    self.assertIsNone(self.service._sessions[sid].preview_audio,
+                                      "Uncommitted audio published before terminal SUCCESS")
+                cancelled = self.client.post(
+                    self.root + "/operations/" + response.json()["id"] + "/cancel",
+                    headers=self.write,
+                )
+                self.assertEqual(cancelled.status_code, 200)
+                self.assertEqual(cancelled.json()["status"], "cancelling")
+            finally:
+                allow_terminal.set()
+            result = self.finish(response)
+
+        self.assertEqual(result["status"], "cancelled")
+        self.assertIsNone(result["result"])
+        with self.service._lock:
+            self.assertIsNone(self.service._sessions[sid].preview_audio)
+        self.assertEqual(self.batch(), before)
+        self.assertFalse(self.output.exists())
+
+    def test_successful_draft_preview_publishes_with_terminal_state(self):
+        sid = self.root.rsplit("/", 1)[-1]
+        response = self.action("POST", "/pronunciation/preview",
+                               {"notation": "アメ'！"})
+        op = self.finish(response)
+        self.assertEqual(op["status"], "succeeded")
+        self.assertEqual(op["completed"], 1)
+        handle = op["result"]["preview_id"]
+        with self.service._lock:
+            self.assertEqual(self.service._sessions[sid].preview_audio[1], handle)
+        self.assertTrue(self.client.get(
+            self.path + "/audio/preview/" + handle, headers=self.read,
+        ).content.startswith(b"RIFF"))
+
     def test_draft_preview_blocks_session_close_and_expiry_then_disposes(self):
         from threading import Event
 
