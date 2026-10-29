@@ -107,7 +107,7 @@ class WebTakeMixin:
         failed = False
         try:
             result = run(operation)
-        except Exception:
+        except BaseException:
             failed = True
         finally:
             # Publish terminal state and release the single-worker gate atomically.
