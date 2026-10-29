@@ -691,7 +691,7 @@ const scenarios = [
         self.assertIn('event.isComposing', js)
         self.assertIn('event.keyCode !== 229', js)
         self.assertIn('function updatePlaybackUI()', js)
-        self.assertIn('"timeupdate", updatePlaybackUI', js)
+        self.assertIn('player.addEventListener("timeupdate", function ()', js)
         self.assertIn('"ended", function ()', js)
         self.assertIn('togglePlayback("take"', js)
         self.assertIn('togglePlayback("preview"', js)
@@ -757,18 +757,22 @@ function deferred() {
   return {promise, resolve, reject};
 }
 function setup() {
-  const events = {};
   const calls = {pause:0, play:0, feedback:[], revoked:[], created:0};
-  const player = {
+  const basePlayer = {
+    events:{},
     paused:true, ended:false, duration:10, currentTime:0, hidden:true, src:"",
     playResult:null,
     addEventListener(name, callback) {
-      (events[name] || (events[name] = [])).push(callback);
+      (this.events[name] || (this.events[name] = [])).push(callback);
     },
-    emit(name) { for (const callback of (events[name] || [])) callback(); },
+    emit(name) { for (const callback of (this.events[name] || [])) callback(); },
     pause() { calls.pause++; this.paused = true; this.emit("pause"); },
     removeAttribute(key) { if (key === "src") this.src = ""; },
     load() { this.ended = false; this.currentTime = 0; },
+    cloneNode() { return Object.assign({}, this, {
+      events:{}, src:"", paused:true, ended:false, currentTime:0
+    }); },
+    replaceWith(node) { nodes["phone-player"] = node; },
     play() {
       calls.play++;
       if (this.playResult) return this.playResult();
@@ -778,6 +782,13 @@ function setup() {
       return Promise.resolve();
     }
   };
+  const player = new Proxy(basePlayer, {
+    get(_unused, key) {
+      const node = nodes["phone-player"], value = node[key];
+      return typeof value === "function" ? value.bind(node) : value;
+    },
+    set(_unused, key, value) { nodes["phone-player"][key] = value; return true; }
+  });
   const row = {
     dataset: {takeNumber:"1"}, labels:{}, children:{},
     classList: {
@@ -800,7 +811,7 @@ function setup() {
   };
   const preview = {textContent:"",labels:{},setAttribute(k,v){this.labels[k]=v;}};
   const nodes = {
-    "phone-player":player, "preview-audio":preview,
+    "phone-player":basePlayer, "preview-audio":preview,
     "take-list":{querySelectorAll() {return [row];}}
   };
   let fetchResponse = async () => ({
