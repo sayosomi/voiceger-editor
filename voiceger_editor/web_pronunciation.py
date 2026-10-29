@@ -1,4 +1,4 @@
-"""Pure-Japanese Web pronunciation actions over shared query/session owners."""
+"""Web Japanese pronunciation actions over shared query/session owners."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ class WebPronunciationValidation(WebTakeValidation):
     """An invalid or unsupported, client-provided pronunciation draft."""
 
     def __init__(self, code: str) -> None:
-        if code not in {"invalid_pronunciation", "unsupported_pronunciation"}:
+        if code not in {"invalid_pronunciation", "unsupported_pronunciation", "invalid_english_pronunciation", "grouping_unavailable", "stale_pronunciation"}:
             raise ValueError("Unknown pronunciation validation code")
         self.code = code
         super().__init__(code)
@@ -37,11 +37,13 @@ def prepared_japanese_notation(item) -> str | None:
     return japanese_pronunciation(query).replace("/", " ")
 
 
-def _draft_query(item, notation: str) -> tuple[AudioQuery, AudioQuery]:
+def _draft_query(item, notation: str, segment_index: int | None = None) -> tuple[AudioQuery, AudioQuery]:
     if not item.session.is_prepared:
         raise WebPronunciationValidation("unsupported_pronunciation")
     current = item.session.query
-    if not isinstance(current, AudioQuery) or current.voicegerSegments is not None:
+    if not isinstance(current, AudioQuery):
+        raise WebPronunciationValidation("unsupported_pronunciation")
+    if (current.voicegerSegments is None) != (segment_index is None):
         raise WebPronunciationValidation("unsupported_pronunciation")
     if (
         not isinstance(notation, str)
@@ -54,7 +56,7 @@ def _draft_query(item, notation: str) -> tuple[AudioQuery, AudioQuery]:
         raise WebPronunciationValidation("invalid_pronunciation")
     canonical = notation.replace("　", "/").replace(" ", "/")
     try:
-        updated = replace_japanese_pronunciation(current, canonical)
+        updated = replace_japanese_pronunciation(current, canonical, segment_index=segment_index)
     except (ValueError, TypeError):
         raise WebPronunciationValidation("invalid_pronunciation") from None
     return current, updated
@@ -63,54 +65,58 @@ def _draft_query(item, notation: str) -> tuple[AudioQuery, AudioQuery]:
 class WebPronunciationMixin:
     """Guarded edit actions. Synthesis stays on the existing single worker."""
 
+    def _start_pronunciation_preview(self, session_id, session, item, item_id, preview_query):
+        """Publish audio only after successful uncancelled worker terminal status."""
+        staged: tuple[str, bytes] | None = None
+        finished_operation = None
+
+        def work(operation):
+            nonlocal staged, finished_operation
+            if operation.cancellation.is_set():
+                return {}
+            result = item.session.preview_synthesis(preview_query)
+            data = _wav_bytes(result["audio"], int(result["sampling_rate"]))
+            handle = secrets.token_urlsafe(18)
+            staged = (handle, data)
+            finished_operation = operation
+            return {"preview_id": handle}
+
+        def on_terminal(status: str) -> None:
+            nonlocal staged
+            if status == "succeeded" and staged is not None:
+                handle, data = staged
+                session.preview_audio = (item_id, handle, data)
+                finished_operation.completed = 1
+            staged = None
+
+        return self._start_take_work(
+            session_id, session, kind="pronunciation-preview", total=1, run=work,
+            on_terminal=on_terminal,
+        )
+
     def start_japanese_draft_preview(
         self, session_id: str, item_id: str, revision: int, notation: str,
+        segment_index: int | None = None,
     ) -> dict:
         with self._lock:
             session, item = self._take_guard(session_id, item_id, revision)
             self._require_terms()
-            _draft_query(item, notation)
-            # Shared core validates and isolates a transient pure-Japanese query.
-            preview_query = japanese_preview_query(item.session.query,
-                notation.replace("　", "/").replace(" ", "/"))
-
-            # Stage bytes privately. Publish only in the worker's terminal
-            # callback, under the *same lock* that resolves cancellation and
-            # sets the final operation status (see WebTakeMixin._run_take_work).
-            staged: tuple[str, bytes] | None = None
-            finished_operation = None
-
-            def work(operation):
-                nonlocal staged, finished_operation
-                if operation.cancellation.is_set():
-                    return {}
-                result = item.session.preview_synthesis(preview_query)
-                data = _wav_bytes(result["audio"], int(result["sampling_rate"]))
-                handle = secrets.token_urlsafe(18)
-                staged = (handle, data)
-                finished_operation = operation
-                return {"preview_id": handle}
-
-            def on_terminal(status: str) -> None:
-                nonlocal staged
-                if status == "succeeded" and staged is not None:
-                    handle, data = staged
-                    session.preview_audio = (item_id, handle, data)
-                    # This callback and terminal operation state are atomic.
-                    finished_operation.completed = 1
-                staged = None
-
-            return self._start_take_work(
-                session_id, session, kind="pronunciation-preview", total=1, run=work,
-                on_terminal=on_terminal,
+            _draft_query(item, notation, segment_index)
+            preview_query = japanese_preview_query(
+                item.session.query, notation.replace("　", "/").replace(" ", "/"),
+                segment_index=segment_index,
+            )
+            return self._start_pronunciation_preview(
+                session_id, session, item, item_id, preview_query
             )
 
     def apply_japanese_pronunciation(
         self, session_id: str, item_id: str, revision: int, notation: str,
+        segment_index: int | None = None,
     ) -> dict:
         with self._lock:
             session, item = self._take_guard(session_id, item_id, revision)
-            current, updated = _draft_query(item, notation)
+            current, updated = _draft_query(item, notation, segment_index)
             # Compare semantic query data, not user-entered whitespace or
             # canonical punctuation spelling. A no-op must preserve Takes.
             if updated.model_dump() == current.model_dump():
