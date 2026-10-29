@@ -555,23 +555,23 @@
 
       var heading = document.createElement("div");
       heading.className = "section-top";
-      var tag = document.createElement("strong");
-      tag.textContent = section.language === "ja" ? "JA" : "EN";
-      heading.appendChild(tag);
       var sourceButton = document.createElement("button");
       sourceButton.type = "button";
       sourceButton.className = "pronunciation-source-button";
+      var tag = document.createElement("strong");
+      tag.textContent = section.language === "ja" ? "JA" : "EN";
       sourceButton.setAttribute("aria-label", tag.textContent +
         "「" + (section.text || "") + "」の読み上げ文を編集");
+      sourceButton.appendChild(tag);
       var source = document.createElement("span");
       source.className = "section-source-text";
       source.textContent = section.text || "";
       sourceButton.appendChild(source);
-      var pencil = document.createElement("span");
-      pencil.className = "section-edit-indicator";
-      pencil.textContent = "✎";
-      pencil.setAttribute("aria-hidden", "true");
-      sourceButton.appendChild(pencil);
+      var chevron = document.createElement("span");
+      chevron.className = "section-header-chevron";
+      chevron.textContent = "›";
+      chevron.setAttribute("aria-hidden", "true");
+      sourceButton.appendChild(chevron);
       sourceButton.addEventListener("click", function () {
         if (busy || !guardDraft()) return;
         enterSection(item, section, false, false);
