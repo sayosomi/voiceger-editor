@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 from .caption_batch import CaptionBatch
 from .web_batch import WebBatchMixin
+from .web_takes import WebTakeMixin
 from .voiceger_environment import check_voiceger_environment
 
 
@@ -40,7 +41,8 @@ class _Operation:
     status: str = "running"
     completed: int = 0
     total: int = 1
-    result: dict[str, bool] | None = None
+    result: dict[str, Any] | None = None
+    cancellable: bool = True
     error: str | None = None
     cancellation: threading.Event = field(default_factory=threading.Event)
 
@@ -48,6 +50,7 @@ class _Operation:
         return {
             "id": self.identifier,
             "kind": self.kind,
+            "cancellable": self.cancellable,
             "status": self.status,
             "completed": self.completed,
             "total": self.total,
@@ -63,6 +66,7 @@ class _WebSession:
     revision: int = 0
     batch: CaptionBatch = field(default_factory=lambda: CaptionBatch(default_take_count=4))
     operations: dict[str, _Operation] = field(default_factory=dict)
+    preview_audio: tuple[str, str, bytes] | None = None
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -74,7 +78,7 @@ class _WebSession:
         }
 
 
-class WebSessionOperations(WebBatchMixin):
+class WebSessionOperations(WebBatchMixin, WebTakeMixin):
     """Thread-safe, in-process session registry with one worker across sessions."""
 
     def __init__(
@@ -108,8 +112,8 @@ class WebSessionOperations(WebBatchMixin):
 
     @staticmethod
     def _dispose(session: _WebSession) -> None:
-        # Future Batch/Takes routes attach real UtteranceSession objects here.
-        # Dispose their temporary Takes; never delete accepted output files.
+        session.preview_audio = None
+        # Dispose temporary Takes only; never delete accepted output files.
         for item in session.batch.items:
             item.session.discard_takes()
 
@@ -172,6 +176,8 @@ class WebSessionOperations(WebBatchMixin):
         with self._lock:
             operation = self._get_operation(identifier, operation_id)
             if operation.status in ("running", "cancelling"):
+                if not operation.cancellable:
+                    raise WebSessionConflict("This operation cannot be cancelled")
                 operation.cancellation.set()
                 operation.status = "cancelling"
             return operation.snapshot()
