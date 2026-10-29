@@ -109,11 +109,10 @@ class WebEnglishMixin:
                     grouping = self._english_grouping(session, item, query, index)
                     entries = []
                     for group_index, (label, phones) in enumerate(grouping.groups):
-                        if not phones:
-                            continue
                         punctuation = _is_punctuation(label, phones)
-                        if not punctuation and not any(c.isalpha() for c in label):
-                            continue
+                        editable = punctuation or any(c.isalpha() for c in label)
+                        # Never silently omit an uneditable token boundary:
+                        # users must see the complete canonical segment.
                         entries.append({
                             "index": group_index,
                             "label": phones[0] if punctuation else label,
@@ -123,6 +122,7 @@ class WebEnglishMixin:
                                 for p in phones
                             ),
                             "punctuation": punctuation,
+                            "editable": editable,
                         })
                     section["groups"] = entries
                 except WebPronunciationValidation:
