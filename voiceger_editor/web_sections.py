@@ -131,6 +131,17 @@ class WebSectionMixin:
                            language, index, opening, text):
         with self._lock:
             session, item = self._take_guard(session_id, item_id, revision)
+            query = self._section_query(session, item)
+            _valid_text(text)
+            self._section(query, index, language, opening)
+            source = (item.session.pure_japanese_utterance_text if index is None
+                      else query.voicegerSegments[index].text)
+            if source != opening:
+                raise WebPronunciationValidation("stale_section")
+            # Same text means the user's entire section-text edit is a no-op;
+            # do not require G2P or resynthesis to preserve existing Takes.
+            if text == opening:
+                return {"changed": False, "batch": self._batch_snapshot(session)}
             query, updated, groups = self._section_text_draft(
                 session, item, language, index, opening, text)
             if updated.model_dump() == query.model_dump():
