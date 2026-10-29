@@ -827,7 +827,7 @@ function setup() {
     setFetch(callback){fetchResponse=callback;}};
 }
 (async()=>{
-  const env = setup(), {app,player,row,indicator,button,calls}=env;
+  const env = setup(), {app,player,row,indicator,button,progress,calls}=env;
   await app.playAudio("/one","item","take",1);
   assert(app.getState().phase === "playing", "Take 1 did not play");
   assert(row.classList.contains("is-playing"), "Take 1 missing playing highlight");
