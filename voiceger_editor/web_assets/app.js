@@ -545,7 +545,7 @@
         state === "failed" ? "を再取得して再生" :
         state === "loading" || state === "starting" ? "を読み込み中" : "を再生";
       button.setAttribute("aria-label", "Take " + row.dataset.takeNumber + action);
-      button.disabled = busy || button.dataset.fixedDisabled === "true" ||
+      button.disabled = busy || (button.dataset && button.dataset.fixedDisabled === "true") ||
         (match && awaitingPlayback);
       var progress = row.querySelector(".take-progress");
       progress.hidden = !match || state === "loading" || state === "failed";
