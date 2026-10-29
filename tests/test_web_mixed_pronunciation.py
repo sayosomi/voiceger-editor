@@ -223,14 +223,13 @@ class MixedPronunciationWebTests(unittest.TestCase):
         before = self.fake.query.model_dump()
         original_rev = self.batch()["revision"]
         suffix = "/pronunciation/english/1/0"
-        for notation in ["V EH9", "V", "", "V EH1\nR", "V [EH1]"]:
+        for notation in ["V EH9", "", "V EH1\\nR", "V [EH1]"]:
             result = self.action("PATCH", suffix,
                                  self.english_payload("V EH1 R IY0", notation))
-            if notation == "V":
-                # Removing phonemes is a valid direct text edit.
-                self.assertEqual(result.status_code, 200)
-                break
             self.assertEqual(result.status_code, 422)
+        valid = self.action("PATCH", suffix,
+                            self.english_payload("V EH1 R IY0", "V"))
+        self.assertEqual(valid.status_code, 200, valid.text)
         # This separate conflict check observes updated server state, never modifies it.
         new_base = self.fake.query.model_dump()
         self.assertEqual(self.action(
