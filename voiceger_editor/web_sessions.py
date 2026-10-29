@@ -252,6 +252,7 @@ class WebSessionOperations(WebBatchMixin, WebTakeMixin):
             if self._active is not None:
                 session_id, operation_id = self._active
                 operation = self._sessions[session_id].operations[operation_id]
-                operation.cancellation.set()
+                if operation.cancellable:
+                    operation.cancellation.set()
             else:
                 self._clear_sessions()
