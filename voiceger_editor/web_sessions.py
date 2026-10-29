@@ -23,7 +23,18 @@ class WebSessionNotFound(LookupError):
 
 
 class WebSessionConflict(RuntimeError):
-    """A single-worker or session-lifecycle conflict."""
+    """A typed, safe conflict; never expose arbitrary exception text."""
+
+    CODES = frozenset({
+        "conflict", "revision_conflict", "worker_busy",
+        "terms_required", "accepted_take_protected", "already_accepted",
+    })
+
+    def __init__(self, message: str, *, code: str = "conflict") -> None:
+        if code not in self.CODES:
+            raise ValueError("Unknown Web conflict code")
+        super().__init__(message)
+        self.code = code
 
 
 class WebSessionCapacity(RuntimeError):
