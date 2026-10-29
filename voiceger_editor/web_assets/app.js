@@ -991,6 +991,12 @@
   ["select", "keyup", "mouseup", "touchend", "input"].forEach(function (type) {
     $("pronunciation-text").addEventListener(type, rememberPronunciationSelection);
   });
+  $("pronunciation-text").addEventListener("input", function () {
+    if (currentView === "pronunciation" && playback && playback.kind === "preview") {
+      // A modified draft must never replay audio for its previous contents.
+      clearPlayer();
+    }
+  });
   $("view-pronunciation").querySelectorAll("[data-pronunciation-insert], [data-pronunciation-backspace]")
     .forEach(function (button) {
       // Mouse buttons must not steal textarea focus. Touch preserves selection

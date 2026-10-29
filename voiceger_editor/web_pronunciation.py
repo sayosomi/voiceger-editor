@@ -69,7 +69,7 @@ class WebPronunciationMixin:
         with self._lock:
             session, item = self._take_guard(session_id, item_id, revision)
             self._require_terms()
-            _current, updated = _draft_query(item, notation)
+            _draft_query(item, notation)
             # Shared core validates and isolates a transient pure-Japanese query.
             preview_query = japanese_preview_query(item.session.query,
                 notation.replace("　", "/").replace(" ", "/"))
