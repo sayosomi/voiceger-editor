@@ -82,7 +82,7 @@ def build_web_session_router(service: WebSessionOperations) -> APIRouter:
     def cancel_operation(session_id: str, operation_id: str):
         try:
             return service.cancel(session_id, operation_id)
-        except (WebSessionClosed, WebSessionNotFound) as exc:
+        except (WebSessionClosed, WebSessionNotFound, WebSessionConflict) as exc:
             raise _translate_error(exc) from None
 
     return router
