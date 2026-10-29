@@ -375,7 +375,10 @@
   function openItem(id) {
     if (busy || !batch) return;
     if (!guardDraft()) return;
-    if (selectedId !== id) clearPlayer();
+    if (selectedId !== id) {
+      clearPlayer();
+      $("operation-panel").hidden = true;
+    }
     selectedId = id;
     renderItem(false);
     showView("item", true);
