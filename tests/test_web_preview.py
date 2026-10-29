@@ -47,9 +47,9 @@ function check(phase, visible, accessible, disabled) {
   };
   // Derive disabled from the production phase, not a test-supplied expected value.
   setBusy(false);
-  const render = new Function("$","playback","selectedId","currentView",
+  const render = new Function("$","playback","selectedId","currentView","busy",
     source.slice(renderStart,renderEnd) + ";return updatePlaybackUI;")(
-      key=>nodes[key], playback, "item", "item");
+      key=>nodes[key], playback, "item", "item", false);
   render();
   if (button.textContent !== visible ||
       button.getAttribute("aria-label") !== accessible ||
