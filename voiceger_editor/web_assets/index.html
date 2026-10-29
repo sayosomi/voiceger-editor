@@ -104,11 +104,11 @@
         <section id="item-pronunciation" class="item-pronunciation" hidden aria-label="発音">
           <div class="section-top">
             <h3>発音</h3>
-            <button type="button" id="open-pronunciation" class="item-link">編集</button>
+            <button type="button" id="add-section" class="item-link" hidden>＋ 追加</button>
+            <button type="button" id="open-pronunciation" class="item-link" hidden>編集</button>
           </div>
-          <p id="pronunciation-value" class="pronunciation-value"></p>
+          <p id="pronunciation-value" class="pronunciation-value" hidden></p>
           <div id="pronunciation-sections" class="pronunciation-sections" hidden></div>
-          <button type="button" id="add-section" class="item-link" hidden>＋ セクションを追加</button>
         </section>
         <div class="item-quick-actions">
           <button type="button" id="preview-audio" hidden>▶ Preview</button>
@@ -181,9 +181,8 @@
       </section>
 
       <section id="view-section" class="screen" aria-labelledby="section-title" hidden>
-        <button type="button" id="section-back" class="back-button">← Batch Item</button>
-        <h2 id="section-title" tabindex="-1">読み上げ文を変更</h2>
-        <p id="section-context" class="pronunciation-caption"></p>
+        <button type="button" id="section-back" class="back-button">← 戻る</button>
+        <h2 id="section-title" tabindex="-1">読み上げ文</h2>
         <div id="section-operation-panel" class="operation-panel" hidden>
           <p id="section-operation-progress" role="status" aria-live="polite"></p>
           <button type="button" id="cancel-section-audio" hidden>キャンセル</button>
@@ -194,15 +193,15 @@
             <label><input type="radio" name="section-language" value="ja" checked> 日本語（JA）</label>
             <label><input type="radio" name="section-language" value="en"> 英語（EN）</label>
           </fieldset>
-          <label for="section-text">読み上げる文章</label>
+          <label for="section-text">文章</label>
           <textarea id="section-text" rows="4" maxlength="2000" autocomplete="off" spellcheck="false"></textarea>
           <div class="pronunciation-actions">
             <button type="button" id="preview-section">▶ Preview</button>
             <button type="submit" id="apply-section" class="primary-button">反映</button>
           </div>
-          <div class="pronunciation-actions-secondary">
-            <button type="button" id="reset-section">リセット</button>
-            <button type="button" id="cancel-section">キャンセル</button>
+          <div class="section-secondary-actions">
+            <button type="button" id="reset-section" hidden>元に戻す</button>
+            <button type="button" id="delete-section" hidden>セクションを削除</button>
           </div>
         </form>
       </section>
