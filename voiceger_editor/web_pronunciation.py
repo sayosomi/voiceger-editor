@@ -30,7 +30,7 @@ def prepared_japanese_notation(item) -> str | None:
     """Read only a prepared pure-Japanese query; never guess from Caption."""
     if not item.session.is_prepared:
         return None
-    query = item.session.query
+    query = getattr(item.session, "query", None)
     if not isinstance(query, AudioQuery) or query.voicegerSegments is not None:
         return None
     # TUI shows spaces, not the core's slash separator, in editable drafts.
