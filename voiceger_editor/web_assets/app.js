@@ -21,6 +21,7 @@
   var takeCountEditMode = false;
   var takeMenuOpen = false;
   var pronunciationOpening = null;
+  var pronunciationTarget = null;
   var pronunciationItemId = "";
   var pronunciationStale = false;
   var pronunciationComposing = false;
@@ -95,6 +96,7 @@
       pronunciationHistoryActive = false;
       pronunciationExitPending = null;
       pronunciationOpening = null;
+      if (typeof pronunciationTarget !== "undefined") pronunciationTarget = null;
       pronunciationItemId = "";
       pronunciationStale = false;
     }
@@ -116,7 +118,10 @@
     return {
       voicegerPronunciationEditor: true,
       sessionId: sessionId,
-      itemId: pronunciationItemId
+      itemId: pronunciationItemId,
+      language: typeof pronunciationTarget !== "undefined" && pronunciationTarget ? pronunciationTarget.language : "ja",
+      segmentIndex: typeof pronunciationTarget !== "undefined" && pronunciationTarget ? pronunciationTarget.segmentIndex : null,
+      groupIndex: typeof pronunciationTarget !== "undefined" && pronunciationTarget ? pronunciationTarget.groupIndex : null
     };
   }
   // Android Back/Forward both traverse the real browser history. Forward
@@ -144,7 +149,7 @@
       return;
     }
     var item = batch.items.find(function (row) { return row.id === state.itemId; });
-    if (!item || typeof item.pronunciation !== "string") {
+    if (!item || (!item.pronunciation && !item.pronunciation_sections)) {
       window.history.back();
       return;
     }
@@ -153,7 +158,12 @@
       return;
     }
     selectedId = item.id;
-    enterPronunciation(item, true);
+    pronunciationTarget = {
+      language: state.language || "ja",
+      segmentIndex: state.segmentIndex === undefined ? null : state.segmentIndex,
+      groupIndex: state.groupIndex === undefined ? null : state.groupIndex
+    };
+    if (!enterPronunciation(item, true)) window.history.back();
   });
   window.addEventListener("beforeunload", function (event) {
     if (!pronunciationDirty()) return;
@@ -191,7 +201,10 @@
       };
       var invalidPronunciation = {
         invalid_pronunciation: "発音形式が正しくありません。各アクセント句に ' または正しい [ ] を指定し、句の区切りには空白を使ってください。",
-        unsupported_pronunciation: "日本語以外・日英混在の発音編集は次のSliceで対応します。"
+        unsupported_pronunciation: "選択した発音は編集できません。最新のBatchを取得してください。",
+        invalid_english_pronunciation: "ARPAbetの音素・強勢数字（0/1/2）を確認してください。",
+        grouping_unavailable: "英語の単語区切りを確認できません。Mac側で発音を再準備してください。",
+        stale_pronunciation: "編集対象の発音が更新されています。編集画面を開き直してください。"
       };
       var error = new Error(
         response.status === 401 ? "認証できません。トークンを確認してください。" :
@@ -464,6 +477,60 @@
     if (!item || item.is_prepared || autoPrepareFailures.has(item.id)) return;
     startAudio(item.id, "/audio/prepare", { rebuild: false }, true);
   }
+  function renderPronunciationSections(item) {
+    var host = $("pronunciation-sections");
+    host.replaceChildren();
+    var sections = item.pronunciation_sections || [];
+    sections.forEach(function (section) {
+      var panel = document.createElement("section");
+      panel.className = "pronunciation-section";
+      var heading = document.createElement("div");
+      heading.className = "section-top";
+      var tag = document.createElement("strong");
+      tag.textContent = section.language === "ja" ? "JA" : "EN";
+      heading.appendChild(tag);
+      panel.appendChild(heading);
+      var source = document.createElement("p");
+      source.className = "pronunciation-source";
+      source.textContent = section.text || "";
+      panel.appendChild(source);
+      function edit(target, label, notation) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "pronunciation-entry";
+        button.setAttribute("aria-label", label + " の発音を編集");
+        var visible = document.createElement("span");
+        visible.className = "pronunciation-entry-value";
+        visible.textContent = notation;
+        button.appendChild(visible);
+        var action = document.createElement("span");
+        action.textContent = "編集";
+        action.className = "pronunciation-entry-action";
+        button.appendChild(action);
+        button.addEventListener("click", function () {
+          if (busy || !guardDraft()) return;
+          pronunciationTarget = target;
+          enterPronunciation(item, false);
+        });
+        panel.appendChild(button);
+      }
+      if (section.language === "ja" && typeof section.notation === "string") {
+        edit({ language: "ja", segmentIndex: section.index, groupIndex: null },
+          "日本語セクション", section.notation);
+      } else if (section.language === "en" && section.groups) {
+        section.groups.forEach(function (group) {
+          edit({ language: "en", segmentIndex: section.index, groupIndex: group.index },
+            group.label, group.label + "　" + group.display);
+        });
+      } else {
+        var error = document.createElement("p");
+        error.className = "help-text";
+        error.textContent = "このセクションの発音を表示できません。Mac側で発音を再準備してください。";
+        panel.appendChild(error);
+      }
+      host.appendChild(panel);
+    });
+  }
   function renderItem(keepCaptionDraft) {
     if (!batch || !selectedId) return;
     var index = batch.items.findIndex(function (entry) { return entry.id === selectedId; });
@@ -486,9 +553,12 @@
     $("edit-take-count").hidden = takeCountEditMode;
     $("edit-take-count").textContent = "Take数 " + item.effective_take_count;
     $("item-pronunciation").hidden = !item.is_prepared;
-    $("pronunciation-value").textContent = item.pronunciation ||
-      "日本語以外・日英混在の編集は次のSliceで対応します。";
-    $("open-pronunciation").hidden = !item.pronunciation;
+    var pure = !!item.pronunciation;
+    $("pronunciation-value").hidden = !pure;
+    $("pronunciation-value").textContent = item.pronunciation || "";
+    $("open-pronunciation").hidden = !pure;
+    $("pronunciation-sections").hidden = pure;
+    if (!pure && item.is_prepared) renderPronunciationSections(item);
     setFixed("previous-item", index === 0);
     setFixed("next-item", index === batch.items.length - 1);
     renderTakes(item);
@@ -521,6 +591,7 @@
     takeCountEditMode = false;
     takeMenuOpen = false;
     pronunciationOpening = null;
+    pronunciationTarget = null;
     pronunciationItemId = "";
     pronunciationStale = false;
     pronunciationComposing = false;
@@ -1018,18 +1089,42 @@
     captionEditMode = false;
     takeCountEditMode = false;
     $("edit-caption").value = item.caption;
+    var target = typeof pronunciationTarget !== "undefined" && pronunciationTarget ?
+      pronunciationTarget : { language: "ja", segmentIndex: null, groupIndex: null };
+    var opening = item.pronunciation, context = item.caption;
+    if (item.pronunciation_sections && item.pronunciation_sections.length) {
+      var section = item.pronunciation_sections.find(function (entry) {
+        return entry.language === target.language && entry.index === target.segmentIndex;
+      });
+      if (!section) return false;
+      if (target.language === "ja") {
+        opening = section.notation;
+        context = section.text;
+      } else {
+        var group = (section.groups || []).find(function (entry) {
+          return entry.index === target.groupIndex;
+        });
+        if (!group) return false;
+        opening = group.notation;
+        context = group.label;
+      }
+    }
+    if (typeof opening !== "string") return false;
     if (!showView("pronunciation", true)) return false;
-    pronunciationOpening = item.pronunciation;
+    pronunciationTarget = target;
+    pronunciationOpening = opening;
     pronunciationItemId = item.id;
     pronunciationStale = false;
-    $("pronunciation-text").value = pronunciationOpening;
-    $("pronunciation-caption").textContent = item.caption;
+    $("pronunciation-title").textContent = target.language === "en" ? "英語発音編集" : "発音編集";
+    $("pronunciation-field-label").textContent = target.language === "en" ? "ARPAbet" : "発音";
+    $("pronunciation-assists").hidden = target.language === "en";
+    $("pronunciation-text").value = opening;
+    $("pronunciation-caption").textContent = context;
     setFixed("apply-pronunciation", false);
     $("pronunciation-text").focus({ preventScroll: true });
-    $("pronunciation-text").setSelectionRange(pronunciationOpening.length, pronunciationOpening.length);
+    $("pronunciation-text").setSelectionRange(opening.length, opening.length);
     rememberPronunciationSelection();
     if (fromHistory) {
-      // Forward is already on the editor entry; do not add another one.
       pronunciationHistoryActive = true;
     } else {
       try {
@@ -1042,7 +1137,26 @@
   function openPronunciation() {
     if (busy || !batch || !selectedId || !guardDraft()) return;
     var item = batch.items.find(function (row) { return row.id === selectedId; });
-    if (item && typeof item.pronunciation === "string") enterPronunciation(item, false);
+    if (item && typeof item.pronunciation === "string") {
+      pronunciationTarget = { language: "ja", segmentIndex: null, groupIndex: null };
+      enterPronunciation(item, false);
+    }
+  }
+  function pronunciationEndpoint(preview) {
+    var target = typeof pronunciationTarget !== "undefined" ? pronunciationTarget : null;
+    var suffix = "/pronunciation";
+    var payload = { notation: $("pronunciation-text").value };
+    if (target && target.language === "en") {
+      suffix += "/english/" + encodeURIComponent(target.segmentIndex) +
+        "/" + encodeURIComponent(target.groupIndex);
+      payload.opening = pronunciationOpening;
+    }
+    if (preview) suffix += "/preview";
+    if (target && target.language === "ja" && target.segmentIndex !== null &&
+        target.segmentIndex !== undefined) {
+      suffix += "?segment_index=" + encodeURIComponent(target.segmentIndex);
+    }
+    return { suffix: suffix, payload: payload };
   }
   async function applyPronunciation(event) {
     event.preventDefault();
@@ -1056,8 +1170,10 @@
     )) return;
     setBusy(true);
     try {
+      var endpoint = pronunciationEndpoint(false);
       var response = await request("PATCH", itemAudioPath(selectedId) +
-        "/pronunciation?expected_revision=" + batch.revision, { notation: notation });
+        endpoint.suffix + (endpoint.suffix.includes("?") ? "&" : "?") +
+        "expected_revision=" + batch.revision, endpoint.payload);
       clearPlayer();
       batch = response.batch;
       renderList();
@@ -1131,9 +1247,8 @@
   $("preview-pronunciation").addEventListener("click", function () {
     if (pronunciationStale || pronunciationItemId !== selectedId) return;
     if (togglePlayback("preview", selectedId)) return;
-    startAudio(selectedId, "/pronunciation/preview", {
-      notation: $("pronunciation-text").value
-    });
+    var endpoint = pronunciationEndpoint(true);
+    startAudio(selectedId, endpoint.suffix, endpoint.payload);
   });
   $("pronunciation-form").addEventListener("submit", applyPronunciation);
 
