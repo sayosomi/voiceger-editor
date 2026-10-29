@@ -22,7 +22,7 @@ function extract(startMark,endMark) {
 }
 const core=extract("  function updatePlaybackUI() {","  function makeRefreshIcon() {");
 const takes=extract("  function takeButton(","  async function playAudio(");
-const events=extract('  $("phone-player").addEventListener("play"',"  function displayAudioProgress(op) {");
+const events=extract('  function bindPlayerEvents(',"  function displayAudioProgress(op) {");
 const previewClick=extract('  $("preview-audio").addEventListener("click"','  $("generate-audio").addEventListener("click"');
 function assert(ok,label){if(!ok)throw Error(label);}
 function deferred(){let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return{promise,resolve,reject};}
