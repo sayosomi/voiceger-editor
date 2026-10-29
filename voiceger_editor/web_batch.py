@@ -144,6 +144,11 @@ class WebBatchMixin:
             item = batch.get_item(item_id)
             item.session.discard_takes()
             batch.remove_item(item_id)
+            # The edited word grouping belongs to this transient item only.
+            session = self._session(identifier)
+            for key in tuple(session.english_groupings):
+                if key[0] == item_id:
+                    del session.english_groupings[key]
         return self._edit_batch(identifier, expected_revision, action)
 
     def remove_captions(self, identifier: str, expected_revision: int, item_ids: list[str]):
@@ -164,6 +169,11 @@ class WebBatchMixin:
                 item.session.discard_takes()
             for item in items:
                 batch.remove_item(item.item_id)
+            removed_ids = set(item_ids)
+            session = self._session(identifier)
+            for key in tuple(session.english_groupings):
+                if key[0] in removed_ids:
+                    del session.english_groupings[key]
 
         return self._edit_batch(identifier, expected_revision, action)
 
