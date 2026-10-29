@@ -81,16 +81,20 @@ assert.equal((html.match(/id="add-section"/g)||[]).length,1);
   const nodes={},$=id=>nodes[id] ||= node();
   const pushes=[];
   const win={history:{pushState(s){pushes.push(s);}}};
+  const radios=[{value:"ja",checked:true},{value:"en",checked:false}];
+  const document={querySelectorAll(){return radios;},querySelector(){
+    return radios.find(r=>r.checked) || null;
+  }};
   const code=[
     'let busy=false,currentView="item",sectionTarget=null,sectionOpening=null,sectionItemId="",sectionStale=false,sectionHistoryActive=false;',
     'function showView(v){currentView=v;return true;}',
     'function sectionHistoryState(){return {id:sectionItemId};}',
     'function setFixed(){}',
-    cut('  function enterSection(item, section, add, fromHistory) {',
+    cut('  function selectedSectionLanguage() {',
         '  function deleteSection(item, section) {'),
     'return {enterSection,get:()=>({sectionTarget,sectionOpening,sectionItemId,sectionHistoryActive,currentView})};'
   ].join("\n");
-  const f=new Function("$","window",code)($,win);
+  const f=new Function("$","window","document",code)($,win,document);
   const item={id:"item",is_prepared:true,pronunciation_sections:[
     {index:1,language:"en",text:"very sweet!"}
   ]};
@@ -105,6 +109,8 @@ assert.equal((html.match(/id="add-section"/g)||[]).length,1);
   assert.equal(nodes["preview-section"].hidden,true);
   assert.equal(nodes["apply-section"].textContent,"追加");
   assert.equal(f.get().sectionTarget.language,"ja");
+  assert.equal(radios[0].checked,true);
+  assert.equal(radios[1].checked,false);
 }
 {
   const $=id=>({value:id==="section-text"?"draft":"ja"});
