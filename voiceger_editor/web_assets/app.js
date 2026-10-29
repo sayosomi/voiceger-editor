@@ -115,7 +115,8 @@
   // declines to discard unsaved text; reload/tab closing uses beforeunload.
   window.addEventListener("popstate", function () {
     if (!pronunciationHistoryActive || currentView !== "pronunciation") return;
-    if (busy || (!pronunciationExitPending && !guardDraft())) {
+    if ((!pronunciationExitPending && busy) ||
+        (!pronunciationExitPending && !guardDraft())) {
       window.history.pushState({ voicegerPronunciationEditor: true }, "");
       if (busy) feedback("処理完了後に戻ってください。");
       return;
