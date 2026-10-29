@@ -78,15 +78,17 @@ class WebPronunciationMixin:
             # callback, under the *same lock* that resolves cancellation and
             # sets the final operation status (see WebTakeMixin._run_take_work).
             staged: tuple[str, bytes] | None = None
+            finished_operation = None
 
             def work(operation):
-                nonlocal staged
+                nonlocal staged, finished_operation
                 if operation.cancellation.is_set():
                     return {}
                 result = item.session.preview_synthesis(preview_query)
                 data = _wav_bytes(result["audio"], int(result["sampling_rate"]))
                 handle = secrets.token_urlsafe(18)
                 staged = (handle, data)
+                finished_operation = operation
                 return {"preview_id": handle}
 
             def on_terminal(status: str) -> None:
@@ -95,10 +97,7 @@ class WebPronunciationMixin:
                     handle, data = staged
                     session.preview_audio = (item_id, handle, data)
                     # This callback and terminal operation state are atomic.
-                    operation = session.operations.get(
-                        self._active[1]) if self._active is not None else None
-                    if operation is not None:
-                        operation.completed = 1
+                    finished_operation.completed = 1
                 staged = None
 
             return self._start_take_work(
