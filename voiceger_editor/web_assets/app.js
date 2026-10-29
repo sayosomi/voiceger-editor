@@ -20,6 +20,8 @@
   var captionEditMode = false;
   var takeCountEditMode = false;
   var takeMenuOpen = false;
+  // Empty when the Caption add screen was opened from Batch List.
+  var addFromItemId = "";
   var pronunciationOpening = null;
   var pronunciationItemId = "";
   var pronunciationStale = false;
@@ -490,7 +492,10 @@
       "日本語以外・日英混在の編集は次のSliceで対応します。";
     $("open-pronunciation").hidden = !item.pronunciation;
     setFixed("previous-item", index === 0);
-    setFixed("next-item", index === batch.items.length - 1);
+    // The right footer slot doubles as add-at-end, not a second button.
+    $("next-item").textContent = index === batch.items.length - 1 ?
+      "＋ Caption追加" : "次のCaption →";
+    setFixed("next-item", false);
     renderTakes(item);
   }
   function setFixed(id, disabled) {
@@ -520,6 +525,7 @@
     captionEditMode = false;
     takeCountEditMode = false;
     takeMenuOpen = false;
+    addFromItemId = "";
     pronunciationOpening = null;
     pronunciationItemId = "";
     pronunciationStale = false;
@@ -1256,8 +1262,20 @@
       feedback(ids.length + "件のCaptionを削除しました。");
     }
   });
-  $("open-add").addEventListener("click", function () { showView("add"); });
-  $("add-back").addEventListener("click", function () { showView("list"); });
+  function openCaptionAdd(fromItem) {
+    if (busy || !batch || !showView("add")) return;
+    addFromItemId = fromItem ? selectedId : "";
+    $("new-captions").focus({ preventScroll: true });
+  }
+  function backFromCaptionAdd() {
+    var original = addFromItemId && batch &&
+      batch.items.some(function (item) { return item.id === addFromItemId; });
+    if (!showView(original ? "item" : "list")) return;
+    if (addFromItemId) $("new-captions").value = "";
+    addFromItemId = "";
+  }
+  $("open-add").addEventListener("click", function () { openCaptionAdd(false); });
+  $("add-back").addEventListener("click", backFromCaptionAdd);
   $("item-back").addEventListener("click", function () { showView("list"); });
   $("session-back").addEventListener("click", function () { showView("list"); });
   $("header-session").addEventListener("click", function () { showView("session"); });
@@ -1273,10 +1291,21 @@
   $("add-form").addEventListener("submit", async function (event) {
     event.preventDefault();
     if (!$("new-captions").value.trim()) { feedback("Captionを入力してください。"); return; }
+    if (busy || !batch) return;
+    // Detect the server-added IDs, not the number of local newline characters.
+    var oldIds = new Set(batch.items.map(function (item) { return item.id; }));
+    var originId = addFromItemId;
     var ok = await mutate("POST", "/items", { text: $("new-captions").value }, "Captionを追加しました。");
     if (ok) {
       $("new-captions").value = "";
-      showView("list", true);
+      addFromItemId = "";
+      var added = batch.items.filter(function (item) { return !oldIds.has(item.id); });
+      if (originId && added.length === 1) {
+        // Reuse the normal Batch Item open and automatic pronunciation prepare.
+        openItem(added[0].id);
+      } else {
+        showView("list", true);
+      }
       feedback("Captionを追加しました。");
     }
   });
@@ -1331,7 +1360,13 @@
     openItem(batch.items[position + delta].id);
   }
   $("previous-item").addEventListener("click", function () { adjacent(-1); });
-  $("next-item").addEventListener("click", function () { adjacent(1); });
+  $("next-item").addEventListener("click", function () {
+    if (!batch || !selectedId || busy) return;
+    var index = batch.items.findIndex(function (item) { return item.id === selectedId; });
+    if (index < 0) return;
+    if (index === batch.items.length - 1) openCaptionAdd(true);
+    else adjacent(1);
+  });
   $("default-takes-form").addEventListener("submit", function (event) {
     event.preventDefault();
     try {
