@@ -176,6 +176,7 @@ class WebTakeMixin:
 
             return self._start_take_work(
                 session_id, session, kind="prepare", total=1, run=work,
+                cancellable=False,
             )
 
     def start_preview(self, session_id: str, item_id: str, revision: int) -> dict[str, Any]:
@@ -216,17 +217,22 @@ class WebTakeMixin:
             count = session.batch.effective_take_count(item)
 
             def work(op):
+                outcome = "failed"
                 try:
                     if op.cancellation.is_set():
+                        outcome = "cancelled"
                         return {}
                     result = self._generate_values(
                         session, op, item.session.generate_takes(take_count=count),
                     )
+                    outcome = "cancelled" if op.cancellation.is_set() else "completed"
                     return result
                 finally:
                     with self._lock:
                         if item.session.has_active_batch and not item.session.candidates:
                             item.session.discard_takes()
+                        item.set_generation_outcome(outcome)
+                        session.revision += 1
 
             return self._start_take_work(
                 session_id, session, kind="generate", total=count, run=work,
@@ -269,11 +275,18 @@ class WebTakeMixin:
                 def work(op):
                     if op.cancellation.is_set():
                         return {}
-                    return self._generate_values(
+                    previous_numbers = {c.number for c in item.session.candidates}
+                    result = self._generate_values(
                         session, op, item.session.regenerate_all_takes(
                             take_count=target, protected_numbers=protected,
                         ),
                     )
+                    if op.completed == 0 and previous_numbers != {
+                        c.number for c in item.session.candidates
+                    }:
+                        with self._lock:
+                            session.revision += 1
+                    return result
 
                 kind = "regenerate-all"
             return self._start_take_work(
