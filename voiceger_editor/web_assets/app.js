@@ -24,6 +24,8 @@
   var pronunciationItemId = "";
   var pronunciationStale = false;
   var pronunciationComposing = false;
+  var pronunciationHistoryActive = false;
+  var pronunciationExitPending = null;
   var pronunciationSelection = { start: 0, end: 0 };
   var autoPrepareFailures = new Set();
   var SESSION_KEY = "voiceger-web-session-id";
@@ -54,6 +56,10 @@
       control.disabled = value || control.dataset.fixedDisabled === "true";
     });
   }
+  function pronunciationDirty() {
+    return currentView === "pronunciation" && pronunciationOpening !== null &&
+      $("pronunciation-text").value !== pronunciationOpening;
+  }
   function guardDraft() {
     if (currentView === "add" && $("new-captions").value.trim()) {
       return window.confirm("入力中のCaptionを破棄して戻りますか？");
@@ -64,8 +70,7 @@
         return window.confirm("未保存のCaption変更を破棄して移動しますか？");
       }
     }
-    if (currentView === "pronunciation" && pronunciationOpening !== null &&
-        $("pronunciation-text").value !== pronunciationOpening) {
+    if (pronunciationDirty()) {
       return window.confirm("未反映の発音変更を破棄して移動しますか？");
     }
     return true;
@@ -73,11 +78,21 @@
   function showView(name, bypassDraftGuard) {
     if ((busy && !bypassDraftGuard) || viewNames.indexOf(name) === -1) return false;
     if (!bypassDraftGuard && name !== currentView && !guardDraft()) return false;
+    if (currentView === "pronunciation" && name !== currentView &&
+        pronunciationHistoryActive) {
+      // Consume the editor-only history entry before switching screens.
+      pronunciationExitPending = { destination: name,
+        message: pronunciationExitPending ? pronunciationExitPending.message : "" };
+      window.history.back();
+      return true;
+    }
     if (name !== "list" && reorderMode) endReorderMode();
     if (name !== "list" && deleteMode) endDeleteMode();
     if ((currentView === "item" && name !== "item") ||
         (currentView === "pronunciation" && name !== "pronunciation")) clearPlayer();
     if (currentView === "pronunciation" && name !== "pronunciation") {
+      pronunciationHistoryActive = false;
+      pronunciationExitPending = null;
       pronunciationOpening = null;
       pronunciationItemId = "";
       pronunciationStale = false;
@@ -96,6 +111,27 @@
     if (title) title.focus({ preventScroll: true });
     return true;
   }
+  // Android system Back pops the editor entry. Re-push it when the Human
+  // declines to discard unsaved text; reload/tab closing uses beforeunload.
+  window.addEventListener("popstate", function () {
+    if (!pronunciationHistoryActive || currentView !== "pronunciation") return;
+    if (busy || (!pronunciationExitPending && !guardDraft())) {
+      window.history.pushState({ voicegerPronunciationEditor: true }, "");
+      if (busy) feedback("処理完了後に戻ってください。");
+      return;
+    }
+    var pending = pronunciationExitPending;
+    pronunciationHistoryActive = false;
+    pronunciationExitPending = null;
+    showView(pending ? pending.destination : "item", true);
+    if (pending && pending.message) feedback(pending.message);
+  });
+  window.addEventListener("beforeunload", function (event) {
+    if (!pronunciationDirty()) return;
+    event.preventDefault();
+    // Browser text is intentionally controlled by the browser, not this app.
+    event.returnValue = "";
+  });
   async function request(method, path, payload) {
     var headers = { Authorization: "Bearer " + token };
     if (method !== "GET") headers["X-Voiceger-Web-Request"] = "1";
@@ -965,6 +1001,11 @@
     $("pronunciation-text").focus({ preventScroll: true });
     $("pronunciation-text").setSelectionRange(pronunciationOpening.length, pronunciationOpening.length);
     rememberPronunciationSelection();
+    // Create one same-document history entry for Android system Back.
+    try {
+      window.history.pushState({ voicegerPronunciationEditor: true }, "");
+      pronunciationHistoryActive = true;
+    } catch (_ignored) { pronunciationHistoryActive = false; }
   }
   async function applyPronunciation(event) {
     event.preventDefault();
@@ -974,7 +1015,7 @@
     if (!item) return;
     var notation = $("pronunciation-text").value;
     if (notation !== pronunciationOpening && item.candidate_count > 0 && !window.confirm(
-      "発音を変更するとTake候補と採用状態がクリアされます。保存済み音声は残ります。反映しますか？"
+      "発音が実際に変更される場合はTake候補と採用状態がクリアされます。保存済み音声は残ります。反映しますか？"
     )) return;
     setBusy(true);
     try {
@@ -983,9 +1024,12 @@
       clearPlayer();
       batch = response.batch;
       renderList();
+      var message = response.changed ?
+        "発音を反映しました。Take候補はクリアされました。" :
+        "発音は変更されていません。Take候補は維持されました。";
+      if (pronunciationHistoryActive) pronunciationExitPending = { message: message };
       showView("item", true);
-      feedback(response.changed ? "発音を反映しました。Take候補はクリアされました。" :
-        "発音は変更されていません。Take候補は維持されました。");
+      if (!pronunciationHistoryActive) feedback(message);
     } catch (error) {
       if (error.conflictCode === "revision_conflict") {
         pronunciationStale = true;
@@ -1022,10 +1066,19 @@
       // Mouse buttons must not steal textarea focus. Touch preserves selection
       // before the system keyboard may dismiss on button activation.
       button.addEventListener("mousedown", function (event) { event.preventDefault(); });
+      var beganDuringComposition = false;
       button.addEventListener("pointerdown", function () {
+        // compositionend may fire between pointerdown and click on Android.
+        beganDuringComposition = pronunciationComposing;
         if (!pronunciationComposing) rememberPronunciationSelection();
       });
+      button.addEventListener("pointercancel", function () {
+        beganDuringComposition = false;
+      });
       button.addEventListener("click", function () {
+        var suppress = beganDuringComposition;
+        beganDuringComposition = false;
+        if (suppress || pronunciationComposing) return;
         editPronunciationAtCaret(button.dataset.pronunciationInsert || "",
           button.hasAttribute("data-pronunciation-backspace"));
       });
