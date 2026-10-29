@@ -103,24 +103,24 @@ class WebTakeMixin:
         self, session_id: str, operation: Any,
         run: Callable[[Any], dict[str, Any] | None],
     ) -> None:
+        result = None
+        failed = False
         try:
             result = run(operation)
+        except Exception:
+            failed = True
+        finally:
+            # Publish terminal state and release the single-worker gate atomically.
             with self._lock:
                 if operation.cancellation.is_set():
                     operation.status = "cancelled"
+                elif failed:
+                    operation.status = "failed"
+                    # Never disclose raw Voiceger exceptions or Mac paths.
+                    operation.error = "Audio operation failed on the Mac"
                 else:
                     operation.result = result or {}
                     operation.status = "succeeded"
-        except Exception:
-            with self._lock:
-                operation.status = (
-                    "cancelled" if operation.cancellation.is_set() else "failed"
-                )
-                if operation.status == "failed":
-                    # No raw Voiceger exception or Mac path reaches the browser.
-                    operation.error = "Audio operation failed on the Mac"
-        finally:
-            with self._lock:
                 if self._active == (session_id, operation.identifier):
                     self._active = None
                 session = self._sessions.get(session_id)
