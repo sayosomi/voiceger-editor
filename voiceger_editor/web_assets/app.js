@@ -552,48 +552,33 @@
     sections.forEach(function (section) {
       var panel = document.createElement("section");
       panel.className = "pronunciation-section";
+
       var heading = document.createElement("div");
       heading.className = "section-top";
       var tag = document.createElement("strong");
       tag.textContent = section.language === "ja" ? "JA" : "EN";
       heading.appendChild(tag);
-      var menuButton = document.createElement("button");
-      menuButton.type = "button";
-      menuButton.className = "section-menu-button";
-      menuButton.textContent = "⋯";
-      menuButton.setAttribute("aria-label", section.language.toUpperCase() + " セクションの操作");
-      menuButton.setAttribute("aria-expanded", "false");
-      heading.appendChild(menuButton);
-      panel.appendChild(heading);
-      var menu = document.createElement("div");
-      menu.className = "section-action-menu";
-      menu.hidden = true;
-      var editText = document.createElement("button");
-      editText.type = "button";
-      editText.textContent = "読み上げ文を変更";
-      editText.addEventListener("click", function () {
+      var sourceButton = document.createElement("button");
+      sourceButton.type = "button";
+      sourceButton.className = "pronunciation-source-button";
+      sourceButton.setAttribute("aria-label", tag.textContent +
+        "「" + (section.text || "") + "」の読み上げ文を編集");
+      var source = document.createElement("span");
+      source.className = "section-source-text";
+      source.textContent = section.text || "";
+      sourceButton.appendChild(source);
+      var pencil = document.createElement("span");
+      pencil.className = "section-edit-indicator";
+      pencil.textContent = "✎";
+      pencil.setAttribute("aria-hidden", "true");
+      sourceButton.appendChild(pencil);
+      sourceButton.addEventListener("click", function () {
         if (busy || !guardDraft()) return;
         enterSection(item, section, false, false);
       });
-      menu.appendChild(editText);
-      if (sections.length > 1 && section.index !== null) {
-        var remove = document.createElement("button");
-        remove.type = "button";
-        remove.className = "section-delete";
-        remove.textContent = "セクションを削除";
-        remove.addEventListener("click", function () { deleteSection(item, section); });
-        menu.appendChild(remove);
-      }
-      menuButton.addEventListener("click", function () {
-        if (busy) return;
-        menu.hidden = !menu.hidden;
-        menuButton.setAttribute("aria-expanded", String(!menu.hidden));
-      });
-      panel.appendChild(menu);
-      var source = document.createElement("p");
-      source.className = "pronunciation-source";
-      source.textContent = section.text || "";
-      panel.appendChild(source);
+      heading.appendChild(sourceButton);
+      panel.appendChild(heading);
+
       function edit(target, label, notation) {
         var button = document.createElement("button");
         button.type = "button";
@@ -603,10 +588,6 @@
         visible.className = "pronunciation-entry-value";
         visible.textContent = notation;
         button.appendChild(visible);
-        var action = document.createElement("span");
-        action.textContent = "編集";
-        action.className = "pronunciation-entry-action";
-        button.appendChild(action);
         button.addEventListener("click", function () {
           if (busy || !guardDraft()) return;
           pronunciationTarget = target;
