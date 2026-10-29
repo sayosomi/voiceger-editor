@@ -680,6 +680,62 @@ const scenarios = [
         self.assertIn('className = "take-regenerate"', js)
         self.assertIn('.take-regenerate', css)
 
+    def test_mobile_take_playback_controls_and_caption_shortcut_contract(self):
+        html = self.client.get("/").text
+        js = self.client.get("/assets/app.js").text
+        css = self.client.get("/assets/app.css").text
+        self.assertIn('id="new-captions"', html)
+        self.assertIn('function shouldSubmitCaptions(event)', js)
+        self.assertIn('$("new-captions").addEventListener("keydown"', js)
+        self.assertIn('$("add-form").requestSubmit()', js)
+        self.assertIn('event.isComposing', js)
+        self.assertIn('event.keyCode !== 229', js)
+        self.assertIn('function updatePlaybackUI()', js)
+        self.assertIn('"timeupdate", updatePlaybackUI', js)
+        self.assertIn('"ended", function ()', js)
+        self.assertIn('togglePlayback("take"', js)
+        self.assertIn('togglePlayback("preview"', js)
+        self.assertIn('row.classList.toggle("is-playing"', js)
+        self.assertIn('row.classList.toggle("is-paused"', js)
+        self.assertIn('className = "take-progress"', js)
+        self.assertIn('document.createElementNS(namespace, "svg")', js)
+        self.assertIn('function makeRefreshIcon()', js)
+        self.assertIn('regenerate.append(makeRefreshIcon())', js)
+        self.assertIn('regenerate.setAttribute("aria-label", "Take " + take.number + "を再生成")', js)
+        self.assertNotIn('className = "take-more"', js)
+        self.assertIn('.take-card.is-playing', css)
+        self.assertIn('.take-card.is-paused', css)
+
+    def test_mobile_cmd_enter_respects_ime_and_key_repeat(self):
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("Node is not installed; source contract remains covered")
+        path = (
+            Path(__file__).resolve().parents[1]
+            / "voiceger_editor" / "web_assets" / "app.js"
+        )
+        script = r"""
+const fs = require("fs");
+const source = fs.readFileSync(process.argv[1], "utf8");
+const start = source.indexOf("  function shouldSubmitCaptions(event)");
+const end = source.indexOf('  $("new-captions").addEventListener("keydown"', start);
+if (start < 0 || end < start) throw new Error("shortcut helper not found");
+const fn = new Function(source.slice(start, end) + ";return shouldSubmitCaptions;")();
+const make = (override) => Object.assign({
+  key: "Enter", metaKey: true, isComposing: false, keyCode: 13, repeat: false
+}, override);
+for (const input of [
+  make({key:"a"}), make({metaKey:false}), make({isComposing:true}),
+  make({keyCode:229}), make({repeat:true}),
+]) if (fn(input)) throw new Error("shortcut fired incorrectly");
+if (!fn(make())) throw new Error("Cmd+Enter did not submit");
+"""
+        completed = subprocess.run(
+            [node, "-e", script, str(path)],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+
     def test_mobile_first_open_auto_prepare_is_idempotent_and_failure_gated(self):
         node = shutil.which("node")
         if node is None:

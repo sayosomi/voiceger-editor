@@ -15,6 +15,7 @@
   var dragState = null;
   var audioOperation = null;
   var playingUrl = "";
+  var playback = null;
   var captionEditMode = false;
   var takeCountEditMode = false;
   var takeMenuOpen = false;
@@ -482,12 +483,79 @@
   }
   function clearPlayer() {
     var player = $("phone-player");
+    playback = null;
     player.pause();
     player.removeAttribute("src");
     player.load();
     player.hidden = true;
     if (playingUrl) URL.revokeObjectURL(playingUrl);
     playingUrl = "";
+    updatePlaybackUI();
+  }
+  function updatePlaybackUI() {
+    var player = $("phone-player");
+    var active = playback && playback.itemId === selectedId && currentView === "item";
+    var isPlaying = Boolean(active && !player.paused && !player.ended);
+    var preview = Boolean(active && playback.kind === "preview");
+    $("preview-audio").textContent = preview ?
+      (isPlaying ? "⏸ Preview再生中" : "▶ Preview再開") : "▶ Preview";
+    $("preview-audio").setAttribute("aria-label", preview ?
+      (isPlaying ? "Previewを一時停止" : "Previewを再開") : "Previewを生成して再生");
+    $("take-list").querySelectorAll(".take-card").forEach(function (row) {
+      var match = Boolean(active && playback.kind === "take" &&
+        row.dataset.takeNumber === String(playback.takeNumber));
+      row.classList.toggle("is-playing", match && isPlaying);
+      row.classList.toggle("is-paused", match && !isPlaying);
+      var button = row.querySelector(".take-play");
+      button.querySelector(".take-play-icon").textContent = match && isPlaying ? "⏸" : "▶";
+      var state = row.querySelector(".take-play-state");
+      state.hidden = !match;
+      state.textContent = match ? (isPlaying ? "再生中" : "一時停止") : "";
+      button.setAttribute("aria-label", "Take " + row.dataset.takeNumber +
+        (match ? (isPlaying ? "を一時停止" : "を再開") : "を再生"));
+      var progress = row.querySelector(".take-progress");
+      progress.hidden = !match;
+      var duration = player.duration;
+      var fraction = match && Number.isFinite(duration) && duration > 0 ?
+        Math.max(0, Math.min(1, player.currentTime / duration)) : 0;
+      progress.firstElementChild.style.width = (fraction * 100) + "%";
+    });
+  }
+  function togglePlayback(kind, itemId, takeNumber) {
+    if (busy || !playback || !playingUrl || itemId !== selectedId ||
+        playback.kind !== kind || playback.itemId !== itemId ||
+        (kind === "take" && playback.takeNumber !== takeNumber)) return false;
+    var player = $("phone-player");
+    if (player.paused) {
+      player.play().catch(function () {
+        player.hidden = false;
+        feedback("音声プレイヤーの再生ボタンを押してください。");
+      });
+    } else {
+      player.pause();
+    }
+    return true;
+  }
+  function makeRefreshIcon() {
+    var namespace = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(namespace, "svg");
+    svg.setAttribute("width", "20");
+    svg.setAttribute("height", "20");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+    // Lucide refresh-cw.
+    ["M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5",
+      "M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"].forEach(function (d) {
+      var path = document.createElementNS(namespace, "path");
+      path.setAttribute("d", d);
+      svg.append(path);
+    });
+    return svg;
   }
   function takeButton(text, action, disabled) {
     var button = document.createElement("button");
@@ -516,11 +584,24 @@
     takes.forEach(function (take) {
       var row = document.createElement("li");
       row.className = "take-card";
-      var play = takeButton("▶  Take " + take.number, function () {
-        playAudio(itemAudioPath(item.id) + "/takes/" + take.number + "/audio", item.id);
+      row.dataset.takeNumber = String(take.number);
+      var play = takeButton("", function () {
+        if (!togglePlayback("take", item.id, take.number)) {
+          playAudio(itemAudioPath(item.id) + "/takes/" + take.number + "/audio",
+            item.id, "take", take.number);
+        }
       }, false);
       play.className = "take-play";
-      play.setAttribute("aria-label", "Take " + take.number + "を再生");
+      var icon = document.createElement("span");
+      icon.className = "take-play-icon";
+      icon.textContent = "▶";
+      icon.setAttribute("aria-hidden", "true");
+      var label = document.createElement("span");
+      label.textContent = "Take " + take.number;
+      var state = document.createElement("span");
+      state.className = "take-play-state";
+      state.hidden = true;
+      play.append(icon, label, state);
       var duration = document.createElement("span");
       duration.className = "take-duration";
       duration.textContent = take.duration_seconds + "秒";
@@ -536,30 +617,23 @@
         }, false);
         accept.className = "take-accept";
         row.append(accept);
-        var extra = document.createElement("div");
-        extra.className = "take-extra";
-        var more = takeButton("⋯", function () {
-          var expand = regenerate.hidden;
-          list.querySelectorAll(".take-regenerate").forEach(function (control) {
-            control.hidden = true;
-          });
-          list.querySelectorAll(".take-extra > button").forEach(function (control) {
-            control.setAttribute("aria-expanded", "false");
-          });
-          regenerate.hidden = !expand;
-          more.setAttribute("aria-expanded", String(expand));
-        }, false);
-        more.className = "take-more";
-        more.setAttribute("aria-label", "Take " + take.number + "の操作");
-        more.setAttribute("aria-expanded", "false");
-        var regenerate = takeButton("再生成", function () {
+        var regenerate = takeButton("", function () {
           startAudio(item.id, "/takes/" + take.number + "/regenerate");
         }, false);
         regenerate.className = "take-regenerate";
-        regenerate.hidden = true;
-        extra.append(more, regenerate);
-        row.append(extra);
+        regenerate.append(makeRefreshIcon());
+        regenerate.setAttribute("aria-label", "Take " + take.number + "を再生成");
+        regenerate.setAttribute("title", "再生成");
+        row.append(regenerate);
       }
+      var progress = document.createElement("div");
+      progress.className = "take-progress";
+      progress.hidden = true;
+      progress.setAttribute("aria-hidden", "true");
+      var fill = document.createElement("div");
+      fill.className = "take-progress-fill";
+      progress.append(fill);
+      row.append(progress);
       list.append(row);
     });
     setFixed("prepare-retry", prepared);
@@ -568,8 +642,9 @@
     setFixed("open-take-menu", !prepared);
     setFixed("regenerate-unaccepted", takes.length === 0);
     setFixed("clear-takes", takes.length === 0);
+    updatePlaybackUI();
   }
-  async function playAudio(path, itemId) {
+  async function playAudio(path, itemId, kind, takeNumber) {
     if (busy || !token || itemId !== selectedId) return;
     setBusy(true);
     try {
@@ -585,14 +660,26 @@
       if (selectedId !== itemId) return;
       clearPlayer();
       playingUrl = URL.createObjectURL(bytes);
+      playback = { kind: kind, itemId: itemId, takeNumber: takeNumber };
       var player = $("phone-player");
       player.src = playingUrl;
-      player.hidden = false;
+      updatePlaybackUI();
       try { await player.play(); }
-      catch (_ignored) { feedback("音声プレイヤーの再生ボタンを押してください。"); }
+      catch (_ignored) {
+        player.hidden = false;
+        feedback("音声プレイヤーの再生ボタンを押してください。");
+      }
     } catch (error) { feedback(error.message); }
     finally { setBusy(false); }
   }
+  $("phone-player").addEventListener("play", updatePlaybackUI);
+  $("phone-player").addEventListener("pause", updatePlaybackUI);
+  $("phone-player").addEventListener("timeupdate", updatePlaybackUI);
+  $("phone-player").addEventListener("loadedmetadata", updatePlaybackUI);
+  $("phone-player").addEventListener("ended", function () {
+    playback = null;
+    updatePlaybackUI();
+  });
   function displayAudioProgress(op) {
     $("operation-panel").hidden = false;
     var names = {
@@ -649,7 +736,7 @@
           op.result && op.result.preview_id) {
         setBusy(false);
         await playAudio(itemAudioPath(itemId) + "/audio/preview/" +
-          encodeURIComponent(op.result.preview_id), itemId);
+          encodeURIComponent(op.result.preview_id), itemId, "preview");
       }
     } catch (error) {
       if (suffix === "/audio/prepare") autoPrepareFailures.add(itemId);
@@ -685,7 +772,7 @@
     this.setAttribute("aria-expanded", String(takeMenuOpen));
   });
   $("preview-audio").addEventListener("click", function () {
-    startAudio(selectedId, "/audio/preview");
+    if (!togglePlayback("preview", selectedId)) startAudio(selectedId, "/audio/preview");
   });
   $("generate-audio").addEventListener("click", function () {
     startAudio(selectedId, "/takes/generate");
@@ -787,6 +874,15 @@
   $("item-back").addEventListener("click", function () { showView("list"); });
   $("session-back").addEventListener("click", function () { showView("list"); });
   $("header-session").addEventListener("click", function () { showView("session"); });
+  function shouldSubmitCaptions(event) {
+    return event.key === "Enter" && event.metaKey &&
+      !event.isComposing && event.keyCode !== 229 && !event.repeat;
+  }
+  $("new-captions").addEventListener("keydown", function (event) {
+    if (!shouldSubmitCaptions(event)) return;
+    event.preventDefault();
+    if (!busy) $("add-form").requestSubmit();
+  });
   $("add-form").addEventListener("submit", async function (event) {
     event.preventDefault();
     if (!$("new-captions").value.trim()) { feedback("Captionを入力してください。"); return; }

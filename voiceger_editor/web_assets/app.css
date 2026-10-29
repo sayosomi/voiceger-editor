@@ -228,10 +228,21 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .take-accepted { color: #416b57; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .take-accept { min-height: 44px; border: 1px solid #c8dbd1; border-radius: 9px;
   background: #fff; color: #285e4f; padding: 9px 12px; font: inherit; font-size: 13px; font-weight: 700; }
-.take-extra { position: relative; }
-.take-regenerate { position: absolute; z-index: 3; right: 0; top: 46px; width: max-content;
-  min-height: 44px; padding: 9px 14px; border: 1px solid #c8dbd1; border-radius: 10px;
-  background: #fff; color: #285e4f; font: inherit; box-shadow: 0 4px 12px rgba(20,48,37,.12); }
+.take-card { position: relative; }
+.take-card.is-playing { border-color: #288765; border-width: 2px; background: #eaf5ee; padding-bottom: 14px; }
+.take-card.is-paused { border-color: #6b9680; background: #f0f7f3; padding-bottom: 14px; }
+.take-play { display: flex; gap: 8px; align-items: center; }
+.take-play-icon { width: 22px; flex: none; font-size: 15px; }
+.take-play-state { font-size: 11px; font-weight: 750; color: #196748; white-space: nowrap; }
+.take-progress { position: absolute; left: 10px; right: 10px; bottom: 4px; height: 4px;
+  border-radius: 8px; background: #c9dccc; overflow: hidden; pointer-events: none; }
+.take-progress-fill { width: 0; height: 100%; background: #288765; border-radius: 8px; }
+.take-regenerate { display: flex; align-items: center; justify-content: center;
+  flex: none; min-width: 44px; min-height: 44px; padding: 9px; border: 1px solid #c8dbd1;
+  border-radius: 10px; background: #fff; color: #285e4f; }
+.take-regenerate svg { display: block; }
+#phone-player:not([hidden]) { width: 100%; }
+#preview-audio { white-space: nowrap; }
 @media (max-width: 370px) {
   .take-card { gap: 5px; padding: 7px; }
   .take-play { padding: 8px; font-size: 12px; }
