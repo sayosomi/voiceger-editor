@@ -154,6 +154,9 @@ class JapaneseWebTests(unittest.TestCase):
     def test_apply_real_change_invalidates_candidates_not_saved_outputs(self):
         self.finish(self.action("POST", "/takes/generate"))
         self.finish(self.action("POST", "/takes/1/accept"))
+        # Preserve accepted WAV/TXT and a representative LAB sidecar byte-for-byte.
+        lab = self.output / "accepted-voice.lab"
+        lab.write_bytes(b"0 600000 a\\n600000 1200000 i\\n")
         files = [(p.name, p.read_bytes()) for p in self.output.iterdir()]
         previous = self.batch()
         change = self.action("PATCH", "/pronunciation", {"notation": "[シ]コク[メ]タン！"})
@@ -182,6 +185,76 @@ class JapaneseWebTests(unittest.TestCase):
                                        {"notation": invalid})
                 self.assertEqual(response.status_code, 422, response.text)
                 self.assertEqual(self.batch(), original)
+
+    def test_cancelled_draft_preview_does_not_publish_audio(self):
+        from threading import Event
+
+        started, release = Event(), Event()
+        original_preview = self.fake.preview_synthesis
+        before = self.batch()
+
+        def blocked(query):
+            started.set()
+            if not release.wait(4):
+                raise RuntimeError("test preview release timed out")
+            return original_preview(query)
+
+        with patch.object(self.fake, "preview_synthesis", side_effect=blocked):
+            response = self.action("POST", "/pronunciation/preview",
+                                   {"notation": "アメ'！"})
+            self.assertEqual(response.status_code, 202, response.text)
+            self.assertTrue(started.wait(3), "Draft Preview worker did not start")
+            op_id = response.json()["id"]
+            cancelled = self.client.post(
+                self.root + "/operations/" + op_id + "/cancel", headers=self.write,
+            )
+            self.assertEqual(cancelled.status_code, 200)
+            release.set()
+            result = self.finish(response)
+
+        self.assertEqual(result["status"], "cancelled")
+        self.assertIsNone(result["result"])
+        self.assertIsNone(self.service._sessions[self.root.rsplit("/", 1)[-1]].preview_audio)
+        self.assertEqual(self.batch(), before)
+        self.assertFalse(self.output.exists())
+
+    def test_draft_preview_blocks_session_close_and_expiry_then_disposes(self):
+        from threading import Event
+
+        started, release = Event(), Event()
+        original_preview = self.fake.preview_synthesis
+
+        def blocked(query):
+            started.set()
+            if not release.wait(4):
+                raise RuntimeError("test preview release timed out")
+            return original_preview(query)
+
+        sid = self.root.rsplit("/", 1)[-1]
+        with patch.object(self.fake, "preview_synthesis", side_effect=blocked):
+            response = self.action("POST", "/pronunciation/preview",
+                                   {"notation": "アメ'！"})
+            self.assertEqual(response.status_code, 202)
+            self.assertTrue(started.wait(3))
+            try:
+                self.assertEqual(self.client.delete(
+                    self.root, headers=self.write,
+                ).status_code, 409)
+                # Expiry never disposes the active worker's query mid-Preview.
+                self.service._idle_seconds = 1
+                with self.service._lock:
+                    self.service._sessions[sid].touched -= 100
+                self.assertEqual(self.batch()["items"][0]["pronunciation"], "ア'メ。")
+            finally:
+                release.set()
+            result = self.finish(response)
+        self.assertEqual(result["status"], "succeeded")
+        self.assertEqual(self.client.delete(self.root, headers=self.write).status_code, 204)
+        self.assertEqual(self.client.get(self.root + "/batch", headers=self.read).status_code, 404)
+        handle = result["result"]["preview_id"]
+        self.assertEqual(self.client.get(
+            self.path + "/audio/preview/" + handle, headers=self.read,
+        ).status_code, 404)
 
     def test_revision_auth_origin_and_conflict(self):
         before = self.batch()
