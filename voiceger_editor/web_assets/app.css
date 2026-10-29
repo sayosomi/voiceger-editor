@@ -179,3 +179,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   border: 1px solid #c87e70; background: #a74b3d; color: #fff;
   min-height: 49px; border-radius: 13px; font-weight: 750; padding: 12px 18px;
 }
+
+.operation-panel { border: 1px solid #cee0d3; background: #edf5f0; padding: 12px; border-radius: 12px; }
+.operation-panel p { margin: 0 0 8px; font-size: 13px; }
+.take-list { padding: 0; margin: 0; list-style: none; display: grid; gap: 8px; }
+.take-card { display: grid; gap: 10px; border: 1px solid #dce8df; border-radius: 12px; background: white; padding: 12px; }
+.take-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; }
+.take-card .button-row button, #operation-panel button {
+  min-height: 44px; border: 1px solid #c8dbd1; border-radius: 10px;
+  background: #f1f7f3; color: #285e4f; padding: 9px 14px;
+  font: inherit; font-size: 13px; font-weight: 700;
+}
+.take-card .button-row button:disabled { opacity: .45; }
+#phone-player { width: 100%; }
