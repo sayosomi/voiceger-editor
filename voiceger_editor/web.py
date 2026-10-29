@@ -12,6 +12,7 @@ from ._version import __version__
 from .web_routes import build_web_session_router
 from .web_batch_routes import build_web_batch_router
 from .web_take_routes import build_web_take_router
+from .web_pronunciation_routes import build_web_pronunciation_router
 from .web_sessions import WebSessionOperations
 
 
@@ -46,6 +47,7 @@ def create_web_app(*, service: WebSessionOperations | None = None) -> FastAPI:
     web_app.include_router(build_web_session_router(session_service))
     web_app.include_router(build_web_batch_router(session_service))
     web_app.include_router(build_web_take_router(session_service))
+    web_app.include_router(build_web_pronunciation_router(session_service))
 
     @web_app.middleware("http")
     async def add_security_headers(request, call_next):

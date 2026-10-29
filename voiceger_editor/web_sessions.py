@@ -15,6 +15,7 @@ from typing import Any, Callable
 from .caption_batch import CaptionBatch
 from .web_batch import WebBatchMixin
 from .web_takes import WebTakeMixin
+from .web_pronunciation import WebPronunciationMixin
 from .voiceger_environment import check_voiceger_environment
 
 
@@ -89,7 +90,7 @@ class _WebSession:
         }
 
 
-class WebSessionOperations(WebBatchMixin, WebTakeMixin):
+class WebSessionOperations(WebBatchMixin, WebPronunciationMixin, WebTakeMixin):
     """Thread-safe, in-process session registry with one worker across sessions."""
 
     def __init__(

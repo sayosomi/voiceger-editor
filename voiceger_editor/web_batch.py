@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .caption_batch import CaptionBatch, CaptionBatchItem
+from .web_pronunciation import prepared_japanese_notation
 
 
 MAX_BATCH_ITEMS = 200
@@ -42,6 +43,7 @@ def _row(batch: CaptionBatch, item: CaptionBatchItem) -> dict[str, Any]:
         "candidate_count": item.session.active_candidate_count,
         "accepted_take_numbers": sorted(item.accepted_take_numbers),
         "generation_outcome": item.generation_outcome,
+        "pronunciation": prepared_japanese_notation(item),
         "spoken_text": (
             getattr(item.session, "synthesis_source_text", None)
             if item.session.is_prepared else None
