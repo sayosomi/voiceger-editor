@@ -288,25 +288,30 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 /* Slice 6a: source-ordered JA/EN pronunciation, no stress chips or diagrams. */
 .pronunciation-sections { display: grid; gap: 10px; padding-top: 10px; }
 .pronunciation-section {
-  display: grid; gap: 4px; padding: 11px 12px;
-  border: 1px solid #dce8df; border-radius: 12px; background: #f7faf8;
+  display: grid; gap: 0; padding: 0; overflow: hidden;
+  border: 1px solid #dce8df; border-radius: 12px; background: #fff;
 }
 .pronunciation-section .section-top strong { font-size: 12px; color: #436859; }
 .pronunciation-source-button {
-  flex: 1; min-width: 0; min-height: 44px; border: 0; padding: 7px 3px;
-  display: flex; align-items: center; gap: 9px; text-align: left;
-  font: inherit; font-size: 14px; font-weight: 650; color: #293e35;
-  background: transparent; cursor: pointer;
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  min-width: 0; min-height: 48px; border: 0; padding: 11px 14px;
+  text-align: left; font: inherit; font-size: 14px; font-weight: 650;
+  color: #293e35; background: #f1f6f3; cursor: pointer;
 }
 .pronunciation-source-button .section-source-text {
   flex: 1; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap;
 }
-.section-edit-indicator { color: #627a71; font-size: 15px; flex: none; }
+.section-header-chevron {
+  flex: none; color: #839c8f; font-size: 22px; font-weight: 400; line-height: 1;
+}
+.pronunciation-source-button:focus-visible {
+  outline: 2px solid #285e4f; outline-offset: -3px;
+}
 .pronunciation-entry {
   display: flex; justify-content: space-between; align-items: center;
   gap: 10px; text-align: left; width: 100%; min-height: 44px;
   border: 0; border-top: 1px solid #e0e8e2;
-  padding: 9px 2px; background: transparent; font: inherit; color: #293e35;
+  padding: 10px 14px; background: #fff; font: inherit; color: #293e35;
 }
 .pronunciation-entry-value { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 
@@ -317,7 +322,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 /* Slice 6b: direct tap on source or pronunciation; advanced delete stays in editor. */
 #item-pronunciation > .section-top { align-items: center; }
 #add-section { flex: none; min-height: 44px; white-space: nowrap; padding: 8px 12px; }
-.pronunciation-section .section-top { gap: 8px; }
+.pronunciation-section .section-top { display: block; gap: 0; }
 .pronunciation-section .section-top strong {
   flex: none; min-width: 23px; font-size: 12px; color: #436859;
 }
