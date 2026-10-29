@@ -332,4 +332,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 #section-operation-panel { margin: 16px 0 8px; }
 #cancel-section-audio { min-height: 44px; padding: 9px 14px; }
 #preview-section { border: 1px solid #c8dbd1; background: #eff6f2; color: #285e4f; font-weight: 750; }
-#section-form select { min-height: 48px; padding: 10px 13px; border-radius: 12px; border: 1px solid #cbdcd2; background: #fff; }
+.section-language-choices { display: flex; gap: 12px; padding: 0; border: 0; flex-wrap: wrap; }
+.section-language-choices legend { font-size: 13px; color: #456358; font-weight: 750; margin-bottom: 10px; }
+.section-language-choices label {
+  display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px;
+  border: 1px solid #cbdcd2; border-radius: 12px; background: #fff; color: #285e4f;
+}
+.section-language-choices input { width: 21px; height: 21px; accent-color: #23675a; }
