@@ -342,6 +342,184 @@ class WebAudioTests(unittest.TestCase):
         self.assertFalse(candidate.exists())
         self.assertTrue(all(path.exists() for path in paths))
 
+    def test_terms_rejection_is_typed_and_preserves_state(self):
+        from voiceger_editor.terms_acceptance import VoicegerTermsAcceptanceError
+
+        before = self.batch()
+        for reason in ("not accepted", "previous notice version"):
+            with self.subTest(reason=reason):
+                with patch(
+                    "voiceger_editor.web_takes.require_current_acceptance",
+                    side_effect=VoicegerTermsAcceptanceError(reason),
+                ):
+                    rejected = self.action(
+                        "POST", "/audio/prepare", {"rebuild": False},
+                    )
+                self.assertEqual(rejected.status_code, 409)
+                self.assertEqual(rejected.json()["detail"]["code"], "terms_required")
+                self.assertEqual(self.batch(), before)
+                self.assertEqual(self.service._active, None)
+        self.prepare()
+        before = self.batch()
+        with patch(
+            "voiceger_editor.web_takes.require_current_acceptance",
+            side_effect=VoicegerTermsAcceptanceError("stale"),
+        ):
+            for route in ("/audio/preview", "/takes/generate"):
+                with self.subTest(route=route):
+                    response = self.action("POST", route)
+                    self.assertEqual(response.status_code, 409)
+                    self.assertEqual(response.json()["detail"]["code"], "terms_required")
+        self.assertEqual(self.batch(), before)
+        self.assertEqual(self.fakes[0].syntheses, 0)
+        self.assertEqual(self.fakes[0].previews, 0)
+
+    def test_conflicts_have_safe_actionable_codes(self):
+        self.prepare()
+        stale = self.action("POST", "/takes/generate", revision=0)
+        self.assertEqual(stale.json()["detail"], {"code": "revision_conflict"})
+        self.generate_after_preparation()
+        self.finish(self.action("POST", "/takes/4/accept"))
+        rejected = self.action("POST", "/takes/4/regenerate")
+        self.assertEqual(rejected.json()["detail"], {"code": "accepted_take_protected"})
+        rejected = self.action("POST", "/takes/4/accept")
+        self.assertEqual(rejected.json()["detail"], {"code": "already_accepted"})
+        self.assertEqual(self.action("PATCH", "/take-count", {"count": 2}).status_code, 200)
+        rejected = self.action("POST", "/takes/regenerate")
+        self.assertEqual(rejected.json()["detail"], {"code": "accepted_take_protected"})
+
+    def generate_after_preparation(self):
+        completed = self.finish(self.action("POST", "/takes/generate"))
+        self.assertEqual(completed["status"], "succeeded")
+
+    def test_single_regeneration_failure_retains_original_candidate(self):
+        self.generate()
+        fake = self.fakes[0]
+        original = next(c for c in fake.candidates if c.number == 2)
+        original_bytes = original.wav_path.read_bytes()
+        with patch.object(fake._batch, "synthesize_one",
+                          side_effect=OSError("/Users/private/model")):
+            outcome = self.finish(self.action("POST", "/takes/2/regenerate"))
+        self.assertEqual(outcome["status"], "failed")
+        self.assertEqual(outcome["completed"], 0)
+        self.assertNotIn("/Users/private", str(outcome))
+        candidate = next(c for c in fake.candidates if c.number == 2)
+        self.assertEqual(candidate.wav_path, original.wav_path)
+        self.assertEqual(candidate.wav_path.read_bytes(), original_bytes)
+        self.assertEqual(self.batch()["items"][0]["candidate_count"], 4)
+
+    def test_bulk_shrink_failure_preserves_old_and_accepted_candidates(self):
+        self.generate()
+        self.finish(self.action("POST", "/takes/1/accept"))
+        fake = self.fakes[0]
+        initial = {c.number: c.wav_path for c in fake.candidates}
+        saved = tuple(self.output.iterdir())
+        self.assertEqual(self.action("PATCH", "/take-count", {"count": 3}).status_code, 200)
+        attempts = [0]
+
+        def synthesize():
+            attempts[0] += 1
+            if attempts[0] == 2:
+                raise OSError("/Users/private/bulk-failure")
+            return {"audio": np.zeros(320, dtype=np.float32), "sampling_rate": 16000}
+
+        with patch.object(fake._batch, "synthesize_one", side_effect=synthesize):
+            done = self.finish(self.action("POST", "/takes/regenerate"))
+        self.assertEqual(done["status"], "failed")
+        self.assertEqual(done["completed"], 1)
+        paths = {c.number: c.wav_path for c in fake.candidates}
+        self.assertEqual(set(paths), {1, 2, 3, 4})
+        self.assertEqual(paths[1], initial[1])
+        self.assertNotEqual(paths[2], initial[2])
+        self.assertEqual(paths[3], initial[3])
+        self.assertEqual(paths[4], initial[4])
+        self.assertTrue(all(path.exists() for path in paths.values()))
+        self.assertEqual(self.batch()["items"][0]["accepted_take_numbers"], [1])
+        self.assertTrue(all(path.exists() for path in saved))
+
+    def test_cancel_during_synthesis_exception_is_failure_not_cancellation(self):
+        self.prepare()
+        started, release = threading.Event(), threading.Event()
+        fake = self.fakes[0]
+
+        def fail_after_cancellation():
+            started.set()
+            release.wait(5)
+            raise OSError("/private/engine-error")
+
+        with patch.object(fake, "_synthesize", side_effect=fail_after_cancellation):
+            response = self.action("POST", "/takes/generate")
+            self.assertEqual(response.status_code, 202)
+            try:
+                self.assertTrue(started.wait(2))
+                cancel = self.client.post(
+                    self.root + "/operations/" + response.json()["id"] + "/cancel",
+                    headers=self.write,
+                )
+                self.assertEqual(cancel.status_code, 200)
+                self.assertEqual(cancel.json()["status"], "cancelling")
+            finally:
+                release.set()
+            done = self.finish_terminal(response.json()["id"])
+        self.assertEqual(done["status"], "failed")
+        self.assertEqual(done["error"], "Audio operation failed on the Mac")
+        self.assertNotIn("/private/engine-error", str(done))
+        item = self.batch()["items"][0]
+        self.assertEqual(item["generation_outcome"], "failed")
+        self.assertEqual(item["candidate_count"], 0)
+        self.assertIsNone(self.service._active)
+
+    def test_shutdown_active_take_worker_waits_then_cleans_transients(self):
+        self.generate()
+        self.finish(self.action("POST", "/takes/1/accept"))
+        fake = self.fakes[0]
+        preserved = tuple(self.output.iterdir())
+        old_candidates = tuple(c.wav_path for c in fake.candidates)
+        started, release = threading.Event(), threading.Event()
+
+        def slow_synthesis():
+            started.set()
+            release.wait(5)
+            return {"audio": np.zeros(320, dtype=np.float32), "sampling_rate": 16000}
+
+        with patch.object(fake._batch, "synthesize_one", side_effect=slow_synthesis):
+            response = self.action("POST", "/takes/2/regenerate")
+            self.assertEqual(response.status_code, 202)
+            try:
+                self.assertTrue(started.wait(2))
+                self.service.shutdown()
+                self.assertTrue(all(path.exists() for path in old_candidates))
+                with self.service._lock:
+                    self.assertIn(self.sid, self.service._sessions)
+                    self.assertIsNotNone(self.service._active)
+            finally:
+                release.set()
+            deadline = time.monotonic() + 7
+            while time.monotonic() < deadline:
+                with self.service._lock:
+                    if self.service._active is None and not self.service._sessions:
+                        break
+                time.sleep(0.005)
+            else:
+                self.fail("Take shutdown cleanup did not finish")
+        self.assertTrue(all(not path.exists() for path in old_candidates))
+        self.assertTrue(all(path.exists() for path in preserved))
+
+    def test_mobile_conflict_messages_are_allowlisted(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "voiceger_editor" / "web_assets" / "app.js"
+        ).read_text(encoding="utf-8")
+        for label in (
+            "revision_conflict:", "terms_required:", "worker_busy:",
+            "accepted_take_protected:", "already_accepted:",
+        ):
+            with self.subTest(label=label):
+                self.assertIn(label, source)
+        self.assertIn("problem.detail.code", source)
+        self.assertIn('error.conflictCode === "revision_conflict"', source)
+        self.assertNotIn('response.status === 409 ? "別の画面で変更されています', source)
+
 
 if __name__ == "__main__":
     unittest.main()

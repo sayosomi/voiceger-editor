@@ -85,15 +85,35 @@
       body: payload === undefined ? undefined : JSON.stringify(payload)
     });
     if (!response.ok) {
+      var conflictCode = "";
+      if (response.status === 409) {
+        try {
+          var problem = await response.json();
+          if (problem && problem.detail && typeof problem.detail.code === "string") {
+            conflictCode = problem.detail.code;
+          }
+        } catch (_ignored) { /* Invalid server response stays generic. */ }
+      }
+      // Allowlist user-facing explanations; never render untrusted server errors.
+      var conflictMessages = {
+        revision_conflict: "別の画面で変更されています。最新の一覧を取得してください。",
+        worker_busy: "Mac側で別の処理を実行中です。完了後に再試行してください。",
+        terms_required: "Mac側で最新のVoiceger利用規約への承諾が必要です。",
+        accepted_take_protected: "採用済みTakeを保護しました。Take数を増やすか採用状態を確認してください。",
+        already_accepted: "このTakeはすでに採用済みです。",
+        conflict: "この操作は現在実行できません。状態を確認してください。"
+      };
       var error = new Error(
         response.status === 401 ? "認証できません。トークンを確認してください。" :
         response.status === 503 ? "Mac側の接続設定を確認してください。" :
-        response.status === 409 ? "別の画面で変更されています。最新の一覧を取得しました。" :
+        response.status === 409 ?
+          (conflictMessages[conflictCode] || conflictMessages.conflict) :
         response.status === 404 ? "セッションが見つかりません。再接続してください。" :
         response.status === 422 ? "入力内容を確認してください。" :
         "操作を完了できませんでした。"
       );
       error.code = response.status;
+      error.conflictCode = conflictCode;
       throw error;
     }
     return response.status === 204 ? null : response.json();
@@ -414,7 +434,7 @@
       feedback(success);
       return true;
     } catch (error) {
-      if (error.code === 409) {
+      if (error.conflictCode === "revision_conflict") {
         // A stale deletion selection must not be applied to a refreshed Batch.
         if (deleteMode) selectedForDelete.clear();
         try { await refresh(); } catch (_ignored) { /* Keep conflict feedback. */ }
@@ -577,7 +597,7 @@
           encodeURIComponent(op.result.preview_id), itemId);
       }
     } catch (error) {
-      if (error.code === 409) {
+      if (error.conflictCode === "revision_conflict") {
         try { await refresh(); } catch (_ignored) { /* Preserve original error. */ }
       }
       if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);

@@ -49,9 +49,9 @@ class WebTakeMixin:
 
         session, item = self._take_item(session_id, item_id)
         if revision != session.revision:
-            raise WebSessionConflict("Batch was changed in another tab; reload it")
+            raise WebSessionConflict("Batch was changed in another tab; reload it", code="revision_conflict")
         if self._active is not None:
-            raise WebSessionConflict("One Web operation is already running")
+            raise WebSessionConflict("One Web operation is already running", code="worker_busy")
         return session, item
 
     @staticmethod
@@ -62,7 +62,8 @@ class WebTakeMixin:
             require_current_acceptance()
         except VoicegerTermsAcceptanceError:
             raise WebSessionConflict(
-                "Accept the current Voiceger terms on the Mac before generating audio"
+                "Accept the current Voiceger terms on the Mac before generating audio",
+                code="terms_required",
             ) from None
 
     def _start_take_work(
@@ -112,10 +113,10 @@ class WebTakeMixin:
         finally:
             # Publish terminal state and release the single-worker gate atomically.
             with self._lock:
-                if operation.cancellation.is_set():
-                    operation.status = "cancelled"
-                elif failed:
+                if failed:
                     operation.status = "failed"
+                elif operation.cancellation.is_set():
+                    operation.status = "cancelled"
                     # Never disclose raw Voiceger exceptions or Mac paths.
                     operation.error = "Audio operation failed on the Mac"
                 else:
@@ -255,7 +256,7 @@ class WebTakeMixin:
                 if isinstance(number, bool) or not isinstance(number, int) or number not in candidates:
                     raise WebTakeValidation("Take does not exist")
                 if number in protected:
-                    raise WebSessionConflict("Accepted Takes cannot be regenerated")
+                    raise WebSessionConflict("Accepted Takes cannot be regenerated", code="accepted_take_protected")
                 count = 1
 
                 def work(op):
@@ -269,7 +270,7 @@ class WebTakeMixin:
             else:
                 target = session.batch.effective_take_count(item)
                 if any(n > target for n in protected):
-                    raise WebSessionConflict("Take count would discard an accepted Take")
+                    raise WebSessionConflict("Take count would discard an accepted Take", code="accepted_take_protected")
                 count = len(set(range(1, target + 1)) - protected)
 
                 def work(op):
@@ -306,7 +307,7 @@ class WebTakeMixin:
             }:
                 raise WebTakeValidation("Take does not exist")
             if item.is_take_accepted(number):
-                raise WebSessionConflict("Take is already accepted")
+                raise WebSessionConflict("Take is already accepted", code="already_accepted")
 
             def work(op):
                 saved = item.session.accept_take(number)

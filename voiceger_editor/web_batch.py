@@ -101,9 +101,9 @@ class WebBatchMixin:
         with self._lock:
             session = self._session(identifier)
             if expected_revision != session.revision:
-                raise WebSessionConflict("Batch was changed in another tab; reload it")
+                raise WebSessionConflict("Batch was changed in another tab; reload it", code="revision_conflict")
             if self._active is not None:
-                raise WebSessionConflict("Cannot edit Batch while an operation is active")
+                raise WebSessionConflict("Cannot edit Batch while an operation is active", code="worker_busy")
             try:
                 action(session.batch)
             except KeyError:
