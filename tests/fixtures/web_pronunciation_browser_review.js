@@ -173,6 +173,41 @@ function historyHarness() {
   assert.equal(v.getNotes().at(-1),"発音を反映しました。");
 }
 
+async function stalePlaybackTests() {
+  // Run the actual media teardown and deferred play() lifecycle. Reset/input
+  // calls this owner; an old promise must not revive the discarded Preview.
+  let resolveOld;
+  const deferred = new Promise(resolve=>{resolveOld=resolve;});
+  let media = {
+    paused:true, ended:false, hidden:false, src:"blob:old", duration:1,
+    play(){return deferred;}, pause(){this.paused=true;},
+    removeAttribute(){this.src="";}, load(){},
+    cloneNode(){return {...this,src:"",hidden:true,play(){return Promise.resolve();}};},
+    replaceWith(next){media=next;}
+  };
+  const revoked=[];
+  const logic=[
+    'let playbackRequestId=4,playingUrl="blob:old",',
+    'playback={kind:"preview",itemId:"i",phase:"ready",started:false};',
+    'function bindPlayerEvents(){} function updatePlaybackUI(){}',
+    'function feedback(){}',
+    slice('  function clearPlayer() {','  function updatePlaybackUI() {'),
+    slice('  async function beginPlayback(requestId) {',
+          '  function togglePlayback(kind, itemId, takeNumber) {'),
+    'return {beginPlayback,clearPlayer,requestId:()=>playbackRequestId,',
+    '  active:()=>playback};'
+  ].join("\n");
+  const h=new Function("$","URL",logic)(
+    id=>media,{revokeObjectURL:s=>revoked.push(s)}
+  );
+  const old=h.beginPlayback(4);
+  h.clearPlayer();
+  resolveOld();
+  await old;
+  assert.equal(h.active(),null,"late play() resolution must not revive Preview");
+  assert.equal(h.requestId(),5,"teardown must revoke old request identity");
+  assert.deepEqual(revoked,["blob:old"]);
+}
 async function applyTests() {
   const sourceFn=slice("  async function applyPronunciation(event) {",
                        '  $("open-pronunciation").addEventListener("click"');
@@ -213,5 +248,5 @@ async function applyTests() {
   await stale.fn.applyPronunciation({preventDefault(){}});
   assert.equal(stale.getRequests(),1,"no stale re-Apply");
 }
-applyTests().then(()=>console.log("WEB_PRONUNCIATION_BROWSER_REVIEW_PASS"))
+Promise.all([applyTests(), stalePlaybackTests()]).then(()=>console.log("WEB_PRONUNCIATION_BROWSER_REVIEW_PASS"))
   .catch(e=>{console.error(e);process.exitCode=1;});
