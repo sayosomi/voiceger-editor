@@ -173,7 +173,7 @@ class JapaneseWebTests(unittest.TestCase):
         self.finish(self.action("POST", "/takes/generate"))
         original = self.batch()
         for invalid in ("", "アメ", "ア'/メ", "ア'メ ", "ア'メ/アメ'",
-                        "キ'ョ", "ア'[メ]", "ア[メ'", "[シ]コク[メ", "\nア'メ"):
+                        "キ'ョ", "ア'[メ]", "ア[メ'", "[シ]コク[メ'", "\nア'メ"):
             with self.subTest(invalid=invalid):
                 response = self.action("PATCH", "/pronunciation", {"notation": invalid})
                 self.assertEqual(response.status_code, 422, response.text)
