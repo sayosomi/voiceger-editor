@@ -26,6 +26,7 @@
   var pronunciationComposing = false;
   var pronunciationHistoryActive = false;
   var pronunciationExitPending = null;
+  var pronunciationReturnView = "item";
   var pronunciationSelection = { start: 0, end: 0 };
   var autoPrepareFailures = new Set();
   var SESSION_KEY = "voiceger-web-session-id";
@@ -111,21 +112,48 @@
     if (title) title.focus({ preventScroll: true });
     return true;
   }
-  // Android system Back pops the editor entry. Re-push it when the Human
-  // declines to discard unsaved text; reload/tab closing uses beforeunload.
-  window.addEventListener("popstate", function () {
-    if (!pronunciationHistoryActive || currentView !== "pronunciation") return;
-    if ((!pronunciationExitPending && busy) ||
-        (!pronunciationExitPending && !guardDraft())) {
-      window.history.pushState({ voicegerPronunciationEditor: true }, "");
-      if (busy) feedback("処理完了後に戻ってください。");
+  function pronunciationHistoryState() {
+    return {
+      voicegerPronunciationEditor: true,
+      sessionId: sessionId,
+      itemId: pronunciationItemId
+    };
+  }
+  // Android Back/Forward both traverse the real browser history. Forward
+  // restores a fresh server-owned pronunciation, never a discarded draft.
+  window.addEventListener("popstate", function (event) {
+    if (pronunciationHistoryActive && currentView === "pronunciation") {
+      if ((!pronunciationExitPending && busy) ||
+          (!pronunciationExitPending && !guardDraft())) {
+        window.history.pushState(pronunciationHistoryState(), "");
+        if (busy) feedback("処理完了後に戻ってください。");
+        return;
+      }
+      var pending = pronunciationExitPending;
+      pronunciationHistoryActive = false;
+      pronunciationExitPending = null;
+      showView(pending ? pending.destination : pronunciationReturnView, true);
+      if (pending && pending.message) feedback(pending.message);
       return;
     }
-    var pending = pronunciationExitPending;
-    pronunciationHistoryActive = false;
-    pronunciationExitPending = null;
-    showView(pending ? pending.destination : "item", true);
-    if (pending && pending.message) feedback(pending.message);
+    var state = event && event.state;
+    if (!state || !state.voicegerPronunciationEditor) return;
+    if (busy || !sessionId || !batch || state.sessionId !== sessionId) {
+      // An obsolete editor entry must never restore a previous session.
+      window.history.back();
+      return;
+    }
+    var item = batch.items.find(function (row) { return row.id === state.itemId; });
+    if (!item || typeof item.pronunciation !== "string") {
+      window.history.back();
+      return;
+    }
+    if (!guardDraft()) {
+      window.history.back();
+      return;
+    }
+    selectedId = item.id;
+    enterPronunciation(item, true);
   });
   window.addEventListener("beforeunload", function (event) {
     if (!pronunciationDirty()) return;
@@ -984,15 +1012,13 @@
     rememberPronunciationSelection();
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }
-  function openPronunciation() {
-    if (busy || !batch || !selectedId || !guardDraft()) return;
-    var item = batch.items.find(function (row) { return row.id === selectedId; });
-    if (!item || typeof item.pronunciation !== "string") return;
+  function enterPronunciation(item, fromHistory) {
+    pronunciationReturnView = currentView;
     // A confirmed discarded Caption draft must not reappear on return.
     captionEditMode = false;
     takeCountEditMode = false;
     $("edit-caption").value = item.caption;
-    if (!showView("pronunciation", true)) return;
+    if (!showView("pronunciation", true)) return false;
     pronunciationOpening = item.pronunciation;
     pronunciationItemId = item.id;
     pronunciationStale = false;
@@ -1002,11 +1028,21 @@
     $("pronunciation-text").focus({ preventScroll: true });
     $("pronunciation-text").setSelectionRange(pronunciationOpening.length, pronunciationOpening.length);
     rememberPronunciationSelection();
-    // Create one same-document history entry for Android system Back.
-    try {
-      window.history.pushState({ voicegerPronunciationEditor: true }, "");
+    if (fromHistory) {
+      // Forward is already on the editor entry; do not add another one.
       pronunciationHistoryActive = true;
-    } catch (_ignored) { pronunciationHistoryActive = false; }
+    } else {
+      try {
+        window.history.pushState(pronunciationHistoryState(), "");
+        pronunciationHistoryActive = true;
+      } catch (_ignored) { pronunciationHistoryActive = false; }
+    }
+    return true;
+  }
+  function openPronunciation() {
+    if (busy || !batch || !selectedId || !guardDraft()) return;
+    var item = batch.items.find(function (row) { return row.id === selectedId; });
+    if (item && typeof item.pronunciation === "string") enterPronunciation(item, false);
   }
   async function applyPronunciation(event) {
     event.preventDefault();
