@@ -90,11 +90,11 @@ function makeRows() {
   const f = new Function("$","rows","window","decisions","destinations","opens",setup)(
     $,rows,win,decisions,destinations,opens);
   f.setSelected("1");
-  nodes["edit-caption"].value="two";
+  $("edit-caption").value="two";
   await nodes["next-item"].emit("click");
   assert.deepEqual(opens,["2"],"middle keeps normal next navigation");
   f.setSelected("2");
-  nodes["edit-caption"].value="three";
+  $("edit-caption").value="three";
   await nodes["next-item"].emit("click");
   assert.equal(f.getView(),"add");
   assert.equal(f.getOrigin(),"2");
@@ -109,7 +109,7 @@ function makeRows() {
   assert.equal(nodes["new-captions"].value,"");
   assert.equal(f.getOrigin(),"");
   // Uncommitted Caption changes on Batch Item retain their existing guard.
-  nodes["edit-caption"].value="uncommitted";
+  $("edit-caption").value="uncommitted";
   decisions.push(false,true);
   await nodes["next-item"].emit("click");
   assert.equal(f.getView(),"item");
@@ -127,7 +127,7 @@ async function submitScenario(source, lines, expectedView, expectedSelected) {
   let batch={items:makeRows()},selectedId="2",busy=false;
   let addFromItemId=source==="item"?"2":"";
   let currentView="add",requestCount=0,destinations=[];
-  nodes["new-captions"].value=lines;
+  $("new-captions").value=lines;
   let release;
   const gate=new Promise(resolve=>release=resolve);
   async function mutate(method, path, payload) {
