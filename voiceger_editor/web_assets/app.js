@@ -841,6 +841,15 @@
     $("cancel-audio").hidden = !op.cancellable ||
       op.status !== "running";
     $("cancel-audio").disabled = op.status !== "running";
+    var editorPanel = $("pronunciation-operation-panel");
+    if (editorPanel) {
+      editorPanel.hidden = currentView !== "pronunciation";
+      $("pronunciation-operation-progress").textContent =
+        $("operation-progress").textContent;
+      $("cancel-pronunciation-audio").hidden = !op.cancellable ||
+        op.status !== "running";
+      $("cancel-pronunciation-audio").disabled = op.status !== "running";
+    }
   }
   async function startAudio(itemId, suffix, payload, automaticPrepare) {
     if (busy || !batch || !selectedId || itemId !== selectedId) return;
@@ -898,6 +907,7 @@
     } finally {
       audioOperation = null;
       $("operation-panel").hidden = true;
+      $("pronunciation-operation-panel").hidden = true;
       setBusy(false);
       if (batch && currentView === "item") renderItem(true);
       updatePlaybackUI();
@@ -935,6 +945,10 @@
     if (busy || !batch || !selectedId || !guardDraft()) return;
     var item = batch.items.find(function (row) { return row.id === selectedId; });
     if (!item || typeof item.pronunciation !== "string") return;
+    // A confirmed discarded Caption draft must not reappear on return.
+    captionEditMode = false;
+    takeCountEditMode = false;
+    $("edit-caption").value = item.caption;
     if (!showView("pronunciation", true)) return;
     pronunciationOpening = item.pronunciation;
     pronunciationItemId = item.id;
@@ -1064,7 +1078,7 @@
     await mutate("DELETE", "/items/" + encodeURIComponent(selectedId) + "/takes",
       undefined, "候補をクリアしました。");
   });
-  $("cancel-audio").addEventListener("click", async function () {
+  async function cancelActiveAudio() {
     if (!audioOperation || !audioOperation.cancellable ||
         audioOperation.status !== "running") return;
     try {
@@ -1073,7 +1087,9 @@
         encodeURIComponent(audioOperation.id) + "/cancel");
       displayAudioProgress(audioOperation);
     } catch (error) { feedback(error.message); }
-  });
+  }
+  $("cancel-audio").addEventListener("click", cancelActiveAudio);
+  $("cancel-pronunciation-audio").addEventListener("click", cancelActiveAudio);
 
   $("auth-form").addEventListener("submit", async function (event) {
     event.preventDefault();

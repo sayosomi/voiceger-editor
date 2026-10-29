@@ -280,3 +280,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .pronunciation-actions-secondary button { min-height: 44px; padding: 10px 13px;
   border: 1px solid #d0ded4; border-radius: 10px; background: #fff; color: #285e4f; }
 #phone-player:not([hidden]) { display: block; margin: 10px 20px; width: calc(100% - 40px); }
+
+#pronunciation-operation-panel { margin: 16px 0 8px; }
+#cancel-pronunciation-audio { min-height: 44px; border: 1px solid #c8dbd1;
+  background: #f1f7f3; color: #285e4f; border-radius: 10px; padding: 9px 14px; }

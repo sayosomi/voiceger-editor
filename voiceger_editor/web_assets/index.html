@@ -153,6 +153,10 @@
         <button type="button" id="pronunciation-back" class="back-button">← Batch Item</button>
         <h2 id="pronunciation-title" tabindex="-1">発音編集</h2>
         <p id="pronunciation-caption" class="pronunciation-caption"></p>
+        <div id="pronunciation-operation-panel" class="operation-panel" hidden>
+          <p id="pronunciation-operation-progress" role="status" aria-live="polite"></p>
+          <button type="button" id="cancel-pronunciation-audio" hidden>キャンセル</button>
+        </div>
         <form id="pronunciation-form" class="field-stack">
           <label for="pronunciation-text">発音</label>
           <textarea id="pronunciation-text" rows="4" maxlength="2000" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
