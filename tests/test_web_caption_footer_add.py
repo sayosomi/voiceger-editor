@@ -90,9 +90,11 @@ function makeRows() {
   const f = new Function("$","rows","window","decisions","destinations","opens",setup)(
     $,rows,win,decisions,destinations,opens);
   f.setSelected("1");
+  nodes["edit-caption"].value="two";
   await nodes["next-item"].emit("click");
   assert.deepEqual(opens,["2"],"middle keeps normal next navigation");
   f.setSelected("2");
+  nodes["edit-caption"].value="three";
   await nodes["next-item"].emit("click");
   assert.equal(f.getView(),"add");
   assert.equal(f.getOrigin(),"2");
