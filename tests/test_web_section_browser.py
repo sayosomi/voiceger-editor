@@ -116,7 +116,7 @@ assert(html.indexOf('id="add-section"') < html.indexOf('id="pronunciation-sectio
   const single={id:"item",caption:"元の字幕",is_prepared:true,pronunciation_sections:[
     {index:null,language:"ja",text:"雨"}
   ]};
-  nodes["edit-caption"].value="破棄済みの下書き";
+  $("edit-caption").value="破棄済みの下書き";
   assert(f.enterSection(single,single.pronunciation_sections[0],false,false));
   assert.equal(nodes["edit-caption"].value,"元の字幕","Discarded Caption draft cannot block section Preview");
   assert.equal(f.get().captionEditMode,false);
