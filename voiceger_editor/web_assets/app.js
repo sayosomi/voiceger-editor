@@ -13,6 +13,8 @@
   var deleteMode = false;
   var selectedForDelete = new Set();
   var dragState = null;
+  var audioOperation = null;
+  var playingUrl = "";
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
   var viewNames = ["connect", "list", "add", "item", "session"];
@@ -362,6 +364,7 @@
     $("item-takes").hidden = item.take_count_override === null;
     setFixed("previous-item", index === 0);
     setFixed("next-item", index === batch.items.length - 1);
+    renderTakes(item);
   }
   function setFixed(id, disabled) {
     var control = $(id);
@@ -376,6 +379,8 @@
     showView("item", true);
   }
   function resetLocal(clearSessionId) {
+    clearPlayer();
+    audioOperation = null;
     endDeleteMode();
     token = "";
     sessionId = "";
@@ -420,6 +425,199 @@
       return false;
     } finally { setBusy(false); }
   }
+
+
+  function itemAudioPath(id) {
+    return batchPath() + "/items/" + encodeURIComponent(id);
+  }
+  function clearPlayer() {
+    var player = $("phone-player");
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+    player.hidden = true;
+    if (playingUrl) URL.revokeObjectURL(playingUrl);
+    playingUrl = "";
+  }
+  function takeButton(text, action, disabled) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.textContent = text;
+    button.disabled = busy || disabled;
+    button.addEventListener("click", action);
+    return button;
+  }
+  function renderTakes(item) {
+    var prepared = Boolean(item.is_prepared);
+    var takes = item.takes || [];
+    $("prepare-audio").textContent = prepared ? "発音を再準備" : "発音を準備";
+    $("preview-audio").hidden = !prepared;
+    $("generate-audio").hidden = !prepared || takes.length !== 0;
+    $("spoken-source").hidden = !prepared;
+    if (prepared) {
+      var spoken = item.spoken_text || "";
+      $("spoken-source").textContent = spoken === item.caption ?
+        "発音準備済み" : "読み上げ: " + spoken;
+    }
+    $("take-actions").hidden = takes.length === 0;
+    var list = $("take-list");
+    list.replaceChildren();
+    takes.forEach(function (take) {
+      var row = document.createElement("li");
+      row.className = "take-card";
+      var heading = document.createElement("div");
+      heading.className = "take-head";
+      var name = document.createElement("strong");
+      name.textContent = "Take " + take.number;
+      var detail = document.createElement("span");
+      detail.textContent = take.accepted ? "採用済み" : take.duration_seconds + "秒";
+      heading.append(name, detail);
+      var actions = document.createElement("div");
+      actions.className = "button-row";
+      actions.append(
+        takeButton("再生", function () {
+          playAudio(itemAudioPath(item.id) + "/takes/" + take.number + "/audio", item.id);
+        }, false),
+        takeButton("採用", function () {
+          startAudio(item.id, "/takes/" + take.number + "/accept");
+        }, take.accepted),
+        takeButton("再生成", function () {
+          startAudio(item.id, "/takes/" + take.number + "/regenerate");
+        }, take.accepted)
+      );
+      row.append(heading, actions);
+      list.append(row);
+    });
+    setFixed("prepare-audio", false);
+    setFixed("preview-audio", !prepared);
+    setFixed("generate-audio", !prepared || takes.length !== 0);
+    setFixed("regenerate-unaccepted", takes.length === 0);
+    setFixed("clear-takes", takes.length === 0);
+  }
+  async function playAudio(path, itemId) {
+    if (busy || !token || itemId !== selectedId) return;
+    setBusy(true);
+    try {
+      var response = await fetch(path, {
+        headers: { Authorization: "Bearer " + token },
+        cache: "no-store", credentials: "same-origin"
+      });
+      if (!response.ok) throw new Error("音声を取得できませんでした。");
+      var bytes = await response.blob();
+      if (bytes.type.indexOf("audio/") !== 0 || !bytes.size) {
+        throw new Error("音声データが無効です。");
+      }
+      if (selectedId !== itemId) return;
+      clearPlayer();
+      playingUrl = URL.createObjectURL(bytes);
+      var player = $("phone-player");
+      player.src = playingUrl;
+      player.hidden = false;
+      try { await player.play(); }
+      catch (_ignored) { feedback("音声プレイヤーの再生ボタンを押してください。"); }
+    } catch (error) { feedback(error.message); }
+    finally { setBusy(false); }
+  }
+  function displayAudioProgress(op) {
+    $("operation-panel").hidden = false;
+    var names = {
+      prepare: "発音を準備", preview: "Preview", generate: "Take生成",
+      "regenerate-one": "Take再生成", "regenerate-all": "未採用Take再生成",
+      accept: "Take採用"
+    };
+    $("operation-progress").textContent =
+      (names[op.kind] || "音声操作") + ": " + op.completed + "/" + op.total +
+      (op.status === "cancelling" ? " キャンセル処理中" : "");
+    $("cancel-audio").hidden = !op.cancellable ||
+      op.status !== "running";
+    $("cancel-audio").disabled = op.status !== "running";
+  }
+  async function startAudio(itemId, suffix, payload) {
+    if (busy || !batch || !selectedId || itemId !== selectedId) return;
+    var item = batch.items.find(function (entry) { return entry.id === itemId; });
+    if (!item) return;
+    if ($("edit-caption").value !== item.caption) {
+      feedback("未保存のCaptionを先に保存してください。");
+      return;
+    }
+    clearPlayer();
+    setBusy(true);
+    try {
+      var op = await request("POST", itemAudioPath(itemId) + suffix +
+        "?expected_revision=" + batch.revision, payload);
+      audioOperation = op;
+      displayAudioProgress(op);
+      while (op.status === "running" || op.status === "cancelling") {
+        await new Promise(function (resolve) { setTimeout(resolve, 650); });
+        op = await request("GET", "/api/web/sessions/" +
+          encodeURIComponent(sessionId) + "/operations/" + encodeURIComponent(op.id));
+        audioOperation = op;
+        displayAudioProgress(op);
+      }
+      await refresh();
+      if (op.status === "succeeded") {
+        feedback(op.kind === "accept" ?
+          "保存しました: " + op.result.audio_name :
+          op.kind === "preview" ? "Previewを生成しました。" : "音声操作が完了しました。");
+      } else {
+        feedback(op.status === "cancelled" ?
+          "キャンセルしました。生成済みのTakeは保持されています。" :
+          (op.error || "音声操作に失敗しました。"));
+      }
+      if (op.status === "succeeded" && op.kind === "preview" &&
+          op.result && op.result.preview_id) {
+        setBusy(false);
+        await playAudio(itemAudioPath(itemId) + "/audio/preview/" +
+          encodeURIComponent(op.result.preview_id), itemId);
+      }
+    } catch (error) {
+      if (error.code === 409) {
+        try { await refresh(); } catch (_ignored) { /* Preserve original error. */ }
+      }
+      if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
+      feedback(error.message);
+    } finally {
+      audioOperation = null;
+      setBusy(false);
+      if (batch && currentView === "item") renderItem(true);
+    }
+  }
+  $("prepare-audio").addEventListener("click", function () {
+    if (!batch || !selectedId) return;
+    var item = batch.items.find(function (entry) { return entry.id === selectedId; });
+    if (!item) return;
+    if (item.is_prepared && !window.confirm(
+      "発音を再準備すると、既存のTake候補と採用状態がクリアされます。保存済み音声は残ります。続けますか？"
+    )) return;
+    startAudio(selectedId, "/audio/prepare", { rebuild: Boolean(item.is_prepared) });
+  });
+  $("preview-audio").addEventListener("click", function () {
+    startAudio(selectedId, "/audio/preview");
+  });
+  $("generate-audio").addEventListener("click", function () {
+    startAudio(selectedId, "/takes/generate");
+  });
+  $("regenerate-unaccepted").addEventListener("click", function () {
+    startAudio(selectedId, "/takes/regenerate");
+  });
+  $("clear-takes").addEventListener("click", async function () {
+    if (busy || !selectedId || !window.confirm(
+      "Take候補と採用状態をクリアしますか？保存済み音声は削除されません。"
+    )) return;
+    clearPlayer();
+    await mutate("DELETE", "/items/" + encodeURIComponent(selectedId) + "/takes",
+      undefined, "候補をクリアしました。");
+  });
+  $("cancel-audio").addEventListener("click", async function () {
+    if (!audioOperation || !audioOperation.cancellable ||
+        audioOperation.status !== "running") return;
+    try {
+      audioOperation = await request("POST", "/api/web/sessions/" +
+        encodeURIComponent(sessionId) + "/operations/" +
+        encodeURIComponent(audioOperation.id) + "/cancel");
+      displayAudioProgress(audioOperation);
+    } catch (error) { feedback(error.message); }
+  });
 
   $("auth-form").addEventListener("submit", async function (event) {
     event.preventDefault();
