@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 from pathlib import Path
 import tempfile
 import threading
@@ -524,6 +526,53 @@ class WebAudioTests(unittest.TestCase):
         self.assertEqual(gone.status_code, 404)
         self.assertTrue(all(not p.exists() for p in candidate_paths))
         self.assertTrue(all(p.exists() for p in saved))
+
+
+    def test_mobile_conflict_messages_execute_without_disclosing_details(self):
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("Node is not installed; source contract remains covered")
+        path = (
+            Path(__file__).resolve().parents[1]
+            / "voiceger_editor" / "web_assets" / "app.js"
+        )
+        script = r"""
+const fs = require("fs");
+const source = fs.readFileSync(process.argv[1], "utf8");
+const start = source.indexOf("  async function request(");
+const end = source.indexOf("  function batchPath()", start);
+if (start < 0 || end < start) throw new Error("request() not found");
+const makeRequest = new Function("fetch", "token", source.slice(start, end) + "; return request;");
+const scenarios = [
+  ["terms_required", "利用規約"],
+  ["revision_conflict", "別の画面"],
+  ["worker_busy", "別の処理"],
+  ["accepted_take_protected", "採用済みTake"],
+  ["already_accepted", "採用済み"],
+  ["unknown_code", "現在実行できません"]
+];
+(async function () {
+  for (const [code, expected] of scenarios) {
+    const fn = makeRequest(
+      async () => ({ok: false, status: 409,
+        json: async () => ({detail: {code, secret: "/private/never-disclose"}})}),
+      "test-token"
+    );
+    let error = null;
+    try { await fn("POST", "/test"); } catch (caught) { error = caught; }
+    if (!error || error.conflictCode !== code ||
+        !error.message.includes(expected) ||
+        error.message.includes("/private/")) {
+      throw new Error("Incorrect browser error mapping: " + code);
+    }
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });
+"""
+        completed = subprocess.run(
+            [node, "-e", script, str(path)], capture_output=True,
+            text=True, timeout=10, check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
     def test_mobile_conflict_messages_are_allowlisted(self):
         source = (
