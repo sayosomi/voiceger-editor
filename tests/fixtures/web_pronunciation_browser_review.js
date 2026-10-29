@@ -349,7 +349,7 @@ async function applyTests() {
       'function clearPlayer(){} function renderList(){} function showView(){}',
       'function feedback(s){messages.push(s);}',
       'function setFixed(a,b){fixed.push([a,b]);}',
-      'function itemAudioPath(){return "/items/i";}',
+      'function itemAudioPath(){return "/items/i";} function cancelActiveAudio(){}',
       'async function refresh(){}',
       slice('  function pronunciationEndpoint(preview) {',
             '  async function applyPronunciation(event) {'),
