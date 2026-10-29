@@ -59,7 +59,7 @@ function environment(){
  }
  nodes["phone-player"]=makeMedia();
  const document={querySelectorAll(){return controls;}};
- const window={scrollTo(){},confirm(){return true;}};
+ const window={scrollTo(){},confirm(){return true;},addEventListener(){}};
  const URL={createObjectURL(){return "blob:take-"+(++serial);},revokeObjectURL(u){revoked.push(u);}};
  const fetch=async()=>({ok:true,blob:async()=>({size:16,type:"audio/wav"})});
  const factory=new Function("$","document","window","URL","fetch","feedback",
