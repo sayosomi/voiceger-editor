@@ -42,6 +42,21 @@ def _row(batch: CaptionBatch, item: CaptionBatchItem) -> dict[str, Any]:
         "candidate_count": item.session.active_candidate_count,
         "accepted_take_numbers": sorted(item.accepted_take_numbers),
         "generation_outcome": item.generation_outcome,
+        "spoken_text": (
+            getattr(item.session, "synthesis_source_text", None)
+            if item.session.is_prepared else None
+        ),
+        "takes": [
+            {
+                "number": candidate.number,
+                "duration_seconds": round(
+                    candidate.frame_count / candidate.sampling_rate, 2
+                ) if candidate.sampling_rate else 0,
+                "accepted": item.is_take_accepted(candidate.number),
+                "style": candidate.style_name,
+            }
+            for candidate in getattr(item.session, "candidates", ())
+        ],
     }
 
 
@@ -86,9 +101,9 @@ class WebBatchMixin:
         with self._lock:
             session = self._session(identifier)
             if expected_revision != session.revision:
-                raise WebSessionConflict("Batch was changed in another tab; reload it")
+                raise WebSessionConflict("Batch was changed in another tab; reload it", code="revision_conflict")
             if self._active is not None:
-                raise WebSessionConflict("Cannot edit Batch while an operation is active")
+                raise WebSessionConflict("Cannot edit Batch while an operation is active", code="worker_busy")
             try:
                 action(session.batch)
             except KeyError:

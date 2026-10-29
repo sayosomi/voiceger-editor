@@ -26,7 +26,7 @@ class WebFoundationTests(unittest.TestCase):
         for method in (self.client.post, self.client.put, self.client.delete):
             self.assertEqual(method("/api/web/health").status_code, 405)
 
-    def test_mobile_shell_has_no_working_feature_controls(self):
+    def test_mobile_shell_exposes_compact_take_controls(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.headers["content-type"].startswith("text/html"))
@@ -34,7 +34,11 @@ class WebFoundationTests(unittest.TestCase):
         self.assertIn('name="viewport"', response.text)
         for title in ("Batch List", "Captionを追加", "設定"):
             self.assertIn(title, response.text)
-        self.assertIn("未実装", response.text)
+        self.assertNotIn('id="prepare-audio"', response.text)
+        self.assertIn('id="prepare-retry"', response.text)
+        self.assertIn('id="open-take-menu"', response.text)
+        self.assertIn('id="open-caption-edit"', response.text)
+        self.assertIn('id="take-list"', response.text)
         self.assertIn('aria-disabled="true"', response.text)
         self.assertIn('src="/assets/app.js"', response.text)
         self.assertIn('href="/assets/app.css"', response.text)

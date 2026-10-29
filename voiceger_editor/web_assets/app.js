@@ -13,6 +13,14 @@
   var deleteMode = false;
   var selectedForDelete = new Set();
   var dragState = null;
+  var audioOperation = null;
+  var playingUrl = "";
+  var playbackRequestId = 0;
+  var playback = null;
+  var captionEditMode = false;
+  var takeCountEditMode = false;
+  var takeMenuOpen = false;
+  var autoPrepareFailures = new Set();
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
   var viewNames = ["connect", "list", "add", "item", "session"];
@@ -58,6 +66,7 @@
     if (!bypassDraftGuard && name !== currentView && !guardDraft()) return false;
     if (name !== "list" && reorderMode) endReorderMode();
     if (name !== "list" && deleteMode) endDeleteMode();
+    if (currentView === "item" && name !== "item") clearPlayer();
     currentView = name;
     viewNames.forEach(function (viewName) {
       $("view-" + viewName).hidden = viewName !== name;
@@ -82,15 +91,35 @@
       body: payload === undefined ? undefined : JSON.stringify(payload)
     });
     if (!response.ok) {
+      var conflictCode = "";
+      if (response.status === 409) {
+        try {
+          var problem = await response.json();
+          if (problem && problem.detail && typeof problem.detail.code === "string") {
+            conflictCode = problem.detail.code;
+          }
+        } catch (_ignored) { /* Invalid server response stays generic. */ }
+      }
+      // Allowlist user-facing explanations; never render untrusted server errors.
+      var conflictMessages = {
+        revision_conflict: "別の画面で変更されています。最新の一覧を取得してください。",
+        worker_busy: "Mac側で別の処理を実行中です。完了後に再試行してください。",
+        terms_required: "Mac側で最新のVoiceger利用規約への承諾が必要です。",
+        accepted_take_protected: "採用済みTakeを保護しました。Take数を増やすか採用状態を確認してください。",
+        already_accepted: "このTakeはすでに採用済みです。",
+        conflict: "この操作は現在実行できません。状態を確認してください。"
+      };
       var error = new Error(
         response.status === 401 ? "認証できません。トークンを確認してください。" :
         response.status === 503 ? "Mac側の接続設定を確認してください。" :
-        response.status === 409 ? "別の画面で変更されています。最新の一覧を取得しました。" :
+        response.status === 409 ?
+          (conflictMessages[conflictCode] || conflictMessages.conflict) :
         response.status === 404 ? "セッションが見つかりません。再接続してください。" :
         response.status === 422 ? "入力内容を確認してください。" :
         "操作を完了できませんでした。"
       );
       error.code = response.status;
+      error.conflictCode = conflictCode;
       throw error;
     }
     return response.status === 204 ? null : response.json();
@@ -345,6 +374,11 @@
     });
     updateDeleteAction();
   }
+  // Only first-time preparation is automatic; failures require an explicit retry.
+  function maybePrepareOnOpen(item) {
+    if (!item || item.is_prepared || autoPrepareFailures.has(item.id)) return;
+    startAudio(item.id, "/audio/prepare", { rebuild: false }, true);
+  }
   function renderItem(keepCaptionDraft) {
     if (!batch || !selectedId) return;
     var index = batch.items.findIndex(function (entry) { return entry.id === selectedId; });
@@ -355,13 +389,20 @@
     }
     var item = batch.items[index];
     $("item-title").textContent = (index + 1) + " / " + batch.items.length;
+    $("caption-text").textContent = item.caption;
+    $("caption-display").hidden = captionEditMode;
+    $("edit-caption-form").hidden = !captionEditMode;
     if (!keepCaptionDraft) $("edit-caption").value = item.caption;
     $("item-takes-mode").value = item.take_count_override === null ? "default" : "custom";
     $("item-takes").value = String(item.take_count_override === null ?
       batch.default_take_count : item.take_count_override);
     $("item-takes").hidden = item.take_count_override === null;
+    $("item-takes-form").hidden = !takeCountEditMode;
+    $("edit-take-count").hidden = takeCountEditMode;
+    $("edit-take-count").textContent = "Take数 " + item.effective_take_count;
     setFixed("previous-item", index === 0);
     setFixed("next-item", index === batch.items.length - 1);
+    renderTakes(item);
   }
   function setFixed(id, disabled) {
     var control = $(id);
@@ -371,11 +412,25 @@
   function openItem(id) {
     if (busy || !batch) return;
     if (!guardDraft()) return;
+    if (selectedId !== id) {
+      clearPlayer();
+      $("operation-panel").hidden = true;
+      captionEditMode = false;
+      takeCountEditMode = false;
+      takeMenuOpen = false;
+    }
     selectedId = id;
     renderItem(false);
     showView("item", true);
+    maybePrepareOnOpen(batch.items.find(function (item) { return item.id === id; }));
   }
   function resetLocal(clearSessionId) {
+    clearPlayer();
+    audioOperation = null;
+    autoPrepareFailures.clear();
+    captionEditMode = false;
+    takeCountEditMode = false;
+    takeMenuOpen = false;
     endDeleteMode();
     token = "";
     sessionId = "";
@@ -399,12 +454,14 @@
       var path = batchPath() + suffix + "?expected_revision=" +
         encodeURIComponent(batch.revision);
       batch = await request(method, path, payload);
+      if (options && options.saveCaption) captionEditMode = false;
+      if (options && options.saveCount) takeCountEditMode = false;
       renderList();
       if (selectedId) renderItem(!options || !options.saveCaption);
       feedback(success);
       return true;
     } catch (error) {
-      if (error.code === 409) {
+      if (error.conflictCode === "revision_conflict") {
         // A stale deletion selection must not be applied to a refreshed Batch.
         if (deleteMode) selectedForDelete.clear();
         try { await refresh(); } catch (_ignored) { /* Keep conflict feedback. */ }
@@ -420,6 +477,441 @@
       return false;
     } finally { setBusy(false); }
   }
+
+
+  function itemAudioPath(id) {
+    return batchPath() + "/items/" + encodeURIComponent(id);
+  }
+  function clearPlayer() {
+    // Invalidate outstanding fetches and play() promises before releasing audio.
+    playbackRequestId += 1;
+    playback = null;
+    var player = $("phone-player");
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+    player.hidden = true;
+    // A fresh media element prevents old-source events from reaching new playback.
+    var fresh = player.cloneNode(false);
+    fresh.removeAttribute("src");
+    fresh.hidden = true;
+    player.replaceWith(fresh);
+    bindPlayerEvents(fresh, playbackRequestId);
+    if (playingUrl) URL.revokeObjectURL(playingUrl);
+    playingUrl = "";
+    updatePlaybackUI();
+  }
+  function updatePlaybackUI() {
+    var player = $("phone-player");
+    var active = playback && playback.itemId === selectedId && currentView === "item";
+    var phase = active ? playback.phase : "";
+    var playing = phase === "playing" && !player.paused && !player.ended;
+    var preview = Boolean(active && playback.kind === "preview");
+    // Visible and accessible labels share the same playback-phase definition.
+    var previewLabels = {
+      loading: ["Preview取得中", "Preview音声を取得中"],
+      starting: ["Preview再生待ち", "Previewの再生開始待ち"],
+      ready: ["▶ Preview再生", "Previewを再生"],
+      playing: ["⏸ Preview再生中", "Previewを一時停止"],
+      paused: ["▶ Preview再開", "Previewを再開"],
+      failed: ["▶ Preview再試行", "Previewを再取得して再生"]
+    };
+    var previewLabel = preview ?
+      (previewLabels[playing ? "playing" : phase] || ["▶ Preview", "Previewを生成して再生"]) :
+      ["▶ Preview", "Previewを生成して再生"];
+    $("preview-audio").textContent = previewLabel[0];
+    $("preview-audio").setAttribute("aria-label", previewLabel[1]);
+    // Pending play() during resume must not allow another Preview request.
+    var awaitingPlayback = phase === "loading" || phase === "starting";
+    var previewControl = $("preview-audio");
+    previewControl.disabled = busy ||
+      (previewControl.dataset && previewControl.dataset.fixedDisabled === "true") ||
+      (preview && awaitingPlayback);
+    $("take-list").querySelectorAll(".take-card").forEach(function (row) {
+      var match = Boolean(active && playback.kind === "take" &&
+        row.dataset.takeNumber === String(playback.takeNumber));
+      var state = match ? phase : "";
+      var isPlaying = match && playing;
+      row.classList.toggle("is-playing", isPlaying);
+      row.classList.toggle("is-paused", match && state === "paused");
+      row.classList.toggle("is-loading", match &&
+        (state === "loading" || state === "starting" || state === "ready"));
+      row.classList.toggle("is-failed", match && state === "failed");
+      var button = row.querySelector(".take-play");
+      button.querySelector(".take-play-icon").textContent = isPlaying ? "⏸" : "▶";
+      var indicator = row.querySelector(".take-play-state");
+      var states = {
+        loading: "取得中", starting: "再生待ち", ready: "再生待ち",
+        playing: "再生中", paused: "一時停止", failed: "再生失敗"
+      };
+      indicator.hidden = !match;
+      indicator.textContent = match ? states[state] || "" : "";
+      var action = isPlaying ? "を一時停止" :
+        state === "paused" ? "を再開" :
+        state === "failed" ? "を再取得して再生" :
+        state === "loading" || state === "starting" ? "を読み込み中" : "を再生";
+      button.setAttribute("aria-label", "Take " + row.dataset.takeNumber + action);
+      button.disabled = busy || (button.dataset && button.dataset.fixedDisabled === "true") ||
+        (match && awaitingPlayback);
+      var progress = row.querySelector(".take-progress");
+      progress.hidden = !match || state === "loading" || state === "failed";
+      var duration = player.duration;
+      var fraction = match && Number.isFinite(duration) && duration > 0 ?
+        Math.max(0, Math.min(1, player.currentTime / duration)) : 0;
+      progress.firstElementChild.style.width = (fraction * 100) + "%";
+    });
+  }
+  async function beginPlayback(requestId) {
+    if (!playback || requestId !== playbackRequestId) return;
+    var player = $("phone-player");
+    playback.phase = "starting";
+    updatePlaybackUI();
+    try {
+      await player.play();
+      if (requestId !== playbackRequestId || !playback ||
+          playback.phase === "failed") return;
+      if (player.ended) playback = null;
+      else if (player.paused) playback.phase = playback.started ? "paused" : "ready";
+      else {
+        playback.started = true;
+        playback.phase = "playing";
+      }
+    } catch (_ignored) {
+      if (requestId !== playbackRequestId || !playback) return;
+      playback.phase = "failed";
+      player.hidden = false;
+      feedback("音声の再生を開始できませんでした。プレイヤーから再生するか、再試行してください。");
+    }
+    updatePlaybackUI();
+  }
+  function togglePlayback(kind, itemId, takeNumber) {
+    if (!playback || itemId !== selectedId ||
+        playback.kind !== kind || playback.itemId !== itemId ||
+        (kind === "take" && playback.takeNumber !== takeNumber)) return false;
+    // A pending play() is already handling this tap; never fall through to
+    // a new Preview generation or Take audio fetch.
+    if (playback.phase === "loading" || playback.phase === "starting") return true;
+    if (busy || !playingUrl || playback.phase === "failed") return false;
+    var player = $("phone-player");
+    if (player.paused) {
+      // beginPlayback handles the rejected play() case and updates the row.
+      void beginPlayback(playbackRequestId);
+    } else {
+      player.pause();
+      if (playback) playback.phase = "paused";
+      updatePlaybackUI();
+    }
+    return true;
+  }
+  function makeRefreshIcon() {
+    var namespace = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(namespace, "svg");
+    svg.setAttribute("width", "20");
+    svg.setAttribute("height", "20");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+    // Lucide refresh-cw.
+    ["M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5",
+      "M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"].forEach(function (d) {
+      var path = document.createElementNS(namespace, "path");
+      path.setAttribute("d", d);
+      svg.append(path);
+    });
+    return svg;
+  }
+  function takeButton(text, action, disabled) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.textContent = text;
+    button.dataset.fixedDisabled = disabled ? "true" : "false";
+    button.disabled = busy || disabled;
+    button.addEventListener("click", action);
+    return button;
+  }
+  function renderTakes(item) {
+    var prepared = Boolean(item.is_prepared);
+    var takes = item.takes || [];
+    $("preview-audio").hidden = !prepared;
+    $("generate-audio").hidden = !prepared || takes.length !== 0;
+    $("generate-audio").textContent = item.effective_take_count + "本生成";
+    $("prepare-retry").hidden = prepared || !autoPrepareFailures.has(item.id);
+    $("take-count-label").textContent = takes.length ? takes.length + "本" : "";
+    $("open-take-menu").hidden = !prepared;
+    $("open-take-menu").setAttribute("aria-expanded", String(takeMenuOpen));
+    $("take-menu").hidden = !prepared || !takeMenuOpen;
+    $("regenerate-unaccepted").hidden = takes.length === 0;
+    $("clear-takes").hidden = takes.length === 0;
+    var list = $("take-list");
+    list.replaceChildren();
+    takes.forEach(function (take) {
+      var row = document.createElement("li");
+      row.className = "take-card";
+      row.dataset.takeNumber = String(take.number);
+      var play = takeButton("", function () {
+        if (!togglePlayback("take", item.id, take.number)) {
+          playAudio(itemAudioPath(item.id) + "/takes/" + take.number + "/audio",
+            item.id, "take", take.number);
+        }
+      }, false);
+      play.className = "take-play";
+      var icon = document.createElement("span");
+      icon.className = "take-play-icon";
+      icon.textContent = "▶";
+      icon.setAttribute("aria-hidden", "true");
+      var label = document.createElement("span");
+      label.textContent = "Take " + take.number;
+      var state = document.createElement("span");
+      state.className = "take-play-state";
+      state.hidden = true;
+      play.append(icon, label, state);
+      var duration = document.createElement("span");
+      duration.className = "take-duration";
+      duration.textContent = take.duration_seconds + "秒";
+      row.append(play, duration);
+      if (take.accepted) {
+        var accepted = document.createElement("span");
+        accepted.className = "take-accepted";
+        accepted.textContent = "✓ 採用済み";
+        row.append(accepted);
+      } else {
+        var accept = takeButton("採用", function () {
+          startAudio(item.id, "/takes/" + take.number + "/accept");
+        }, false);
+        accept.className = "take-accept";
+        row.append(accept);
+        var regenerate = takeButton("", function () {
+          startAudio(item.id, "/takes/" + take.number + "/regenerate");
+        }, false);
+        regenerate.className = "take-regenerate";
+        regenerate.append(makeRefreshIcon());
+        regenerate.setAttribute("aria-label", "Take " + take.number + "を再生成");
+        regenerate.setAttribute("title", "再生成");
+        row.append(regenerate);
+      }
+      var progress = document.createElement("div");
+      progress.className = "take-progress";
+      progress.hidden = true;
+      progress.setAttribute("aria-hidden", "true");
+      var fill = document.createElement("div");
+      fill.className = "take-progress-fill";
+      progress.append(fill);
+      row.append(progress);
+      list.append(row);
+    });
+    setFixed("prepare-retry", prepared);
+    setFixed("preview-audio", !prepared);
+    setFixed("generate-audio", !prepared || takes.length !== 0);
+    setFixed("open-take-menu", !prepared);
+    setFixed("regenerate-unaccepted", takes.length === 0);
+    setFixed("clear-takes", takes.length === 0);
+    updatePlaybackUI();
+  }
+  async function playAudio(path, itemId, kind, takeNumber) {
+    if (busy || !token || itemId !== selectedId) return;
+    clearPlayer();
+    var requestId = playbackRequestId;
+    playback = {
+      kind: kind, itemId: itemId, takeNumber: takeNumber,
+      phase: "loading", started: false
+    };
+    setBusy(true);
+    updatePlaybackUI();
+    var ready = false;
+    try {
+      var response = await fetch(path, {
+        headers: { Authorization: "Bearer " + token },
+        cache: "no-store", credentials: "same-origin"
+      });
+      if (!response.ok) throw new Error("音声を取得できませんでした。");
+      var bytes = await response.blob();
+      if (bytes.type.indexOf("audio/") !== 0 || !bytes.size) {
+        throw new Error("音声データが無効です。");
+      }
+      if (requestId !== playbackRequestId || selectedId !== itemId || !token) return;
+      playingUrl = URL.createObjectURL(bytes);
+      $("phone-player").src = playingUrl;
+      ready = true;
+    } catch (error) {
+      if (requestId === playbackRequestId) {
+        clearPlayer();
+        feedback(error.message);
+      }
+    } finally {
+      // Fetch is globally exclusive, but play() may remain pending indefinitely.
+      setBusy(false);
+      updatePlaybackUI();
+    }
+    if (ready && requestId === playbackRequestId && playback) {
+      void beginPlayback(requestId);
+    }
+  }
+  function bindPlayerEvents(player, requestId) {
+    function current() {
+      return player === $("phone-player") && requestId === playbackRequestId;
+    }
+    player.addEventListener("play", function () {
+      if (current()) updatePlaybackUI();
+    });
+    player.addEventListener("playing", function () {
+      if (!current()) return;
+      if (playback && playingUrl && player.src === playingUrl &&
+          !player.paused && !player.ended && playback.phase !== "loading") {
+        playback.started = true;
+        playback.phase = "playing";
+      }
+      updatePlaybackUI();
+    });
+    player.addEventListener("pause", function () {
+      if (!current()) return;
+      if (playback && player.paused && playback.phase === "playing")
+        playback.phase = "paused";
+      updatePlaybackUI();
+    });
+    player.addEventListener("timeupdate", function () {
+      if (current()) updatePlaybackUI();
+    });
+    player.addEventListener("loadedmetadata", function () {
+      if (current()) updatePlaybackUI();
+    });
+    player.addEventListener("ended", function () {
+      if (!current()) return;
+      if (playback && playingUrl && player.ended) playback = null;
+      updatePlaybackUI();
+    });
+    player.addEventListener("error", function () {
+      if (!current() || !playback || !playingUrl) return;
+      playback.phase = "failed";
+      player.hidden = false;
+      feedback("音声を再生できませんでした。再試行してください。");
+      updatePlaybackUI();
+    });
+  }
+  bindPlayerEvents($("phone-player"), playbackRequestId);
+  function displayAudioProgress(op) {
+    $("operation-panel").hidden = false;
+    var names = {
+      prepare: "発音を解析中", preview: "Preview", generate: "Take生成",
+      "regenerate-one": "Take再生成", "regenerate-all": "未採用Take再生成",
+      accept: "Take採用"
+    };
+    $("operation-progress").textContent =
+      (names[op.kind] || "音声操作") + ": " + op.completed + "/" + op.total +
+      (op.status === "cancelling" ? " キャンセル処理中" : "");
+    $("cancel-audio").hidden = !op.cancellable ||
+      op.status !== "running";
+    $("cancel-audio").disabled = op.status !== "running";
+  }
+  async function startAudio(itemId, suffix, payload, automaticPrepare) {
+    if (busy || !batch || !selectedId || itemId !== selectedId) return;
+    var item = batch.items.find(function (entry) { return entry.id === itemId; });
+    if (!item) return;
+    if ($("edit-caption").value !== item.caption) {
+      feedback("未保存のCaptionを先に保存してください。");
+      return;
+    }
+    clearPlayer();
+    takeMenuOpen = false;
+    $("take-menu").hidden = true;
+    setBusy(true);
+    try {
+      var op = await request("POST", itemAudioPath(itemId) + suffix +
+        "?expected_revision=" + batch.revision, payload);
+      audioOperation = op;
+      displayAudioProgress(op);
+      while (op.status === "running" || op.status === "cancelling") {
+        await new Promise(function (resolve) { setTimeout(resolve, 650); });
+        op = await request("GET", "/api/web/sessions/" +
+          encodeURIComponent(sessionId) + "/operations/" + encodeURIComponent(op.id));
+        audioOperation = op;
+        displayAudioProgress(op);
+      }
+      if (suffix === "/audio/prepare") {
+        if (op.status === "succeeded") autoPrepareFailures.delete(itemId);
+        else autoPrepareFailures.add(itemId);
+      }
+      await refresh();
+      if (op.status === "succeeded") {
+        feedback(op.kind === "accept" ?
+          "保存しました: " + op.result.audio_name :
+          op.kind === "preview" ? "Previewを生成しました。" : "音声操作が完了しました。");
+      } else {
+        feedback(op.status === "cancelled" ?
+          "キャンセルしました。生成済みのTakeは保持されています。" :
+          (op.error || "音声操作に失敗しました。"));
+      }
+      if (op.status === "succeeded" && op.kind === "preview" &&
+          op.result && op.result.preview_id) {
+        setBusy(false);
+        await playAudio(itemAudioPath(itemId) + "/audio/preview/" +
+          encodeURIComponent(op.result.preview_id), itemId, "preview");
+      }
+    } catch (error) {
+      if (suffix === "/audio/prepare") autoPrepareFailures.add(itemId);
+      if (error.conflictCode === "revision_conflict") {
+        try { await refresh(); } catch (_ignored) { /* Preserve original error. */ }
+      }
+      if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
+      feedback(error.message);
+    } finally {
+      audioOperation = null;
+      $("operation-panel").hidden = true;
+      setBusy(false);
+      if (batch && currentView === "item") renderItem(true);
+    }
+  }
+  $("prepare-retry").addEventListener("click", function () {
+    if (!selectedId) return;
+    autoPrepareFailures.delete(selectedId);
+    startAudio(selectedId, "/audio/prepare", { rebuild: false });
+  });
+  $("reprepare-audio").addEventListener("click", function () {
+    if (!batch || !selectedId) return;
+    var item = batch.items.find(function (entry) { return entry.id === selectedId; });
+    if (!item || !item.is_prepared || !window.confirm(
+      "発音を再準備すると、既存のTake候補と採用状態がクリアされます。保存済み音声は残ります。続けますか？"
+    )) return;
+    startAudio(selectedId, "/audio/prepare", { rebuild: true });
+  });
+  $("open-take-menu").addEventListener("click", function () {
+    if (busy) return;
+    takeMenuOpen = !takeMenuOpen;
+    $("take-menu").hidden = !takeMenuOpen;
+    this.setAttribute("aria-expanded", String(takeMenuOpen));
+  });
+  $("preview-audio").addEventListener("click", function () {
+    if (!togglePlayback("preview", selectedId)) startAudio(selectedId, "/audio/preview");
+  });
+  $("generate-audio").addEventListener("click", function () {
+    startAudio(selectedId, "/takes/generate");
+  });
+  $("regenerate-unaccepted").addEventListener("click", function () {
+    startAudio(selectedId, "/takes/regenerate");
+  });
+  $("clear-takes").addEventListener("click", async function () {
+    if (busy || !selectedId || !window.confirm(
+      "Take候補と採用状態をクリアしますか？保存済み音声は削除されません。"
+    )) return;
+    clearPlayer();
+    takeMenuOpen = false;
+    $("take-menu").hidden = true;
+    await mutate("DELETE", "/items/" + encodeURIComponent(selectedId) + "/takes",
+      undefined, "候補をクリアしました。");
+  });
+  $("cancel-audio").addEventListener("click", async function () {
+    if (!audioOperation || !audioOperation.cancellable ||
+        audioOperation.status !== "running") return;
+    try {
+      audioOperation = await request("POST", "/api/web/sessions/" +
+        encodeURIComponent(sessionId) + "/operations/" +
+        encodeURIComponent(audioOperation.id) + "/cancel");
+      displayAudioProgress(audioOperation);
+    } catch (error) { feedback(error.message); }
+  });
 
   $("auth-form").addEventListener("submit", async function (event) {
     event.preventDefault();
@@ -494,6 +986,15 @@
   $("item-back").addEventListener("click", function () { showView("list"); });
   $("session-back").addEventListener("click", function () { showView("list"); });
   $("header-session").addEventListener("click", function () { showView("session"); });
+  function shouldSubmitCaptions(event) {
+    return event.key === "Enter" && event.metaKey &&
+      !event.isComposing && event.keyCode !== 229 && !event.repeat;
+  }
+  $("new-captions").addEventListener("keydown", function (event) {
+    if (!shouldSubmitCaptions(event)) return;
+    event.preventDefault();
+    if (!busy) $("add-form").requestSubmit();
+  });
   $("add-form").addEventListener("submit", async function (event) {
     event.preventDefault();
     if (!$("new-captions").value.trim()) { feedback("Captionを入力してください。"); return; }
@@ -504,11 +1005,36 @@
       feedback("Captionを追加しました。");
     }
   });
+  $("open-caption-edit").addEventListener("click", function () {
+    if (busy) return;
+    captionEditMode = true;
+    $("edit-caption-form").hidden = false;
+    $("caption-display").hidden = true;
+    $("edit-caption").focus();
+  });
+  $("cancel-caption-edit").addEventListener("click", function () {
+    if (busy) return;
+    var item = batch && batch.items.find(function (entry) { return entry.id === selectedId; });
+    if (!item) return;
+    $("edit-caption").value = item.caption;
+    captionEditMode = false;
+    renderItem(false);
+  });
   $("edit-caption-form").addEventListener("submit", function (event) {
     event.preventDefault();
     if (!selectedId) return;
     mutate("PATCH", "/items/" + encodeURIComponent(selectedId) + "/caption",
       { caption: $("edit-caption").value }, "Captionを保存しました。", { saveCaption: true });
+  });
+  $("edit-take-count").addEventListener("click", function () {
+    if (busy) return;
+    takeCountEditMode = true;
+    renderItem(true);
+  });
+  $("cancel-take-count").addEventListener("click", function () {
+    if (busy) return;
+    takeCountEditMode = false;
+    renderItem(true);
   });
   $("item-takes-mode").addEventListener("change", function () {
     $("item-takes").hidden = this.value !== "custom";
@@ -520,7 +1046,7 @@
       var count = $("item-takes-mode").value === "default" ? null :
         validCount($("item-takes").value);
       mutate("PATCH", "/items/" + encodeURIComponent(selectedId) + "/take-count",
-        { count: count }, "Take数を更新しました。");
+        { count: count }, "Take数を更新しました。", { saveCount: true });
     } catch (error) { feedback(error.message); }
   });
   function adjacent(delta) {
