@@ -515,6 +515,12 @@
       ["▶ Preview", "Previewを生成して再生"];
     $("preview-audio").textContent = previewLabel[0];
     $("preview-audio").setAttribute("aria-label", previewLabel[1]);
+    // Pending play() during resume must not allow another Preview request.
+    var awaitingPlayback = phase === "loading" || phase === "starting";
+    var previewControl = $("preview-audio");
+    previewControl.disabled = busy ||
+      (previewControl.dataset && previewControl.dataset.fixedDisabled === "true") ||
+      (preview && awaitingPlayback);
     $("take-list").querySelectorAll(".take-card").forEach(function (row) {
       var match = Boolean(active && playback.kind === "take" &&
         row.dataset.takeNumber === String(playback.takeNumber));
@@ -539,6 +545,8 @@
         state === "failed" ? "を再取得して再生" :
         state === "loading" || state === "starting" ? "を読み込み中" : "を再生";
       button.setAttribute("aria-label", "Take " + row.dataset.takeNumber + action);
+      button.disabled = busy || button.dataset.fixedDisabled === "true" ||
+        (match && awaitingPlayback);
       var progress = row.querySelector(".take-progress");
       progress.hidden = !match || state === "loading" || state === "failed";
       var duration = player.duration;
@@ -554,7 +562,8 @@
     updatePlaybackUI();
     try {
       await player.play();
-      if (requestId !== playbackRequestId || !playback) return;
+      if (requestId !== playbackRequestId || !playback ||
+          playback.phase === "failed") return;
       if (player.ended) playback = null;
       else if (player.paused) playback.phase = playback.started ? "paused" : "ready";
       else {
@@ -570,11 +579,13 @@
     updatePlaybackUI();
   }
   function togglePlayback(kind, itemId, takeNumber) {
-    if (busy || !playback || !playingUrl || itemId !== selectedId ||
+    if (!playback || itemId !== selectedId ||
         playback.kind !== kind || playback.itemId !== itemId ||
-        (kind === "take" && playback.takeNumber !== takeNumber) ||
-        playback.phase === "failed" || playback.phase === "loading" ||
-        playback.phase === "starting") return false;
+        (kind === "take" && playback.takeNumber !== takeNumber)) return false;
+    // A pending play() is already handling this tap; never fall through to
+    // a new Preview generation or Take audio fetch.
+    if (playback.phase === "loading" || playback.phase === "starting") return true;
+    if (busy || !playingUrl || playback.phase === "failed") return false;
     var player = $("phone-player");
     if (player.paused) {
       // beginPlayback handles the rejected play() case and updates the row.
@@ -729,24 +740,28 @@
   }
   $("phone-player").addEventListener("play", updatePlaybackUI);
   $("phone-player").addEventListener("playing", function () {
-    if (playback) {
+    var player = $("phone-player");
+    // A delayed event from the previous source must not revive a loading Take.
+    if (playback && playingUrl && player.src === playingUrl &&
+        !player.paused && !player.ended && playback.phase !== "loading") {
       playback.started = true;
       playback.phase = "playing";
     }
     updatePlaybackUI();
   });
   $("phone-player").addEventListener("pause", function () {
-    if (playback && playback.phase === "playing") playback.phase = "paused";
+    if (playback && $("phone-player").paused && playback.phase === "playing")
+      playback.phase = "paused";
     updatePlaybackUI();
   });
   $("phone-player").addEventListener("timeupdate", updatePlaybackUI);
   $("phone-player").addEventListener("loadedmetadata", updatePlaybackUI);
   $("phone-player").addEventListener("ended", function () {
-    playback = null;
+    if (playback && playingUrl && $("phone-player").ended) playback = null;
     updatePlaybackUI();
   });
   $("phone-player").addEventListener("error", function () {
-    if (!playback) return;
+    if (!playback || !playingUrl) return;
     playback.phase = "failed";
     $("phone-player").hidden = false;
     feedback("音声を再生できませんでした。再試行してください。");
