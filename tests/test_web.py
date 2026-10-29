@@ -34,7 +34,8 @@ class WebFoundationTests(unittest.TestCase):
         self.assertIn('name="viewport"', response.text)
         for title in ("Batch List", "Captionを追加", "設定"):
             self.assertIn(title, response.text)
-        self.assertIn("未実装", response.text)
+        self.assertIn('id="prepare-audio"', response.text)
+        self.assertIn('id="take-list"', response.text)
         self.assertIn('aria-disabled="true"', response.text)
         self.assertIn('src="/assets/app.js"', response.text)
         self.assertIn('href="/assets/app.css"', response.text)
