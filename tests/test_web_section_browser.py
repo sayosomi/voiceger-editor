@@ -103,26 +103,31 @@ assert(html.indexOf('id="add-section"') < html.indexOf('id="pronunciation-sectio
   }};
   const setup=[
     'let busy=false,currentView="item",sectionTarget=null,sectionOpening=null,',
-    'sectionItemId="",sectionStale=false,sectionHistoryActive=false;',
+    'sectionItemId="",sectionStale=false,sectionHistoryActive=false,',
+    'captionEditMode=true,takeCountEditMode=true;',
     'function showView(v){currentView=v;return true;}',
     'function sectionHistoryState(){return {id:sectionItemId};}',
     'function setFixed(){}',
     cut('  function selectedSectionLanguage() {',
         '  async function deleteSectionFromEditor() {'),
-    'return {enterSection,get:()=>({sectionTarget,sectionOpening,sectionItemId,sectionHistoryActive,currentView})};'
+    'return {enterSection,get:()=>({sectionTarget,sectionOpening,sectionItemId,sectionHistoryActive,currentView,captionEditMode,takeCountEditMode})};'
   ].join("\n");
   const f=new Function("$","window","document",setup)($,win,document);
-  const single={id:"item",is_prepared:true,pronunciation_sections:[
+  const single={id:"item",caption:"元の字幕",is_prepared:true,pronunciation_sections:[
     {index:null,language:"ja",text:"雨"}
   ]};
+  nodes["edit-caption"].value="破棄済みの下書き";
   assert(f.enterSection(single,single.pronunciation_sections[0],false,false));
+  assert.equal(nodes["edit-caption"].value,"元の字幕","Discarded Caption draft cannot block section Preview");
+  assert.equal(f.get().captionEditMode,false);
+  assert.equal(f.get().takeCountEditMode,false);
   assert.equal(nodes["section-text"].value,"雨");
   assert.equal(nodes["section-title"].textContent,"読み上げ文");
   assert.equal(nodes["delete-section"].hidden,true,"Only section is protected");
   assert.equal(nodes["reset-section"].hidden,true,"Reset hidden until dirty");
   assert.equal(nodes["section-language-field"].hidden,true);
   assert.equal(pushes.length,1);
-  const multi={id:"item",is_prepared:true,pronunciation_sections:[
+  const multi={id:"item",caption:"元の字幕",is_prepared:true,pronunciation_sections:[
     {index:0,language:"ja",text:"雨"},
     {index:1,language:"en",text:"very sweet!"}
   ]};
