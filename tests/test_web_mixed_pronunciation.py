@@ -246,6 +246,15 @@ class MixedPronunciationWebTests(unittest.TestCase):
         self.assertEqual(self.fake.query.model_dump(), new_base)
         self.assertNotEqual(before, new_base)
 
+    def test_deleting_item_evicts_transient_word_boundaries(self):
+        self.batch()  # Establish English grouping for the prepared item.
+        session = self.service._sessions[self.sid]
+        self.assertIn((self.item_id, 1), session.english_groupings)
+        response = self.action("DELETE", "")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertFalse(any(key[0] == self.item_id for key in session.english_groupings))
+        self.assertEqual(self.batch()["items"], [])
+
     def test_uneditable_source_punctuation_is_never_hidden(self):
         # Hyphen is canonical Voiceger ARPAbet punctuation, but is not one
         # of the five user-editable punctuation choices in Slice 6a.
