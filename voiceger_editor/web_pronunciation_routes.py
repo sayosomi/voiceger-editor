@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, StrictStr
 
@@ -44,7 +46,7 @@ def build_web_pronunciation_router(service: WebSessionOperations) -> APIRouter:
                  dependencies=[Depends(require_web_mutation)])
     def preview(session_id: str, item_id: str, payload: PronunciationPayload,
                 expected_revision: int = Query(..., ge=0),
-                segment_index: int | None = Query(None, ge=0)):
+                segment_index: Optional[int] = Query(None, ge=0)):
         return _call(lambda: service.start_japanese_draft_preview(
             session_id, item_id, expected_revision, payload.notation, segment_index,
         ))
@@ -52,7 +54,7 @@ def build_web_pronunciation_router(service: WebSessionOperations) -> APIRouter:
     @router.patch(path, dependencies=[Depends(require_web_mutation)])
     def apply(session_id: str, item_id: str, payload: PronunciationPayload,
               expected_revision: int = Query(..., ge=0),
-              segment_index: int | None = Query(None, ge=0)):
+              segment_index: Optional[int] = Query(None, ge=0)):
         return _call(lambda: service.apply_japanese_pronunciation(
             session_id, item_id, expected_revision, payload.notation, segment_index,
         ))
