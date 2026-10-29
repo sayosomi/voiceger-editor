@@ -18,7 +18,7 @@ def _translate_error(exc: Exception) -> HTTPException:
     if isinstance(exc, WebSessionNotFound):
         return HTTPException(status_code=404, detail="Not found")
     if isinstance(exc, WebSessionConflict):
-        return HTTPException(status_code=409, detail=str(exc))
+        return HTTPException(status_code=409, detail={"code": exc.code})
     if isinstance(exc, WebSessionCapacity):
         return HTTPException(status_code=429, detail="Web session limit reached")
     if isinstance(exc, WebSessionClosed):
