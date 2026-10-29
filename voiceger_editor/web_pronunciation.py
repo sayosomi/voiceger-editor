@@ -20,7 +20,7 @@ class WebPronunciationValidation(WebTakeValidation):
     """An invalid or unsupported, client-provided pronunciation draft."""
 
     def __init__(self, code: str) -> None:
-        if code not in {"invalid_pronunciation", "unsupported_pronunciation", "invalid_english_pronunciation", "grouping_unavailable", "stale_pronunciation"}:
+        if code not in {"invalid_pronunciation", "unsupported_pronunciation", "invalid_english_pronunciation", "grouping_unavailable", "stale_pronunciation", "invalid_section", "invalid_section_text", "stale_section"}:
             raise ValueError("Unknown pronunciation validation code")
         self.code = code
         super().__init__(code)
