@@ -32,7 +32,7 @@ def _take_count(value: int | None, *, nullable: bool = False) -> None:
         raise WebBatchValidation("Take count must be from 1 to 100")
 
 
-def _row(batch: CaptionBatch, item: CaptionBatchItem) -> dict[str, Any]:
+def _row(batch: CaptionBatch, item: CaptionBatchItem, sections: list[dict]) -> dict[str, Any]:
     return {
         "id": item.item_id,
         "caption": item.caption,
@@ -44,6 +44,7 @@ def _row(batch: CaptionBatch, item: CaptionBatchItem) -> dict[str, Any]:
         "accepted_take_numbers": sorted(item.accepted_take_numbers),
         "generation_outcome": item.generation_outcome,
         "pronunciation": prepared_japanese_notation(item),
+        "pronunciation_sections": sections,
         "spoken_text": (
             getattr(item.session, "synthesis_source_text", None)
             if item.session.is_prepared else None
@@ -83,13 +84,13 @@ class WebBatchMixin:
             settings=self._batch_settings,
         )
 
-    @staticmethod
-    def _batch_snapshot(session) -> dict[str, Any]:
+    def _batch_snapshot(self, session) -> dict[str, Any]:
         batch = session.batch
         return {
             "revision": session.revision,
             "default_take_count": batch.default_take_count,
-            "items": [_row(batch, item) for item in batch.items],
+            "items": [_row(batch, item, self._pronunciation_sections(session, item))
+                      for item in batch.items],
         }
 
     def get_batch(self, identifier: str) -> dict[str, Any]:
