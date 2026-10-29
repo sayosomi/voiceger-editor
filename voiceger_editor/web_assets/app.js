@@ -900,10 +900,16 @@
     } catch (error) {
       if (suffix === "/audio/prepare") autoPrepareFailures.add(itemId);
       if (error.conflictCode === "revision_conflict") {
+        if (currentView === "pronunciation") {
+          pronunciationStale = true;
+          setFixed("apply-pronunciation", true);
+        }
         try { await refresh(); } catch (_ignored) { /* Preserve original error. */ }
       }
       if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
-      feedback(error.message);
+      feedback(error.conflictCode === "revision_conflict" && pronunciationStale ?
+        "別の画面で変更されています。編集をキャンセルし、最新の発音を開き直してください。" :
+        error.message);
     } finally {
       audioOperation = null;
       $("operation-panel").hidden = true;
