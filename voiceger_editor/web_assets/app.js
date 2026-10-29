@@ -74,7 +74,7 @@
     return currentView === "section" && sectionOpening !== null &&
       ($("section-text").value !== sectionOpening ||
        (sectionTarget && sectionTarget.mode === "add" &&
-        $("section-language").value !== "ja"));
+        selectedSectionLanguage() !== "ja"));
   }
   function guardDraft() {
     if (sectionDirty()) {
@@ -1326,6 +1326,15 @@
       }
     } finally { setBusy(false); }
   }
+  function selectedSectionLanguage() {
+    var current = document.querySelector('input[name="section-language"]:checked');
+    return current ? current.value : "ja";
+  }
+  function setSectionLanguage(language) {
+    document.querySelectorAll('input[name="section-language"]').forEach(function (choice) {
+      choice.checked = choice.value === language;
+    });
+  }
   function enterSection(item, section, add, fromHistory) {
     if (busy || !item || !item.is_prepared) return false;
     var target;
@@ -1349,7 +1358,7 @@
     $("section-context").textContent = add ? "新しいセクションを末尾に追加" :
       target.language.toUpperCase() + " セクション";
     $("section-language-field").hidden = !add;
-    $("section-language").value = target.language;
+    setSectionLanguage(target.language);
     $("section-text").value = sectionOpening;
     $("preview-section").hidden = add;
     $("reset-section").hidden = add;
@@ -1393,9 +1402,11 @@
     var item = batch.items.find(function (row) { return row.id === selectedId; });
     enterSection(item, null, true, false);
   });
-  $("section-language").addEventListener("change", function () {
-    if (sectionTarget && sectionTarget.mode === "add")
-      sectionTarget.language = $("section-language").value;
+  document.querySelectorAll('input[name="section-language"]').forEach(function (choice) {
+    choice.addEventListener("change", function () {
+      if (sectionTarget && sectionTarget.mode === "add")
+        sectionTarget.language = selectedSectionLanguage();
+    });
   });
   $("section-back").addEventListener("click", function () { showView("item"); });
   $("cancel-section").addEventListener("click", function () { showView("item"); });
@@ -1436,7 +1447,7 @@
     try {
       var route = target.mode === "add" ? "/sections" : "/sections/text";
       var payload = target.mode === "add" ?
-        { language: $("section-language").value, text: newText } :
+        { language: selectedSectionLanguage(), text: newText } :
         { language: target.language, index: target.index,
           opening: target.opening, text: newText };
       var response = await request(target.mode === "add" ? "POST" : "PATCH",
