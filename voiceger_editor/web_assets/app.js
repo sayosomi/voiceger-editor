@@ -1026,6 +1026,7 @@
     });
   $("reset-pronunciation").addEventListener("click", function () {
     if (busy || pronunciationOpening === null) return;
+    if (playback && playback.kind === "preview") clearPlayer();
     $("pronunciation-text").value = pronunciationOpening;
     $("pronunciation-text").focus({ preventScroll: true });
     $("pronunciation-text").setSelectionRange(pronunciationOpening.length, pronunciationOpening.length);
