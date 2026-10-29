@@ -1001,7 +1001,8 @@
     setBusy(true);
     try {
       var op = await request("POST", itemAudioPath(itemId) + suffix +
-        "?expected_revision=" + batch.revision, payload);
+        (suffix.includes("?") ? "&" : "?") +
+        "expected_revision=" + batch.revision, payload);
       audioOperation = op;
       displayAudioProgress(op);
       while (op.status === "running" || op.status === "cancelling") {
