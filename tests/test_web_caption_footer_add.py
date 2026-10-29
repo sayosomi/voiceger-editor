@@ -145,7 +145,7 @@ async function submitScenario(source, lines, expectedView, expectedSelected) {
   }
   function showView(name){currentView=name;destinations.push(name);return true;}
   function openItem(id){selectedId=id;showView("item");}
-  function feedback(value){nodes["feedback"].textContent=value;}
+  function feedback(value){$("feedback").textContent=value;}
   const src=cut('  $("add-form").addEventListener("submit", async function (event) {',
                 '  $("open-caption-edit").addEventListener("click"');
   new Function("$","mutate","showView","openItem","feedback","state",
