@@ -442,6 +442,70 @@ class WebAudioTests(unittest.TestCase):
         self.assertEqual(self.batch()["items"][0]["accepted_take_numbers"], [1])
         self.assertTrue(all(path.exists() for path in saved))
 
+
+    def test_cancel_after_last_take_before_terminal_publish_is_consistent(self):
+        """Control the exact race after run() returns, before terminal commit."""
+        self.prepare()
+        generated, resume_terminal = threading.Event(), threading.Event()
+        original_runner = self.service._run_take_work
+
+        def pause_after_run(session_id, operation, run, on_terminal=None):
+            def run_then_pause(op):
+                result = run(op)
+                generated.set()
+                if not resume_terminal.wait(5):
+                    raise RuntimeError("Timed out waiting to publish terminal state")
+                return result
+
+            return original_runner(
+                session_id, operation, run_then_pause, on_terminal,
+            )
+
+        with patch.object(self.service, "_run_take_work", side_effect=pause_after_run):
+            response = self.action("POST", "/takes/generate")
+            self.assertEqual(response.status_code, 202, response.text)
+            operation_id = response.json()["id"]
+            try:
+                self.assertTrue(generated.wait(2), "Last Take did not complete")
+                before = self.batch()["items"][0]
+                self.assertEqual(before["candidate_count"], 4)
+                # The worker is between generation and terminal publication.
+                self.assertIsNone(before["generation_outcome"])
+                candidate_paths = tuple(c.wav_path for c in self.fakes[0].candidates)
+                self.assertTrue(all(p.exists() for p in candidate_paths))
+                cancelled = self.client.post(
+                    self.root + "/operations/" + operation_id + "/cancel",
+                    headers=self.write,
+                )
+                self.assertEqual(cancelled.status_code, 200)
+                self.assertEqual(cancelled.json()["status"], "cancelling")
+            finally:
+                resume_terminal.set()
+            terminal = self.finish_terminal(operation_id)
+
+        self.assertEqual(terminal["status"], "cancelled")
+        self.assertEqual((terminal["completed"], terminal["total"]), (4, 4))
+        self.assertIsNone(terminal["error"])
+        self.assertEqual(self.batch()["items"][0]["generation_outcome"], "cancelled")
+        self.assertEqual(self.batch()["items"][0]["candidate_count"], 4)
+        self.assertTrue(all(p.exists() for p in candidate_paths))
+        self.assertIsNone(self.service._active)
+
+    def test_cancel_after_terminal_generation_does_not_relabel_success(self):
+        self.prepare()
+        response = self.action("POST", "/takes/generate")
+        completed = self.finish(response)
+        self.assertEqual(completed["status"], "succeeded")
+        operation_id = response.json()["id"]
+        late_cancel = self.client.post(
+            self.root + "/operations/" + operation_id + "/cancel",
+            headers=self.write,
+        )
+        self.assertEqual(late_cancel.status_code, 200)
+        self.assertEqual(late_cancel.json()["status"], "succeeded")
+        self.assertEqual(self.batch()["items"][0]["generation_outcome"], "completed")
+        self.assertEqual(self.batch()["items"][0]["candidate_count"], 4)
+
     def test_cancel_during_synthesis_exception_is_failure_not_cancellation(self):
         self.prepare()
         started, release = threading.Event(), threading.Event()

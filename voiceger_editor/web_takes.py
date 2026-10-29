@@ -75,6 +75,7 @@ class WebTakeMixin:
         total: int,
         run: Callable[[Any], dict[str, Any] | None],
         cancellable: bool = True,
+        on_terminal: Callable[[str], None] | None = None,
     ) -> dict[str, Any]:
         from .web_sessions import _Operation, WebSessionConflict
 
@@ -88,7 +89,7 @@ class WebTakeMixin:
         self._active = (session_id, identifier)
         worker = threading.Thread(
             target=self._run_take_work,
-            args=(session_id, operation, run),
+            args=(session_id, operation, run, on_terminal),
             daemon=True,
             name="voiceger-web-audio",
         )
@@ -103,6 +104,7 @@ class WebTakeMixin:
     def _run_take_work(
         self, session_id: str, operation: Any,
         run: Callable[[Any], dict[str, Any] | None],
+        on_terminal: Callable[[str], None] | None = None,
     ) -> None:
         result = None
         failed = False
@@ -122,13 +124,19 @@ class WebTakeMixin:
                 else:
                     operation.result = result or {}
                     operation.status = "succeeded"
-                if self._active == (session_id, operation.identifier):
-                    self._active = None
-                session = self._sessions.get(session_id)
-                if session is not None:
-                    session.touched = self._clock()
-                if self._stopped:
-                    self._clear_sessions()
+                try:
+                    # The operation status and Batch outcome become visible
+                    # together: cancel() and readers use this same lock.
+                    if on_terminal is not None:
+                        on_terminal(operation.status)
+                finally:
+                    if self._active == (session_id, operation.identifier):
+                        self._active = None
+                    session = self._sessions.get(session_id)
+                    if session is not None:
+                        session.touched = self._clock()
+                    if self._stopped:
+                        self._clear_sessions()
 
     def _progress(self, session: Any, operation: Any) -> None:
         with self._lock:
@@ -218,25 +226,28 @@ class WebTakeMixin:
             count = session.batch.effective_take_count(item)
 
             def work(op):
-                outcome = "failed"
                 try:
                     if op.cancellation.is_set():
-                        outcome = "cancelled"
                         return {}
-                    result = self._generate_values(
+                    return self._generate_values(
                         session, op, item.session.generate_takes(take_count=count),
                     )
-                    outcome = "cancelled" if op.cancellation.is_set() else "completed"
-                    return result
                 finally:
                     with self._lock:
                         if item.session.has_active_batch and not item.session.candidates:
                             item.session.discard_takes()
-                        item.set_generation_outcome(outcome)
                         session.revision += 1
+
+            def record_terminal(status: str) -> None:
+                item.set_generation_outcome({
+                    "succeeded": "completed",
+                    "cancelled": "cancelled",
+                    "failed": "failed",
+                }[status])
 
             return self._start_take_work(
                 session_id, session, kind="generate", total=count, run=work,
+                on_terminal=record_terminal,
             )
 
     def start_regenerate(
