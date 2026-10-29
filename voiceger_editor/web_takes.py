@@ -115,10 +115,10 @@ class WebTakeMixin:
             with self._lock:
                 if failed:
                     operation.status = "failed"
-                elif operation.cancellation.is_set():
-                    operation.status = "cancelled"
                     # Never disclose raw Voiceger exceptions or Mac paths.
                     operation.error = "Audio operation failed on the Mac"
+                elif operation.cancellation.is_set():
+                    operation.status = "cancelled"
                 else:
                     operation.result = result or {}
                     operation.status = "succeeded"
