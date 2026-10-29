@@ -149,6 +149,7 @@ assert(html.indexOf('id="add-section"') < html.indexOf('id="pronunciation-sectio
   assert.equal(nodes["section-text"].value,"雨");
   assert.equal(nodes["reset-section"].hidden,true);
 }
+async function runAsyncTests() {
 {
   let decisions=[false,true],requests=[],messages=[],destinations=[];
   let response={batch:{revision:9,items:[{id:"item",pronunciation_sections:[{index:null,language:"ja",text:"雨"}]}]}};
@@ -205,7 +206,9 @@ assert(html.indexOf('id="add-section"') < html.indexOf('id="pronunciation-sectio
   assert.equal(f.guardDraft(),false,"Rejecting discard preserves draft");
   assert.equal(f.guardDraft(),true,"Accepting discard allows navigation");
 }
-console.log("WEB_SECTION_BROWSER_PASS");
+}
+runAsyncTests().then(()=>console.log("WEB_SECTION_BROWSER_PASS"))
+  .catch(e=>{console.error(e);process.exitCode=1;});
 """;
         result = subprocess.run(
             [node, "-e", source, str(assets / "app.js"), str(assets / "index.html")],
