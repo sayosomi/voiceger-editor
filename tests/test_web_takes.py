@@ -26,6 +26,7 @@ class FakeUtterance:
         self.caption = caption
         self.is_prepared = False
         self._batch = None
+        self._spoken_text = None
         self._output = output
         self.syntheses = 0
         self.previews = 0
@@ -34,7 +35,7 @@ class FakeUtterance:
 
     @property
     def synthesis_source_text(self):
-        return "読み上げ:" + self.caption
+        return self._spoken_text
 
     @property
     def candidates(self):
@@ -59,6 +60,7 @@ class FakeUtterance:
 
     def prepare_from_caption(self):
         self.discard_takes()
+        self._spoken_text = "読み上げ:" + self.caption
         self.is_prepared = True
 
     def preview_synthesis(self, query):
