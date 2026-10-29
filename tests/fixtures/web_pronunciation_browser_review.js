@@ -118,7 +118,7 @@ function historyHarness() {
   const setup=[
     'let currentView="pronunciation",pronunciationOpening="ア\'メ";',
     'let pronunciationHistoryActive=true,pronunciationExitPending=null;',
-    'let pronunciationReturnView="item";',
+    'let pronunciationReturnView="item",pronunciationTarget=null;',
     'let pronunciationItemId="i",pronunciationStale=false;',
     'let busy=false, selectedId="i",batch={items:[{id:"i",caption:"雨"}]};',
     'let sessionId="s",reorderMode=false,deleteMode=false;',
@@ -204,7 +204,7 @@ async function asyncHistoryTests() {
   const setup=[
     'let currentView="item",pronunciationOpening=null,pronunciationItemId="";',
     'let pronunciationHistoryActive=false,pronunciationExitPending=null;',
-    'let pronunciationReturnView="item",pronunciationStale=false;',
+    'let pronunciationReturnView="item",pronunciationStale=false,pronunciationTarget=null;',
     'let busy=false, selectedId="i",sessionId="s",token="t";',
     'let captionEditMode=false,takeCountEditMode=false,reorderMode=false,deleteMode=false;',
     'let batch={items:[{id:"i",caption:"雨",pronunciation:"ア\'メ。"}]};',
@@ -351,6 +351,8 @@ async function applyTests() {
       'function setFixed(a,b){fixed.push([a,b]);}',
       'function itemAudioPath(){return "/items/i";}',
       'async function refresh(){}',
+      slice('  function pronunciationEndpoint(preview) {',
+            '  async function applyPronunciation(event) {'),
       sourceFn,
       'return {applyPronunciation, getStale:()=>pronunciationStale};'
     ].join("\n");

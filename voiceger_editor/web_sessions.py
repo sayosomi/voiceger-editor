@@ -16,6 +16,7 @@ from .caption_batch import CaptionBatch
 from .web_batch import WebBatchMixin
 from .web_takes import WebTakeMixin
 from .web_pronunciation import WebPronunciationMixin
+from .web_english import WebEnglishMixin
 from .voiceger_environment import check_voiceger_environment
 
 
@@ -79,6 +80,7 @@ class _WebSession:
     batch: CaptionBatch = field(default_factory=lambda: CaptionBatch(default_take_count=4))
     operations: dict[str, _Operation] = field(default_factory=dict)
     preview_audio: tuple[str, str, bytes] | None = None
+    english_groupings: dict[tuple[str, int], Any] = field(default_factory=dict)
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -90,7 +92,7 @@ class _WebSession:
         }
 
 
-class WebSessionOperations(WebBatchMixin, WebPronunciationMixin, WebTakeMixin):
+class WebSessionOperations(WebBatchMixin, WebEnglishMixin, WebPronunciationMixin, WebTakeMixin):
     """Thread-safe, in-process session registry with one worker across sessions."""
 
     def __init__(
@@ -102,6 +104,7 @@ class WebSessionOperations(WebBatchMixin, WebPronunciationMixin, WebTakeMixin):
         idle_seconds: float = 3600,
         history_limit: int = 8,
         caption_factory: Callable[[str], Any] | None = None,
+        english_group_provider: Callable[[str], Any] | None = None,
     ) -> None:
         if max_sessions < 1 or idle_seconds <= 0 or history_limit < 1:
             raise ValueError("session limits must be positive")
@@ -111,6 +114,7 @@ class WebSessionOperations(WebBatchMixin, WebPronunciationMixin, WebTakeMixin):
         self._idle_seconds = idle_seconds
         self._history_limit = history_limit
         self._caption_factory = caption_factory
+        self._english_group_provider = english_group_provider
         self._batch_adapter = None
         self._batch_settings = None
         self._lock = threading.RLock()

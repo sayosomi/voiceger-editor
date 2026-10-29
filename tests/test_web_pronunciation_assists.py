@@ -23,7 +23,7 @@ for (const id of ["view-pronunciation", "pronunciation-text",
                   "reset-pronunciation", "cancel-pronunciation"]) {
   if (!html.includes('id="' + id + '"')) throw new Error("Missing " + id);
 }
-const assist = html.match(/<div class="pronunciation-assists"[\s\S]*?<\/div>/)[0];
+const assist = html.match(/<div id="pronunciation-assists" class="pronunciation-assists"[\s\S]*?<\/div>/)[0];
 const codes = [...assist.matchAll(/data-pronunciation-insert="([^"]+)"/g)].map(x=>x[1]);
 if (JSON.stringify(codes) !== JSON.stringify(["'", "[", "]", " "]) ||
     !assist.includes("data-pronunciation-backspace") ||

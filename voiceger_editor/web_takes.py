@@ -177,6 +177,11 @@ class WebTakeMixin:
                 item.session.prepare_from_caption()
                 with self._lock:
                     session.preview_audio = None
+                    # Rebuilt pronunciation invalidates word boundaries from the
+                    # former query even when its flat phonemes happen to match.
+                    for key in tuple(session.english_groupings):
+                        if key[0] == item_id:
+                            session.english_groupings.pop(key, None)
                     item.clear_acceptance()
                     item.clear_generation_outcome()
                     session.revision += 1

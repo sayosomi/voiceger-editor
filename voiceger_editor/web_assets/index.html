@@ -107,6 +107,7 @@
             <button type="button" id="open-pronunciation" class="item-link">編集</button>
           </div>
           <p id="pronunciation-value" class="pronunciation-value"></p>
+          <div id="pronunciation-sections" class="pronunciation-sections" hidden></div>
         </section>
         <div class="item-quick-actions">
           <button type="button" id="preview-audio" hidden>▶ Preview</button>
@@ -158,9 +159,9 @@
           <button type="button" id="cancel-pronunciation-audio" hidden>キャンセル</button>
         </div>
         <form id="pronunciation-form" class="field-stack">
-          <label for="pronunciation-text">発音</label>
+          <label for="pronunciation-text" id="pronunciation-field-label">発音</label>
           <textarea id="pronunciation-text" rows="4" maxlength="2000" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
-          <div class="pronunciation-assists" role="group" aria-label="発音入力アシスト">
+          <div id="pronunciation-assists" class="pronunciation-assists" role="group" aria-label="発音入力アシスト">
             <button type="button" data-pronunciation-insert="'" aria-label="アクセント記号を挿入">'</button>
             <button type="button" data-pronunciation-insert="[" aria-label="上昇記号を挿入">[</button>
             <button type="button" data-pronunciation-insert="]" aria-label="下降記号を挿入">]</button>

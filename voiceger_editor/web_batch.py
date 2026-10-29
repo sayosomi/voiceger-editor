@@ -32,7 +32,7 @@ def _take_count(value: int | None, *, nullable: bool = False) -> None:
         raise WebBatchValidation("Take count must be from 1 to 100")
 
 
-def _row(batch: CaptionBatch, item: CaptionBatchItem) -> dict[str, Any]:
+def _row(batch: CaptionBatch, item: CaptionBatchItem, sections: list[dict]) -> dict[str, Any]:
     return {
         "id": item.item_id,
         "caption": item.caption,
@@ -44,6 +44,7 @@ def _row(batch: CaptionBatch, item: CaptionBatchItem) -> dict[str, Any]:
         "accepted_take_numbers": sorted(item.accepted_take_numbers),
         "generation_outcome": item.generation_outcome,
         "pronunciation": prepared_japanese_notation(item),
+        "pronunciation_sections": sections,
         "spoken_text": (
             getattr(item.session, "synthesis_source_text", None)
             if item.session.is_prepared else None
@@ -83,13 +84,13 @@ class WebBatchMixin:
             settings=self._batch_settings,
         )
 
-    @staticmethod
-    def _batch_snapshot(session) -> dict[str, Any]:
+    def _batch_snapshot(self, session) -> dict[str, Any]:
         batch = session.batch
         return {
             "revision": session.revision,
             "default_take_count": batch.default_take_count,
-            "items": [_row(batch, item) for item in batch.items],
+            "items": [_row(batch, item, self._pronunciation_sections(session, item))
+                      for item in batch.items],
         }
 
     def get_batch(self, identifier: str) -> dict[str, Any]:
@@ -143,6 +144,11 @@ class WebBatchMixin:
             item = batch.get_item(item_id)
             item.session.discard_takes()
             batch.remove_item(item_id)
+            # The edited word grouping belongs to this transient item only.
+            session = self._session(identifier)
+            for key in tuple(session.english_groupings):
+                if key[0] == item_id:
+                    del session.english_groupings[key]
         return self._edit_batch(identifier, expected_revision, action)
 
     def remove_captions(self, identifier: str, expected_revision: int, item_ids: list[str]):
@@ -163,6 +169,11 @@ class WebBatchMixin:
                 item.session.discard_takes()
             for item in items:
                 batch.remove_item(item.item_id)
+            removed_ids = set(item_ids)
+            session = self._session(identifier)
+            for key in tuple(session.english_groupings):
+                if key[0] in removed_ids:
+                    del session.english_groupings[key]
 
         return self._edit_batch(identifier, expected_revision, action)
 
