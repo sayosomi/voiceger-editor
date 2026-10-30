@@ -235,7 +235,8 @@ class WebDictionaryMixin:
             except (ValueError, TypeError) as exc:
                 raise WebDictionaryValidation() from exc
             staged = None
-            adapter = self._dictionary_adapter()
+            adapter = (None if self._dictionary_preview_provider is not None
+                       else self._dictionary_adapter())
 
             def work(op):
                 nonlocal staged
@@ -254,6 +255,7 @@ class WebDictionaryMixin:
                 wav = _wav_bytes(result["audio"], int(result["sampling_rate"]))
                 handle = secrets.token_urlsafe(18)
                 staged = (handle, wav)
+                op.completed = 1
                 return {"preview_id": handle}
 
             def finish(status):
