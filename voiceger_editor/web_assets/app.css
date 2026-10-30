@@ -364,3 +364,26 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   border: 0; text-decoration: underline; min-height: 44px; padding: 4px 2px;
   font: inherit; font-weight: 750; flex: none;
 }
+
+/* Slice 7b: a compact Batch menu and touch-sized Mac Output recipe choices. */
+.batch-menu-wrap { position: relative; }
+.batch-menu {
+  position: absolute; right: 0; top: calc(100% + 5px); z-index: 12;
+  min-width: 175px; padding: 5px; background: #fff;
+  border: 1px solid #c9dbd2; border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(20,48,37,.12);
+}
+.batch-menu button, .recipe-files button {
+  display: block; width: 100%; min-height: 48px; padding: 12px;
+  background: #fff; border: 0; border-radius: 9px;
+  color: #285e4f; text-align: left; font: inherit; font-size: 14px;
+}
+.batch-menu button:focus-visible, .recipe-files button:focus-visible {
+  outline: 3px solid #72b7a0; outline-offset: 1px;
+}
+.recipe-files {
+  list-style: none; display: grid; gap: 8px; padding: 0; margin: 14px 0;
+}
+.recipe-files li { border: 1px solid #d7e5dc; border-radius: 12px; overflow-wrap: anywhere; }
+.recipe-files button { min-height: 52px; }
+#recipe-save-form .help-text { margin: 0 0 12px; }
