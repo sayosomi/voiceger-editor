@@ -189,7 +189,7 @@ const app = f($,window,log,()=>shouldReject);
  app.setText("シ'コク");
  // Pronunciation unchanged, but Surface differs from the parent opening.
  assert.equal(app.guardDraft(),false,"global navigation must guard parent draft");
- assert(log.some(m=>m.includes("未保存の単語変更")));
+ assert(log.some(m=>m.includes("未保存の辞書変更")));
  console.log("DICTIONARY_APPLY_GUARD_PASS");
 })().catch(e=>{console.error(e);process.exitCode=1});
 """
