@@ -108,6 +108,18 @@ def _open_root(root: Path, *, create: bool = False):
         os.close(descriptor)
 
 
+def _check_root_path(root: Path, identity: tuple[int, int]) -> None:
+    """Reject a retargeted Output name even when its old fd remains valid."""
+    try:
+        current = root.lstat()
+    except OSError:
+        raise WebRecipeValidation("recipe_changed") from None
+    if not stat.S_ISDIR(current.st_mode) or (
+        current.st_dev, current.st_ino
+    ) != identity:
+        raise WebRecipeValidation("recipe_changed")
+
+
 def _secure_bytes(
     directory: int, filename: str, *, optional: bool = False,
 ) -> tuple[bytes, tuple] | None:
@@ -302,6 +314,7 @@ class WebRecipeMixin:
                     # Core serialization completes before the live file is touched.
                     temporary = _stage_recipe_file(directory, session.batch)
                     try:
+                        _check_root_path(self._recipe_root(), identity)
                         _publish_checked(
                             directory, review.filename, temporary, review.fingerprint,
                         )
@@ -371,6 +384,7 @@ class WebRecipeMixin:
                         _fingerprint(directory, review.filename) != review.fingerprint
                     ):
                         raise WebRecipeValidation("recipe_changed")
+                    _check_root_path(self._recipe_root(), identity)
             except WebRecipeValidation:
                 self._discard_review(session)
                 raise
