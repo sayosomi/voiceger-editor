@@ -100,6 +100,7 @@ const state = {};
 // This creates a real evaluation of the code lifted unchanged from app.js.
 // Globals in the production function are supplied through lexical declarations.
 const factory = new Function("window","showView","guardDraft",
+  "guardDictionaryPronunciationDraft",
   'let currentView="item",busy=false,sessionId="s",dictEntry={id:"1"},' +
   'dictEntryOriginal={foo:1},dictPronOpening=null,dictReturnView="item";' +
   'let dictionaryHistoryDepth=0,dictionaryHistoryDestination=null;' +
@@ -109,7 +110,7 @@ const factory = new Function("window","showView","guardDraft",
   'return {navigateGlobal,dictionaryBack,setView(v){currentView=v},' +
   'setDepth(n){dictionaryHistoryDepth=n},setAllow:()=>{}};'
 );
-const nav = factory(browser,showView,guardDraft);
+const nav = factory(browser,showView,guardDraft,guardDraft);
 nav.navigateGlobal("dictionary");
 if(messages.join("|")!=="view:dictionary") throw Error("Global dictionary direct navigation");
 messages=[];
