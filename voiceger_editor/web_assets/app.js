@@ -1226,12 +1226,26 @@
       while (op.status === "running" || op.status === "cancelling") {
         renderBatchProgress(op);
         await new Promise(function (resolve) { setTimeout(resolve, 650); });
-        op = await request("GET", "/api/web/sessions/" +
-          encodeURIComponent(sessionId) + "/operations/" + encodeURIComponent(op.id));
-        await refresh();
+        try {
+          op = await request("GET", "/api/web/sessions/" +
+            encodeURIComponent(sessionId) + "/operations/" + encodeURIComponent(op.id));
+          await refresh();
+          feedback("");
+        } catch (error) {
+          if (error.code === 401 || error.code === 404) throw error;
+          feedback("通信が途切れています。進捗を再取得します。");
+        }
       }
-      await refresh();
-      if (op.status === "succeeded") {
+      var refreshed = true;
+      try {
+        await refresh();
+      } catch (error) {
+        if (error.code === 401 || error.code === 404) throw error;
+        refreshed = false;
+      }
+      if (!refreshed) {
+        feedback("生成は終了しましたが、一覧を更新できません。再接続してください。");
+      } else if (op.status === "succeeded") {
         feedback("一括生成が完了しました。");
       } else {
         feedback(op.status === "cancelled" ?

@@ -358,17 +358,24 @@ class WebTakeMixin:
     def candidate_audio(self, session_id: str, item_id: str, number: int) -> bytes:
         from .web_sessions import WebSessionNotFound
 
-        with self._lock:
-            _, item = self._take_item(session_id, item_id)
-            candidate = next(
-                (c for c in item.session.candidates if c.number == number), None
-            )
-            if candidate is None:
-                raise WebSessionNotFound("Take audio not found")
-            path = candidate.wav_path
-            if path.stat().st_size > MAX_AUDIO_BYTES:
-                raise WebTakeValidation("Audio is too large for browser playback")
-            return path.read_bytes()
+        # Regeneration publishes a replacement candidate before removing its
+        # old temporary WAV. Retry a disappearing path by candidate identity.
+        for _ in range(2):
+            with self._lock:
+                _, item = self._take_item(session_id, item_id)
+                candidate = next(
+                    (c for c in item.session.candidates if c.number == number), None
+                )
+                if candidate is None:
+                    raise WebSessionNotFound("Take audio not found")
+                path = candidate.wav_path
+                try:
+                    if path.stat().st_size > MAX_AUDIO_BYTES:
+                        raise WebTakeValidation("Audio is too large for browser playback")
+                    return path.read_bytes()
+                except FileNotFoundError:
+                    continue
+        raise WebSessionNotFound("Take audio temporarily unavailable")
 
     def preview_bytes(self, session_id: str, item_id: str, handle: str) -> bytes:
         from .web_sessions import WebSessionNotFound
