@@ -48,6 +48,9 @@
   var dictListRequest = 0, dictReturnView = "list", dictQuickMatches = [];
   var dictionaryHistoryDepth = 0;
   var dictionaryHistoryDestination = null;
+  var dictionaryHistoryNotice = "";
+  var settingsReturnView = "list", settingsHistoryActive = false;
+  var settingsHistoryDestination = null;
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
   var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session", "dictionary", "dictionary-entry", "dictionary-pron"];
@@ -177,10 +180,19 @@
     $("header-batch").disabled = !sessionId || name === "connect";
     document.querySelector(".global-nav").hidden = !sessionId || name === "connect";
     $("header-session").setAttribute("aria-current", name === "session" ? "page" : "false");
+    $("header-batch").setAttribute("aria-current",
+      ["list", "item", "add", "recipe", "pronunciation", "section"].includes(name) ?
+      "page" : "false");
     $("header-dictionary").setAttribute("aria-current",
       name.indexOf("dictionary") === 0 ? "page" : "false");
     if (name === "dictionary" && previousView.indexOf("dictionary") !== 0) {
       dictionaryPushHistory("dictionary");
+    }
+    if (name === "session" && previousView !== "session") {
+      settingsReturnView = previousView === "pronunciation" || previousView === "section" ?
+        "item" : previousView.indexOf("dictionary") === 0 ? "list" : previousView;
+      settingsHistoryActive = true;
+      window.history.pushState({ voicegerSettings: true, sessionId: sessionId }, "");
     }
     if (name === "dictionary" && previousView !== name) {
       void loadDictionary().catch(function (error) { feedback(error.message); });
@@ -224,6 +236,21 @@
         dictEntryOriginal = null;
       }
       showView(destination, true);
+      if (dictionaryHistoryNotice) {
+        feedback(dictionaryHistoryNotice);
+        dictionaryHistoryNotice = "";
+      }
+      return;
+    }
+    if (currentView === "session" && settingsHistoryActive) {
+      if (busy || !guardDraft()) {
+        window.history.pushState({ voicegerSettings: true, sessionId: sessionId }, "");
+        return;
+      }
+      settingsHistoryActive = false;
+      var settingsDestination = settingsHistoryDestination || settingsReturnView;
+      settingsHistoryDestination = null;
+      showView(settingsDestination, true);
       return;
     }
     if (currentView === "dictionary" || currentView === "dictionary-entry" ||
@@ -813,6 +840,10 @@
     pronunciationComposing = false;
     dictionaryHistoryDepth = 0;
     dictionaryHistoryDestination = null;
+    dictionaryHistoryNotice = "";
+    settingsReturnView = "list";
+    settingsHistoryActive = false;
+    settingsHistoryDestination = null;
     dictEntry = null;
     dictEntryOriginal = null;
     dictPronOpening = null;
@@ -2018,7 +2049,11 @@
   $("open-add").addEventListener("click", function () { openCaptionAdd(false); });
   $("add-back").addEventListener("click", backFromCaptionAdd);
   $("item-back").addEventListener("click", function () { showView("list"); });
-  $("session-back").addEventListener("click", function () { navigateGlobal("list"); });
+  $("session-back").addEventListener("click", function () {
+    if (busy) return;
+    if (settingsHistoryActive) window.history.back();
+    else showView(settingsReturnView, true);
+  });
   $("header-batch").addEventListener("click", function () { navigateGlobal("list"); });
   $("header-session").addEventListener("click", function () { navigateGlobal("session"); });
   $("header-dictionary").addEventListener("click", function () { navigateGlobal("dictionary"); });
@@ -2233,6 +2268,11 @@
   function navigateGlobal(destination) {
     if (busy || !sessionId) return;
     if (destination === currentView) return;
+    if (currentView === "session" && settingsHistoryActive) {
+      settingsHistoryDestination = destination;
+      window.history.back();
+      return;
+    }
     if (currentView.indexOf("dictionary") === 0) {
       if (!guardDraft()) return;
       // Unwind only the nested dictionary history created by this session.
@@ -2380,6 +2420,18 @@
     } catch (error) { feedback(error.message); }
     finally { setBusy(false); }
   }
+  function dictionaryFinish(message) {
+    dictEntry = null;
+    dictEntryOriginal = null;
+    if (dictionaryHistoryDepth > 1) {
+      dictionaryHistoryDestination = "dictionary";
+      dictionaryHistoryNotice = message;
+      window.history.go(1 - dictionaryHistoryDepth);
+    } else {
+      showView("dictionary", true);
+      feedback(message);
+    }
+  }
   async function dictionarySave(event) {
     event.preventDefault();
     if (busy || !dictEntry || !dictData) return;
@@ -2395,11 +2447,7 @@
       var address = dictionaryPath() + "/words" +
         (dictEntry.id ? "/" + encodeURIComponent(dictEntry.id) : "");
       var result = await request(dictEntry.id ? "PUT" : "POST", address, payload);
-      dictEntry = null;
-      dictEntryOriginal = null;
-      showView("dictionary", true);
-      await loadDictionary();
-      feedback(result.changed ? "辞書に保存しました。" : "変更はありません。");
+      dictionaryFinish(result.changed ? "辞書に保存しました。" : "変更はありません。");
     } catch (error) {
       feedback(error.message);
       if (error.conflictCode === "revision_conflict") {
@@ -2416,11 +2464,7 @@
         encodeURIComponent(dictEntry.id) + "?language=" +
         encodeURIComponent(dictLanguage) + "&expected_revision=" +
         encodeURIComponent(dictData.revision));
-      dictEntry = null;
-      dictEntryOriginal = null;
-      showView("dictionary", true);
-      await loadDictionary();
-      feedback("単語を削除しました。");
+      dictionaryFinish("単語を削除しました。");
     } catch (error) { feedback(error.message); }
     finally { setBusy(false); }
   }
