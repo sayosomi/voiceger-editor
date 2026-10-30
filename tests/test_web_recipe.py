@@ -302,7 +302,7 @@ class WebRecipeTests(unittest.TestCase):
         source = self.output / "identity.voiceger.json"
         source.write_bytes(b'{"same":"bytes"}')
         def reader(*args, **kwargs):
-            return CaptionBatch(items=[CaptionBatchItem(FakeSession("staged"))])
+            return CaptionBatch(default_take_count=4, items=[CaptionBatchItem(FakeSession("staged"))])
         with patch("voiceger_editor.web_recipe.read_batch_recipe", side_effect=reader):
             p = self.call("/read/review", {"filename": source.name})
             self.assertEqual(p.status_code, 200)
