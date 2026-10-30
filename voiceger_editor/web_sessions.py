@@ -114,6 +114,7 @@ class WebSessionOperations(WebDictionaryMixin, WebBatchMixin, WebRecipeMixin, We
         caption_factory: Callable[[str], Any] | None = None,
         english_group_provider: Callable[[str], Any] | None = None,
         dictionary_core: UserDictionaryCore | None = None,
+        dictionary_adapter: Any | None = None,
         dictionary_preview_provider: Callable[..., Any] | None = None,
     ) -> None:
         if max_sessions < 1 or idle_seconds <= 0 or history_limit < 1:
@@ -127,7 +128,7 @@ class WebSessionOperations(WebDictionaryMixin, WebBatchMixin, WebRecipeMixin, We
         self._english_group_provider = english_group_provider
         self._dictionary_core = dictionary_core
         self._dictionary_preview_provider = dictionary_preview_provider
-        self._batch_adapter = None
+        self._batch_adapter = dictionary_adapter
         self._batch_settings = None
         self._lock = threading.RLock()
         self._sessions: dict[str, _WebSession] = {}
