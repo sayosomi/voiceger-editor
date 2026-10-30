@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 import os
 import tempfile
 import unittest
@@ -11,6 +12,8 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from voiceger_editor.caption_batch import CaptionBatch, CaptionBatchItem
+from voiceger_editor.batch_recipe import BatchRecipeError, read_batch_recipe
+from voiceger_editor import web_recipe
 from voiceger_editor.settings import Settings
 from voiceger_editor.web import ASSETS, create_web_app
 from voiceger_editor.web_sessions import WebSessionOperations
@@ -233,6 +236,132 @@ class WebRecipeTests(unittest.TestCase):
             self.assertEqual(result.json()["detail"]["code"], "worker_busy")
         finally:
             self.service._active = None
+
+    def test_overwrite_race_never_replaces_unreviewed_file(self):
+        item = self.add()
+        item.session.is_prepared = True
+        target = self.output / "race.voiceger.json"
+        target.write_text("approved old", encoding="utf-8")
+        def writer(path, batch):
+            Path(path).write_text("approved new", encoding="utf-8")
+            return Path(path)
+        original_rename = os.rename
+        changed = []
+        def concurrent_rename(src, dst, **kwargs):
+            if src == target.name and not changed:
+                # Another Mac process replaces the file after final fingerprint.
+                other = self.output / "external.tmp"
+                other.write_text("unreviewed external", encoding="utf-8")
+                os.replace(other, target)
+                changed.append(True)
+            return original_rename(src, dst, **kwargs)
+        with patch("voiceger_editor.web_recipe.serialize_batch_recipe", return_value="{}"), \
+             patch("voiceger_editor.web_recipe.write_batch_recipe", side_effect=writer):
+            p = self.call("/save/review", {"filename": target.name})
+            self.assertEqual(p.status_code, 200)
+            with patch("voiceger_editor.web_recipe.os.rename", side_effect=concurrent_rename):
+                result = self.call("/save/commit", {
+                    "token": p.json()["token"], "confirmed_overwrite": True,
+                })
+        self.assertEqual(result.status_code, 409, result.text)
+        self.assertTrue(changed)
+        self.assertEqual(target.read_text(encoding="utf-8"), "unreviewed external")
+        self.assertFalse(list(self.output.glob(".voiceger-backup-*")))
+
+    def test_overwrite_create_collision_preserves_both_files(self):
+        item = self.add()
+        item.session.is_prepared = True
+        target = self.output / "collision.voiceger.json"
+        target.write_text("verified old", encoding="utf-8")
+        actual_link = os.link
+        injected = []
+        def concurrent_link(src, dst, **kwargs):
+            if dst == target.name and not injected:
+                # Another process creates a new target during the exclusive publish.
+                target.write_text("new external", encoding="utf-8")
+                injected.append(True)
+            return actual_link(src, dst, **kwargs)
+        def writer(path, batch):
+            Path(path).write_text("new recipe", encoding="utf-8")
+        with patch("voiceger_editor.web_recipe.serialize_batch_recipe", return_value="{}"), \
+             patch("voiceger_editor.web_recipe.write_batch_recipe", side_effect=writer):
+            p = self.call("/save/review", {"filename": target.name})
+            with patch("voiceger_editor.web_recipe.os.link", side_effect=concurrent_link):
+                result = self.call("/save/commit", {
+                    "token": p.json()["token"], "confirmed_overwrite": True,
+                })
+        self.assertEqual(result.status_code, 409, result.text)
+        self.assertTrue(injected)
+        self.assertEqual(target.read_text(), "new external")
+        backups = list(self.output.glob(".voiceger-backup-*.tmp"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(), "verified old")
+
+    def test_read_same_bytes_different_inode_rejects(self):
+        old = self.add("current")
+        source = self.output / "identity.voiceger.json"
+        source.write_bytes(b'{"same":"bytes"}')
+        def reader(*args, **kwargs):
+            return CaptionBatch(items=[CaptionBatchItem(FakeSession("staged"))])
+        with patch("voiceger_editor.web_recipe.read_batch_recipe", side_effect=reader):
+            p = self.call("/read/review", {"filename": source.name})
+            self.assertEqual(p.status_code, 200)
+            replacement = self.output / "copy.tmp"
+            replacement.write_bytes(source.read_bytes())
+            os.replace(replacement, source)
+            outcome = self.call("/read/commit", {
+                "token": p.json()["token"], "confirmed_replace": True,
+            })
+        self.assertEqual(outcome.status_code, 409)
+        self.assertEqual(outcome.json()["detail"]["code"], "recipe_changed")
+        self.assertEqual(self.batch()["items"][0]["caption"], "current")
+        self.assertEqual(old.session.discards, 0)
+
+    def test_output_directory_swap_cannot_escape(self):
+        item = self.add()
+        item.session.is_prepared = True
+        target = "stay.voiceger.json"
+        outside = self.root_dir / "outside"
+        outside.mkdir()
+        moved = self.root_dir / "former-output"
+        original_stage = web_recipe._stage_recipe_file
+        swapped = []
+        def switch_output(fd, batch):
+            name = original_stage(fd, batch)
+            self.output.rename(moved)
+            self.output.symlink_to(outside, target_is_directory=True)
+            swapped.append(True)
+            return name
+        def writer(path, batch):
+            Path(path).write_text("core", encoding="utf-8")
+        with patch("voiceger_editor.web_recipe.serialize_batch_recipe", return_value="{}"), \
+             patch("voiceger_editor.web_recipe.write_batch_recipe", side_effect=writer):
+            p = self.call("/save/review", {"filename": target})
+            self.assertEqual(p.status_code, 200)
+            with patch("voiceger_editor.web_recipe._stage_recipe_file", side_effect=switch_output):
+                result = self.call("/save/commit", {
+                    "token": p.json()["token"], "confirmed_overwrite": False,
+                })
+        self.assertTrue(swapped)
+        self.assertEqual(result.status_code, 409)
+        self.assertEqual(result.json()["detail"]["code"], "recipe_changed")
+        self.assertEqual(list(outside.iterdir()), [])
+        self.assertFalse((moved / target).exists())
+
+    def test_web_max_items_rejected_before_session_construction(self):
+        with patch("voiceger_editor.batch_recipe._load_document",
+                   return_value=SimpleNamespace(items=[object()] * 201)), \
+             patch("voiceger_editor.batch_recipe._resolve_style") as styles, \
+             patch("voiceger_editor.batch_recipe.UtteranceSession") as sessions:
+            with self.assertRaises(BatchRecipeError):
+                read_batch_recipe(
+                    self.output / "never-used.voiceger.json",
+                    adapter=object(),
+                    runtime_settings=Settings(output_dir=self.output),
+                    max_items=200,
+                )
+            styles.assert_not_called()
+            sessions.assert_not_called()
 
     def test_mobile_ui_has_compact_menu_and_warnings(self):
         html = (ASSETS / "index.html").read_text(encoding="utf-8")
