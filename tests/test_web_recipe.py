@@ -117,7 +117,7 @@ class WebRecipeTests(unittest.TestCase):
 
         target = self.output / "batch.voiceger.json"
         target.write_text("old recipe", encoding="utf-8")
-        with patch("voiceger_editor.web_recipe.serialize_batch_recipe", return_value="{}"), \\
+        with patch("voiceger_editor.web_recipe.serialize_batch_recipe", return_value="{}"), \
              patch("voiceger_editor.web_recipe.write_batch_recipe", side_effect=writer):
             review = self.call("/save/review", {"filename": target.name})
             self.assertEqual(review.status_code, 200, review.text)
