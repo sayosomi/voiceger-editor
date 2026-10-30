@@ -198,5 +198,21 @@ const app = f($,window,log,()=>shouldReject);
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("DICTIONARY_APPLY_GUARD_PASS", result.stdout)
 
+
+    def test_blocking_findings_f01_to_f04_against_production_js(self):
+        root = Path(__file__).resolve().parents[1]
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node not installed")
+        result = subprocess.run([
+            node, str(root / "tests" / "fixtures" /
+                      "web_dictionary_blocking_regressions.js"),
+            str(root / "voiceger_editor" / "web_assets" / "app.js")
+        ], capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for marker in ("F01_UNLOAD_PASS", "F02_HISTORY_PASS",
+                       "F03_PRIORITY_PASS", "F04_CASEFOLD_PASS"):
+            self.assertIn(marker, result.stdout)
+
 if __name__ == "__main__":
     unittest.main()

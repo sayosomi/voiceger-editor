@@ -165,5 +165,34 @@ class DictionaryWebTests(unittest.TestCase):
         self.assertEqual(self.listing(), original)
         self.assertEqual(self.listing("en")["total"], 0)
 
+    def test_quick_matches_use_core_identity_and_preserve_priority(self):
+        ja = self.core.add_japanese_word(surface="ABC", pronunciation="エービーシー",
+            accent_type=1, word_type="PROPER_NOUN", priority=9)
+        self.core.add_japanese_word(surface="ABC", pronunciation="エービーシー",
+            accent_type=1, word_type="COMMON_NOUN", priority=4)
+        self.core.add_english_entry("sweet", ["S", "W", "IY1", "T"])
+        before_ja = self.listing()
+        before_en = self.listing("en")
+        path = self.base + "/ja/matches"
+        a = self.client.get(path, params={"surface": "ABC"}, headers=self.read)
+        self.assertEqual(a.status_code, 200, a.text)
+        rows = a.json()["entries"]
+        self.assertEqual(len(rows), 2)
+        self.assertEqual([(r["word_type"], r["priority"]) for r in rows],
+            [("PROPER_NOUN", 9), ("COMMON_NOUN", 4)])
+        self.assertIn(ja, [r["id"] for r in rows])
+        self.assertEqual(self.client.get(path, params={"surface": "ＡＢＣ"},
+            headers=self.read).json()["entries"], rows)
+        self.assertEqual(self.client.get(path, params={"surface": "ABC"}).status_code, 401)
+        e = self.client.get(self.base + "/en/matches",
+            params={"surface": "Sweet"}, headers=self.read)
+        self.assertEqual(e.status_code, 200, e.text)
+        self.assertEqual(e.json()["entries"][0]["id"], "sweet")
+        self.assertEqual(self.client.get(self.base + "/en/matches",
+            params={"surface": " SWEET "}, headers=self.read).json()["entries"],
+            e.json()["entries"])
+        self.assertEqual(self.listing(), before_ja)
+        self.assertEqual(self.listing("en"), before_en)
+
 if __name__ == "__main__":
     unittest.main()
