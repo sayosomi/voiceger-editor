@@ -185,10 +185,12 @@
       "page" : "false");
     $("header-dictionary").setAttribute("aria-current",
       name.indexOf("dictionary") === 0 ? "page" : "false");
-    if (name === "dictionary" && previousView.indexOf("dictionary") !== 0) {
+    if (name === "dictionary" && previousView.indexOf("dictionary") !== 0 &&
+        dictionaryHistoryDepth === 0) {
       dictionaryPushHistory("dictionary");
     }
-    if (name === "session" && previousView !== "session") {
+    if (name === "session" && previousView !== "session" &&
+        !settingsHistoryActive) {
       settingsReturnView = previousView === "pronunciation" || previousView === "section" ?
         "item" : previousView.indexOf("dictionary") === 0 ? "dictionary" : previousView;
       settingsHistoryActive = true;
@@ -272,6 +274,27 @@
       } else {
         showView(dictReturnView, true);
       }
+      return;
+    }
+    if (event && event.state && event.state.voicegerSettings) {
+      if (busy || !sessionId || event.state.sessionId !== sessionId || !guardDraft()) {
+        window.history.back();
+        return;
+      }
+      settingsHistoryActive = true;
+      showView("session", true);
+      return;
+    }
+    if (event && event.state && event.state.voicegerDictionary) {
+      if (busy || !sessionId || event.state.sessionId !== sessionId || !guardDraft() ||
+          event.state.view !== "dictionary") {
+        // Never restore an old dictionary word/pronunciation draft from Forward.
+        window.history.back();
+        return;
+      }
+      dictReturnView = currentView === "item" ? "item" : "list";
+      dictionaryHistoryDepth = 1;
+      showView("dictionary", true);
       return;
     }
     if (sectionHistoryActive && currentView === "section") {
