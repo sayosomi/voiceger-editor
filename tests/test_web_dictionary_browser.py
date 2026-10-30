@@ -241,7 +241,7 @@ const app = f($,window,log,()=>shouldReject);
         # Both secondary controls share the exact same border, radius, colors,
         # height and padding instead of exposing Chrome's default grey button.
         rule = re.search(
-            r'\\.pronunciation-actions-secondary button,\\s*#dictionary-quick-cancel\\s*\\{([^}]+)\\}',
+            r'\.pronunciation-actions-secondary button,\s*#dictionary-quick-cancel\s*\{([^}]+)\}',
             css, re.S)
         self.assertIsNotNone(rule)
         for expected in ("min-height: 44px", "padding: 10px 13px",
