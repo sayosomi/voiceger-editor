@@ -695,6 +695,7 @@
     $("open-pronunciation").hidden = true;
     $("pronunciation-sections").hidden = !item.is_prepared;
     $("add-section").hidden = !item.is_prepared;
+    $("reprepare-audio").hidden = !item.is_prepared;
     if (item.is_prepared) renderPronunciationSections(item);
     setFixed("previous-item", index === 0);
     // The right footer slot doubles as add-at-end, not a second button.
@@ -1028,6 +1029,7 @@
     setFixed("preview-audio", !prepared);
     setFixed("generate-audio", !prepared || takes.length !== 0);
     setFixed("open-take-menu", !prepared);
+    setFixed("reprepare-audio", !prepared);
     setFixed("regenerate-unaccepted", takes.length === 0);
     setFixed("clear-takes", takes.length === 0);
     updatePlaybackUI();
@@ -1797,7 +1799,7 @@
     if (!batch || !selectedId) return;
     var item = batch.items.find(function (entry) { return entry.id === selectedId; });
     if (!item || !item.is_prepared || !window.confirm(
-      "発音を再準備すると、既存のTake候補と採用状態がクリアされます。保存済み音声は残ります。続けますか？"
+      "現在のCaptionから発音を再解析しますか？\n\n手動で調整した発音と、既存のTake候補・採用状態がクリアされます。保存済み音声は残ります。"
     )) return;
     startAudio(selectedId, "/audio/prepare", { rebuild: true });
   });
