@@ -47,11 +47,12 @@
   var dictPronOpening = null, dictSelection = { start: 0, end: 0 }, dictComposing = false;
   var dictListRequest = 0, dictReturnView = "list", dictQuickMatches = [];
   var dictionaryHistoryDepth = 0;
+  var dictionaryHistoryDestination = null;
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
   var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session", "dictionary", "dictionary-entry", "dictionary-pron"];
   var screenTitles = {
-    connect: "接続", list: "Batch List", recipe: "Batch操作", add: "Caption追加",
+    connect: "接続", list: "Batch List", recipe: "ファイル", add: "Caption追加",
     item: "Batch Item", pronunciation: "発音編集", section: "セクション編集", session: "接続・設定",
     dictionary: "辞書", "dictionary-entry": "辞書の単語", "dictionary-pron": "辞書発音編集"
   };
@@ -167,12 +168,23 @@
       pronunciationItemId = "";
       pronunciationStale = false;
     }
+    var previousView = currentView;
     currentView = name;
     viewNames.forEach(function (viewName) {
       $("view-" + viewName).hidden = viewName !== name;
     });
 
-    $("header-session").hidden = !sessionId || name === "connect" || name === "session";
+    $("header-batch").disabled = !sessionId || name === "connect";
+    document.querySelector(".global-nav").hidden = !sessionId || name === "connect";
+    $("header-session").setAttribute("aria-current", name === "session" ? "page" : "false");
+    $("header-dictionary").setAttribute("aria-current",
+      name.indexOf("dictionary") === 0 ? "page" : "false");
+    if (name === "dictionary" && previousView.indexOf("dictionary") !== 0) {
+      dictionaryPushHistory("dictionary");
+    }
+    if (name === "dictionary" && previousView !== name) {
+      void loadDictionary().catch(function (error) { feedback(error.message); });
+    }
     feedback("");
     if (name === "item") renderItem(false);
     if (name === "session" && batch) $("default-takes").value = String(batch.default_take_count);
@@ -201,6 +213,19 @@
   // Android Back/Forward both traverse the real browser history. Forward
   // restores a fresh server-owned pronunciation, never a discarded draft.
   window.addEventListener("popstate", function (event) {
+    if (dictionaryHistoryDestination) {
+      var destination = dictionaryHistoryDestination;
+      dictionaryHistoryDestination = null;
+      dictionaryHistoryDepth = destination === "dictionary" ? 1 :
+        destination === "dictionary-entry" ? 2 : 0;
+      dictPronOpening = null;
+      if (destination !== "dictionary-entry") {
+        dictEntry = null;
+        dictEntryOriginal = null;
+      }
+      showView(destination, true);
+      return;
+    }
     if (currentView === "dictionary" || currentView === "dictionary-entry" ||
         currentView === "dictionary-pron") {
       if (busy || !guardDraft()) {
@@ -786,6 +811,12 @@
     pronunciationItemId = "";
     pronunciationStale = false;
     pronunciationComposing = false;
+    dictionaryHistoryDepth = 0;
+    dictionaryHistoryDestination = null;
+    dictEntry = null;
+    dictEntryOriginal = null;
+    dictPronOpening = null;
+    dictData = null;
     endDeleteMode();
     token = "";
     sessionId = "";
@@ -1987,8 +2018,10 @@
   $("open-add").addEventListener("click", function () { openCaptionAdd(false); });
   $("add-back").addEventListener("click", backFromCaptionAdd);
   $("item-back").addEventListener("click", function () { showView("list"); });
-  $("session-back").addEventListener("click", function () { showView("list"); });
-  $("header-session").addEventListener("click", function () { showView("session"); });
+  $("session-back").addEventListener("click", function () { navigateGlobal("list"); });
+  $("header-batch").addEventListener("click", function () { navigateGlobal("list"); });
+  $("header-session").addEventListener("click", function () { navigateGlobal("session"); });
+  $("header-dictionary").addEventListener("click", function () { navigateGlobal("dictionary"); });
   function shouldSubmitCaptions(event) {
     return event.key === "Enter" && event.metaKey &&
       !event.isComposing && event.keyCode !== 229 && !event.repeat;
@@ -2197,14 +2230,51 @@
       dictionaryHistoryDepth += 1;
     } catch (_ignored) { /* Browser may restrict history. */ }
   }
-  async function openDictionary(from) {
-    if (busy || !sessionId || !guardDraft()) return;
-    dictReturnView = from;
-    dictEntry = null;
-    if (!showView("dictionary", true)) return;
-    dictionaryPushHistory("dictionary");
-    try { await loadDictionary(); }
-    catch (error) { feedback(error.message); }
+  function navigateGlobal(destination) {
+    if (busy || !sessionId) return;
+    if (destination === currentView) return;
+    if (currentView.indexOf("dictionary") === 0) {
+      if (!guardDraft()) return;
+      // Unwind only the nested dictionary history created by this session.
+      var steps = destination === "dictionary" ?
+        Math.max(0, dictionaryHistoryDepth - 1) : dictionaryHistoryDepth;
+      if (steps > 0) {
+        dictionaryHistoryDestination = destination;
+        window.history.go(-steps);
+        return;
+      }
+      dictPronOpening = null;
+      dictEntry = null;
+      dictEntryOriginal = null;
+      showView(destination, true);
+      return;
+    }
+    if (destination === "dictionary") {
+      dictReturnView = currentView === "pronunciation" || currentView === "section" ?
+        "item" : currentView === "recipe" ? "list" : currentView;
+      dictEntry = null;
+      dictEntryOriginal = null;
+    }
+    showView(destination);
+  }
+  function dictionaryBack() {
+    if (busy || !guardDraft()) return;
+    if (dictionaryHistoryDepth > 0) {
+      // The popstate handler owns state cleanup and the resulting screen.
+      dictionaryHistoryDestination = currentView === "dictionary-pron" ?
+        "dictionary-entry" : currentView === "dictionary-entry" ?
+        "dictionary" : dictReturnView;
+      window.history.back();
+      return;
+    }
+    var destination = currentView === "dictionary-pron" ? "dictionary-entry" :
+      currentView === "dictionary-entry" ? "dictionary" : dictReturnView;
+    dictPronOpening = null;
+    if (destination !== "dictionary-entry") {
+      dictEntry = null;
+      dictEntryOriginal = null;
+    }
+    showView(destination, true);
   }
   function openDictionaryEntry(row) {
     if (!dictData || busy) return;
@@ -2245,7 +2315,12 @@
       $("dictionary-pron-value").textContent = dictEntry.notation || "未入力";
     }
     dictPronOpening = null;
-    showView("dictionary-entry", true);
+    if (dictionaryHistoryDepth > 0) {
+      dictionaryHistoryDestination = "dictionary-entry";
+      window.history.back();
+    } else {
+      showView("dictionary-entry", true);
+    }
   }
   function rememberDictionarySelection() {
     var input = $("dictionary-pron-text");
@@ -2411,11 +2486,7 @@
     finally { setBusy(false); }
   }
 
-  $("open-dictionary-list").addEventListener("click", function () {
-    closeBatchMenu(); openDictionary("list");
-  });
-  $("open-dictionary-item").addEventListener("click", function () { openDictionary("item"); });
-  $("dictionary-back").addEventListener("click", function () { showView(dictReturnView); });
+  $("dictionary-back").addEventListener("click", dictionaryBack);
   $("dictionary-ja").addEventListener("click", function () {
     if (dictLanguage === "ja" || busy) return;
     dictLanguage = "ja"; dictSort = "surface_asc"; dictQuery = ""; dictType = "ALL";
@@ -2439,9 +2510,7 @@
     loadDictionary().catch(function (error) { feedback(error.message); });
   });
   $("dictionary-add").addEventListener("click", function () { openDictionaryEntry(null); });
-  $("dictionary-entry-back").addEventListener("click", function () {
-    if (guardDraft()) { dictEntry = null; dictEntryOriginal = null; showView("dictionary", true); }
-  });
+  $("dictionary-entry-back").addEventListener("click", dictionaryBack);
   $("dictionary-pron-open").addEventListener("click", enterDictionaryPronunciation);
   $("dictionary-entry-form").addEventListener("submit", dictionarySave);
   $("dictionary-delete").addEventListener("click", dictionaryDelete);
