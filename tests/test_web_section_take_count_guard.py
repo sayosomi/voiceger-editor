@@ -142,6 +142,7 @@ function scenario({saved=null,mode="default",value="4",caption="Caption",draft="
     confirm(s){prompts.push(s);return decisions.shift();},
     addEventListener(name,fn){this.handlers[name]=fn;}};
   const setup=[
+    'let dictionaryHistoryDestination=null,settingsHistoryActive=false;',
     'let sectionHistoryActive=false,pronunciationHistoryActive=false,',
     'busy=false,batch={items:[item]},sessionId="S",selectedId="item",',
     'currentView="item",takeCountEditMode=true;',

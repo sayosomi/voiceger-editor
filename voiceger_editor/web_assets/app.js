@@ -178,7 +178,7 @@
     });
 
     $("header-batch").disabled = !sessionId || name === "connect";
-    document.querySelector(".global-nav").hidden = !sessionId || name === "connect";
+    $("global-nav").hidden = !sessionId || name === "connect";
     $("header-session").setAttribute("aria-current", name === "session" ? "page" : "false");
     $("header-batch").setAttribute("aria-current",
       ["list", "item", "add", "recipe", "pronunciation", "section"].includes(name) ?

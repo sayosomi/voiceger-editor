@@ -75,7 +75,9 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 (async()=>{
  assert.equal((html.match(/id="open-batch-menu"/g)||[]).length,1);
  assert.equal((html.match(/id="recipe-filename"/g)||[]).length,1);
- assert(html.includes("Macから読み込む") && html.includes("Batchを保存"));
+ assert(html.includes('aria-label="Batchファイル"') &&
+        html.includes('id="recipe-open-read">読み込む') &&
+        html.includes('id="recipe-open-save">保存'));
  $("recipe-filename").value="first.voiceger.json";
  $("open-batch-menu").click();
  assert.equal($("batch-menu").hidden,false);
