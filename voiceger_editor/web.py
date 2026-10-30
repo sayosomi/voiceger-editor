@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from ._version import __version__
 from .web_routes import build_web_session_router
 from .web_batch_routes import build_web_batch_router
+from .web_recipe_routes import build_web_recipe_router
 from .web_take_routes import build_web_take_router
 from .web_pronunciation_routes import build_web_pronunciation_router
 from .web_section_routes import build_web_section_router
@@ -47,6 +48,7 @@ def create_web_app(*, service: WebSessionOperations | None = None) -> FastAPI:
     web_app.mount("/assets", StaticFiles(directory=str(ASSETS)), name="web-assets")
     web_app.include_router(build_web_session_router(session_service))
     web_app.include_router(build_web_batch_router(session_service))
+    web_app.include_router(build_web_recipe_router(session_service))
     web_app.include_router(build_web_take_router(session_service))
     web_app.include_router(build_web_pronunciation_router(session_service))
     web_app.include_router(build_web_section_router(session_service))
