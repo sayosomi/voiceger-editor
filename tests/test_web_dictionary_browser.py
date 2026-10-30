@@ -166,11 +166,12 @@ let log=[], allow=false, shouldReject=true;
 const window = {confirm(message){log.push(message);return allow;},
                 history:{back(){log.push("back");}}};
 const nodes = {
- "dictionary-pron-text": {value:"シ' コク"},
+ "dictionary-pron-text": {value:"シ' コク", setAttribute(k,v){this[k]=v;}, removeAttribute(k){delete this[k];}},
  "dictionary-surface": {value:"四国めたん"},
  "dictionary-word-type": {value:"PROPER_NOUN"},
  "dictionary-priority": {value:"5"},
- "dictionary-pron-value": {textContent:""}
+ "dictionary-pron-value": {textContent:""},
+ "dictionary-pron-error": {hidden:true,textContent:"",scrollIntoView(o){log.push("scroll:"+o.block);},focus(){log.push("focus:error");}}
 };
 const $ = name => nodes[name] ||= {};
 const base = [
@@ -182,12 +183,12 @@ const base = [
  'function feedback(m){log.push(m);}',
  'function dictionaryPath(){return "/api/test/dictionary";}',
  'async function request(method,path,payload){',
- '  log.push(path); if(shouldReject)throw Error("invalid_dictionary");',
+ '  log.push(path); if(shouldReject)throw Object.assign(new Error("invalid_dictionary"),{conflictCode:"invalid_dictionary"});',
  '  return {valid:true};',
  '}',
  cut('  function dictionaryPronunciationDirty() {','  function dictionaryTypeLabel(value) {'),
  cut('  function guardDraft() {','  function showView(name, bypassDraftGuard) {'),
- cut('  async function applyDictionaryPronunciation(event) {',
+ cut('  function clearDictionaryPronunciationError() {',
      '  function rememberDictionarySelection() {'),
  'return {applyDictionaryPronunciation,guardDraft,',
  'setReject(v){shouldReject=v;},setAllow(v){allow=v;},',
@@ -203,7 +204,11 @@ const app = f($,window,log,()=>shouldReject);
  assert.equal(app.state().currentView,"dictionary-pron");
  assert.equal(app.state().notation,"シ'コク");
  assert.equal(app.state().busy,false);
- assert(log.some(m=>m==="invalid_dictionary"));
+ assert.equal(nodes["dictionary-pron-error"].hidden,false);
+ assert(nodes["dictionary-pron-error"].textContent.includes("空白を削除"));
+ assert(log.includes("scroll:center"));
+ assert(log.includes("focus:error"));
+ assert.equal(nodes["dictionary-pron-text"]["aria-invalid"],"true");
  app.setText("シ'コク");
  // Pronunciation unchanged, but Surface differs from the parent opening.
  assert.equal(app.guardDraft(),false,"global navigation must guard parent draft");
@@ -268,6 +273,32 @@ const app = f($,window,log,()=>shouldReject);
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("DICTIONARY_ENTRY_LANGUAGE_PASS", result.stdout)
 
+
+
+    def test_dictionary_pronunciation_errors_at_apply_and_preview(self):
+        root = Path(__file__).resolve().parents[1]
+        assets = root / "voiceger_editor" / "web_assets"
+        html = (assets / "index.html").read_text(encoding="utf-8")
+        css = (assets / "app.css").read_text(encoding="utf-8")
+        js = (assets / "app.js").read_text(encoding="utf-8")
+        form = html.split('id="dictionary-pron-form"', 1)[1].split("</form>", 1)[0]
+        self.assertLess(form.index('id="dictionary-pron-text"'),
+                        form.index('id="dictionary-pron-error"'))
+        self.assertLess(form.index('id="dictionary-pron-error"'),
+                        form.index('id="dictionary-preview"'))
+        self.assertIn('class="dictionary-pron-error" role="alert" tabindex="-1" hidden', form)
+        self.assertIn("border-left: 4px solid #b93c30", css)
+        self.assertIn('addEventListener("input", clearDictionaryPronunciationError)', js)
+        self.assertIn('showDictionaryPronunciationError(error, notation, "Preview")', js)
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node not installed")
+        result = subprocess.run([
+            node, str(root / "tests" / "fixtures" /
+                      "web_dictionary_pronunciation_errors.js"), str(assets / "app.js"),
+        ], capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("DICTIONARY_PRON_ERROR_PASS", result.stdout)
 
     def test_dictionary_generate_position_and_duplicate_guidance(self):
         root = Path(__file__).resolve().parents[1]
