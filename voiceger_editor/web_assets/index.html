@@ -218,6 +218,13 @@
           <h3>辞書に登録</h3>
           <label for="dictionary-quick-surface">Surface</label>
           <input type="text" id="dictionary-quick-surface" maxlength="2000" required>
+          <button type="button" id="dictionary-quick-generate" class="item-link">Surfaceから発音を生成</button>
+          <label for="dictionary-quick-notation">Pronunciation</label>
+          <textarea id="dictionary-quick-notation" rows="3" maxlength="2000"
+            autocomplete="off" autocapitalize="off" spellcheck="false" required
+            aria-describedby="dictionary-quick-hint dictionary-quick-error"></textarea>
+          <p id="dictionary-quick-hint" class="help-text" role="status"></p>
+          <button type="button" id="dictionary-quick-preview" class="item-link">▶ Preview</button>
           <label for="dictionary-quick-type" class="dictionary-quick-ja">品詞</label>
           <select id="dictionary-quick-type" class="dictionary-quick-ja">
             <option value="PROPER_NOUN">固有名詞</option><option value="COMMON_NOUN">普通名詞</option>
@@ -226,7 +233,8 @@
           </select>
           <label for="dictionary-quick-priority" class="dictionary-quick-ja">優先度</label>
           <input type="number" id="dictionary-quick-priority" class="dictionary-quick-ja" min="0" max="10" value="5">
-          <p class="help-text">発音は現在の入力内容を使用します。Batch Itemには反映しません。</p>
+          <p class="help-text">辞書への登録では、Batch Itemの発音・Takeは変更されません。</p>
+          <p id="dictionary-quick-error" class="dictionary-save-error" role="alert" tabindex="-1" hidden></p>
           <div class="button-row">
             <button class="primary-button" type="submit">辞書に保存</button>
             <button type="button" id="dictionary-quick-cancel">キャンセル</button>

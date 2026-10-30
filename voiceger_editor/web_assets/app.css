@@ -426,6 +426,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 #dictionary-delete { min-height: 44px; border: 1px solid #eacbc5; background: #fff4f2; color: #96524a; border-radius: 10px; }
 .dictionary-quick { border: 1px solid #cbdcd2; background: white; border-radius: 12px; padding: 14px; margin-top: 20px; }
 .dictionary-quick .button-row button { min-height: 44px; }
+#dictionary-quick-generate, #dictionary-quick-preview {
+  min-height: 44px; width: 100%; text-align: center; justify-content: center;
+  border: 1px solid #c8dbd1; border-radius: 10px; padding: 10px 12px;
+  background: #eff6f2; color: #285e4f; font-weight: 700;
+}
+#dictionary-quick-notation { font-size: 17px; line-height: 1.7; }
+#dictionary-quick-hint { margin: 0; }
+#dictionary-quick-error { scroll-margin-top: 90px; }
 
 /* Three-level app navigation: global domains stay visible on nested screens. */
 .brand-home { border: 0; background: transparent; color: inherit; padding: 0; text-align: left; }

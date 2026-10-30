@@ -238,6 +238,32 @@ const app = f($,window,log,()=>shouldReject);
             self.assertIn(marker, result.stdout)
 
 
+
+    def test_quick_dictionary_partial_word_isolated_draft(self):
+        root = Path(__file__).resolve().parents[1]
+        assets = root / "voiceger_editor" / "web_assets"
+        html = (assets / "index.html").read_text(encoding="utf-8")
+        css = (assets / "app.css").read_text(encoding="utf-8")
+        form = html.split('id="dictionary-quick-form"', 1)[1].split("</form>", 1)[0]
+        self.assertLess(form.index('id="dictionary-quick-surface"'),
+                        form.index('id="dictionary-quick-generate"'))
+        self.assertLess(form.index('id="dictionary-quick-generate"'),
+                        form.index('id="dictionary-quick-notation"'))
+        self.assertLess(form.index('id="dictionary-quick-error"'),
+                        form.index('type="submit"'))
+        self.assertIn('id="dictionary-quick-preview"', form)
+        self.assertIn('role="alert" tabindex="-1" hidden', form)
+        self.assertIn('#dictionary-quick-notation', css)
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node not installed")
+        result = subprocess.run([
+            node, str(root / "tests" / "fixtures" /
+                      "web_dictionary_quick_partial.js"), str(assets / "app.js")
+        ], capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("DICTIONARY_QUICK_PARTIAL_PASS", result.stdout)
+
     def test_quick_dictionary_cancel_uses_existing_secondary_button_style(self):
         root = Path(__file__).resolve().parents[1] / "voiceger_editor" / "web_assets"
         html = (root / "index.html").read_text(encoding="utf-8")

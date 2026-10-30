@@ -49,6 +49,9 @@
   var dictPronOpening = null, dictSelection = { start: 0, end: 0 }, dictComposing = false;
   var dictListRequest = 0, dictReturnView = "list", dictQuickMatches = [];
   var dictQuickPriorityEdited = false;
+  // The quick form's draft is independent from the Batch pronunciation.
+  // null means Surface changed and its prior pronunciation is invalid.
+  var dictQuickPronSurface = null;
   var dictionaryHistoryDepth = 0;
   var dictionaryHistoryDestination = null;
   var dictionaryHistoryNotice = "";
@@ -932,6 +935,8 @@
     dictEntryOriginal = null;
     dictPronOpening = null;
     dictData = null;
+    dictQuickPronSurface = null;
+    $("dictionary-quick-form").hidden = true;
     endDeleteMode();
     token = "";
     sessionId = "";
@@ -2729,8 +2734,8 @@
     finally { setBusy(false); }
   }
 
-  // Quick Save does not Apply the source pronunciation or touch its Takes.
-  // The Core resolves Japanese normalized Surface and English casefold identity.
+  // Quick Save never Applies the source pronunciation or modifies Batch Takes.
+  // A changed Surface must not retain the sentence's pronunciation.
   function dictionaryQuickMatches(language, surface) {
     return request("GET", dictionaryPath() + "/" + encodeURIComponent(language) +
       "/matches?surface=" + encodeURIComponent(surface));
@@ -2742,6 +2747,52 @@
       return row.word_type === selectedType;
     });
     $("dictionary-quick-priority").value = String(match ? match.priority : 5);
+  }
+  function clearDictionaryQuickError() {
+    $("dictionary-quick-error").hidden = true;
+    $("dictionary-quick-error").textContent = "";
+    $("dictionary-quick-notation").removeAttribute("aria-invalid");
+  }
+  function showDictionaryQuickError(message) {
+    $("dictionary-quick-error").textContent = message;
+    $("dictionary-quick-error").hidden = false;
+    $("dictionary-quick-notation").setAttribute("aria-invalid", "true");
+    feedback("");
+    $("dictionary-quick-error").scrollIntoView({ behavior: "auto", block: "center" });
+    $("dictionary-quick-error").focus({ preventScroll: true });
+  }
+  function dictionaryQuickSurfaceChanged() {
+    if ($("dictionary-quick-form").hidden) return;
+    var surface = $("dictionary-quick-surface").value;
+    if (dictQuickPronSurface === surface) return;
+    // Never attempt automatic substring-to-phoneme mapping.
+    dictQuickPronSurface = null;
+    $("dictionary-quick-notation").value = "";
+    $("dictionary-quick-hint").textContent =
+      "Surfaceを変更しました。この単語の発音を生成するか入力してください。";
+    clearDictionaryQuickError();
+    clearPlayer();
+  }
+  function dictionaryQuickNotationChanged() {
+    if ($("dictionary-quick-form").hidden) return;
+    // Explicit manual edits after a Surface change belong to this Surface.
+    dictQuickPronSurface = $("dictionary-quick-surface").value;
+    clearDictionaryQuickError();
+    clearPlayer();
+  }
+  function dictionaryQuickDraft() {
+    var surface = $("dictionary-quick-surface").value;
+    var notation = $("dictionary-quick-notation").value;
+    if (!surface.trim()) {
+      showDictionaryQuickError("Surfaceに登録する単語を入力してください。");
+      return null;
+    }
+    if (dictQuickPronSurface !== surface || !notation.trim()) {
+      showDictionaryQuickError("この単語の発音を生成するか入力してから保存してください。");
+      return null;
+    }
+    return { surface: surface, notation: notation,
+      language: $("dictionary-quick-form").dataset.language };
   }
   async function openDictionaryQuick() {
     if (busy || currentView !== "pronunciation") return;
@@ -2756,6 +2807,11 @@
       $("dictionary-quick-form").dataset.language = language;
       $("dictionary-quick-form").dataset.revision = snapshot.revision;
       $("dictionary-quick-surface").value = seed;
+      $("dictionary-quick-notation").value = $("pronunciation-text").value;
+      dictQuickPronSurface = seed;
+      $("dictionary-quick-hint").textContent =
+        "現在の発音を使用します。単語だけ登録する場合はSurfaceを変更してください。";
+      clearDictionaryQuickError();
       document.querySelectorAll(".dictionary-quick-ja").forEach(function (node) {
         node.hidden = language !== "ja";
       });
@@ -2766,16 +2822,71 @@
     } catch (error) { feedback(error.message); }
     finally { setBusy(false); }
   }
+  async function generateDictionaryQuick() {
+    if (busy || currentView !== "pronunciation" || $("dictionary-quick-form").hidden) return;
+    var surface = $("dictionary-quick-surface").value;
+    var language = $("dictionary-quick-form").dataset.language;
+    if (!surface.trim()) {
+      showDictionaryQuickError("Surfaceに登録する単語を入力してください。");
+      return;
+    }
+    clearDictionaryQuickError();
+    setBusy(true);
+    try {
+      var op = await request("POST", dictionaryPath() + "/pronunciation/generate",
+        { language: language, surface: surface });
+      var result = await waitDictionaryOperation(op);
+      if (!result.notation) throw new Error("発音を生成できませんでした。");
+      $("dictionary-quick-notation").value = result.notation;
+      dictQuickPronSurface = surface;
+      $("dictionary-quick-hint").textContent =
+        "生成した発音を確認してください。必要なら編集できます。";
+      feedback("");
+    } catch (error) { showDictionaryQuickError(error.message); }
+    finally { setBusy(false); }
+  }
+  async function previewDictionaryQuick() {
+    if (busy || currentView !== "pronunciation" || $("dictionary-quick-form").hidden) return;
+    clearDictionaryQuickError();
+    var draft = dictionaryQuickDraft();
+    if (!draft) return;
+    clearPlayer();
+    setBusy(true);
+    try {
+      var op = await request("POST", dictionaryPath() + "/pronunciation/preview", draft);
+      var result = await waitDictionaryOperation(op);
+      var response = await fetch(dictionaryPath() + "/audio/preview/" +
+        encodeURIComponent(result.preview_id), {
+        headers: { Authorization: "Bearer " + token }, cache: "no-store",
+        credentials: "same-origin"
+      });
+      if (!response.ok) throw new Error("Preview音声を取得できませんでした。");
+      var bytes = await response.blob();
+      if (!bytes.size || bytes.type.indexOf("audio/") !== 0)
+        throw new Error("Preview音声が無効です。");
+      playingUrl = URL.createObjectURL(bytes);
+      var player = $("phone-player");
+      player.src = playingUrl;
+      player.hidden = false;
+      try { await player.play(); }
+      catch (_ignored) { feedback("プレイヤーの再生ボタンを押してください。"); }
+    } catch (error) { showDictionaryQuickError(error.message); }
+    finally { setBusy(false); }
+  }
   async function saveDictionaryQuick(event) {
     event.preventDefault();
     if (busy || currentView !== "pronunciation" ||
         $("dictionary-quick-form").hidden) return;
-    var language = $("dictionary-quick-form").dataset.language;
-    var surface = $("dictionary-quick-surface").value;
+    clearDictionaryQuickError();
+    var draft = dictionaryQuickDraft();
+    if (!draft) return;
+    var language = draft.language;
+    var surface = draft.surface;
     var wordType = $("dictionary-quick-type").value;
     setBusy(true);
     try {
-      // Re-resolve after Surface edits instead of trusting an older JS-filtered list.
+      // Resolve again after Surface edits: existing word and revision checks
+      // apply identically to generated and manually edited pronunciations.
       var snapshot = await dictionaryQuickMatches(language, surface);
       if (snapshot.revision !== $("dictionary-quick-form").dataset.revision)
         throw new Error("辞書が更新されています。登録画面を開き直してください。");
@@ -2783,10 +2894,9 @@
         return language === "en" || word.word_type === wordType;
       });
       if (candidates.length > 1) {
-        feedback("同じ表記の登録が複数あります。辞書一覧から編集対象を選んでください。");
+        showDictionaryQuickError("同じ表記の登録が複数あります。辞書一覧で対象を確認してください。");
         return;
       }
-      // Existing priority is never reset just because this form defaults to 5.
       if (language === "ja" && !dictQuickPriorityEdited) {
         $("dictionary-quick-priority").value =
           String(candidates.length ? candidates[0].priority : 5);
@@ -2795,15 +2905,16 @@
         "既存の辞書単語をこの発音で更新しますか？")) return;
       var payload = {
         expected_revision: snapshot.revision,
-        language: language, surface: surface, notation: $("pronunciation-text").value,
+        language: language, surface: surface, notation: draft.notation,
         word_type: wordType, priority: Number($("dictionary-quick-priority").value)
       };
       var address = dictionaryPath() + "/words" +
         (candidates.length ? "/" + encodeURIComponent(candidates[0].id) : "");
       await request(candidates.length ? "PUT" : "POST", address, payload);
       $("dictionary-quick-form").hidden = true;
+      dictQuickPronSurface = null;
       feedback("辞書に保存しました。Batch Itemの発音とTakeは変更していません。");
-    } catch (error) { feedback(error.message); }
+    } catch (error) { showDictionaryQuickError(error.message); }
     finally { setBusy(false); }
   }
 
@@ -2885,12 +2996,20 @@
     });
   });
   $("open-dictionary-quick").addEventListener("click", openDictionaryQuick);
+  $("dictionary-quick-surface").addEventListener("input", dictionaryQuickSurfaceChanged);
+  $("dictionary-quick-notation").addEventListener("input", dictionaryQuickNotationChanged);
+  $("dictionary-quick-generate").addEventListener("click", generateDictionaryQuick);
+  $("dictionary-quick-preview").addEventListener("click", previewDictionaryQuick);
   $("dictionary-quick-type").addEventListener("change", dictionaryQuickPriority);
   $("dictionary-quick-priority").addEventListener("input", function () {
     dictQuickPriorityEdited = true;
   });
   $("dictionary-quick-cancel").addEventListener("click", function () {
+    if (busy) return;
     $("dictionary-quick-form").hidden = true;
+    dictQuickPronSurface = null;
+    clearDictionaryQuickError();
+    clearPlayer();
   });
   $("dictionary-quick-form").addEventListener("submit", saveDictionaryQuick);
 
