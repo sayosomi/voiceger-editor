@@ -16,6 +16,8 @@
   var audioOperation = null;
   var batchOperation = null;
   var batchPolling = false;
+  var recipeMode = "";
+  var batchMenuOpen = false;
   var playingUrl = "";
   var playbackRequestId = 0;
   var playback = null;
@@ -42,9 +44,9 @@
   var autoPrepareFailures = new Set();
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
-  var viewNames = ["connect", "list", "add", "item", "pronunciation", "section", "session"];
+  var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session"];
   var screenTitles = {
-    connect: "接続", list: "Batch List", add: "Caption追加",
+    connect: "接続", list: "Batch List", recipe: "Batch操作", add: "Caption追加",
     item: "Batch Item", pronunciation: "発音編集", section: "セクション編集", session: "接続・設定"
   };
 
@@ -131,6 +133,7 @@
       return true;
     }
     if (name !== "list" && reorderMode) endReorderMode();
+    if (name !== "list" && typeof closeBatchMenu === "function") closeBatchMenu();
     if (name !== "list" && deleteMode) endDeleteMode();
     if ((currentView === "item" && name !== "item") ||
         (currentView === "pronunciation" && name !== "pronunciation") ||
@@ -265,11 +268,13 @@
     });
     if (!response.ok) {
       var conflictCode = "";
-      if (response.status === 409 || response.status === 422) {
+      var problemIndex = null;
+      if (response.status === 409 || response.status === 422 || response.status === 503) {
         try {
           var problem = await response.json();
           if (problem && problem.detail && typeof problem.detail.code === "string") {
             conflictCode = problem.detail.code;
+            if (Number.isInteger(problem.detail.item_index)) problemIndex = problem.detail.item_index;
           }
         } catch (_ignored) { /* Invalid server response stays generic. */ }
       }
@@ -280,7 +285,9 @@
         terms_required: "Mac側で最新のVoiceger利用規約への承諾が必要です。",
         accepted_take_protected: "採用済みTakeを保護しました。Take数を増やすか採用状態を確認してください。",
         already_accepted: "このTakeはすでに採用済みです。",
-        conflict: "この操作は現在実行できません。状態を確認してください。"
+        conflict: "この操作は現在実行できません。状態を確認してください。",
+        recipe_changed: "Mac側のファイルが変更・削除されました。選び直してください。",
+        review_expired: "確認が古くなりました。最初から操作してください。"
       };
       var invalidPronunciation = {
         invalid_pronunciation: "発音形式が正しくありません。各アクセント句に ' または正しい [ ] を指定し、句の区切りには空白を使ってください。",
@@ -290,11 +297,16 @@
         stale_pronunciation: "編集対象の発音が更新されています。編集画面を開き直してください。",
         invalid_section: "選択したセクションは操作できません。現在の内容を確認してください。",
         invalid_section_text: "文章を確認してください。空欄・改行は使用できません。",
-        stale_section: "セクションの文章が更新されています。編集画面を開き直してください。"
+        stale_section: "セクションの文章が更新されています。編集画面を開き直してください。",
+        invalid_filename: "ファイル名は .voiceger.json で終わる単一の名前を指定してください。",
+        invalid_recipe: "Batchレシピが不正か、必要なVoicegerスタイルがありません。",
+        missing_preparation: "すべてのCaptionの発音準備が必要です。除外したCaptionも確認してください。"
       };
       var error = new Error(
         response.status === 401 ? "認証できません。トークンを確認してください。" :
-        response.status === 503 ? "Mac側の接続設定を確認してください。" :
+        response.status === 503 ? (conflictCode === "recipe_io" ?
+          "Mac側のOutputフォルダまたはファイルを操作できません。" :
+          "Mac側の接続設定を確認してください。") :
         response.status === 409 ?
           (conflictMessages[conflictCode] || conflictMessages.conflict) :
         response.status === 404 ? "セッションが見つかりません。再接続してください。" :
@@ -302,6 +314,9 @@
           (invalidPronunciation[conflictCode] || "入力内容を確認してください。") :
         "操作を完了できませんでした。"
       );
+      if (conflictCode === "missing_preparation" && problemIndex !== null) {
+        error.message = "Caption " + problemIndex + " の発音を準備してください（除外中も対象）。";
+      }
       error.code = response.status;
       error.conflictCode = conflictCode;
       throw error;
@@ -453,6 +468,8 @@
     $("empty-state").hidden = count !== 0;
     $("batch-title").textContent = deleteMode ? "削除" : "Batch List";
     $("toggle-reorder").hidden = deleteMode;
+    $("open-batch-menu").hidden = deleteMode || reorderMode;
+    if (deleteMode || reorderMode) closeBatchMenu();
     $("toggle-delete").hidden = reorderMode;
     $("toggle-delete").textContent = deleteMode ? "キャンセル" : "削除";
     $("toggle-delete").setAttribute("aria-pressed", String(deleteMode));
@@ -678,6 +695,7 @@
     $("open-pronunciation").hidden = true;
     $("pronunciation-sections").hidden = !item.is_prepared;
     $("add-section").hidden = !item.is_prepared;
+    $("reprepare-audio").hidden = !item.is_prepared;
     if (item.is_prepared) renderPronunciationSections(item);
     setFixed("previous-item", index === 0);
     // The right footer slot doubles as add-at-end, not a second button.
@@ -710,6 +728,8 @@
     clearPlayer();
     audioOperation = null;
     batchOperation = null;
+    recipeMode = "";
+    closeBatchMenu();
     autoPrepareFailures.clear();
     captionEditMode = false;
     takeCountEditMode = false;
@@ -1009,6 +1029,7 @@
     setFixed("preview-audio", !prepared);
     setFixed("generate-audio", !prepared || takes.length !== 0);
     setFixed("open-take-menu", !prepared);
+    setFixed("reprepare-audio", !prepared);
     setFixed("regenerate-unaccepted", takes.length === 0);
     setFixed("clear-takes", takes.length === 0);
     updatePlaybackUI();
@@ -1268,6 +1289,114 @@
     if (batch && batch.active_operation && !batchPolling) {
       followBatchOperation(batch.active_operation);
     }
+  }
+
+  function closeBatchMenu() {
+    batchMenuOpen = false;
+    $("batch-menu").hidden = true;
+    $("open-batch-menu").setAttribute("aria-expanded", "false");
+  }
+
+  function recipePath() { return batchPath() + "/recipes"; }
+  function recipeRevisionPath(suffix) {
+    return recipePath() + suffix + "?expected_revision=" + encodeURIComponent(batch.revision);
+  }
+  async function cancelRecipeReview() {
+    if (!batch || !sessionId) return;
+    await request("POST", recipeRevisionPath("/cancel"));
+  }
+  async function openRecipe(mode) {
+    if (busy || !batch || reorderMode || deleteMode || !showView("recipe")) return;
+    closeBatchMenu();
+    recipeMode = mode;
+    $("recipe-title").textContent = mode === "read" ? "Macから読み込む" : "Batchを保存";
+    $("recipe-read-panel").hidden = mode !== "read";
+    $("recipe-save-form").hidden = mode !== "save";
+    if (mode !== "read") {
+      $("recipe-filename").focus({ preventScroll: true });
+      return;
+    }
+    $("recipe-files").replaceChildren();
+    $("recipe-empty").hidden = true;
+    setBusy(true);
+    try {
+      var listed = await request("GET", recipePath());
+      var files = listed.files || [];
+      $("recipe-empty").hidden = files.length !== 0;
+      files.forEach(function (name) {
+        var li = document.createElement("li");
+        var button = document.createElement("button");
+        button.type = "button";
+        button.textContent = name;
+        button.addEventListener("click", function () { readRecipe(name); });
+        li.appendChild(button);
+        $("recipe-files").appendChild(li);
+      });
+    } catch (error) {
+      feedback(error.message);
+    } finally { setBusy(false); }
+  }
+
+  async function readRecipe(filename) {
+    if (busy || !batch || recipeMode !== "read") return;
+    setBusy(true);
+    try {
+      var reviewed = await request("POST", recipeRevisionPath("/read/review"),
+        { filename: filename });
+      if (reviewed.replace_required && !window.confirm(
+        "現在のBatchとメモリ上の生成済みTake・採用状態を置き換えますか？\\n" +
+        "レシピにはTake音声や採用状態は含まれず、復元されません。\\n" +
+        "Mac上に保存済みの音声ファイルは削除されません。"
+      )) {
+        await cancelRecipeReview();
+        feedback("読み込みをキャンセルしました。Batchは変更されていません。");
+        return;
+      }
+      var loaded = await request("POST", recipeRevisionPath("/read/commit"),
+        { token: reviewed.token, confirmed_replace: reviewed.replace_required });
+      clearPlayer();
+      selectedId = "";
+      autoPrepareFailures.clear();
+      captionEditMode = false;
+      takeCountEditMode = false;
+      takeMenuOpen = false;
+      batch = loaded;
+      renderList();
+      showView("list", true);
+      feedback(filename + " を読み込みました。Takeは復元されません。");
+    } catch (error) {
+      if (error.conflictCode === "revision_conflict") {
+        try { await refresh(); } catch (_ignored) {}
+      }
+      feedback(error.message);
+    } finally { setBusy(false); }
+  }
+
+  async function saveRecipe(event) {
+    event.preventDefault();
+    if (busy || !batch || recipeMode !== "save") return;
+    var filename = $("recipe-filename").value.trim();
+    setBusy(true);
+    try {
+      var reviewed = await request("POST", recipeRevisionPath("/save/review"),
+        { filename: filename });
+      if (reviewed.exists && !window.confirm(
+        filename + " はMacのOutputフォルダに存在します。上書きしますか？"
+      )) {
+        await cancelRecipeReview();
+        feedback("保存をキャンセルしました。ファイルは変更されていません。");
+        return;
+      }
+      await request("POST", recipeRevisionPath("/save/commit"),
+        { token: reviewed.token, confirmed_overwrite: reviewed.exists });
+      showView("list", true);
+      feedback(filename + " をMacのOutputフォルダに保存しました。");
+    } catch (error) {
+      if (error.conflictCode === "revision_conflict") {
+        try { await refresh(); } catch (_ignored) {}
+      }
+      feedback(error.message);
+    } finally { setBusy(false); }
   }
 
   async function startBatchGeneration() {
@@ -1670,7 +1799,7 @@
     if (!batch || !selectedId) return;
     var item = batch.items.find(function (entry) { return entry.id === selectedId; });
     if (!item || !item.is_prepared || !window.confirm(
-      "発音を再準備すると、既存のTake候補と採用状態がクリアされます。保存済み音声は残ります。続けますか？"
+      "現在のCaptionから発音を再解析しますか？\n\n手動で調整した発音と、既存のTake候補・採用状態がクリアされます。保存済み音声は残ります。"
     )) return;
     startAudio(selectedId, "/audio/prepare", { rebuild: true });
   });
@@ -1763,6 +1892,16 @@
     showView("list", true);
     resumeBatchOperation();
   });
+  $("open-batch-menu").addEventListener("click", function () {
+    if (busy || reorderMode || deleteMode) return;
+    batchMenuOpen = !batchMenuOpen;
+    $("batch-menu").hidden = !batchMenuOpen;
+    this.setAttribute("aria-expanded", String(batchMenuOpen));
+  });
+  $("recipe-open-read").addEventListener("click", function () { openRecipe("read"); });
+  $("recipe-open-save").addEventListener("click", function () { openRecipe("save"); });
+  $("recipe-save-form").addEventListener("submit", saveRecipe);
+  $("recipe-back").addEventListener("click", function () { showView("list"); });
   $("toggle-reorder").addEventListener("click", function () {
     if (busy || !batch || dragState) return;
     if (!reorderMode && batch.items.length < 2) return;

@@ -75,7 +75,8 @@ class WebBatchMixin:
 
             # Lazy adapter construction does not load the synthesis models.
             self._batch_adapter = VoicegerAdapter()
-            self._batch_settings = load_settings()
+            if self._batch_settings is None:
+                self._batch_settings = load_settings()
         from .session import UtteranceSession
 
         return UtteranceSession.from_caption(
@@ -122,6 +123,7 @@ class WebBatchMixin:
                 from .web_sessions import WebSessionNotFound
 
                 raise WebSessionNotFound("Batch item not found") from None
+            self._discard_review(session)
             session.revision += 1
             return self._batch_snapshot(session)
 

@@ -734,6 +734,7 @@ def read_batch_recipe(
     *,
     adapter: "VoicegerAdapter",
     runtime_settings: Settings,
+    max_items: int | None = None,
 ) -> CaptionBatch:
     """Read and fully validate a recipe before returning replacement batch state.
 
@@ -747,6 +748,8 @@ def read_batch_recipe(
 
     source = _resolve_path(path)
     recipe = _load_document(source)
+    if max_items is not None and len(recipe.items) > max_items:
+        raise BatchRecipeError(f"recipe exceeds the {max_items} item limit")
 
     prepared: list[
         tuple[_ItemRecipe, AudioQuery, str | None, Settings]

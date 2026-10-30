@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 from .caption_batch import CaptionBatch
 from .web_batch import WebBatchMixin
+from .web_recipe import WebRecipeMixin
 from .web_batch_generation import WebBatchGenerationMixin
 from .web_takes import WebTakeMixin
 from .web_pronunciation import WebPronunciationMixin
@@ -85,6 +86,7 @@ class _WebSession:
     operations: dict[str, _Operation] = field(default_factory=dict)
     preview_audio: tuple[str, str, bytes] | None = None
     english_groupings: dict[tuple[str, int], Any] = field(default_factory=dict)
+    pending_recipe: Any = None
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -96,7 +98,7 @@ class _WebSession:
         }
 
 
-class WebSessionOperations(WebBatchMixin, WebBatchGenerationMixin, WebEnglishMixin, WebSectionMixin, WebPronunciationMixin, WebTakeMixin):
+class WebSessionOperations(WebBatchMixin, WebRecipeMixin, WebBatchGenerationMixin, WebEnglishMixin, WebSectionMixin, WebPronunciationMixin, WebTakeMixin):
     """Thread-safe, in-process session registry with one worker across sessions."""
 
     def __init__(
@@ -132,6 +134,9 @@ class WebSessionOperations(WebBatchMixin, WebBatchGenerationMixin, WebEnglishMix
 
     @staticmethod
     def _dispose(session: _WebSession) -> None:
+        if session.pending_recipe is not None:
+            session.pending_recipe.dispose()
+            session.pending_recipe = None
         session.preview_audio = None
         # Dispose temporary Takes only; never delete accepted output files.
         for item in session.batch.items:

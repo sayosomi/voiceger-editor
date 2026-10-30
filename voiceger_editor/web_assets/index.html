@@ -46,6 +46,13 @@
           </div>
           <div class="list-toolbar">
             <span id="batch-count" class="counter" hidden>0件</span>
+            <div class="batch-menu-wrap">
+              <button type="button" id="open-batch-menu" class="reorder-toggle" aria-expanded="false" aria-controls="batch-menu">Batch操作</button>
+              <div id="batch-menu" class="batch-menu" hidden>
+                <button type="button" id="recipe-open-read">Macから読み込む</button>
+                <button type="button" id="recipe-open-save">Batchを保存</button>
+              </div>
+            </div>
             <button type="button" id="toggle-reorder" class="reorder-toggle" aria-pressed="false">並べ替え</button>
             <button type="button" id="toggle-delete" class="reorder-toggle" aria-pressed="false">削除</button>
           </div>
@@ -70,6 +77,27 @@
         <div class="sticky-action" id="delete-action" hidden>
           <button type="button" id="delete-selected" class="danger-button full-button" disabled>0件を削除</button>
         </div>
+      </section>
+
+      <section id="view-recipe" class="screen" aria-labelledby="recipe-title" hidden>
+        <button type="button" id="recipe-back" class="back-button">← Batch List</button>
+        <div class="screen-heading">
+          <h2 id="recipe-title" tabindex="-1">Batch操作</h2>
+          <p class="supporting">Mac側のOutputフォルダに保存されたBatchレシピを使用します。</p>
+        </div>
+        <div id="recipe-read-panel" hidden>
+          <p class="field-title">保存済みBatch</p>
+          <p id="recipe-empty" class="help-text" hidden>読み込めるBatchファイルはありません。</p>
+          <ul id="recipe-files" class="recipe-files" aria-label="Mac側のBatchレシピ一覧"></ul>
+          <p class="help-text">レシピから生成済みTakeや採用状態は復元されません。</p>
+        </div>
+        <form id="recipe-save-form" class="field-stack" hidden>
+          <label for="recipe-filename">ファイル名</label>
+          <input id="recipe-filename" type="text" value="batch.voiceger.json" maxlength="180" required
+            autocomplete="off" autocapitalize="off" spellcheck="false">
+          <p class="help-text">保存先：MacのOutputフォルダ（変更不可）。推奨拡張子は .voiceger.json です。</p>
+          <button type="submit" class="primary-button full-button">保存</button>
+        </form>
       </section>
 
       <section id="view-add" class="screen" aria-labelledby="add-title" hidden>
@@ -111,7 +139,10 @@
         <section id="item-pronunciation" class="item-pronunciation" hidden aria-label="発音">
           <div class="section-top">
             <h3>発音</h3>
-            <button type="button" id="add-section" class="item-link" hidden>＋ 追加</button>
+            <div class="pronunciation-header-actions">
+              <button type="button" id="reprepare-audio" class="item-link" aria-label="Captionから発音を再解析" hidden><span aria-hidden="true">↻</span> 再解析</button>
+              <button type="button" id="add-section" class="item-link" hidden>＋ 追加</button>
+            </div>
             <button type="button" id="open-pronunciation" class="item-link" hidden>編集</button>
           </div>
           <p id="pronunciation-value" class="pronunciation-value" hidden></p>
@@ -147,7 +178,6 @@
           <div id="take-menu" class="item-take-menu" hidden>
             <button type="button" id="regenerate-unaccepted" hidden>未採用Takeを再生成</button>
             <button type="button" id="clear-takes" hidden>候補をクリア</button>
-            <button type="button" id="reprepare-audio">発音を再準備</button>
           </div>
           <button type="button" id="generate-audio" class="primary-button full-button" hidden>Takeを生成</button>
           <ol id="take-list" class="take-list" aria-label="生成したTake"></ol>
