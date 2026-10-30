@@ -76,6 +76,14 @@
        (sectionTarget && sectionTarget.mode === "add" &&
         selectedSectionLanguage() !== "ja"));
   }
+  function takeCountDirty(item) {
+    if (!takeCountEditMode || !item) return false;
+    var selectedMode = $("item-takes-mode").value;
+    var savedMode = item.take_count_override === null ? "default" : "custom";
+    if (selectedMode !== savedMode) return true;
+    return selectedMode === "custom" &&
+      Number($("item-takes").value) !== item.take_count_override;
+  }
   function guardDraft() {
     if (sectionDirty()) {
       return window.confirm("未反映のセクション変更を破棄して移動しますか？");
@@ -85,8 +93,16 @@
     }
     if (currentView === "item" && selectedId && batch) {
       var item = batch.items.find(function (entry) { return entry.id === selectedId; });
-      if (item && $("edit-caption").value !== item.caption) {
+      var captionChanged = Boolean(item && $("edit-caption").value !== item.caption);
+      var takeCountChanged = takeCountDirty(item);
+      if (captionChanged && takeCountChanged) {
+        return window.confirm("未保存のCaption変更とTake数変更を破棄して移動しますか？");
+      }
+      if (captionChanged) {
         return window.confirm("未保存のCaption変更を破棄して移動しますか？");
+      }
+      if (takeCountChanged) {
+        return window.confirm("未保存のTake数変更を破棄して移動しますか？");
       }
     }
     if (pronunciationDirty()) {
