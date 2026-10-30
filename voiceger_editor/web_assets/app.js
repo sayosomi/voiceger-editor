@@ -2522,6 +2522,7 @@
     $("dictionary-pron-context").textContent = $("dictionary-surface").value;
     $("dictionary-pron-title").textContent = dictLanguage === "en" ? "英語発音編集" : "発音編集";
     $("dictionary-pron-text").value = dictPronOpening;
+    clearDictionaryPronunciationError();
     showView("dictionary-pron", true);
     dictionaryPushHistory("dictionary-pron");
     var input = $("dictionary-pron-text");
@@ -2539,11 +2540,35 @@
       showView("dictionary-entry", true);
     }
   }
+  function clearDictionaryPronunciationError() {
+    $("dictionary-pron-error").hidden = true;
+    $("dictionary-pron-error").textContent = "";
+    $("dictionary-pron-text").removeAttribute("aria-invalid");
+  }
+  function showDictionaryPronunciationError(error, notation, operation) {
+    var explanation = error.message;
+    if (error.conflictCode === "invalid_dictionary") {
+      if (dictLanguage === "ja") {
+        explanation = /\s/.test(notation) ?
+          "日本語辞書の発音は空白で区切れません。空白を削除して、1つのアクセント句にしてください。アクセントは ' または [ ] で指定します。" :
+          "日本語の発音形式を確認してください。1つのアクセント句として、アクセントは ' または [ ] で指定してください。";
+      } else {
+        explanation = "ARPAbetの音素と強勢数字（0/1/2）を確認してください。";
+      }
+    }
+    $("dictionary-pron-error").textContent = operation + "できません。 " + explanation;
+    $("dictionary-pron-error").hidden = false;
+    $("dictionary-pron-text").setAttribute("aria-invalid", "true");
+    feedback("");
+    $("dictionary-pron-error").scrollIntoView({ behavior: "auto", block: "center" });
+    $("dictionary-pron-error").focus({ preventScroll: true });
+  }
   async function applyDictionaryPronunciation(event) {
     event.preventDefault();
     if (!dictEntry || busy) return;
     var notation = $("dictionary-pron-text").value;
     var surface = $("dictionary-surface").value;
+    clearDictionaryPronunciationError();
     setBusy(true);
     try {
       // The core validator also powers Save: never silently Apply bad drafts.
@@ -2559,7 +2584,7 @@
       } else {
         showView("dictionary-entry", true);
       }
-    } catch (error) { feedback(error.message); }
+    } catch (error) { showDictionaryPronunciationError(error, notation, "反映"); }
     finally { setBusy(false); }
   }
   function rememberDictionarySelection() {
@@ -2594,12 +2619,14 @@
   }
   async function dictionaryPreview() {
     if (!dictEntry || busy) return;
+    var notation = $("dictionary-pron-text").value;
+    clearDictionaryPronunciationError();
     clearPlayer();
     setBusy(true);
     try {
       var op = await request("POST", dictionaryPath() + "/pronunciation/preview", {
         language: dictLanguage, surface: $("dictionary-surface").value,
-        notation: $("dictionary-pron-text").value
+        notation: notation
       });
       var result = await waitDictionaryOperation(op);
       var response = await fetch(dictionaryPath() + "/audio/preview/" +
@@ -2617,7 +2644,7 @@
       player.hidden = false;
       try { await player.play(); }
       catch (_ignored) { feedback("プレイヤーの再生ボタンを押してください。"); }
-    } catch (error) { feedback(error.message); }
+    } catch (error) { showDictionaryPronunciationError(error, notation, "Preview"); }
     finally { setBusy(false); }
   }
   function dictionaryFinish(message) {
@@ -2812,12 +2839,14 @@
   $("dictionary-pron-reset").addEventListener("click", function () {
     if (busy || dictPronOpening === null) return;
     $("dictionary-pron-text").value = dictPronOpening;
+    clearDictionaryPronunciationError();
     $("dictionary-pron-text").focus({ preventScroll: true });
     $("dictionary-pron-text").setSelectionRange(dictPronOpening.length, dictPronOpening.length);
     rememberDictionarySelection();
   });
   $("dictionary-pron-form").addEventListener("submit", applyDictionaryPronunciation);
   $("dictionary-preview").addEventListener("click", dictionaryPreview);
+  $("dictionary-pron-text").addEventListener("input", clearDictionaryPronunciationError);
   $("dictionary-pron-text").addEventListener("compositionstart", function () { dictComposing = true; });
   $("dictionary-pron-text").addEventListener("compositionend", function () {
     dictComposing = false; rememberDictionarySelection();

@@ -400,6 +400,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .dictionary-duplicate[hidden] { display: none; }
 .dictionary-duplicate p { margin: 0; font-size: 13px; }
 .dictionary-duplicate .item-link { justify-self: start; }
+.dictionary-pron-error { margin: 0; padding: 12px 14px; line-height: 1.5;
+  border: 1px solid #bd6b60; border-left: 4px solid #b93c30; border-radius: 12px;
+  background: #fff0ed; color: #812c25; font-size: 14px; font-weight: 700;
+  scroll-margin-top: 90px; }
 .dictionary-duplicate, .dictionary-save-error { scroll-margin-top: 90px; }
 .dictionary-save-error { margin: 0; padding: 12px 14px; line-height: 1.5;
   border: 1px solid #d5a9a0; border-radius: 12px; background: #fff1ee;
