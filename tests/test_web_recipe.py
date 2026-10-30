@@ -199,7 +199,9 @@ class WebRecipeTests(unittest.TestCase):
             }).status_code, 409)
             p2 = self.call("/read/review", {"filename": recipe.name})
             recipe.write_text("changed", encoding="utf-8")
-            change = self.call("/read/commit", {"token": p2.json()["token"]}), "confirmed_replace": True,
+            change = self.call("/read/commit", {
+                "token": p2.json()["token"], "confirmed_replace": True,
+            })
             self.assertEqual(change.status_code, 409)
             self.assertEqual(change.json()["detail"]["code"], "recipe_changed")
             self.assertEqual(staged_sessions[-1].discards, 1)
