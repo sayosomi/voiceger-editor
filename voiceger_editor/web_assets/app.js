@@ -67,9 +67,6 @@
     document.querySelectorAll("button, input, textarea, select").forEach(function (control) {
       control.disabled = value || control.dataset.fixedDisabled === "true";
     });
-    if (batchOperation && $("batch-progress-panel").hidden === false) {
-      $("cancel-batch").disabled = batchOperation.status !== "running";
-    }
   }
   function pronunciationDirty() {
     return currentView === "pronunciation" && pronunciationOpening !== null &&
