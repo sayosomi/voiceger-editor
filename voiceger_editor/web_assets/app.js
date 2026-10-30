@@ -46,6 +46,7 @@
   var dictData = null, dictEntry = null, dictEntryOriginal = null;
   var dictPronOpening = null, dictSelection = { start: 0, end: 0 }, dictComposing = false;
   var dictListRequest = 0, dictReturnView = "list", dictQuickMatches = [];
+  var dictionaryHistoryDepth = 0;
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
   var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session", "dictionary", "dictionary-entry", "dictionary-pron"];
@@ -200,6 +201,27 @@
   // Android Back/Forward both traverse the real browser history. Forward
   // restores a fresh server-owned pronunciation, never a discarded draft.
   window.addEventListener("popstate", function (event) {
+    if (currentView === "dictionary" || currentView === "dictionary-entry" ||
+        currentView === "dictionary-pron") {
+      if (busy || !guardDraft()) {
+        try { window.history.pushState({ voicegerDictionary: true,
+          sessionId: sessionId, view: currentView }, ""); }
+        catch (_ignored) { /* The draft still stays open. */ }
+        return;
+      }
+      dictionaryHistoryDepth = Math.max(0, dictionaryHistoryDepth - 1);
+      if (currentView === "dictionary-pron") {
+        dictPronOpening = null;
+        showView("dictionary-entry", true);
+      } else if (currentView === "dictionary-entry") {
+        dictEntry = null;
+        dictEntryOriginal = null;
+        showView("dictionary", true);
+      } else {
+        showView(dictReturnView, true);
+      }
+      return;
+    }
     if (sectionHistoryActive && currentView === "section") {
       if ((!sectionExitPending && busy) || (!sectionExitPending && !guardDraft())) {
         window.history.pushState(sectionHistoryState(), "");
@@ -2168,11 +2190,19 @@
       $("dictionary-words").append(li);
     });
   }
+  function dictionaryPushHistory(view) {
+    try {
+      window.history.pushState({ voicegerDictionary: true,
+        sessionId: sessionId, view: view }, "");
+      dictionaryHistoryDepth += 1;
+    } catch (_ignored) { /* Browser may restrict history. */ }
+  }
   async function openDictionary(from) {
     if (busy || !sessionId || !guardDraft()) return;
     dictReturnView = from;
     dictEntry = null;
     if (!showView("dictionary", true)) return;
+    dictionaryPushHistory("dictionary");
     try { await loadDictionary(); }
     catch (error) { feedback(error.message); }
   }
@@ -2193,6 +2223,7 @@
     dictEntryOriginal = dictionaryFormValue();
     $("dictionary-pron-value").textContent = dictEntry.notation || "未入力";
     showView("dictionary-entry", true);
+    dictionaryPushHistory("dictionary-entry");
   }
   function enterDictionaryPronunciation() {
     if (!dictEntry || busy) return;
@@ -2201,6 +2232,7 @@
     $("dictionary-pron-title").textContent = dictLanguage === "en" ? "英語発音編集" : "発音編集";
     $("dictionary-pron-text").value = dictPronOpening;
     showView("dictionary-pron", true);
+    dictionaryPushHistory("dictionary-pron");
     var input = $("dictionary-pron-text");
     input.focus({ preventScroll: true });
     input.setSelectionRange(input.value.length, input.value.length);
