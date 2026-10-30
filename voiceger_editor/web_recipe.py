@@ -291,10 +291,14 @@ class WebRecipeMixin:
                 "item_count": len(replacement), "replace_required": bool(len(session.batch)),
             }
 
-    def commit_recipe_read(self, identifier: str, revision: int, token: str) -> dict:
+    def commit_recipe_read(
+        self, identifier: str, revision: int, token: str, confirmed_replace: bool,
+    ) -> dict:
         with self._lock:
             session = self._recipe_guard(identifier, revision)
             review = self._require_review(session, "read", revision, token)
+            if len(session.batch) and confirmed_replace is not True:
+                raise WebRecipeValidation("review_expired")
             try:
                 actual = _fingerprint(self._recipe_root(), review.filename)
                 if actual != review.fingerprint:
