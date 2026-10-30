@@ -6,6 +6,7 @@ Batch revision, and a staged replacement never alters live Takes before commit.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
 import os
@@ -50,6 +51,7 @@ class _RecipeReview:
     revision: int
     fingerprint: str | None
     replacement: Any = None
+    directory_identity: tuple[int, int] | None = None
 
     def dispose(self) -> None:
         batch = self.replacement
@@ -85,25 +87,47 @@ def _filename(value: str) -> str:
     return value
 
 
-def _secure_bytes(root: Path, filename: str, *, optional: bool = False) -> bytes | None:
-    """Read one regular, non-symlink file with identity checks, never paths from UI."""
-    target = root / _filename(filename)
+@contextmanager
+def _open_root(root: Path, *, create: bool = False):
+    """Pin all filesystem operations to an opened, non-symlink Output directory."""
     try:
-        if root.is_symlink() or (root.exists() and not root.is_dir()):
+        if create:
+            root.mkdir(parents=True, exist_ok=True)
+        descriptor = os.open(
+            root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError:
+        raise WebRecipeValidation("recipe_io") from None
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISDIR(info.st_mode):
             raise WebRecipeValidation("recipe_io")
-        before = target.lstat()
+        yield descriptor, (info.st_dev, info.st_ino)
+    finally:
+        os.close(descriptor)
+
+
+def _secure_bytes(
+    directory: int, filename: str, *, optional: bool = False,
+) -> tuple[bytes, tuple] | None:
+    """Open only regular files relative to the pinned Output fd."""
+    name = _filename(filename)
+    try:
+        before = os.stat(name, dir_fd=directory, follow_symlinks=False)
     except FileNotFoundError:
         if optional:
             return None
         raise WebRecipeValidation("recipe_changed") from None
     except OSError:
         raise WebRecipeValidation("recipe_io") from None
-    if not stat.S_ISREG(before.st_mode) or target.is_symlink():
+    if not stat.S_ISREG(before.st_mode):
         raise WebRecipeValidation("recipe_io")
     try:
-        # O_NOFOLLOW prevents a symlink swap between lstat and open on macOS.
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
-        descriptor = os.open(str(target), flags)
+        descriptor = os.open(
+            name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0), dir_fd=directory,
+        )
         with os.fdopen(descriptor, "rb") as handle:
             opened = os.fstat(handle.fileno())
             if not stat.S_ISREG(opened.st_mode) or (
@@ -112,27 +136,83 @@ def _secure_bytes(root: Path, filename: str, *, optional: bool = False) -> bytes
                 raise WebRecipeValidation("recipe_changed")
             data = handle.read(_MAX_RECIPE_BYTES + 1)
             after = os.fstat(handle.fileno())
-        latest = target.lstat()
+        latest = os.stat(name, dir_fd=directory, follow_symlinks=False)
     except FileNotFoundError:
         raise WebRecipeValidation("recipe_changed") from None
     except OSError:
         raise WebRecipeValidation("recipe_io") from None
     if len(data) > _MAX_RECIPE_BYTES:
         raise WebRecipeValidation("invalid_recipe")
+    def identity(info):
+        return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
     if (
-        (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
-        != (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns)
-        or (latest.st_dev, latest.st_ino, latest.st_size, latest.st_mtime_ns)
-        != (opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns)
+        identity(before) != identity(opened)
+        or identity(opened) != identity(after)
+        or identity(after) != identity(latest)
         or not stat.S_ISREG(latest.st_mode)
     ):
         raise WebRecipeValidation("recipe_changed")
-    return data
+    return data, (hashlib.sha256(data).hexdigest(), *identity(latest))
 
 
-def _fingerprint(root: Path, filename: str) -> str | None:
-    contents = _secure_bytes(root, filename, optional=True)
-    return None if contents is None else hashlib.sha256(contents).hexdigest()
+def _fingerprint(directory: int, filename: str) -> tuple | None:
+    snapshot = _secure_bytes(directory, filename, optional=True)
+    return None if snapshot is None else snapshot[1]
+
+
+def _publish_checked(directory: int, filename: str, temporary: str, expected: tuple | None):
+    """Publish without ever replacing an unverified destination.
+
+    For overwrites, move the previous file to a private sibling, validate the
+    moved inode, then use exclusive hard-link creation. Other writers may race
+    to recreate the name, but we never overwrite their file. On conflicts,
+    restore the original name when vacant; otherwise retain the backup.
+    """
+    if _fingerprint(directory, filename) != expected:
+        raise WebRecipeValidation("recipe_changed")
+    if expected is None:
+        os.link(temporary, filename, src_dir_fd=directory,
+                dst_dir_fd=directory, follow_symlinks=False)
+        return
+    backup = ".voiceger-backup-" + secrets.token_hex(16) + ".tmp"
+    os.rename(filename, backup, src_dir_fd=directory, dst_dir_fd=directory)
+    published = False
+    try:
+        if _fingerprint(directory, backup) != expected:
+            raise WebRecipeValidation("recipe_changed")
+        os.link(temporary, filename, src_dir_fd=directory,
+                dst_dir_fd=directory, follow_symlinks=False)
+        published = True
+    finally:
+        if not published:
+            try:
+                os.link(backup, filename, src_dir_fd=directory,
+                        dst_dir_fd=directory, follow_symlinks=False)
+            except FileExistsError:
+                # Preserve both the independently created target and our backup.
+                pass
+            else:
+                os.unlink(backup, dir_fd=directory)
+        else:
+            os.unlink(backup, dir_fd=directory)
+
+
+def _stage_recipe_file(directory: int, batch) -> str:
+    """Reuse the core writer, then stage its exact bytes in the pinned directory."""
+    with tempfile.TemporaryDirectory(prefix="voiceger-recipe-write-") as folder:
+        source = Path(folder) / _DEFAULT_FILENAME
+        write_batch_recipe(source, batch)
+        payload = source.read_bytes()
+    name = ".voiceger-save-" + secrets.token_hex(16) + ".tmp"
+    descriptor = os.open(
+        name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+        0o600, dir_fd=directory,
+    )
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+    return name
 
 
 class WebRecipeMixin:
@@ -170,18 +250,16 @@ class WebRecipeMixin:
         with self._lock:
             self._session(identifier)
             root = self._recipe_root()
-            try:
-                if not root.exists():
-                    return {"files": [], "scope": "Mac Output folder"}
-                if root.is_symlink() or not root.is_dir():
-                    raise WebRecipeValidation("recipe_io")
-                with os.scandir(root) as entries:
+            if not root.exists() and not root.is_symlink():
+                return {"files": [], "scope": "Mac Output folder"}
+            with _open_root(root) as (directory, _identity):
+                try:
                     files = sorted(
-                        entry.name for entry in entries
-                        if _eligible_entry(entry)
+                        name for name in os.listdir(directory)
+                        if _eligible_name(directory, name)
                     )
-            except OSError:
-                raise WebRecipeValidation("recipe_io") from None
+                except OSError:
+                    raise WebRecipeValidation("recipe_io") from None
             return {"files": files, "scope": "Mac Output folder"}
 
     def review_recipe_save(self, identifier: str, revision: int, filename: str) -> dict:
@@ -197,9 +275,11 @@ class WebRecipeMixin:
             except (BatchRecipeError, TypeError, ValueError):
                 raise WebRecipeValidation("invalid_recipe") from None
             self._discard_review(session)
-            digest = _fingerprint(self._recipe_root(), name)
+            with _open_root(self._recipe_root(), create=True) as (directory, identity):
+                digest = _fingerprint(directory, name)
             review = _RecipeReview(
                 secrets.token_urlsafe(24), "save", name, revision, digest,
+                directory_identity=identity,
             )
             session.pending_recipe = review
             return {
@@ -215,30 +295,18 @@ class WebRecipeMixin:
             review = self._require_review(session, "save", revision, token)
             if review.fingerprint is not None and confirmed_overwrite is not True:
                 raise WebRecipeValidation("review_expired")
-            root = self._recipe_root()
-            if _fingerprint(root, review.filename) != review.fingerprint:
-                self._discard_review(session)
-                raise WebRecipeValidation("recipe_changed")
             try:
-                # All serialization and core atomic writing happen before publication.
-                root.mkdir(parents=True, exist_ok=True)
-                if root.is_symlink() or not root.is_dir():
-                    raise WebRecipeValidation("recipe_io")
-                fd, temporary_name = tempfile.mkstemp(prefix=".voiceger-save-", suffix=".tmp", dir=root)
-                os.close(fd)
-                temporary = Path(temporary_name)
-                try:
-                    write_batch_recipe(temporary, session.batch)
-                    if _fingerprint(root, review.filename) != review.fingerprint:
+                with _open_root(self._recipe_root()) as (directory, identity):
+                    if identity != review.directory_identity:
                         raise WebRecipeValidation("recipe_changed")
-                    target = root / review.filename
-                    if review.fingerprint is None:
-                        # A hard link is an atomic create-if-absent (never overwrites).
-                        os.link(temporary, target)
-                    else:
-                        os.replace(temporary, target)
-                finally:
-                    temporary.unlink(missing_ok=True)
+                    # Core serialization completes before the live file is touched.
+                    temporary = _stage_recipe_file(directory, session.batch)
+                    try:
+                        _publish_checked(
+                            directory, review.filename, temporary, review.fingerprint,
+                        )
+                    finally:
+                        os.unlink(temporary, dir_fd=directory)
             except FileExistsError:
                 self._discard_review(session)
                 raise WebRecipeValidation("recipe_changed") from None
@@ -256,8 +324,10 @@ class WebRecipeMixin:
             session = self._recipe_guard(identifier, revision)
             name = _filename(filename)
             root = self._recipe_root()
-            payload = _secure_bytes(root, name)
-            assert payload is not None
+            with _open_root(root) as (directory, identity):
+                snapshot = _secure_bytes(directory, name)
+                assert snapshot is not None
+                payload, fingerprint = snapshot
             self._discard_review(session)
             try:
                 if self._batch_adapter is None:
@@ -269,12 +339,8 @@ class WebRecipeMixin:
                     source.write_bytes(payload)
                     replacement = read_batch_recipe(
                         source, adapter=self._batch_adapter,
-                        runtime_settings=self._recipe_settings(),
+                        runtime_settings=self._recipe_settings(), max_items=200,
                     )
-                if len(replacement) > 200:
-                    for item in replacement.items:
-                        _close_item(item)
-                    raise WebRecipeValidation("invalid_recipe")
             except WebRecipeValidation:
                 raise
             except (BatchRecipeError, OSError, ValueError, TypeError):
@@ -283,7 +349,7 @@ class WebRecipeMixin:
                 raise WebRecipeValidation("recipe_io") from None
             review = _RecipeReview(
                 secrets.token_urlsafe(24), "read", name, revision,
-                hashlib.sha256(payload).hexdigest(), replacement,
+                fingerprint, replacement, identity,
             )
             session.pending_recipe = review
             return {
@@ -300,9 +366,11 @@ class WebRecipeMixin:
             if len(session.batch) and confirmed_replace is not True:
                 raise WebRecipeValidation("review_expired")
             try:
-                actual = _fingerprint(self._recipe_root(), review.filename)
-                if actual != review.fingerprint:
-                    raise WebRecipeValidation("recipe_changed")
+                with _open_root(self._recipe_root()) as (directory, identity):
+                    if identity != review.directory_identity or (
+                        _fingerprint(directory, review.filename) != review.fingerprint
+                    ):
+                        raise WebRecipeValidation("recipe_changed")
             except WebRecipeValidation:
                 self._discard_review(session)
                 raise
@@ -338,9 +406,10 @@ class WebRecipeMixin:
         return review
 
 
-def _eligible_entry(entry: os.DirEntry) -> bool:
+def _eligible_name(directory: int, name: str) -> bool:
     try:
-        _filename(entry.name)
-        return not entry.is_symlink() and entry.is_file(follow_symlinks=False)
+        _filename(name)
+        info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        return stat.S_ISREG(info.st_mode)
     except (WebRecipeValidation, OSError):
         return False
