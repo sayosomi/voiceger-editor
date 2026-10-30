@@ -31,13 +31,19 @@
   var pronunciationExitPending = null;
   var pronunciationReturnView = "item";
   var pronunciationSelection = { start: 0, end: 0 };
+  var sectionTarget = null;
+  var sectionOpening = null;
+  var sectionItemId = "";
+  var sectionHistoryActive = false;
+  var sectionExitPending = null;
+  var sectionStale = false;
   var autoPrepareFailures = new Set();
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
-  var viewNames = ["connect", "list", "add", "item", "pronunciation", "session"];
+  var viewNames = ["connect", "list", "add", "item", "pronunciation", "section", "session"];
   var screenTitles = {
     connect: "接続", list: "Batch List", add: "Caption追加",
-    item: "Batch Item", pronunciation: "発音編集", session: "接続・設定"
+    item: "Batch Item", pronunciation: "発音編集", section: "セクション編集", session: "接続・設定"
   };
 
   function savedSession() {
@@ -64,14 +70,39 @@
     return currentView === "pronunciation" && pronunciationOpening !== null &&
       $("pronunciation-text").value !== pronunciationOpening;
   }
+  function sectionDirty() {
+    return currentView === "section" && sectionOpening !== null &&
+      ($("section-text").value !== sectionOpening ||
+       (sectionTarget && sectionTarget.mode === "add" &&
+        selectedSectionLanguage() !== "ja"));
+  }
+  function takeCountDirty(item) {
+    if (!takeCountEditMode || !item) return false;
+    var selectedMode = $("item-takes-mode").value;
+    var savedMode = item.take_count_override === null ? "default" : "custom";
+    if (selectedMode !== savedMode) return true;
+    return selectedMode === "custom" &&
+      Number($("item-takes").value) !== item.take_count_override;
+  }
   function guardDraft() {
+    if (sectionDirty()) {
+      return window.confirm("未反映のセクション変更を破棄して移動しますか？");
+    }
     if (currentView === "add" && $("new-captions").value.trim()) {
       return window.confirm("入力中のCaptionを破棄して戻りますか？");
     }
     if (currentView === "item" && selectedId && batch) {
       var item = batch.items.find(function (entry) { return entry.id === selectedId; });
-      if (item && $("edit-caption").value !== item.caption) {
+      var captionChanged = Boolean(item && $("edit-caption").value !== item.caption);
+      var takeCountChanged = takeCountDirty(item);
+      if (captionChanged && takeCountChanged) {
+        return window.confirm("未保存のCaption変更とTake数変更を破棄して移動しますか？");
+      }
+      if (captionChanged) {
         return window.confirm("未保存のCaption変更を破棄して移動しますか？");
+      }
+      if (takeCountChanged) {
+        return window.confirm("未保存のTake数変更を破棄して移動しますか？");
       }
     }
     if (pronunciationDirty()) {
@@ -82,6 +113,13 @@
   function showView(name, bypassDraftGuard) {
     if ((busy && !bypassDraftGuard) || viewNames.indexOf(name) === -1) return false;
     if (!bypassDraftGuard && name !== currentView && !guardDraft()) return false;
+    if (currentView === "section" && name !== currentView &&
+        sectionHistoryActive) {
+      sectionExitPending = { destination: name,
+        message: sectionExitPending ? sectionExitPending.message : "" };
+      window.history.back();
+      return true;
+    }
     if (currentView === "pronunciation" && name !== currentView &&
         pronunciationHistoryActive) {
       // Consume the editor-only history entry before switching screens.
@@ -93,7 +131,16 @@
     if (name !== "list" && reorderMode) endReorderMode();
     if (name !== "list" && deleteMode) endDeleteMode();
     if ((currentView === "item" && name !== "item") ||
-        (currentView === "pronunciation" && name !== "pronunciation")) clearPlayer();
+        (currentView === "pronunciation" && name !== "pronunciation") ||
+        (currentView === "section" && name !== "section")) clearPlayer();
+    if (currentView === "section" && name !== "section") {
+      sectionHistoryActive = false;
+      sectionExitPending = null;
+      sectionTarget = null;
+      sectionOpening = null;
+      sectionItemId = "";
+      sectionStale = false;
+    }
     if (currentView === "pronunciation" && name !== "pronunciation") {
       pronunciationHistoryActive = false;
       pronunciationExitPending = null;
@@ -126,9 +173,41 @@
       groupIndex: typeof pronunciationTarget !== "undefined" && pronunciationTarget ? pronunciationTarget.groupIndex : null
     };
   }
+  function sectionHistoryState() {
+    return { voicegerSectionEditor: true, sessionId: sessionId,
+      itemId: sectionItemId, mode: sectionTarget && sectionTarget.mode,
+      language: sectionTarget && sectionTarget.language,
+      index: sectionTarget && sectionTarget.index,
+      opening: sectionTarget && sectionTarget.opening };
+  }
   // Android Back/Forward both traverse the real browser history. Forward
   // restores a fresh server-owned pronunciation, never a discarded draft.
   window.addEventListener("popstate", function (event) {
+    if (sectionHistoryActive && currentView === "section") {
+      if ((!sectionExitPending && busy) || (!sectionExitPending && !guardDraft())) {
+        window.history.pushState(sectionHistoryState(), "");
+        if (busy) feedback("処理完了後に戻ってください。");
+        return;
+      }
+      var leaving = sectionExitPending;
+      sectionHistoryActive = false;
+      sectionExitPending = null;
+      showView(leaving ? leaving.destination : "item", true);
+      if (leaving && leaving.message) feedback(leaving.message);
+      return;
+    }
+    if (event && event.state && event.state.voicegerSectionEditor) {
+      var state = event.state;
+      if (busy || !batch || !sessionId || state.sessionId !== sessionId ||
+          !guardDraft()) { window.history.back(); return; }
+      var found = batch.items.find(function (row) { return row.id === state.itemId; });
+      if (!found || !found.is_prepared) { window.history.back(); return; }
+      selectedId = found.id;
+      if (!enterSection(found, state.mode === "add" ? null : {
+        index: state.index, language: state.language, text: state.opening
+      }, state.mode === "add", true)) window.history.back();
+      return;
+    }
     if (pronunciationHistoryActive && currentView === "pronunciation") {
       if ((!pronunciationExitPending && busy) ||
           (!pronunciationExitPending && !guardDraft())) {
@@ -168,7 +247,7 @@
     if (!enterPronunciation(item, true)) window.history.back();
   });
   window.addEventListener("beforeunload", function (event) {
-    if (!pronunciationDirty()) return;
+    if (!pronunciationDirty() && !sectionDirty()) return;
     event.preventDefault();
     // Browser text is intentionally controlled by the browser, not this app.
     event.returnValue = "";
@@ -206,7 +285,10 @@
         unsupported_pronunciation: "選択した発音は編集できません。最新のBatchを取得してください。",
         invalid_english_pronunciation: "ARPAbetの音素・強勢数字（0/1/2）を確認してください。",
         grouping_unavailable: "英語の単語区切りを確認できません。Mac側で発音を再準備してください。",
-        stale_pronunciation: "編集対象の発音が更新されています。編集画面を開き直してください。"
+        stale_pronunciation: "編集対象の発音が更新されています。編集画面を開き直してください。",
+        invalid_section: "選択したセクションは操作できません。現在の内容を確認してください。",
+        invalid_section_text: "文章を確認してください。空欄・改行は使用できません。",
+        stale_section: "セクションの文章が更新されています。編集画面を開き直してください。"
       };
       var error = new Error(
         response.status === 401 ? "認証できません。トークンを確認してください。" :
@@ -486,16 +568,33 @@
     sections.forEach(function (section) {
       var panel = document.createElement("section");
       panel.className = "pronunciation-section";
+
       var heading = document.createElement("div");
       heading.className = "section-top";
+      var sourceButton = document.createElement("button");
+      sourceButton.type = "button";
+      sourceButton.className = "pronunciation-source-button";
       var tag = document.createElement("strong");
       tag.textContent = section.language === "ja" ? "JA" : "EN";
-      heading.appendChild(tag);
-      panel.appendChild(heading);
-      var source = document.createElement("p");
-      source.className = "pronunciation-source";
+      sourceButton.setAttribute("aria-label", tag.textContent +
+        "「" + (section.text || "") + "」の読み上げ文を編集");
+      sourceButton.appendChild(tag);
+      var source = document.createElement("span");
+      source.className = "section-source-text";
       source.textContent = section.text || "";
-      panel.appendChild(source);
+      sourceButton.appendChild(source);
+      var chevron = document.createElement("span");
+      chevron.className = "section-header-chevron";
+      chevron.textContent = "›";
+      chevron.setAttribute("aria-hidden", "true");
+      sourceButton.appendChild(chevron);
+      sourceButton.addEventListener("click", function () {
+        if (busy || !guardDraft()) return;
+        enterSection(item, section, false, false);
+      });
+      heading.appendChild(sourceButton);
+      panel.appendChild(heading);
+
       function edit(target, label, notation) {
         var button = document.createElement("button");
         button.type = "button";
@@ -505,10 +604,6 @@
         visible.className = "pronunciation-entry-value";
         visible.textContent = notation;
         button.appendChild(visible);
-        var action = document.createElement("span");
-        action.textContent = "編集";
-        action.className = "pronunciation-entry-action";
-        button.appendChild(action);
         button.addEventListener("click", function () {
           if (busy || !guardDraft()) return;
           pronunciationTarget = target;
@@ -564,11 +659,11 @@
     $("edit-take-count").textContent = "Take数 " + item.effective_take_count;
     $("item-pronunciation").hidden = !item.is_prepared;
     var pure = !!item.pronunciation;
-    $("pronunciation-value").hidden = !pure;
-    $("pronunciation-value").textContent = item.pronunciation || "";
-    $("open-pronunciation").hidden = !pure;
-    $("pronunciation-sections").hidden = pure;
-    if (!pure && item.is_prepared) renderPronunciationSections(item);
+    $("pronunciation-value").hidden = true;
+    $("open-pronunciation").hidden = true;
+    $("pronunciation-sections").hidden = !item.is_prepared;
+    $("add-section").hidden = !item.is_prepared;
+    if (item.is_prepared) renderPronunciationSections(item);
     setFixed("previous-item", index === 0);
     // The right footer slot doubles as add-at-end, not a second button.
     $("next-item").textContent = index === batch.items.length - 1 ?
@@ -604,6 +699,12 @@
     takeCountEditMode = false;
     takeMenuOpen = false;
     addFromItemId = "";
+    sectionTarget = null;
+    sectionOpening = null;
+    sectionItemId = "";
+    sectionHistoryActive = false;
+    sectionExitPending = null;
+    sectionStale = false;
     pronunciationOpening = null;
     pronunciationTarget = null;
     pronunciationItemId = "";
@@ -991,6 +1092,13 @@
     $("cancel-audio").hidden = !op.cancellable ||
       op.status !== "running";
     $("cancel-audio").disabled = op.status !== "running";
+    var sectionPanel = $("section-operation-panel");
+    if (sectionPanel) {
+      sectionPanel.hidden = currentView !== "section";
+      $("section-operation-progress").textContent = $("operation-progress").textContent;
+      $("cancel-section-audio").hidden = !op.cancellable || op.status !== "running";
+      $("cancel-section-audio").disabled = op.status !== "running";
+    }
     var editorPanel = $("pronunciation-operation-panel");
     if (editorPanel) {
       editorPanel.hidden = currentView !== "pronunciation";
@@ -1055,6 +1163,10 @@
           pronunciationStale = true;
           setFixed("apply-pronunciation", true);
         }
+        if (currentView === "section") {
+          sectionStale = true;
+          setFixed("apply-section", true);
+        }
         try { await refresh(); } catch (_ignored) { /* Preserve original error. */ }
       }
       if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
@@ -1065,6 +1177,7 @@
       audioOperation = null;
       $("operation-panel").hidden = true;
       $("pronunciation-operation-panel").hidden = true;
+      $("section-operation-panel").hidden = true;
       setBusy(false);
       if (batch && currentView === "item") renderItem(true);
       updatePlaybackUI();
@@ -1210,6 +1323,177 @@
       }
     } finally { setBusy(false); }
   }
+  function selectedSectionLanguage() {
+    var current = document.querySelector('input[name="section-language"]:checked');
+    return current ? current.value : "ja";
+  }
+  function setSectionLanguage(language) {
+    document.querySelectorAll('input[name="section-language"]').forEach(function (choice) {
+      choice.checked = choice.value === language;
+    });
+  }
+  function enterSection(item, section, add, fromHistory) {
+    if (busy || !item || !item.is_prepared) return false;
+    var target;
+    if (add) {
+      target = { mode: "add", language: "ja", index: null, opening: "" };
+    } else {
+      var found = (item.pronunciation_sections || []).find(function (entry) {
+        return entry.index === section.index && entry.language === section.language &&
+          entry.text === section.text;
+      });
+      if (!found) return false;
+      target = { mode: "edit", language: found.language,
+        index: found.index, opening: found.text };
+    }
+    if (!showView("section", true)) return false;
+    // A previously confirmed Caption draft discard must not block Preview
+    // or reappear when returning to Batch Item.
+    captionEditMode = false;
+    takeCountEditMode = false;
+    $("edit-caption").value = item.caption;
+    sectionTarget = target;
+    sectionOpening = add ? "" : target.opening;
+    sectionItemId = item.id;
+    sectionStale = false;
+    $("section-title").textContent = add ? "セクションを追加" : "読み上げ文";
+    $("section-language-field").hidden = !add;
+    setSectionLanguage(target.language);
+    $("section-text").value = sectionOpening;
+    $("preview-section").hidden = add;
+    $("delete-section").hidden = add || target.index === null ||
+      (item.pronunciation_sections || []).length <= 1;
+    $("reset-section").hidden = true;
+    $("apply-section").textContent = add ? "追加" : "反映";
+    setFixed("apply-section", false);
+    $("section-text").focus({ preventScroll: true });
+    if (!fromHistory) {
+      try {
+        window.history.pushState(sectionHistoryState(), "");
+        sectionHistoryActive = true;
+      } catch (_ignored) { sectionHistoryActive = false; }
+    } else {
+      sectionHistoryActive = true;
+    }
+    return true;
+  }
+  async function deleteSectionFromEditor() {
+    if (busy || sectionStale || !batch || !sectionTarget ||
+        sectionTarget.mode !== "edit" || sectionItemId !== selectedId) return;
+    var item = batch.items.find(function (row) { return row.id === sectionItemId; });
+    var target = sectionTarget;
+    var sections = item && item.pronunciation_sections || [];
+    if (sections.length <= 1 || target.index === null ||
+        !sections.some(function (section) {
+          return section.index === target.index &&
+            section.language === target.language && section.text === target.opening;
+        })) return;
+    if (!window.confirm("このセクションを削除しますか？\n\n" + target.opening +
+        "\n\nTake候補と採用状態はクリアされます。Captionと保存済み音声は残ります。")) return;
+    setBusy(true);
+    try {
+      var response = await request(
+        "POST", itemAudioPath(item.id) + "/sections/delete?expected_revision=" + batch.revision,
+        { language: target.language, index: target.index, opening: target.opening });
+      clearPlayer();
+      batch = response.batch;
+      renderList();
+      var message = "セクションを削除しました。";
+      if (sectionHistoryActive) sectionExitPending = { destination: "item", message: message };
+      showView("item", true);
+      if (!sectionHistoryActive) feedback(message);
+    } catch (error) {
+      if (error.conflictCode === "revision_conflict") {
+        sectionStale = true;
+        setFixed("apply-section", true);
+        setFixed("delete-section", true);
+        try { await refresh(); } catch (_ignored) { /* Preserve original error. */ }
+      }
+      if (error.code === 401 || error.code === 404) resetLocal(error.code === 404);
+      feedback(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  $("add-section").addEventListener("click", function () {
+    if (busy || !batch || !selectedId || !guardDraft()) return;
+    var item = batch.items.find(function (row) { return row.id === selectedId; });
+    enterSection(item, null, true, false);
+  });
+  document.querySelectorAll('input[name="section-language"]').forEach(function (choice) {
+    choice.addEventListener("change", function () {
+      if (sectionTarget && sectionTarget.mode === "add")
+        sectionTarget.language = selectedSectionLanguage();
+    });
+  });
+  $("section-back").addEventListener("click", function () { showView("item"); });
+  $("delete-section").addEventListener("click", deleteSectionFromEditor);
+  function updateSectionReset() {
+    $("reset-section").hidden = !sectionTarget || sectionTarget.mode !== "edit" ||
+      $("section-text").value === sectionOpening;
+  }
+  $("reset-section").addEventListener("click", function () {
+    if (busy || sectionStale) return;
+    $("section-text").value = sectionOpening || "";
+    updateSectionReset();
+    $("section-text").focus({ preventScroll: true });
+    if (playback && playback.kind === "preview") clearPlayer();
+  });
+  $("section-text").addEventListener("input", function () {
+    updateSectionReset();
+    if (playback && playback.kind === "preview") clearPlayer();
+  });
+  $("preview-section").addEventListener("click", function () {
+    if (busy || sectionStale || !sectionTarget ||
+        sectionTarget.mode !== "edit" || sectionItemId !== selectedId) return;
+    if (togglePlayback("preview", selectedId)) return;
+    startAudio(selectedId, "/sections/text/preview", {
+      language: sectionTarget.language, index: sectionTarget.index,
+      opening: sectionTarget.opening, text: $("section-text").value
+    });
+  });
+  $("cancel-section-audio").addEventListener("click", cancelActiveAudio);
+  $("section-form").addEventListener("submit", async function (event) {
+    event.preventDefault();
+    if (busy || sectionStale || !batch || !sectionTarget ||
+        sectionItemId !== selectedId) return;
+    var newText = $("section-text").value, target = sectionTarget;
+    if (!newText.trim() || newText.includes("\n") || newText.includes("\r")) {
+      feedback("読み上げ文は1行で入力してください。"); return;
+    }
+    var item = batch.items.find(function (row) { return row.id === selectedId; });
+    if (!item) return;
+    if (item.candidate_count > 0 && (target.mode === "add" ||
+        newText !== target.opening) && !window.confirm(
+      "変更するとTake候補と採用状態がクリアされます。保存済み音声は残ります。続けますか？"
+    )) return;
+    setBusy(true);
+    try {
+      var route = target.mode === "add" ? "/sections" : "/sections/text";
+      var payload = target.mode === "add" ?
+        { language: selectedSectionLanguage(), text: newText } :
+        { language: target.language, index: target.index,
+          opening: target.opening, text: newText };
+      var response = await request(target.mode === "add" ? "POST" : "PATCH",
+        itemAudioPath(selectedId) + route + "?expected_revision=" + batch.revision, payload);
+      clearPlayer();
+      batch = response.batch;
+      renderList();
+      var message = response.changed ? "読み上げるセクションを更新しました。" :
+        "セクションは変更されていません。Take候補は保持されました。";
+      if (sectionHistoryActive) sectionExitPending = { message: message };
+      showView("item", true);
+      if (!sectionHistoryActive) feedback(message);
+    } catch (error) {
+      if (error.conflictCode === "revision_conflict") {
+        sectionStale = true;
+        setFixed("apply-section", true);
+        try { await refresh(); } catch (_ignored) {}
+      }
+      if (error.code === 401 || error.code === 404) resetLocal(error.code === 404);
+      feedback(error.message);
+    } finally { setBusy(false); }
+  });
   $("open-pronunciation").addEventListener("click", openPronunciation);
   $("pronunciation-back").addEventListener("click", function () { showView("item"); });
   $("cancel-pronunciation").addEventListener("click", function () { showView("item"); });

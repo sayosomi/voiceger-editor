@@ -288,24 +288,58 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 /* Slice 6a: source-ordered JA/EN pronunciation, no stress chips or diagrams. */
 .pronunciation-sections { display: grid; gap: 10px; padding-top: 10px; }
 .pronunciation-section {
-  display: grid; gap: 4px; padding: 11px 12px;
-  border: 1px solid #dce8df; border-radius: 12px; background: #f7faf8;
+  display: grid; gap: 0; padding: 0; overflow: hidden;
+  border: 1px solid #dce8df; border-radius: 12px; background: #fff;
 }
 .pronunciation-section .section-top strong { font-size: 12px; color: #436859; }
-.pronunciation-source {
-  margin: 0 0 3px; font-size: 12px; color: #627a71;
-  overflow-wrap: anywhere; white-space: pre-wrap;
+.pronunciation-source-button {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  min-width: 0; min-height: 48px; border: 0; padding: 11px 14px;
+  text-align: left; font: inherit; font-size: 14px; font-weight: 650;
+  color: #293e35; background: #f1f6f3; cursor: pointer;
+}
+.pronunciation-source-button .section-source-text {
+  flex: 1; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap;
+}
+.section-header-chevron {
+  flex: none; color: #839c8f; font-size: 22px; font-weight: 400; line-height: 1;
+}
+.pronunciation-source-button:focus-visible {
+  outline: 2px solid #285e4f; outline-offset: -3px;
 }
 .pronunciation-entry {
   display: flex; justify-content: space-between; align-items: center;
   gap: 10px; text-align: left; width: 100%; min-height: 44px;
   border: 0; border-top: 1px solid #e0e8e2;
-  padding: 9px 2px; background: transparent; font: inherit; color: #293e35;
+  padding: 10px 14px; background: #fff; font: inherit; color: #293e35;
 }
 .pronunciation-entry-value { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
-.pronunciation-entry-action {
-  flex: none; font-size: 12px; color: #285e4f; font-weight: 700;
-}
+
 
 /* Hidden controls stay hidden even when flex/grid is author-styled. */
 .pronunciation-sections[hidden], .pronunciation-assists[hidden] { display: none; }
+
+/* Slice 6b: direct tap on source or pronunciation; advanced delete stays in editor. */
+#item-pronunciation > .section-top { align-items: center; }
+#add-section { flex: none; min-height: 44px; white-space: nowrap; padding: 8px 12px; }
+.pronunciation-section .section-top { display: block; gap: 0; }
+.pronunciation-section .section-top strong {
+  flex: none; min-width: 23px; font-size: 12px; color: #436859;
+}
+.section-secondary-actions { display: flex; justify-content: space-between; gap: 10px; padding-top: 3px; }
+.section-secondary-actions button {
+  min-height: 44px; border: 0; border-radius: 10px; padding: 10px 11px;
+  background: transparent; color: #285e4f; font: inherit; font-size: 13px;
+}
+.section-secondary-actions #delete-section { margin-left: auto; color: #96524a; }
+.section-secondary-actions button[hidden] { display: none; }
+#section-operation-panel { margin: 16px 0 8px; }
+#cancel-section-audio { min-height: 44px; padding: 9px 14px; }
+#preview-section { border: 1px solid #c8dbd1; background: #eff6f2; color: #285e4f; font-weight: 750; }
+.section-language-choices { display: flex; gap: 12px; padding: 0; border: 0; flex-wrap: wrap; }
+.section-language-choices legend { font-size: 13px; color: #456358; font-weight: 750; margin-bottom: 10px; }
+.section-language-choices label {
+  display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px;
+  border: 1px solid #cbdcd2; border-radius: 12px; background: #fff; color: #285e4f;
+}
+.section-language-choices input { width: 21px; height: 21px; accent-color: #23675a; }
