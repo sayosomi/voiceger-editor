@@ -396,6 +396,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .dictionary-tabs { display: flex; gap: 8px; margin: 16px 0; }
 .dictionary-tabs button { flex: 1; min-height: 44px; border-radius: 11px; border: 1px solid #cbdcd2; background: #fff; color: #285e4f; font-weight: 700; }
 .dictionary-tabs button[aria-pressed="true"] { background: #23675a; color: white; }
+.dictionary-tabs[hidden] { display: none; }
 .dictionary-filters { margin: 12px 0; }
 .dictionary-filter-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .dictionary-filter-row label { display: grid; gap: 7px; }

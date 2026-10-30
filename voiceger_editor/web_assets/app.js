@@ -2400,6 +2400,43 @@
     }
     showView(destination, true);
   }
+  function renderDictionaryEntryLanguage() {
+    // Language is selectable only while adding a new word, never on edit.
+    var isNew = Boolean(dictEntry && !dictEntry.id);
+    $("dictionary-entry-tabs").hidden = !isNew;
+    $("dictionary-entry-ja").setAttribute("aria-pressed", String(dictLanguage === "ja"));
+    $("dictionary-entry-en").setAttribute("aria-pressed", String(dictLanguage === "en"));
+    $("dictionary-ja-fields").hidden = dictLanguage !== "ja";
+  }
+  async function switchDictionaryEntryLanguage(language) {
+    if (busy || currentView !== "dictionary-entry" || !dictEntry || dictEntry.id ||
+        (language !== "ja" && language !== "en") || language === dictLanguage) return;
+    if (dictionaryEntryDirty() &&
+        !window.confirm("入力中の単語を破棄して言語を切り替えますか？")) return;
+    setBusy(true);
+    try {
+      // Fetch the target dictionary/revision *before* replacing the draft.
+      // A failed request must preserve the source language and all inputs.
+      var url = dictionaryPath() + "/" + encodeURIComponent(language) +
+        "?sort=surface_asc&query=&word_type=ALL";
+      var target = await request("GET", url);
+      ++dictListRequest; // Discard an outstanding old-language list response.
+      dictLanguage = language;
+      dictSort = "surface_asc"; dictQuery = ""; dictType = "ALL";
+      dictData = target;
+      dictEntry = { id: null, language: language, surface: "", notation: "",
+        word_type: "PROPER_NOUN", priority: 5 };
+      $("dictionary-surface").value = "";
+      $("dictionary-word-type").value = "PROPER_NOUN";
+      $("dictionary-priority").value = "5";
+      $("dictionary-pron-value").textContent = "未入力";
+      dictEntryOriginal = dictionaryFormValue();
+      renderDictionary();
+      renderDictionaryEntryLanguage();
+      feedback("");
+    } catch (error) { feedback(error.message); }
+    finally { setBusy(false); }
+  }
   function openDictionaryEntry(row) {
     if (!dictData || busy) return;
     var entry = row || { id: null, surface: "", notation: "",
@@ -2411,7 +2448,7 @@
     $("dictionary-surface").value = dictEntry.surface;
     $("dictionary-word-type").value = dictEntry.word_type;
     $("dictionary-priority").value = String(dictEntry.priority);
-    $("dictionary-ja-fields").hidden = dictLanguage !== "ja";
+    renderDictionaryEntryLanguage();
     $("dictionary-delete").hidden = !entry.id;
     $("dictionary-entry-title").textContent = entry.id ? "単語を編集" : "単語を追加";
     dictEntryOriginal = dictionaryFormValue();
@@ -2674,6 +2711,12 @@
     loadDictionary().catch(function (error) { feedback(error.message); });
   });
   $("dictionary-add").addEventListener("click", function () { openDictionaryEntry(null); });
+  $("dictionary-entry-ja").addEventListener("click", function () {
+    void switchDictionaryEntryLanguage("ja");
+  });
+  $("dictionary-entry-en").addEventListener("click", function () {
+    void switchDictionaryEntryLanguage("en");
+  });
   $("dictionary-entry-back").addEventListener("click", dictionaryBack);
   $("dictionary-pron-open").addEventListener("click", enterDictionaryPronunciation);
   $("dictionary-entry-form").addEventListener("submit", dictionarySave);

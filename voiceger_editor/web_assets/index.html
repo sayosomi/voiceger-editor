@@ -297,6 +297,10 @@
       <section id="view-dictionary-entry" class="screen" aria-labelledby="dictionary-entry-title" hidden>
         <button type="button" id="dictionary-entry-back" class="back-button">← 辞書</button>
         <h2 id="dictionary-entry-title" tabindex="-1">単語を編集</h2>
+        <div id="dictionary-entry-tabs" class="dictionary-tabs" role="group" aria-label="追加する単語の言語" hidden>
+          <button type="button" id="dictionary-entry-ja" aria-pressed="true">日本語</button>
+          <button type="button" id="dictionary-entry-en" aria-pressed="false">English</button>
+        </div>
         <form id="dictionary-entry-form" class="field-stack">
           <label for="dictionary-surface">Surface</label>
           <input id="dictionary-surface" maxlength="2000" required>
