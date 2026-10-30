@@ -86,8 +86,17 @@ class WebBatchMixin:
 
     def _batch_snapshot(self, session) -> dict[str, Any]:
         batch = session.batch
+        active = self._active
+        operation = (
+            session.operations.get(active[1])
+            if active is not None and active[0] == session.identifier else None
+        )
         return {
             "revision": session.revision,
+            "active_operation": (
+                operation.snapshot() if operation is not None
+                and operation.kind == "batch-generate" else None
+            ),
             "default_take_count": batch.default_take_count,
             "items": [_row(batch, item, self._pronunciation_sections(session, item))
                       for item in batch.items],

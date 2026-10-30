@@ -343,3 +343,24 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   border: 1px solid #cbdcd2; border-radius: 12px; background: #fff; color: #285e4f;
 }
 .section-language-choices input { width: 21px; height: 21px; accent-color: #23675a; }
+
+/* Slice 7a: two primary list actions and an unobtrusive inline worker panel. */
+.batch-actions { display: flex; align-items: stretch; gap: 10px; }
+.batch-actions > button { flex: 1 1 0; min-width: 0; padding-inline: 6px; }
+.batch-progress-panel {
+  border: 1px solid #cbded3; background: #edf5ef;
+  border-radius: 13px; padding: 12px; margin: 12px 0 16px;
+}
+.batch-progress-heading {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; color: #295b50; font-size: 12px; line-height: 1.6;
+}
+.batch-progress-panel progress {
+  display: block; width: 100%; height: 8px; margin: 9px 0;
+  accent-color: #23675a;
+}
+#cancel-batch {
+  background: transparent; color: #295b50;
+  border: 0; text-decoration: underline; min-height: 44px; padding: 4px 2px;
+  font: inherit; font-weight: 750; flex: none;
+}

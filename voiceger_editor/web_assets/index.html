@@ -52,13 +52,20 @@
         </div>
         
         <p id="reorder-help" class="help-text compact-note" hidden>ハンドルをドラッグして移動できます。</p>
+        <div id="batch-progress-panel" class="batch-progress-panel" role="status" aria-live="polite" hidden>
+          <div class="batch-progress-heading"><strong>一括生成中</strong><span id="batch-progress-total"></span></div>
+          <progress id="batch-progress-bar" max="1" value="0"></progress>
+          <div class="batch-progress-heading"><span id="batch-progress-item"></span>
+            <button type="button" id="cancel-batch">キャンセル</button></div>
+        </div>
         <ol id="caption-list" class="caption-list" aria-label="Caption一覧"></ol>
         <div id="empty-state" class="empty-state">
           <p>Captionはまだありません。</p>
           
         </div>
-        <div class="sticky-action" id="add-action">
-          <button type="button" id="open-add" class="primary-button full-button">＋ Captionを追加</button>
+        <div class="sticky-action batch-actions" id="add-action">
+          <button type="button" id="open-add" class="primary-button">＋ Caption追加</button>
+          <button type="button" id="generate-batch" class="primary-button">一括生成</button>
         </div>
         <div class="sticky-action" id="delete-action" hidden>
           <button type="button" id="delete-selected" class="danger-button full-button" disabled>0件を削除</button>

@@ -66,6 +66,13 @@ def build_web_batch_router(service: WebSessionOperations) -> APIRouter:
     def get_batch(session_id: str):
         return _call(lambda: service.get_batch(session_id))
 
+    @router.post("/{session_id}/batch/generate", status_code=202,
+                 dependencies=[Depends(require_web_mutation)])
+    def generate_selected(
+        session_id: str, expected_revision: int = Query(..., ge=0),
+    ):
+        return _call(lambda: service.start_batch_generation(session_id, expected_revision))
+
     @router.post("/{session_id}/batch/items", dependencies=[Depends(require_web_mutation)])
     def add_captions(
         session_id: str, payload: CaptionsPayload, expected_revision: int = Query(..., ge=0),

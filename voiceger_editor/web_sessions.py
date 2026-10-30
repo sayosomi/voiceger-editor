@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 from .caption_batch import CaptionBatch
 from .web_batch import WebBatchMixin
+from .web_batch_generation import WebBatchGenerationMixin
 from .web_takes import WebTakeMixin
 from .web_pronunciation import WebPronunciationMixin
 from .web_english import WebEnglishMixin
@@ -58,6 +59,7 @@ class _Operation:
     result: dict[str, Any] | None = None
     cancellable: bool = True
     error: str | None = None
+    detail: dict[str, Any] | None = None
     cancellation: threading.Event = field(default_factory=threading.Event)
 
     def snapshot(self) -> dict[str, Any]:
@@ -70,6 +72,7 @@ class _Operation:
             "total": self.total,
             "result": None if self.result is None else dict(self.result),
             "error": self.error,
+            **({"detail": dict(self.detail)} if self.detail is not None else {}),
         }
 
 
@@ -93,7 +96,7 @@ class _WebSession:
         }
 
 
-class WebSessionOperations(WebBatchMixin, WebEnglishMixin, WebSectionMixin, WebPronunciationMixin, WebTakeMixin):
+class WebSessionOperations(WebBatchMixin, WebBatchGenerationMixin, WebEnglishMixin, WebSectionMixin, WebPronunciationMixin, WebTakeMixin):
     """Thread-safe, in-process session registry with one worker across sessions."""
 
     def __init__(
