@@ -275,6 +275,20 @@ const app = f($,window,log,()=>shouldReject);
 
 
 
+
+    def test_pronunciation_cancel_does_not_double_back(self):
+        root = Path(__file__).resolve().parents[1]
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node not installed")
+        result = subprocess.run([
+            node, str(root / "tests" / "fixtures" /
+                      "web_pronunciation_cancel_history.js"),
+            str(root / "voiceger_editor" / "web_assets" / "app.js")
+        ], capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PRON_CANCEL_DOUBLE_BACK_PASS", result.stdout)
+
     def test_dictionary_pronunciation_errors_at_apply_and_preview(self):
         root = Path(__file__).resolve().parents[1]
         assets = root / "voiceger_editor" / "web_assets"

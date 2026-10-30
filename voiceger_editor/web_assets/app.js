@@ -33,6 +33,7 @@
   var pronunciationComposing = false;
   var pronunciationHistoryActive = false;
   var pronunciationExitPending = null;
+  var pronunciationHistoryExitInFlight = false;
   var pronunciationReturnView = "item";
   var pronunciationSelection = { start: 0, end: 0 };
   var sectionTarget = null;
@@ -148,7 +149,10 @@
     }
     if (currentView === "pronunciation" && name !== currentView &&
         pronunciationHistoryActive) {
-      // Consume the editor-only history entry before switching screens.
+      // Only one browser Back per editor exit. A second tap before popstate
+      // must not cross the parent document and lose the in-memory token.
+      if (pronunciationHistoryExitInFlight) return false;
+      pronunciationHistoryExitInFlight = true;
       pronunciationExitPending = { destination: name,
         message: pronunciationExitPending ? pronunciationExitPending.message : "" };
       window.history.back();
@@ -172,6 +176,7 @@
     }
     if (currentView === "pronunciation" && name !== "pronunciation") {
       pronunciationHistoryActive = false;
+      pronunciationHistoryExitInFlight = false;
       pronunciationExitPending = null;
       pronunciationOpening = null;
       if (typeof pronunciationTarget !== "undefined") pronunciationTarget = null;
@@ -383,6 +388,7 @@
       }
       var pending = pronunciationExitPending;
       pronunciationHistoryActive = false;
+      pronunciationHistoryExitInFlight = false;
       pronunciationExitPending = null;
       showView(pending ? pending.destination : pronunciationReturnView, true);
       if (pending && pending.message) feedback(pending.message);
@@ -913,6 +919,9 @@
     pronunciationItemId = "";
     pronunciationStale = false;
     pronunciationComposing = false;
+    pronunciationHistoryActive = false;
+    pronunciationHistoryExitInFlight = false;
+    pronunciationExitPending = null;
     dictionaryHistoryDepth = 0;
     dictionaryHistoryDestination = null;
     dictionaryHistoryNotice = "";
@@ -1670,6 +1679,8 @@
     $("pronunciation-text").focus({ preventScroll: true });
     $("pronunciation-text").setSelectionRange(opening.length, opening.length);
     rememberPronunciationSelection();
+    pronunciationHistoryExitInFlight = false;
+    pronunciationExitPending = null;
     if (fromHistory) {
       pronunciationHistoryActive = true;
     } else {
