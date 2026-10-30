@@ -232,5 +232,25 @@ const app = f($,window,log,()=>shouldReject);
                        "F03_PRIORITY_PASS", "F04_CASEFOLD_PASS"):
             self.assertIn(marker, result.stdout)
 
+
+    def test_new_word_language_toggle_preserves_existing_word_and_drafts(self):
+        root = Path(__file__).resolve().parents[1]
+        assets = root / "voiceger_editor" / "web_assets"
+        html = (assets / "index.html").read_text(encoding="utf-8")
+        css = (assets / "app.css").read_text(encoding="utf-8")
+        self.assertIn('id="dictionary-entry-tabs"', html)
+        self.assertIn('id="dictionary-entry-ja"', html)
+        self.assertIn('id="dictionary-entry-en"', html)
+        self.assertIn('.dictionary-tabs[hidden] { display: none; }', css)
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node not installed")
+        result = subprocess.run([
+            node, str(root / "tests" / "fixtures" /
+                      "web_dictionary_entry_language.js"), str(assets / "app.js")
+        ], capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("DICTIONARY_ENTRY_LANGUAGE_PASS", result.stdout)
+
 if __name__ == "__main__":
     unittest.main()
