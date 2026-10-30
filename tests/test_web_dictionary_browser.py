@@ -252,6 +252,7 @@ const app = f($,window,log,()=>shouldReject);
         self.assertLess(form.index('id="dictionary-quick-error"'),
                         form.index('type="submit"'))
         self.assertIn('id="dictionary-quick-preview"', form)
+        self.assertNotIn('spellcheck="false" required', form)
         self.assertIn('role="alert" tabindex="-1" hidden', form)
         self.assertIn('#dictionary-quick-notation', css)
         node = shutil.which("node")
