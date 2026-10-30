@@ -186,6 +186,25 @@ class WebDictionaryMixin:
                 raise WebDictionaryValidation() from exc
             return {"deleted": True, "revision": self._dictionary_version(core)}
 
+    def validate_dictionary_pronunciation(
+        self, session_id, language, surface, notation,
+    ):
+        """Validate the exact draft using shared dictionary rules; never persist."""
+        with self._lock:
+            self._session(session_id)
+            language = self._language(language)
+            if (not isinstance(surface, str) or not surface.strip()
+                    or len(surface) > 2000):
+                raise WebDictionaryValidation()
+            try:
+                if language == "ja":
+                    parse_japanese_word(notation)
+                else:
+                    normalize_english_phonemes(notation.split())
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise WebDictionaryValidation() from exc
+            return {"valid": True}
+
     def start_dictionary_generate(self, session_id, language, surface):
         from .web_sessions import WebSessionConflict
         with self._lock:

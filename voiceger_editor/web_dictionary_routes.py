@@ -74,6 +74,12 @@ def build_web_dictionary_router(service: WebSessionOperations) -> APIRouter:
         return _call(lambda: service.delete_dictionary_word(
             session_id, language, word_id, expected_revision))
 
+    @router.post("/pronunciation/validate",
+                 dependencies=[Depends(require_web_mutation)])
+    def validate(session_id: str, payload: DictionaryDraftPayload):
+        return _call(lambda: service.validate_dictionary_pronunciation(
+            session_id, payload.language, payload.surface, payload.notation))
+
     @router.post("/pronunciation/generate", status_code=202,
                  dependencies=[Depends(require_web_mutation)])
     def generate(session_id: str, payload: DictionaryGeneratePayload):

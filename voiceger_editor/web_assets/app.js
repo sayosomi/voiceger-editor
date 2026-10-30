@@ -99,9 +99,14 @@
       Number($("item-takes").value) !== item.take_count_override;
   }
   function guardDraft() {
-    if (currentView === "dictionary-pron" && dictPronOpening !== null &&
-        $("dictionary-pron-text").value !== dictPronOpening)
-      return window.confirm("未反映の辞書発音変更を破棄しますか？");
+    if (currentView === "dictionary-pron") {
+      var pronChanged = dictionaryPronunciationDirty();
+      var entryChanged = dictionaryEntryDirty();
+      if (pronChanged && entryChanged)
+        return window.confirm("未反映の発音と未保存の単語変更を破棄しますか？");
+      if (pronChanged) return window.confirm("未反映の辞書発音変更を破棄しますか？");
+      if (entryChanged) return window.confirm("未保存の辞書変更を破棄しますか？");
+    }
     if (currentView === "dictionary-entry" && dictionaryEntryDirty())
       return window.confirm("未保存の辞書変更を破棄しますか？");
     if (sectionDirty()) {
@@ -257,7 +262,10 @@
     }
     if (currentView === "dictionary" || currentView === "dictionary-entry" ||
         currentView === "dictionary-pron") {
-      if (busy || !guardDraft()) {
+      if (busy || !(currentView === "dictionary-pron" &&
+          event && event.state && event.state.voicegerDictionary &&
+          event.state.view === "dictionary-entry" ?
+          guardDictionaryPronunciationDraft() : guardDraft())) {
         try { window.history.pushState({ voicegerDictionary: true,
           sessionId: sessionId, view: currentView }, ""); }
         catch (_ignored) { /* The draft still stays open. */ }
@@ -2213,6 +2221,14 @@
   function dictionaryPath() {
     return "/api/web/sessions/" + encodeURIComponent(sessionId) + "/dictionary";
   }
+  function dictionaryPronunciationDirty() {
+    return currentView === "dictionary-pron" && dictPronOpening !== null &&
+      $("dictionary-pron-text").value !== dictPronOpening;
+  }
+  function guardDictionaryPronunciationDraft() {
+    return !dictionaryPronunciationDirty() ||
+      window.confirm("未反映の辞書発音変更を破棄しますか？");
+  }
   function dictionaryEntryDirty() {
     if (!dictEntry || !dictEntryOriginal) return false;
     return JSON.stringify(dictionaryFormValue()) !== JSON.stringify(dictEntryOriginal);
@@ -2322,7 +2338,8 @@
     showView(destination);
   }
   function dictionaryBack() {
-    if (busy || !guardDraft()) return;
+    if (busy || !(currentView === "dictionary-pron" ?
+        guardDictionaryPronunciationDraft() : guardDraft())) return;
     if (dictionaryHistoryDepth > 0) {
       // The popstate handler owns state cleanup and the resulting screen.
       dictionaryHistoryDestination = currentView === "dictionary-pron" ?
@@ -2372,12 +2389,8 @@
     input.setSelectionRange(input.value.length, input.value.length);
     dictSelection = { start: input.selectionStart, end: input.selectionEnd };
   }
-  function leaveDictionaryPronunciation(apply) {
-    if (!dictEntry || !guardDraft() && !apply) return;
-    if (apply) {
-      dictEntry.notation = $("dictionary-pron-text").value;
-      $("dictionary-pron-value").textContent = dictEntry.notation || "未入力";
-    }
+  function leaveDictionaryPronunciation() {
+    if (!dictEntry || !guardDictionaryPronunciationDraft()) return;
     dictPronOpening = null;
     if (dictionaryHistoryDepth > 0) {
       dictionaryHistoryDestination = "dictionary-entry";
@@ -2385,6 +2398,29 @@
     } else {
       showView("dictionary-entry", true);
     }
+  }
+  async function applyDictionaryPronunciation(event) {
+    event.preventDefault();
+    if (!dictEntry || busy) return;
+    var notation = $("dictionary-pron-text").value;
+    var surface = $("dictionary-surface").value;
+    setBusy(true);
+    try {
+      // The core validator also powers Save: never silently Apply bad drafts.
+      await request("POST", dictionaryPath() + "/pronunciation/validate", {
+        language: dictLanguage, surface: surface, notation: notation
+      });
+      dictEntry.notation = notation;
+      $("dictionary-pron-value").textContent = notation || "未入力";
+      dictPronOpening = null;
+      if (dictionaryHistoryDepth > 0) {
+        dictionaryHistoryDestination = "dictionary-entry";
+        window.history.back();
+      } else {
+        showView("dictionary-entry", true);
+      }
+    } catch (error) { feedback(error.message); }
+    finally { setBusy(false); }
   }
   function rememberDictionarySelection() {
     var input = $("dictionary-pron-text");
@@ -2583,12 +2619,8 @@
   $("dictionary-entry-form").addEventListener("submit", dictionarySave);
   $("dictionary-delete").addEventListener("click", dictionaryDelete);
   $("dictionary-generate").addEventListener("click", dictionaryGenerate);
-  $("dictionary-pron-back").addEventListener("click", function () {
-    leaveDictionaryPronunciation(false);
-  });
-  $("dictionary-pron-cancel").addEventListener("click", function () {
-    leaveDictionaryPronunciation(false);
-  });
+  $("dictionary-pron-back").addEventListener("click", leaveDictionaryPronunciation);
+  $("dictionary-pron-cancel").addEventListener("click", leaveDictionaryPronunciation);
   $("dictionary-pron-reset").addEventListener("click", function () {
     if (busy || dictPronOpening === null) return;
     $("dictionary-pron-text").value = dictPronOpening;
@@ -2596,10 +2628,7 @@
     $("dictionary-pron-text").setSelectionRange(dictPronOpening.length, dictPronOpening.length);
     rememberDictionarySelection();
   });
-  $("dictionary-pron-form").addEventListener("submit", function (event) {
-    event.preventDefault();
-    leaveDictionaryPronunciation(true);
-  });
+  $("dictionary-pron-form").addEventListener("submit", applyDictionaryPronunciation);
   $("dictionary-preview").addEventListener("click", dictionaryPreview);
   $("dictionary-pron-text").addEventListener("compositionstart", function () { dictComposing = true; });
   $("dictionary-pron-text").addEventListener("compositionend", function () {
