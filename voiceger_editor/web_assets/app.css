@@ -410,3 +410,21 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 #dictionary-delete { min-height: 44px; border: 1px solid #eacbc5; background: #fff4f2; color: #96524a; border-radius: 10px; }
 .dictionary-quick { border: 1px solid #cbdcd2; background: white; border-radius: 12px; padding: 14px; margin-top: 20px; }
 .dictionary-quick .button-row button { min-height: 44px; }
+
+/* Three-level app navigation: global domains stay visible on nested screens. */
+.brand-home { border: 0; background: transparent; color: inherit; padding: 0; text-align: left; }
+.brand-home:disabled { opacity: 1; cursor: default; }
+.brand-name { font-size: 15px; font-weight: 800; line-height: 1.2; }
+.global-nav { display: flex; flex: none; align-items: center; gap: 6px; }
+.global-nav[hidden] { display: none; }
+.global-nav .header-action { min-width: 44px; min-height: 44px; padding: 9px 10px; }
+.global-nav .header-action[aria-current="page"] { background: #dfeee5; border-color: #85b69d; }
+.item-titlebar { margin-bottom: 10px; }
+.item-titlebar .back-button { margin: 0; }
+.item-titlebar h2 { font-size: 14px; color: #71857b; font-weight: 700; }
+@media (max-width: 380px) {
+  .brand-symbol { width: 30px; height: 30px; border-radius: 9px; }
+  .brand-name { font-size: 13px; }
+  .global-nav { gap: 4px; }
+  .global-nav .header-action { padding: 8px; font-size: 12px; }
+}

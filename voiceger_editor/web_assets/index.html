@@ -12,13 +12,14 @@
 <body>
   <div class="app-shell">
     <header class="app-header">
-      <div class="brand">
-        <div class="brand-symbol" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
-        <div>
-          <h1>Voiceger Editor</h1>
-        </div>
-      </div>
-      <button type="button" id="header-session" class="header-action" hidden>設定</button>
+      <button type="button" id="header-batch" class="brand brand-home" aria-label="Batch List">
+        <span class="brand-symbol" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+        <span class="brand-name">Voiceger Editor</span>
+      </button>
+      <nav class="global-nav" aria-label="メインメニュー" hidden>
+        <button type="button" id="header-dictionary" class="header-action">辞書</button>
+        <button type="button" id="header-session" class="header-action">設定</button>
+      </nav>
     </header>
     <main>
       <p id="feedback" class="feedback" role="status" aria-live="polite" hidden></p>
@@ -47,11 +48,10 @@
           <div class="list-toolbar">
             <span id="batch-count" class="counter" hidden>0件</span>
             <div class="batch-menu-wrap">
-              <button type="button" id="open-batch-menu" class="reorder-toggle" aria-expanded="false" aria-controls="batch-menu">Batch操作</button>
+              <button type="button" id="open-batch-menu" class="reorder-toggle" aria-expanded="false" aria-controls="batch-menu" aria-label="Batchファイル">ファイル</button>
               <div id="batch-menu" class="batch-menu" hidden>
-                <button type="button" id="recipe-open-read">Macから読み込む</button>
-                <button type="button" id="recipe-open-save">Batchを保存</button>
-                <button type="button" id="open-dictionary-list">辞書</button>
+                <button type="button" id="recipe-open-read">読み込む</button>
+                <button type="button" id="recipe-open-save">保存</button>
               </div>
             </div>
             <button type="button" id="toggle-reorder" class="reorder-toggle" aria-pressed="false">並べ替え</button>
@@ -83,8 +83,7 @@
       <section id="view-recipe" class="screen" aria-labelledby="recipe-title" hidden>
         <button type="button" id="recipe-back" class="back-button">← Batch List</button>
         <div class="screen-heading">
-          <h2 id="recipe-title" tabindex="-1">Batch操作</h2>
-          <p class="supporting">Mac側のOutputフォルダに保存されたBatchレシピを使用します。</p>
+          <h2 id="recipe-title" tabindex="-1">ファイル</h2>
         </div>
         <div id="recipe-read-panel" hidden>
           <p class="field-title">保存済みBatch</p>
@@ -116,13 +115,9 @@
       </section>
 
       <section id="view-item" class="screen" aria-labelledby="item-title" hidden>
-        <button type="button" id="item-back" class="back-button">← 戻る</button>
-        <div class="section-top">
-          <div>
-            
-            <h2 id="item-title" tabindex="-1">Caption</h2>
-            <button type="button" id="open-dictionary-item" class="item-link">辞書</button>
-          </div>
+        <div class="section-top item-titlebar">
+          <button type="button" id="item-back" class="back-button">← Batch List</button>
+          <h2 id="item-title" tabindex="-1">Caption</h2>
         </div>
         <div id="caption-display" class="item-caption">
           <div class="section-top item-caption-header">
@@ -380,9 +375,6 @@
         </div>
         <div class="danger-zone">
           <button type="button" id="close-session" class="danger-button">セッションを終了・破棄</button>
-        </div>
-        <div class="setting-section">
-          <p class="help-text" aria-disabled="true">一部の設定機能は今後追加されます。</p>
         </div>
       </section>
       <audio id="phone-player" controls preload="none" hidden aria-label="スマホで音声を再生"></audio>
