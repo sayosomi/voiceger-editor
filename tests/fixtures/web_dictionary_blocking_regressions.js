@@ -107,7 +107,7 @@ const unloadHandler = cut('  window.addEventListener("beforeunload"',
   console.log("F02_HISTORY_PASS");
 }
 async function quickTests() {
-  const quickSource = cut("  // Quick Save is an inline form",
+  const quickSource = cut("  // Quick Save does not Apply",
                          '  $("dictionary-back").addEventListener("click", dictionaryBack);');
   const elements={};
   const $=id=>elements[id] ||= {value:"",dataset:{},hidden:true};
