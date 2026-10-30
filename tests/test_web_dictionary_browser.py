@@ -57,6 +57,24 @@ console.log("DICTIONARY_ASSISTS_PASS");
         self.assertIn("DICTIONARY_ASSISTS_PASS", result.stdout)
 
 
+    def test_dictionary_word_type_select_matches_form_fields(self):
+        root = Path(__file__).resolve().parents[1] / "voiceger_editor" / "web_assets"
+        html = (root / "index.html").read_text(encoding="utf-8")
+        css = (root / "app.css").read_text(encoding="utf-8")
+        self.assertRegex(html, r'id="dictionary-ja-fields" class="field-stack"')
+        self.assertRegex(html, r'<select id="dictionary-word-type">')
+        # All standard form select elements must share field height, font,
+        # full width, border and radius with adjacent text/number inputs.
+        match = re.search(r'\.field-stack input,\s*\.field-stack select,'
+                          r'\s*\.field-stack textarea,.*?\}', css, re.S)
+        self.assertIsNotNone(match)
+        style = match.group()
+        for required in ("width: 100%", "min-height: 48px",
+                         "font: inherit", "font-size: 15px",
+                         "border: 1px solid #cbdcd2", "border-radius: 12px"):
+            self.assertIn(required, style)
+
+
     def test_approved_global_navigation_and_no_duplicate_dictionary_entry(self):
         html = (Path(__file__).resolve().parents[1] /
                 "voiceger_editor" / "web_assets" / "index.html").read_text(encoding="utf-8")

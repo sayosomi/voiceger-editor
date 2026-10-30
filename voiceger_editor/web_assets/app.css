@@ -62,7 +62,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .field-stack label, .setting-section label, .field-title {
   color: #456358; font-size: 13px; font-weight: 750; margin: 0;
 }
-.field-stack input, .field-stack textarea, .setting-section input:not([type=checkbox]), .setting-section select {
+.field-stack input, .field-stack select, .field-stack textarea,
+.setting-section input:not([type=checkbox]), .setting-section select {
   width: 100%; max-width: 100%; min-height: 48px; padding: 11px 13px;
   background: #fff; color: #263b33; font: inherit; font-size: 15px; line-height: 1.5;
   border: 1px solid #cbdcd2; border-radius: 12px;
