@@ -8,9 +8,13 @@ const first=(start,end)=>{
   return js.slice(a,b);
 };
 const els={};
-const $=id=>els[id]||=(id==="dictionary-duplicate"?{hidden:true}:{value:"",textContent:""});
+const $=id=>els[id]||={
+  value:"",textContent:"",hidden:true,focus(){calls.focus.push(id);},
+  scrollIntoView(opts){calls.scroll.push({id,opts});}
+};
 const flags={permitNavigation:false,postFailure:null};
-const calls={reads:[],writes:[],back:0,confirm:0,finished:[],feedback:[],matches:[]};
+const calls={reads:[],writes:[],back:0,confirm:0,finished:[],feedback:[],matches:[],
+  focus:[],scroll:[]};
 const window={history:{back(){calls.back++;}}};
 const create=new Function("$","window","flags","calls",
   'let busy=false,dictLanguage="en",dictEntry={id:null,notation:"HH AH0 L OW1"},'+
@@ -29,7 +33,7 @@ const create=new Function("$","window","flags","calls",
   ' calls.writes.push({method,url,payload});'+
   ' if(flags.postFailure)throw flags.postFailure;return {changed:true};}'+
   first('  function dictionaryFormValue() {','  function dictionaryTypeLabel(value) {')+
-  first('  function hideDictionaryDuplicate() {','  function renderDictionaryEntryLanguage() {')+
+  first('  function revealDictionaryRegistrationError(id) {','  function renderDictionaryEntryLanguage() {')+
   first('  async function dictionarySave(event) {','  async function dictionaryDelete() {')+
   'return {dictionarySave,dictionaryDuplicateFor,viewDictionaryDuplicate,'+
   'hideDictionaryDuplicate,state(){return {busy,dictQuery,dictLanguage,'+
@@ -48,6 +52,9 @@ async function run(){
   await app.dictionarySave(submit);
   assert.equal(calls.writes.length,0);
   assert.equal(els["dictionary-duplicate"].hidden,false);
+  assert.equal(calls.scroll.at(-1).id,"dictionary-duplicate");
+  assert.equal(calls.scroll.at(-1).opts.block,"center");
+  assert.equal(calls.focus.at(-1),"dictionary-duplicate");
   assert.equal(els["dictionary-duplicate-title"].textContent,"「Hello」は登録済みです");
   assert(els["dictionary-duplicate-description"].textContent.includes("大文字・小文字"));
   assert.equal(app.state().busy,false);
@@ -89,6 +96,28 @@ async function run(){
   await app.dictionarySave(submit);
   assert.equal(calls.reads.length,reads);
   assert.equal(calls.writes[calls.writes.length-1].method,"PUT");
+  app.setId(null);
+  app.state().dictEntry.notation="";
+  await app.dictionarySave(submit);
+  assert.equal(els["dictionary-save-error"].hidden,false);
+  assert.equal(els["dictionary-save-error"].textContent,"発音を入力してください。");
+  assert.equal(calls.scroll.at(-1).id,"dictionary-save-error");
+  assert.equal(calls.focus.at(-1),"dictionary-save-error");
+  app.state().dictEntry.notation="ア'メ";
+  app.setWordType("PROPER_NOUN");
+  $("dictionary-priority").value="99";
+  await app.dictionarySave(submit);
+  assert(els["dictionary-save-error"].textContent.includes("優先度"));
+  app.setLanguage("en");
+  $("dictionary-priority").value="5";
+  flags.postFailure=Object.assign(new Error("通信エラー"),{conflictCode:""});
+  calls.matches.push([]);
+  await app.dictionarySave(submit);
+  assert.equal(els["dictionary-save-error"].textContent,"通信エラー");
+  assert.equal(calls.scroll.at(-1).id,"dictionary-save-error");
+  assert.equal(calls.focus.at(-1),"dictionary-save-error");
+  assert.equal(calls.writes.length,4);
+  assert.equal(els["dictionary-duplicate"].hidden,true);
   console.log("DICTIONARY_DUPLICATE_UI_PASS");
 }
 run().catch(error=>{console.error(error);process.exitCode=1;});

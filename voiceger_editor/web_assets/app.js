@@ -2401,7 +2401,24 @@
     }
     showView(destination, true);
   }
+  function revealDictionaryRegistrationError(id) {
+    var notice = $(id);
+    notice.scrollIntoView({ behavior: "auto", block: "center" });
+    notice.focus({ preventScroll: true });
+  }
+  function hideDictionarySaveError() {
+    $("dictionary-save-error").hidden = true;
+    $("dictionary-save-error").textContent = "";
+  }
+  function showDictionarySaveError(message) {
+    hideDictionaryDuplicate();
+    $("dictionary-save-error").textContent = message;
+    $("dictionary-save-error").hidden = false;
+    feedback("");
+    revealDictionaryRegistrationError("dictionary-save-error");
+  }
   function hideDictionaryDuplicate() {
+    hideDictionarySaveError();
     dictDuplicate = null;
     $("dictionary-duplicate").hidden = true;
     $("dictionary-duplicate-title").textContent = "";
@@ -2414,6 +2431,7 @@
     }) || null;
   }
   function showDictionaryDuplicate(row) {
+    hideDictionarySaveError();
     dictDuplicate = { surface: row.surface, language: dictLanguage };
     $("dictionary-duplicate-title").textContent =
       "「" + row.surface + "」は登録済みです";
@@ -2423,6 +2441,7 @@
       dictionaryTypeLabel(row.word_type) + "）。登録済みの単語を編集してください。";
     $("dictionary-duplicate").hidden = false;
     feedback("");
+    revealDictionaryRegistrationError("dictionary-duplicate");
   }
   function viewDictionaryDuplicate() {
     if (busy || !dictDuplicate || !guardDraft()) return;
@@ -2617,14 +2636,15 @@
     event.preventDefault();
     if (busy || !dictEntry || !dictData) return;
     var data = dictionaryFormValue();
-    if (!data.notation.trim()) { feedback("発音を入力してください。"); return; }
+    hideDictionaryDuplicate();
+    if (!data.notation.trim()) { showDictionarySaveError("発音を入力してください。"); return; }
     if (dictLanguage === "ja" &&
       (!Number.isInteger(data.priority) || data.priority < 0 || data.priority > 10)) {
-      feedback("優先度は0〜10で指定してください。"); return;
+      showDictionarySaveError("優先度は0〜10で指定してください。"); return;
     }
     setBusy(true);
     try {
-      // Explain duplicates next to Surface before sending a failing write.
+      // Explain duplicate failures beside Save before sending a failing write.
       // The Core-backed endpoint owns casefold and Japanese identity rules.
       if (!dictEntry.id) {
         var matches = await dictionaryQuickMatches(dictLanguage, data.surface);
@@ -2652,10 +2672,9 @@
           }
         } catch (_ignored) { /* Keep the original validated error. */ }
       }
-      feedback(error.message);
-      if (error.conflictCode === "revision_conflict") {
-        feedback("辞書が更新されています。入力内容を保持しています。戻って一覧を再取得してください。");
-      }
+      showDictionarySaveError(error.conflictCode === "revision_conflict" ?
+        "辞書が更新されています。入力内容を保持しています。戻って一覧を再取得してください。" :
+        error.message);
     } finally { setBusy(false); }
   }
   async function dictionaryDelete() {

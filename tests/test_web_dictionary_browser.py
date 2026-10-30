@@ -284,6 +284,13 @@ const app = f($,window,log,()=>shouldReject);
                     "dictionary-duplicate-description", "dictionary-duplicate-view"):
             self.assertIn('id="' + key + '"', form)
         self.assertIn('.dictionary-duplicate[hidden] { display: none; }', css)
+        self.assertLess(form.index('id="dictionary-duplicate"'),
+                        form.index('type="submit"'))
+        self.assertIn('id="dictionary-save-error"', form)
+        self.assertLess(form.index('id="dictionary-save-error"'),
+                        form.index('type="submit"'))
+        self.assertIn('role="alert" tabindex="-1"', form)
+        self.assertIn('.dictionary-save-error { margin: 0;', css)
         node = shutil.which("node")
         if not node:
             self.skipTest("Node not installed")
