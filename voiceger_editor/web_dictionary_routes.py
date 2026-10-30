@@ -60,6 +60,13 @@ def build_web_dictionary_router(service: WebSessionOperations) -> APIRouter:
                   word_type: str = Query("ALL", max_length=20)):
         return _call(lambda: service.list_dictionary(session_id, language, sort, query, word_type))
 
+    @router.get("/{language}/matches",
+                dependencies=[Depends(require_web_access)])
+    def matching_words(session_id: str, language: str,
+                       surface: str = Query(..., max_length=2000)):
+        return _call(lambda: service.dictionary_matching_words(
+            session_id, language, surface))
+
     @router.post("/words", dependencies=[Depends(require_web_mutation)])
     def add_word(session_id: str, payload: DictionaryWordPayload):
         return _call(lambda: service.save_dictionary_word(session_id, payload))

@@ -11,6 +11,7 @@ from .dictionary_editing import (
     _word_type_for_context, japanese_word_notation, parse_japanese_word,
 )
 from .dictionary_listing import DictionaryListStateOwner
+from .openjtalk_dictionary import normalize_surface
 from .english_stress import normalize_english_phonemes
 from .pronunciation import format_pronunciation
 from .user_dictionary import JapaneseWordType, UserDictionaryCore
@@ -84,6 +85,32 @@ class WebDictionaryMixin:
         except (ValueError, TypeError) as exc:
             raise WebDictionaryValidation() from exc
         return {"entries": rows, "total": view.total_count, "shown": view.shown_count}
+
+    def dictionary_matching_words(self, session_id, language, surface):
+        """Exact identity candidates from the canonical Core, never browser guesses."""
+        with self._lock:
+            self._session(session_id)
+            language = self._language(language)
+            if not isinstance(surface, str) or not surface.strip() or len(surface) > 2000:
+                raise WebDictionaryValidation()
+            core = self._dictionary()
+            if language == "ja":
+                key = normalize_surface(surface)
+                matches = [
+                    {"id": uid, "surface": word.surface,
+                     "word_type": _word_type_for_context(word.context_id).value,
+                     "priority": word.priority}
+                    for uid, word in core.list_japanese_entries().items()
+                    if word.surface == key
+                ]
+            else:
+                key = surface.strip().casefold()
+                matches = [
+                    {"id": word.surface, "surface": word.surface}
+                    for word in core.list_english_entries().values()
+                    if word.surface.strip().casefold() == key
+                ]
+            return {"entries": matches, "revision": self._dictionary_version(core)}
 
     def list_dictionary(self, session_id, language, sort, query="", word_type="ALL"):
         with self._lock:
