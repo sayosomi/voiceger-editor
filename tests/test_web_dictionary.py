@@ -134,5 +134,36 @@ class DictionaryWebTests(unittest.TestCase):
         self.assertEqual(response.json()["entries"][0]["notation"], "アメ'")
 
 
+    def test_direct_apply_validation_is_authenticated_noncommitting_and_language_specific(self):
+        original = self.listing()
+        url = self.base + "/pronunciation/validate"
+        draft = {"language": "ja", "surface": "四国めたん",
+                 "notation": "[シ]コク[メ]タン"}
+        denied = self.client.post(url, json=draft, headers=self.read)
+        self.assertEqual(denied.status_code, 403)
+        denied = self.client.post(url, json=draft,
+            headers={**self.write, "Origin": "https://attacker.example"})
+        self.assertEqual(denied.status_code, 403)
+        accepted = self.client.post(url, json=draft, headers=self.write)
+        self.assertEqual(accepted.status_code, 200, accepted.text)
+        self.assertTrue(accepted.json()["valid"])
+        invalid = [
+            {"language": "ja", "surface": "四国めたん", "notation": "シ'コク メタン"},
+            {"language": "ja", "surface": "四国めたん", "notation": "シ'コク。"},
+            {"language": "ja", "surface": "四国めたん", "notation": ""},
+            {"language": "en", "surface": "test", "notation": "AH9"},
+            {"language": "en", "surface": "test", "notation": ""},
+        ]
+        for rejected in invalid:
+            with self.subTest(rejected=rejected):
+                self.assertEqual(self.client.post(
+                    url, json=rejected, headers=self.write).status_code, 422)
+        english = self.client.post(url, json={
+            "language": "en", "surface": "happy", "notation": "HH AE1 P IY0",
+        }, headers=self.write)
+        self.assertEqual(english.status_code, 200, english.text)
+        self.assertEqual(self.listing(), original)
+        self.assertEqual(self.listing("en")["total"], 0)
+
 if __name__ == "__main__":
     unittest.main()
