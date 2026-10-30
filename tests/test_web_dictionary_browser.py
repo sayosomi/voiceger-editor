@@ -268,5 +268,31 @@ const app = f($,window,log,()=>shouldReject);
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("DICTIONARY_ENTRY_LANGUAGE_PASS", result.stdout)
 
+
+    def test_dictionary_generate_position_and_duplicate_guidance(self):
+        root = Path(__file__).resolve().parents[1]
+        assets = root / "voiceger_editor" / "web_assets"
+        html = (assets / "index.html").read_text(encoding="utf-8")
+        css = (assets / "app.css").read_text(encoding="utf-8")
+        form = html.split('id="dictionary-entry-form"', 1)[1].split('</form>', 1)[0]
+        self.assertLess(form.index('id="dictionary-surface"'),
+                        form.index('id="dictionary-generate"'))
+        self.assertLess(form.index('id="dictionary-generate"'),
+                        form.index('id="dictionary-pron-value"'))
+        self.assertEqual(form.count('id="dictionary-generate"'), 1)
+        for key in ("dictionary-duplicate", "dictionary-duplicate-title",
+                    "dictionary-duplicate-description", "dictionary-duplicate-view"):
+            self.assertIn('id="' + key + '"', form)
+        self.assertIn('.dictionary-duplicate[hidden] { display: none; }', css)
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node not installed")
+        result = subprocess.run([
+            node, str(root / "tests" / "fixtures" /
+                      "web_dictionary_duplicate_ui.js"), str(assets / "app.js"),
+        ], capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("DICTIONARY_DUPLICATE_UI_PASS", result.stdout)
+
 if __name__ == "__main__":
     unittest.main()
