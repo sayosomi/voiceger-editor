@@ -139,7 +139,10 @@
         <section id="item-pronunciation" class="item-pronunciation" hidden aria-label="発音">
           <div class="section-top">
             <h3>発音</h3>
-            <button type="button" id="add-section" class="item-link" hidden>＋ 追加</button>
+            <div class="pronunciation-header-actions">
+              <button type="button" id="reprepare-audio" class="item-link" aria-label="Captionから発音を再解析" hidden><span aria-hidden="true">↻</span> 再解析</button>
+              <button type="button" id="add-section" class="item-link" hidden>＋ 追加</button>
+            </div>
             <button type="button" id="open-pronunciation" class="item-link" hidden>編集</button>
           </div>
           <p id="pronunciation-value" class="pronunciation-value" hidden></p>
@@ -175,7 +178,6 @@
           <div id="take-menu" class="item-take-menu" hidden>
             <button type="button" id="regenerate-unaccepted" hidden>未採用Takeを再生成</button>
             <button type="button" id="clear-takes" hidden>候補をクリア</button>
-            <button type="button" id="reprepare-audio">発音を再準備</button>
           </div>
           <button type="button" id="generate-audio" class="primary-button full-button" hidden>Takeを生成</button>
           <ol id="take-list" class="take-list" aria-label="生成したTake"></ol>
