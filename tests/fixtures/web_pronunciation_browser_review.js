@@ -205,6 +205,9 @@ async function asyncHistoryTests() {
     }
   };
   const setup=[
+    'let dictionaryHistoryDepth=0,dictionaryHistoryDestination=null,dictionaryHistoryNotice="";',
+    'let settingsReturnView="list",settingsHistoryActive=false,settingsHistoryDestination=null;',
+    'function dictionaryPushHistory(){} function loadDictionary(){return Promise.resolve();}',
     'let currentView="item",pronunciationOpening=null,pronunciationItemId="";',
     'let pronunciationHistoryActive=false,pronunciationExitPending=null; let sectionHistoryActive=false,sectionExitPending=null;',
     'let pronunciationReturnView="item",pronunciationStale=false,pronunciationTarget=null;',
@@ -251,21 +254,26 @@ async function asyncHistoryTests() {
   assert.equal(h.getView(),"item");
   assert.equal(index,0);
 
-  // An app transition to Session must be restored as the return screen
-  // after Forward, and new editing must replace the old forward entry.
+  // Settings is its own forward-restorable destination; a previously
+  // discarded pronunciation editor must not reappear from Forward.
   win.history.forward();
   await settle();
   assert.equal(h.getView(),"pronunciation");
   assert(h.showView("session"));
   await settle();
   assert.equal(h.getView(),"session");
-  win.history.forward();
-  await settle();
-  assert.equal(h.getView(),"pronunciation");
+  assert.equal(index,1);
+  assert.equal(entries[1].voicegerSettings,true);
   win.history.back();
   await settle();
+  assert.equal(h.getView(),"item");
+  win.history.forward();
+  await settle();
   assert.equal(h.getView(),"session");
-  assert(h.showView("item"));
+  assert.equal(index,1,"restoring Settings must not push another entry");
+  win.history.back();
+  await settle();
+  assert.equal(h.getView(),"item");
   h.openPronunciation();
   assert.equal(index,1);
   assert.equal(entries.length,2,"reopening should replace abandoned Forward entry");
