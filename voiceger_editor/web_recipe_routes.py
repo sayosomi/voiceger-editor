@@ -26,6 +26,10 @@ class SaveToken(ReviewToken):
     confirmed_overwrite: StrictBool = False
 
 
+class ReadToken(ReviewToken):
+    confirmed_replace: StrictBool = False
+
+
 def _call(action):
     try:
         return action()
@@ -83,11 +87,12 @@ def build_web_recipe_router(service: WebSessionOperations) -> APIRouter:
 
     @router.post("/read/commit", dependencies=[Depends(require_web_mutation)])
     def commit_read(
-        session_id: str, payload: ReviewToken,
+        session_id: str, payload: ReadToken,
         expected_revision: int = Query(..., ge=0),
     ):
         return _call(lambda: service.commit_recipe_read(
             session_id, expected_revision, payload.token,
+            payload.confirmed_replace,
         ))
 
     @router.post("/cancel", dependencies=[Depends(require_web_mutation)])
