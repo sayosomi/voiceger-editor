@@ -236,6 +236,16 @@
     if (dictionaryHistoryDestination) {
       var destination = dictionaryHistoryDestination;
       dictionaryHistoryDestination = null;
+      if (destination === "dictionary-back") {
+        // The visible Back button must follow the actual browser history state.
+        // Forward may have normalized several entries to the Dictionary list.
+        var backState = event && event.state;
+        destination = backState && backState.voicegerDictionary &&
+          backState.sessionId === sessionId &&
+          (backState.view === "dictionary" ||
+           backState.view === "dictionary-entry") ?
+          backState.view : dictReturnView;
+      }
       dictionaryHistoryDepth = event && event.state &&
         Number.isInteger(event.state.depth) ? event.state.depth :
         destination === "dictionary" ? 1 :
@@ -2376,9 +2386,8 @@
         guardDictionaryPronunciationDraft() : guardDraft())) return;
     if (dictionaryHistoryDepth > 0) {
       // The popstate handler owns state cleanup and the resulting screen.
-      dictionaryHistoryDestination = currentView === "dictionary-pron" ?
-        "dictionary-entry" : currentView === "dictionary-entry" ?
-        "dictionary" : dictReturnView;
+      // Resolve the target on popstate, not from currentView alone.
+      dictionaryHistoryDestination = "dictionary-back";
       window.history.back();
       return;
     }

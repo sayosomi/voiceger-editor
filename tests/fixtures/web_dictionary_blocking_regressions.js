@@ -74,7 +74,8 @@ const unloadHandler = cut('  window.addEventListener("beforeunload"',
     'function feedback(m){calls.push(m);}',
     cut('  window.addEventListener("popstate"', '  window.addEventListener("beforeunload"'),
     cut('  function dictionaryPushHistory(view) {','  function navigateGlobal(destination) {'),
-    'return {push:dictionaryPushHistory,setView(v){currentView=v},',
+    cut('  function dictionaryBack() {','  function openDictionaryEntry(row) {'),
+    'return {push:dictionaryPushHistory,back:dictionaryBack,setView(v){currentView=v},',
     'setEntry(v){dictEntry=v;dictEntryOriginal=v},',
     'state(){return {view:currentView,depth:dictionaryHistoryDepth,entry:dictEntry}}};'
   ].join("\n");
@@ -104,6 +105,37 @@ const unloadHandler = cut('  window.addEventListener("beforeunload"',
   win.history.back();
   assert.equal(i,1);assert.equal(h.state().view,"dictionary");
   assert.deepEqual(calls.filter(x=>x==="replace"),["replace"]);
+  // UI Back must agree with Android/browser Back after Forward normalization.
+  win.history.forward();
+  assert.equal(i,2);assert.equal(h.state().depth,2);
+  win.history.back();
+  assert.equal(i,1);assert.equal(h.state().view,"dictionary");
+  win.history.forward();
+  h.back();
+  assert.equal(i,1,"UI Back must consume only the actual history step");
+  assert.equal(h.state().view,"dictionary","UI and browser Back agree");
+  assert.equal(h.state().depth,1);
+  h.back();
+  assert.equal(i,0);assert.equal(h.state().view,"list");
+  assert.equal(h.state().depth,0,"second UI Back reaches Batch entry");
+  win.history.forward();
+  assert.equal(i,1);assert.equal(h.state().view,"dictionary");
+  win.history.back();
+  assert.equal(i,0);assert.equal(h.state().view,"list");
+  // Normal nested Back must continue preserving the parent editor draft.
+  h.setView("dictionary");h.push("dictionary");
+  h.setView("dictionary-entry");h.push("dictionary-entry");
+  h.setEntry({id:"word"});
+  h.setView("dictionary-pron");h.push("dictionary-pron");
+  assert.equal(i,3);
+  h.back();
+  assert.equal(i,2);assert.equal(h.state().view,"dictionary-entry");
+  assert.equal(h.state().entry.id,"word");
+  h.back();
+  assert.equal(i,1);assert.equal(h.state().view,"dictionary");
+  assert.equal(h.state().entry,null);
+  h.back();
+  assert.equal(i,0);assert.equal(h.state().view,"list");
   console.log("F02_HISTORY_PASS");
 }
 async function quickTests() {
