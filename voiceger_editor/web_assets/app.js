@@ -133,7 +133,7 @@
       return true;
     }
     if (name !== "list" && reorderMode) endReorderMode();
-    if (name !== "list") closeBatchMenu();
+    if (name !== "list" && typeof closeBatchMenu === "function") closeBatchMenu();
     if (name !== "list" && deleteMode) endDeleteMode();
     if ((currentView === "item" && name !== "item") ||
         (currentView === "pronunciation" && name !== "pronunciation") ||
