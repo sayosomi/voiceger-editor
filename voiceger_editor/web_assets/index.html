@@ -304,6 +304,12 @@
         <form id="dictionary-entry-form" class="field-stack">
           <label for="dictionary-surface">Surface</label>
           <input id="dictionary-surface" maxlength="2000" required>
+          <button type="button" id="dictionary-generate" class="item-link">Surfaceから発音を生成</button>
+          <div id="dictionary-duplicate" class="dictionary-duplicate" role="alert" hidden>
+            <strong id="dictionary-duplicate-title"></strong>
+            <p id="dictionary-duplicate-description"></p>
+            <button type="button" class="item-link" id="dictionary-duplicate-view">登録済みの単語を見る</button>
+          </div>
           <label>Pronunciation</label>
           <div class="dictionary-edit-pron">
             <p id="dictionary-pron-value"></p>
@@ -321,7 +327,6 @@
             <label for="dictionary-priority">優先度</label>
             <input id="dictionary-priority" type="number" min="0" max="10" value="5">
           </div>
-          <button type="button" id="dictionary-generate" class="item-link">Surfaceから発音を生成</button>
           <button type="submit" class="primary-button full-button">保存</button>
           <button type="button" id="dictionary-delete" class="danger-button">この単語を削除</button>
         </form>

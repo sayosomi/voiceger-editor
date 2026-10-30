@@ -44,6 +44,7 @@
   var autoPrepareFailures = new Set();
   var dictLanguage = "ja", dictSort = "surface_asc", dictQuery = "", dictType = "ALL";
   var dictData = null, dictEntry = null, dictEntryOriginal = null;
+  var dictDuplicate = null;
   var dictPronOpening = null, dictSelection = { start: 0, end: 0 }, dictComposing = false;
   var dictListRequest = 0, dictReturnView = "list", dictQuickMatches = [];
   var dictQuickPriorityEdited = false;
@@ -2400,6 +2401,44 @@
     }
     showView(destination, true);
   }
+  function hideDictionaryDuplicate() {
+    dictDuplicate = null;
+    $("dictionary-duplicate").hidden = true;
+    $("dictionary-duplicate-title").textContent = "";
+    $("dictionary-duplicate-description").textContent = "";
+  }
+  function dictionaryDuplicateFor(data, matches) {
+    if (!matches || !Array.isArray(matches.entries)) return null;
+    return matches.entries.find(function (row) {
+      return dictLanguage === "en" || row.word_type === data.word_type;
+    }) || null;
+  }
+  function showDictionaryDuplicate(row) {
+    dictDuplicate = { surface: row.surface, language: dictLanguage };
+    $("dictionary-duplicate-title").textContent =
+      "「" + row.surface + "」は登録済みです";
+    $("dictionary-duplicate-description").textContent = dictLanguage === "en" ?
+      "英語辞書では大文字・小文字を区別しません。新規追加はできません。登録済みの単語を編集してください。" :
+      "日本語辞書では表記と品詞の組み合わせが同じ単語を重複登録できません（" +
+      dictionaryTypeLabel(row.word_type) + "）。登録済みの単語を編集してください。";
+    $("dictionary-duplicate").hidden = false;
+    feedback("");
+  }
+  function viewDictionaryDuplicate() {
+    if (busy || !dictDuplicate || !guardDraft()) return;
+    dictQuery = dictDuplicate.surface;
+    dictSort = "surface_asc";
+    dictType = "ALL";
+    hideDictionaryDuplicate();
+    if (dictionaryHistoryDepth > 0) {
+      dictionaryHistoryDestination = "dictionary";
+      window.history.back();
+    } else {
+      dictEntry = null;
+      dictEntryOriginal = null;
+      showView("dictionary", true);
+    }
+  }
   function renderDictionaryEntryLanguage() {
     // Language is selectable only while adding a new word, never on edit.
     var isNew = Boolean(dictEntry && !dictEntry.id);
@@ -2431,6 +2470,7 @@
       $("dictionary-priority").value = "5";
       $("dictionary-pron-value").textContent = "未入力";
       dictEntryOriginal = dictionaryFormValue();
+      hideDictionaryDuplicate();
       renderDictionary();
       renderDictionaryEntryLanguage();
       feedback("");
@@ -2452,6 +2492,7 @@
     $("dictionary-delete").hidden = !entry.id;
     $("dictionary-entry-title").textContent = entry.id ? "単語を編集" : "単語を追加";
     dictEntryOriginal = dictionaryFormValue();
+    hideDictionaryDuplicate();
     $("dictionary-pron-value").textContent = dictEntry.notation || "未入力";
     showView("dictionary-entry", true);
     dictionaryPushHistory("dictionary-entry");
@@ -2583,12 +2624,34 @@
     }
     setBusy(true);
     try {
+      // Explain duplicates next to Surface before sending a failing write.
+      // The Core-backed endpoint owns casefold and Japanese identity rules.
+      if (!dictEntry.id) {
+        var matches = await dictionaryQuickMatches(dictLanguage, data.surface);
+        var duplicate = dictionaryDuplicateFor(data, matches);
+        if (duplicate) {
+          showDictionaryDuplicate(duplicate);
+          return;
+        }
+        hideDictionaryDuplicate();
+      }
       var payload = { ...data, language: dictLanguage, expected_revision: dictData.revision };
       var address = dictionaryPath() + "/words" +
         (dictEntry.id ? "/" + encodeURIComponent(dictEntry.id) : "");
       var result = await request(dictEntry.id ? "PUT" : "POST", address, payload);
       dictionaryFinish(result.changed ? "辞書に保存しました。" : "変更はありません。");
     } catch (error) {
+      if (!dictEntry.id && error.conflictCode === "invalid_dictionary") {
+        // Another client may have added the same word after our initial check.
+        try {
+          var latestMatches = await dictionaryQuickMatches(dictLanguage, data.surface);
+          var lateDuplicate = dictionaryDuplicateFor(data, latestMatches);
+          if (lateDuplicate) {
+            showDictionaryDuplicate(lateDuplicate);
+            return;
+          }
+        } catch (_ignored) { /* Keep the original validated error. */ }
+      }
       feedback(error.message);
       if (error.conflictCode === "revision_conflict") {
         feedback("辞書が更新されています。入力内容を保持しています。戻って一覧を再取得してください。");
@@ -2720,6 +2783,9 @@
   $("dictionary-entry-back").addEventListener("click", dictionaryBack);
   $("dictionary-pron-open").addEventListener("click", enterDictionaryPronunciation);
   $("dictionary-entry-form").addEventListener("submit", dictionarySave);
+  $("dictionary-surface").addEventListener("input", hideDictionaryDuplicate);
+  $("dictionary-word-type").addEventListener("change", hideDictionaryDuplicate);
+  $("dictionary-duplicate-view").addEventListener("click", viewDictionaryDuplicate);
   $("dictionary-delete").addEventListener("click", dictionaryDelete);
   $("dictionary-generate").addEventListener("click", dictionaryGenerate);
   $("dictionary-pron-back").addEventListener("click", leaveDictionaryPronunciation);

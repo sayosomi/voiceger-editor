@@ -395,6 +395,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 /* Dictionary Web Slice 8: compact touch list and direct editor. */
 .dictionary-tabs { display: flex; gap: 8px; margin: 16px 0; }
+.dictionary-duplicate { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid #b9cec2;
+  border-radius: 12px; background: #f1f6f2; color: #244f41; line-height: 1.5; }
+.dictionary-duplicate[hidden] { display: none; }
+.dictionary-duplicate p { margin: 0; font-size: 13px; }
+.dictionary-duplicate .item-link { justify-self: start; }
 .dictionary-tabs button { flex: 1; min-height: 44px; border-radius: 11px; border: 1px solid #cbdcd2; background: #fff; color: #285e4f; font-weight: 700; }
 .dictionary-tabs button[aria-pressed="true"] { background: #23675a; color: white; }
 .dictionary-tabs[hidden] { display: none; }
