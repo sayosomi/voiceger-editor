@@ -74,9 +74,9 @@ function makeRows() {
   const win = {confirm(){return decisions.shift();}};
   const setup = [
     'let batch={items:rows},selectedId="2",currentView="item",busy=false;',
-    'let addFromItemId="",captionEditMode=false;',
+    'let addFromItemId="",captionEditMode=false,takeCountEditMode=false;',
     'function pronunciationDirty(){return false;} function sectionDirty(){return false;}',
-    cut('  function guardDraft() {','  function showView(name, bypassDraftGuard) {'),
+    cut('  function takeCountDirty(item) {','  function showView(name, bypassDraftGuard) {'),
     'function showView(name){if(busy||!guardDraft())return false;currentView=name;',
     'destinations.push(name);return true;}',
     cut('  function openCaptionAdd(fromItem) {',
