@@ -233,6 +233,22 @@ const app = f($,window,log,()=>shouldReject);
             self.assertIn(marker, result.stdout)
 
 
+    def test_quick_dictionary_cancel_uses_existing_secondary_button_style(self):
+        root = Path(__file__).resolve().parents[1] / "voiceger_editor" / "web_assets"
+        html = (root / "index.html").read_text(encoding="utf-8")
+        css = (root / "app.css").read_text(encoding="utf-8")
+        self.assertRegex(html, r'<button type="button" id="dictionary-quick-cancel">キャンセル</button>')
+        # Both secondary controls share the exact same border, radius, colors,
+        # height and padding instead of exposing Chrome's default grey button.
+        rule = re.search(
+            r'\\.pronunciation-actions-secondary button,\\s*#dictionary-quick-cancel\\s*\\{([^}]+)\\}',
+            css, re.S)
+        self.assertIsNotNone(rule)
+        for expected in ("min-height: 44px", "padding: 10px 13px",
+                         "border: 1px solid #d0ded4", "border-radius: 10px",
+                         "background: #fff", "color: #285e4f"):
+            self.assertIn(expected, rule.group(1))
+
     def test_new_word_language_toggle_preserves_existing_word_and_drafts(self):
         root = Path(__file__).resolve().parents[1]
         assets = root / "voiceger_editor" / "web_assets"

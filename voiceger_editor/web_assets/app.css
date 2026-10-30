@@ -278,7 +278,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 #preview-pronunciation { border: 1px solid #c8dbd1; background: #eff6f2;
   color: #285e4f; font-weight: 750; }
 .pronunciation-actions-secondary { display: flex; gap: 8px; justify-content: space-between; }
-.pronunciation-actions-secondary button { min-height: 44px; padding: 10px 13px;
+.pronunciation-actions-secondary button, #dictionary-quick-cancel {
+  min-height: 44px; padding: 10px 13px;
   border: 1px solid #d0ded4; border-radius: 10px; background: #fff; color: #285e4f; }
 #phone-player:not([hidden]) { display: block; margin: 10px 20px; width: calc(100% - 40px); }
 
