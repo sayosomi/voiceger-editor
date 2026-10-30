@@ -190,7 +190,7 @@
     }
     if (name === "session" && previousView !== "session") {
       settingsReturnView = previousView === "pronunciation" || previousView === "section" ?
-        "item" : previousView.indexOf("dictionary") === 0 ? "list" : previousView;
+        "item" : previousView.indexOf("dictionary") === 0 ? "dictionary" : previousView;
       settingsHistoryActive = true;
       window.history.pushState({ voicegerSettings: true, sessionId: sessionId }, "");
     }
@@ -2269,6 +2269,7 @@
     if (busy || !sessionId) return;
     if (destination === currentView) return;
     if (currentView === "session" && settingsHistoryActive) {
+      if (destination === "dictionary") dictReturnView = settingsReturnView;
       settingsHistoryDestination = destination;
       window.history.back();
       return;
