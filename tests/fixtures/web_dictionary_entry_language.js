@@ -56,7 +56,15 @@ const app=new Function("$","window","flags","writes","fetches",source)(
   assert.equal($("dictionary-ja-fields").hidden,true);
   assert.equal($("[history]").value,1);
   assert.equal(app.state().form.surface,"");
+  // A new English word must use the English dictionary revision and language.
   $("dictionary-surface").value="Sweet";
+  app.state().entry.notation="S W IY1 T";
+  await app.dictionarySave(submit);
+  assert.equal(writes.length,1);
+  assert.equal(writes[0].method,"POST");
+  assert.equal(writes[0].payload.language,"en");
+  assert.equal(writes[0].payload.expected_revision,"rev-en");
+  assert.equal(writes[0].payload.surface,"Sweet");
   flags.allowDiscard=false;
   await app.switchDictionaryEntryLanguage("ja");
   assert.equal(app.state().lang,"en");
@@ -83,11 +91,11 @@ const app=new Function("$","window","flags","writes","fetches",source)(
   $("dictionary-surface").value="雨";
   app.state().entry.notation="ア'メ";
   await app.dictionarySave(submit);
-  assert.equal(writes.length,1);
-  assert.equal(writes[0].method,"POST");
-  assert.equal(writes[0].payload.language,"ja");
-  assert.equal(writes[0].payload.expected_revision,"rev-ja");
-  assert.equal(writes[0].payload.surface,"雨");
+  assert.equal(writes.length,2);
+  assert.equal(writes[1].method,"POST");
+  assert.equal(writes[1].payload.language,"ja");
+  assert.equal(writes[1].payload.expected_revision,"rev-ja");
+  assert.equal(writes[1].payload.surface,"雨");
   app.openDictionaryEntry({id:"existing",surface:"既存",notation:"キ'ソン",
     word_type:"COMMON_NOUN",priority:9});
   assert.equal($("dictionary-entry-tabs").hidden,true);
