@@ -162,7 +162,7 @@ class WebRecipeTests(unittest.TestCase):
             self.assertEqual(self.batch()["items"][0]["caption"], "old caption")
             self.assertEqual(old.session.discards, 0)
             self.assertEqual(self.call("/read/commit", {
-                "token": preview.json()["token"],
+                "token": preview.json()["token"], "confirmed_replace": True,
             }).status_code, 200)
         self.assertEqual(self.batch()["items"][0]["caption"], "new caption")
         self.assertEqual(self.batch()["default_take_count"], 5)
@@ -195,11 +195,11 @@ class WebRecipeTests(unittest.TestCase):
             self.assertEqual(self.call("/cancel").status_code, 200)
             self.assertEqual(staged_sessions[0].discards, 1)
             self.assertEqual(self.call("/read/commit", {
-                "token": p1.json()["token"],
+                "token": p1.json()["token"], "confirmed_replace": True,
             }).status_code, 409)
             p2 = self.call("/read/review", {"filename": recipe.name})
             recipe.write_text("changed", encoding="utf-8")
-            change = self.call("/read/commit", {"token": p2.json()["token"]})
+            change = self.call("/read/commit", {"token": p2.json()["token"]}), "confirmed_replace": True,
             self.assertEqual(change.status_code, 409)
             self.assertEqual(change.json()["detail"]["code"], "recipe_changed")
             self.assertEqual(staged_sessions[-1].discards, 1)
@@ -207,7 +207,7 @@ class WebRecipeTests(unittest.TestCase):
             p3 = self.call("/read/review", {"filename": recipe.name})
             self.add("another")
             self.assertEqual(self.call("/read/commit", {
-                "token": p3.json()["token"],
+                "token": p3.json()["token"], "confirmed_replace": True,
             }, revision=p3.json().get("revision", 1)).status_code, 409)
             self.assertEqual(self.batch()["items"][-1]["caption"], "another")
 
