@@ -122,9 +122,10 @@ def _check_root_path(root: Path, identity: tuple[int, int]) -> None:
 
 def _secure_bytes(
     directory: int, filename: str, *, optional: bool = False,
+    internal: bool = False,
 ) -> tuple[bytes, tuple] | None:
     """Open only regular files relative to the pinned Output fd."""
-    name = _filename(filename)
+    name = filename if internal else _filename(filename)
     try:
         before = os.stat(name, dir_fd=directory, follow_symlinks=False)
     except FileNotFoundError:
@@ -167,8 +168,8 @@ def _secure_bytes(
     return data, (hashlib.sha256(data).hexdigest(), *identity(latest))
 
 
-def _fingerprint(directory: int, filename: str) -> tuple | None:
-    snapshot = _secure_bytes(directory, filename, optional=True)
+def _fingerprint(directory: int, filename: str, *, internal: bool = False) -> tuple | None:
+    snapshot = _secure_bytes(directory, filename, optional=True, internal=internal)
     return None if snapshot is None else snapshot[1]
 
 
@@ -190,7 +191,7 @@ def _publish_checked(directory: int, filename: str, temporary: str, expected: tu
     os.rename(filename, backup, src_dir_fd=directory, dst_dir_fd=directory)
     published = False
     try:
-        if _fingerprint(directory, backup) != expected:
+        if _fingerprint(directory, backup, internal=True) != expected:
             raise WebRecipeValidation("recipe_changed")
         os.link(temporary, filename, src_dir_fd=directory,
                 dst_dir_fd=directory, follow_symlinks=False)
