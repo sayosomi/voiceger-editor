@@ -14,6 +14,8 @@
   var selectedForDelete = new Set();
   var dragState = null;
   var audioOperation = null;
+  var batchOperation = null;
+  var batchPolling = false;
   var playingUrl = "";
   var playbackRequestId = 0;
   var playback = null;
@@ -65,6 +67,9 @@
     document.querySelectorAll("button, input, textarea, select").forEach(function (control) {
       control.disabled = value || control.dataset.fixedDisabled === "true";
     });
+    if (batchOperation && $("batch-progress-panel").hidden === false) {
+      $("cancel-batch").disabled = batchOperation.status !== "running";
+    }
   }
   function pronunciationDirty() {
     return currentView === "pronunciation" && pronunciationOpening !== null &&
@@ -463,6 +468,7 @@
     list.classList.toggle("delete-mode", deleteMode);
     setFixed("toggle-reorder", !reorderMode && count < 2);
     setFixed("toggle-delete", !deleteMode && count === 0);
+    setFixed("generate-batch", count === 0);
 
     batch.items.forEach(function (item, index) {
       var li = document.createElement("li");
@@ -529,6 +535,18 @@
         meta.className = "caption-meta";
         meta.textContent = "Take " + item.take_count_override;
         content.append(meta);
+      }
+      var accepted = (item.accepted_take_numbers || []).length;
+      var state = item.generation_outcome;
+      var status = state === "failed" ? "生成失敗" :
+        state === "cancelled" ? "生成中断" :
+        accepted ? "採用済み " + accepted :
+        state === "completed" ? "確認待ち" : "";
+      if (status) {
+        var statusText = document.createElement("span");
+        statusText.className = "caption-meta";
+        statusText.textContent = status;
+        content.append(statusText);
       }
       var chevron = document.createElement("span");
       chevron.className = "caption-chevron";
@@ -694,6 +712,7 @@
   function resetLocal(clearSessionId) {
     clearPlayer();
     audioOperation = null;
+    batchOperation = null;
     autoPrepareFailures.clear();
     captionEditMode = false;
     takeCountEditMode = false;
@@ -1184,6 +1203,86 @@
     }
   }
 
+
+  function renderBatchProgress(op) {
+    batchOperation = op;
+    var running = op && (op.status === "running" || op.status === "cancelling");
+    $("batch-progress-panel").hidden = !running;
+    if (!running) return;
+    var detail = op.detail || {};
+    $("batch-progress-total").textContent = op.completed + " / " + op.total + " Take";
+    $("batch-progress-bar").max = Math.max(1, op.total);
+    $("batch-progress-bar").value = Math.min(op.completed, op.total);
+    $("batch-progress-item").textContent =
+      "Caption " + (detail.caption_number || 1) + " / " +
+      (detail.caption_total || 1) + " · Take " +
+      (detail.take_number || 0) + " / " + (detail.take_total || 0) +
+      (op.status === "cancelling" ? " · キャンセル中" : "");
+    $("cancel-batch").disabled = op.status !== "running";
+  }
+
+  async function followBatchOperation(op) {
+    if (batchPolling || !op || op.kind !== "batch-generate") return;
+    batchPolling = true;
+    setBusy(true);
+    try {
+      while (op.status === "running" || op.status === "cancelling") {
+        renderBatchProgress(op);
+        await new Promise(function (resolve) { setTimeout(resolve, 650); });
+        op = await request("GET", "/api/web/sessions/" +
+          encodeURIComponent(sessionId) + "/operations/" + encodeURIComponent(op.id));
+        await refresh();
+      }
+      await refresh();
+      if (op.status === "succeeded") {
+        feedback("一括生成が完了しました。");
+      } else {
+        feedback(op.status === "cancelled" ?
+          "一括生成をキャンセルしました。生成済みTakeは保持されています。" :
+          (op.error || "一括生成に失敗しました。"));
+      }
+    } catch (error) {
+      if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
+      feedback(error.message);
+    } finally {
+      batchPolling = false;
+      batchOperation = null;
+      $("batch-progress-panel").hidden = true;
+      setBusy(false);
+      if (batch) renderList();
+    }
+  }
+
+  function resumeBatchOperation() {
+    if (batch && batch.active_operation && !batchPolling) {
+      followBatchOperation(batch.active_operation);
+    }
+  }
+
+  async function startBatchGeneration() {
+    if (busy || !batch || reorderMode || deleteMode) return;
+    setBusy(true);
+    try {
+      var result = await request("POST", batchPath() + "/generate?expected_revision=" +
+        encodeURIComponent(batch.revision));
+      if (result.status === "no-op") {
+        feedback(result.reason === "empty_selection" ?
+          "生成対象のCaptionをチェックしてください。" :
+          "対象のTakeはすべて採用済みです。");
+        return;
+      }
+      await followBatchOperation(result);
+    } catch (error) {
+      if (error.conflictCode === "revision_conflict") {
+        try { await refresh(); } catch (_ignored) {}
+      }
+      if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
+      feedback(error.message);
+    } finally {
+      if (!batchPolling) setBusy(false);
+    }
+  }
+
   function rememberPronunciationSelection() {
     var input = $("pronunciation-text");
     pronunciationSelection = { start: input.selectionStart, end: input.selectionEnd };
@@ -1599,6 +1698,16 @@
       displayAudioProgress(audioOperation);
     } catch (error) { feedback(error.message); }
   }
+  $("cancel-batch").addEventListener("click", async function () {
+    if (!batchOperation || batchOperation.status !== "running") return;
+    try {
+      var updated = await request("POST", "/api/web/sessions/" +
+        encodeURIComponent(sessionId) + "/operations/" +
+        encodeURIComponent(batchOperation.id) + "/cancel");
+      renderBatchProgress(updated);
+    } catch (error) { feedback(error.message); }
+  });
+  $("generate-batch").addEventListener("click", startBatchGeneration);
   $("cancel-audio").addEventListener("click", cancelActiveAudio);
   $("cancel-pronunciation-audio").addEventListener("click", cancelActiveAudio);
 
@@ -1641,6 +1750,7 @@
       setBusy(false);
     }
     showView("list", true);
+    resumeBatchOperation();
   });
   $("toggle-reorder").addEventListener("click", function () {
     if (busy || !batch || dragState) return;

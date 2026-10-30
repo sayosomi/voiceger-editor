@@ -76,12 +76,14 @@ class WebTakeMixin:
         run: Callable[[Any], dict[str, Any] | None],
         cancellable: bool = True,
         on_terminal: Callable[[str], None] | None = None,
+        detail: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         from .web_sessions import _Operation, WebSessionConflict
 
         identifier = secrets.token_urlsafe(24)
         operation = _Operation(
             identifier=identifier, kind=kind, total=total, cancellable=cancellable,
+            detail=detail,
         )
         session.operations[identifier] = operation
         while len(session.operations) > self._history_limit:
