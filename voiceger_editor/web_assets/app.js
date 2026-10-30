@@ -1351,7 +1351,7 @@
         return;
       }
       var loaded = await request("POST", recipeRevisionPath("/read/commit"),
-        { token: reviewed.token });
+        { token: reviewed.token, confirmed_replace: reviewed.replace_required });
       clearPlayer();
       selectedId = "";
       autoPrepareFailures.clear();
