@@ -51,6 +51,7 @@
               <div id="batch-menu" class="batch-menu" hidden>
                 <button type="button" id="recipe-open-read">Macから読み込む</button>
                 <button type="button" id="recipe-open-save">Batchを保存</button>
+                <button type="button" id="open-dictionary-list">辞書</button>
               </div>
             </div>
             <button type="button" id="toggle-reorder" class="reorder-toggle" aria-pressed="false">並べ替え</button>
@@ -120,6 +121,7 @@
           <div>
             
             <h2 id="item-title" tabindex="-1">Caption</h2>
+            <button type="button" id="open-dictionary-item" class="item-link">辞書</button>
           </div>
         </div>
         <div id="caption-display" class="item-caption">
@@ -213,6 +215,26 @@
           <div class="pronunciation-actions-secondary">
             <button type="button" id="reset-pronunciation">リセット</button>
             <button type="button" id="cancel-pronunciation">キャンセル</button>
+            <button type="button" id="open-dictionary-quick">辞書に登録</button>
+          </div>
+        </form>
+
+        <form id="dictionary-quick-form" class="field-stack dictionary-quick" hidden>
+          <h3>辞書に登録</h3>
+          <label for="dictionary-quick-surface">Surface</label>
+          <input type="text" id="dictionary-quick-surface" maxlength="2000" required>
+          <label for="dictionary-quick-type" class="dictionary-quick-ja">品詞</label>
+          <select id="dictionary-quick-type" class="dictionary-quick-ja">
+            <option value="PROPER_NOUN">固有名詞</option><option value="COMMON_NOUN">普通名詞</option>
+            <option value="VERB">動詞</option><option value="ADJECTIVE">形容詞</option>
+            <option value="SUFFIX">接尾辞</option>
+          </select>
+          <label for="dictionary-quick-priority" class="dictionary-quick-ja">優先度</label>
+          <input type="number" id="dictionary-quick-priority" class="dictionary-quick-ja" min="0" max="10" value="5">
+          <p class="help-text">発音は現在の入力内容を使用します。Batch Itemには反映しません。</p>
+          <div class="button-row">
+            <button class="primary-button" type="submit">辞書に保存</button>
+            <button type="button" id="dictionary-quick-cancel">キャンセル</button>
           </div>
         </form>
       </section>
@@ -239,6 +261,95 @@
           <div class="section-secondary-actions">
             <button type="button" id="reset-section" hidden>元に戻す</button>
             <button type="button" id="delete-section" hidden>セクションを削除</button>
+          </div>
+        </form>
+      </section>
+
+
+      <section id="view-dictionary" class="screen" aria-labelledby="dictionary-title" hidden>
+        <button type="button" id="dictionary-back" class="back-button">← 戻る</button>
+        <div class="section-top">
+          <h2 id="dictionary-title" tabindex="-1">辞書</h2>
+          <button type="button" id="dictionary-add" class="item-link">＋ 単語を追加</button>
+        </div>
+        <div class="dictionary-tabs" role="group" aria-label="辞書の言語">
+          <button type="button" id="dictionary-ja" aria-pressed="true">日本語</button>
+          <button type="button" id="dictionary-en" aria-pressed="false">English</button>
+        </div>
+        <div class="field-stack dictionary-filters">
+          <label for="dictionary-query">検索</label>
+          <input id="dictionary-query" placeholder="Surface・発音で検索" maxlength="200">
+          <div class="dictionary-filter-row">
+            <label for="dictionary-sort">並び順
+              <select id="dictionary-sort"></select>
+            </label>
+            <label for="dictionary-filter-type" id="dictionary-filter-type-label">品詞
+              <select id="dictionary-filter-type">
+                <option value="ALL">すべて</option>
+                <option value="PROPER_NOUN">固有名詞</option>
+                <option value="COMMON_NOUN">普通名詞</option>
+                <option value="VERB">動詞</option>
+                <option value="ADJECTIVE">形容詞</option>
+                <option value="SUFFIX">接尾辞</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <p id="dictionary-count" class="help-text" role="status"></p>
+        <ul id="dictionary-words" class="dictionary-words" aria-label="登録済み単語"></ul>
+      </section>
+
+      <section id="view-dictionary-entry" class="screen" aria-labelledby="dictionary-entry-title" hidden>
+        <button type="button" id="dictionary-entry-back" class="back-button">← 辞書</button>
+        <h2 id="dictionary-entry-title" tabindex="-1">単語を編集</h2>
+        <form id="dictionary-entry-form" class="field-stack">
+          <label for="dictionary-surface">Surface</label>
+          <input id="dictionary-surface" maxlength="2000" required>
+          <label>Pronunciation</label>
+          <div class="dictionary-edit-pron">
+            <p id="dictionary-pron-value"></p>
+            <button type="button" class="item-link" id="dictionary-pron-open">編集</button>
+          </div>
+          <div id="dictionary-ja-fields" class="field-stack">
+            <label for="dictionary-word-type">品詞</label>
+            <select id="dictionary-word-type">
+              <option value="PROPER_NOUN">固有名詞</option>
+              <option value="COMMON_NOUN">普通名詞</option>
+              <option value="VERB">動詞</option>
+              <option value="ADJECTIVE">形容詞</option>
+              <option value="SUFFIX">接尾辞</option>
+            </select>
+            <label for="dictionary-priority">優先度</label>
+            <input id="dictionary-priority" type="number" min="0" max="10" value="5">
+          </div>
+          <button type="button" id="dictionary-generate" class="item-link">Surfaceから発音を生成</button>
+          <button type="submit" class="primary-button full-button">保存</button>
+          <button type="button" id="dictionary-delete" class="danger-button">この単語を削除</button>
+        </form>
+      </section>
+
+      <section id="view-dictionary-pron" class="screen" aria-labelledby="dictionary-pron-title" hidden>
+        <button type="button" id="dictionary-pron-back" class="back-button">← 単語編集</button>
+        <h2 id="dictionary-pron-title" tabindex="-1">発音編集</h2>
+        <p id="dictionary-pron-context" class="pronunciation-caption"></p>
+        <form id="dictionary-pron-form" class="field-stack">
+          <label for="dictionary-pron-text">Pronunciation</label>
+          <textarea id="dictionary-pron-text" rows="4" maxlength="2000"
+            autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+          <div class="pronunciation-assists" id="dictionary-pron-assists" role="group" aria-label="辞書発音入力アシスト">
+            <button type="button" data-dictionary-insert="'" aria-label="アクセント記号を挿入">'</button>
+            <button type="button" data-dictionary-insert="[" aria-label="上昇記号を挿入">[</button>
+            <button type="button" data-dictionary-insert="]" aria-label="下降記号を挿入">]</button>
+            <button type="button" data-dictionary-insert=" " aria-label="半角スペースを挿入">空白</button>
+            <button type="button" data-dictionary-backspace aria-label="バックスペース">⌫</button>
+          </div>
+          <div class="pronunciation-actions">
+            <button type="button" id="dictionary-preview">▶ Preview</button>
+            <button type="submit" class="primary-button">反映</button>
+          </div>
+          <div class="pronunciation-actions-secondary">
+            <button type="button" id="dictionary-pron-reset">リセット</button>
+            <button type="button" id="dictionary-pron-cancel">キャンセル</button>
           </div>
         </form>
       </section>
@@ -271,7 +382,7 @@
           <button type="button" id="close-session" class="danger-button">セッションを終了・破棄</button>
         </div>
         <div class="setting-section">
-          <p class="help-text" aria-disabled="true">発音編集・辞書・各種設定は今後追加されます。</p>
+          <p class="help-text" aria-disabled="true">一部の設定機能は今後追加されます。</p>
         </div>
       </section>
       <audio id="phone-player" controls preload="none" hidden aria-label="スマホで音声を再生"></audio>
