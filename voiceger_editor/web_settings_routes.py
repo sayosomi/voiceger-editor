@@ -32,6 +32,7 @@ class CommonSynthesisPayload(BaseModel):
     temperature: Number
     confirm_take_invalidation: StrictBool = False
 
+
 class ResetSettingsPayload(BaseModel):
     confirm_take_invalidation: StrictBool = False
 
