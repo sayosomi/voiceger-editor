@@ -493,9 +493,13 @@
         conflict: "この操作は現在実行できません。状態を確認してください。",
         recipe_changed: "Mac側のファイルが変更・削除されました。選び直してください。",
         dictionary_changed: "辞書が別の画面で変更されました。最新の一覧を取得してください。",
-        review_expired: "確認が古くなりました。最初から操作してください。"
+        review_expired: "確認が古くなりました。最初から操作してください。",
+        source_changed: "Macのファイルまたは辞書が変更されました。ファイルを選び直してください。",
+        confirmation_required: "取り込み対象を選び、確認してから実行してください。"
       };
       var invalidPronunciation = {
+        invalid_import: "辞書ファイルの形式・内容を確認してください。ZIP・辞書JSONのみ利用できます。",
+        invalid_filename: "MacのOutputフォルダ内のZIP・JSONファイルを選び直してください。",
         invalid_pronunciation: "発音形式が正しくありません。各アクセント句に ' または正しい [ ] を指定し、句の区切りには空白を使ってください。",
         unsupported_pronunciation: "選択した発音は編集できません。最新のBatchを取得してください。",
         invalid_english_pronunciation: "ARPAbetの音素・強勢数字（0/1/2）を確認してください。",
@@ -504,7 +508,7 @@
         invalid_section: "選択したセクションは操作できません。現在の内容を確認してください。",
         invalid_section_text: "文章を確認してください。空欄・改行は使用できません。",
         stale_section: "セクションの文章が更新されています。編集画面を開き直してください。",
-        invalid_filename: "ファイル名は .voiceger.json で終わる単一の名前を指定してください。",
+
         invalid_recipe: "Batchレシピが不正か、必要なVoicegerスタイルがありません。",
         missing_preparation: "すべてのCaptionの発音準備が必要です。除外したCaptionも確認してください。",
         invalid_dictionary: "辞書の入力内容を確認してください。発音・品詞・優先度・重複に注意してください。"
@@ -512,6 +516,7 @@
       var error = new Error(
         response.status === 401 ? "認証できません。トークンを確認してください。" :
         response.status === 503 ? (conflictCode === "dictionary_io" ? "Mac側の辞書を保存できませんでした。" :
+          conflictCode === "import_io" ? "Macの辞書ファイルを読み書きできませんでした。" :
           conflictCode === "recipe_io" ?
           "Mac側のOutputフォルダまたはファイルを操作できません。" :
           "Mac側の接続設定を確認してください。") :
