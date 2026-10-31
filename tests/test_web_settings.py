@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from voiceger_editor.settings import Settings
 from voiceger_editor.styles import VoicegerStyle
-from voiceger_editor.web import create_web_app
+from voiceger_editor.web import ASSETS, create_web_app
 from voiceger_editor.web_sessions import WebSessionOperations
 
 
@@ -139,6 +139,17 @@ class WebSynthesisSettingsTests(unittest.TestCase):
                 "top_p": top_p, "temperature": temperature,
             },
         )
+
+    def test_approved_two_column_ui_contract(self):
+        html = (ASSETS / "index.html").read_text(encoding="utf-8")
+        css = (ASSETS / "app.css").read_text(encoding="utf-8")
+        self.assertIn('class="item-voice-grid"', html)
+        self.assertIn('id="item-style"', html)
+        self.assertIn('id="item-speed"', html)
+        self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr))", css)
+        self.assertIn('id="edit-take-count"', html)
+        self.assertNotIn("このCaptionの生成条件", html)
+        self.assertIn('id="common-settings-form"', html)
 
     def test_authenticated_values_and_style_catalog(self):
         data = self.settings()
