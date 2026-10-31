@@ -2511,6 +2511,52 @@
       list.append(li);
     });
   }
+  async function updateDictionaryImportSelection(language, identity, selected) {
+    if (busy || !dictionaryImportReview) return;
+    setBusy(true);
+    try {
+      dictionaryImportReview = await request("POST", importPath() + "/selection", {
+        token: dictionaryImportReview.token, language: language,
+        identity: identity, selected: selected
+      });
+      dictionaryImportNotice("dictionary-import-review-message", "", false);
+    } catch (error) {
+      dictionaryImportNotice("dictionary-import-review-message", error.message, true);
+    } finally {
+      setBusy(false);
+      renderDictionaryImportReview();
+    }
+  }
+  async function updateDictionaryImportWordType(identity, wordType) {
+    if (busy || !dictionaryImportReview) return;
+    setBusy(true);
+    try {
+      dictionaryImportReview = await request("POST", importPath() + "/word-type", {
+        token: dictionaryImportReview.token, identity: identity, word_type: wordType
+      });
+      dictionaryImportNotice("dictionary-import-review-message", "", false);
+    } catch (error) {
+      dictionaryImportNotice("dictionary-import-review-message", error.message, true);
+    } finally {
+      setBusy(false);
+      renderDictionaryImportReview();
+    }
+  }
+  async function clearDictionaryImportSelection() {
+    if (busy || !dictionaryImportReview) return;
+    setBusy(true);
+    try {
+      dictionaryImportReview = await request("POST", importPath() + "/clear", {
+        token: dictionaryImportReview.token
+      });
+      dictionaryImportNotice("dictionary-import-review-message", "", false);
+    } catch (error) {
+      dictionaryImportNotice("dictionary-import-review-message", error.message, true);
+    } finally {
+      setBusy(false);
+      renderDictionaryImportReview();
+    }
+  }
   function dictionaryPronunciationDirty() {
     return currentView === "dictionary-pron" && dictPronOpening !== null &&
       $("dictionary-pron-text").value !== dictPronOpening;
