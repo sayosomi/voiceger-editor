@@ -145,6 +145,15 @@
           <p id="pronunciation-value" class="pronunciation-value" hidden></p>
           <div id="pronunciation-sections" class="pronunciation-sections" hidden></div>
         </section>
+        <div class="item-voice-grid" aria-label="個別の音声設定">
+          <label for="item-style">Style
+            <select id="item-style" aria-label="このCaptionのStyle"></select>
+          </label>
+          <label for="item-speed">Speed
+            <input id="item-speed" type="number" inputmode="decimal" min="0.01" step="0.01" aria-label="このCaptionのSpeed">
+          </label>
+        </div>
+        <p id="item-voice-error" class="field-error" role="alert" hidden></p>
         <div class="item-quick-actions">
           <button type="button" id="preview-audio" hidden>▶ Preview</button>
           <button type="button" id="edit-take-count" class="item-link">Take数</button>
@@ -413,6 +422,32 @@
           
           <h2 id="session-title" tabindex="-1">設定</h2>
         </div>
+        <form id="common-settings-form" class="setting-section">
+          <h3>音声生成</h3>
+          <div class="setting-two-columns">
+            <label for="common-style">Style
+              <select id="common-style" required></select>
+            </label>
+            <label for="common-speed">Speed
+              <input id="common-speed" type="number" inputmode="decimal" min="0.01" step="0.01" required>
+            </label>
+            <label for="common-top-k">Top K
+              <input id="common-top-k" type="number" min="1" max="100" step="1" required>
+            </label>
+            <label for="common-top-p">Top P
+              <input id="common-top-p" type="number" inputmode="decimal" min="0" max="1" step="0.01" required>
+            </label>
+            <label for="common-temperature">Temperature
+              <input id="common-temperature" type="number" inputmode="decimal" min="0" max="1" step="0.01" required>
+            </label>
+          </div>
+          <p id="common-settings-error" class="field-error" role="alert" hidden></p>
+          <div class="button-row">
+            <button type="submit" class="primary-button">保存</button>
+            <button type="button" id="reset-sampling">サンプリング初期値</button>
+            <button type="button" id="reset-common-draft">元に戻す</button>
+          </div>
+        </form>
         <div class="setting-section">
           <p class="field-title">Webサーバー</p>
           <p id="connection-status" class="connection-status" role="status" aria-live="polite">接続状態を確認中…</p>
