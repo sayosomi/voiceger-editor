@@ -48,6 +48,7 @@ function scenario({saved=null,mode="default",value="4",caption="Caption",draft="
   const doc={createElement:node,querySelectorAll(){return [{value:"ja",checked:true}];},
     querySelector(){return {value:"ja",checked:true};}};
   const setup=[
+    'let commonSettingsData=null;',
     'let busy=false,batch={items:[item],default_take_count:4},selectedId="item",',
     'currentView="item",takeCountEditMode=editing,captionEditMode=true,',
     'sectionOpening=null,sectionTarget=null,sectionItemId="",sectionStale=false,',
@@ -142,6 +143,7 @@ function scenario({saved=null,mode="default",value="4",caption="Caption",draft="
     confirm(s){prompts.push(s);return decisions.shift();},
     addEventListener(name,fn){this.handlers[name]=fn;}};
   const setup=[
+    'let commonSettingsData=null;',
     'let dictionaryHistoryDestination=null,settingsHistoryActive=false;',
     'let sectionHistoryActive=false,pronunciationHistoryActive=false,',
     'busy=false,batch={items:[item]},sessionId="S",selectedId="item",',
