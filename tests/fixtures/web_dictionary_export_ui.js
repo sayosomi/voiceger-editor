@@ -9,7 +9,7 @@ const end = source.indexOf("  function dictionaryPronunciationDirty()", start);
 assert(start !== -1 && end > start, "production export handler was not found");
 const production = source.slice(start, end);
 
-async function scenario(kind, count, confirmed, fails) {
+async function scenario(kind, count, confirmed, fails, view = "dictionary-management") {
   const calls = [];
   const notice = {
     hidden: true, textContent: "", dataset: {},
@@ -18,7 +18,7 @@ async function scenario(kind, count, confirmed, fails) {
     focus() { this.focused = true; },
   };
   const state = {
-    busy: false, currentView: "dictionary", sessionId: "session",
+    busy: false, currentView: view, sessionId: "session",
     dictLanguage: "ja", dictSort: "surface_asc", dictQuery: "",
     dictType: "ALL", dictData: null, encodeURIComponent,
     $: (id) => {
@@ -59,6 +59,9 @@ async function scenario(kind, count, confirmed, fails) {
 }
 
 (async () => {
+  const wrongScreen = await scenario("native", 0, false, false, "dictionary");
+  assert.strictEqual(wrongScreen.calls.length, 0,
+    "Export must be available only from the management screen");
   const native = await scenario("native", 0, false, false);
   assert(native.calls.some(x => x.action === "request" &&
     x.path.endsWith("/export/commit") && x.payload.confirmed_pitch_loss === false));
