@@ -36,6 +36,8 @@ function harness() {
     'function guardDictionaryPronunciationDraft(){return isAllowed();}',
     'function showView(view){currentView=view;views.push(view);return true;}',
     'function dictionaryExportNotice(message){notices.push(message);}',
+    'function dictionaryImportNotice(){}',
+    'async function loadDictionaryImportFiles(){return {};}',
     'function feedback(message){notices.push(message);}',
     cut('  window.addEventListener("popstate"', '  window.addEventListener("beforeunload"'),
     cut('  function dictionaryPushHistory(view) {', '  function openDictionaryEntry(row) {'),
