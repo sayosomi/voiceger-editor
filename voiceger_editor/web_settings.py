@@ -215,3 +215,43 @@ class WebSettingsMixin:
                 if changed_names or owned_session.identifier in affected_sessions:
                     owned_session.revision += 1
             return self._settings_view(session)
+
+    def reset_generation_settings(
+        self, identifier: str, revision: int, settings_revision: int, *,
+        confirm_take_invalidation: bool = False,
+    ) -> dict[str, Any]:
+        """Reset the currently exposed Web generation values, not output paths.
+
+        Slice 10b extends this explicit reset surface to output formats and
+        TXT/LAB switches. Never replace the entire persisted Settings object
+        with a fresh default: output_dir/filename_template are user-owned.
+        """
+        from .web_sessions import WebSessionConflict
+
+        with self._lock:
+            session = self._settings_guard(identifier, revision)
+            if self._settings_revision != settings_revision:
+                raise WebSessionConflict(
+                    "Common settings were changed in another tab",
+                    code="settings_revision_conflict",
+                )
+            defaults = Settings()
+            # The existing reconciliation routine performs the concurrency,
+            # Take invalidation, and persisted-settings transaction checks.
+            # Keep the Web Batch's take count separate: it is session-owned.
+            self.save_common_synthesis(
+                identifier, revision, settings_revision,
+                style_id=defaults.style_id,
+                speed=defaults.speed,
+                top_k=defaults.top_k,
+                top_p=defaults.top_p,
+                temperature=defaults.temperature,
+                confirm_take_invalidation=confirm_take_invalidation,
+            )
+            if session.batch.default_take_count != defaults.take_count:
+                session.batch.default_take_count = defaults.take_count
+                session.revision += 1
+            return {
+                "settings": self._settings_view(session),
+                "batch": self._batch_snapshot(session),
+            }
