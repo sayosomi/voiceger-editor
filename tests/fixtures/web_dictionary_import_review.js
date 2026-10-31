@@ -95,7 +95,7 @@ app.render();
 const expanded = parts($("dictionary-import-entries").children[1]);
 assert.equal(expanded.detail.open, true);
 const extra=expanded.detail.children[1];
-assert.equal(extra.children[0].textContent, "品詞");
+assert.equal(extra.children[0]._text, "品詞");
 assert.equal(extra.children[1].textContent, "優先度：5 → 3");
 const picker=extra.children[0].children[0];
 picker.value="PROPER_NOUN";
