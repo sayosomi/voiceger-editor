@@ -212,6 +212,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   min-width: 0; width: 100%; min-height: 44px; padding: 9px 10px; font: inherit;
   background: #fff; border: 1px solid #cbdcd2; border-radius: 10px; color: #263b33;
 }
+.item-speed-value { display: block; position: relative; min-width: 0; }
+.item-speed-value > input { padding-right: 26px; }
+.item-speed-value > span { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #627a71; pointer-events: none; }
 .field-error { color: #9b3c30; font-size: 12px; line-height: 1.5; margin: 0; }
 .item-quick-actions { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 14px 0; }
 .item-quick-actions button { min-height: 44px; }
