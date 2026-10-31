@@ -405,6 +405,10 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
         self.config = custom
         self.service._batch_settings = custom
         item = self.add()
+        item.take_count_override = 9
+        saved_output = custom.output_dir / "accepted.wav"
+        saved_output.parent.mkdir(parents=True)
+        saved_output.write_bytes(b"accepted-audio-placeholder")
         self.assertEqual(self.service.set_default_take_count(
             self.sid, self.batch()["revision"], 7
         )["default_take_count"], 7)
@@ -434,6 +438,8 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
         self.assertEqual(self.batch()["default_take_count"], 4)
         self.assertEqual(item.session.settings.style_id, 1)
         self.assertEqual(item.session.settings.speed, 1.4)
+        self.assertEqual(item.take_count_override, 9)
+        self.assertEqual(saved_output.read_bytes(), b"accepted-audio-placeholder")
         self.assertEqual(item.session.candidates, [])
         self.assertEqual(item.accepted_take_numbers, frozenset())
         current = self.service._batch_settings
