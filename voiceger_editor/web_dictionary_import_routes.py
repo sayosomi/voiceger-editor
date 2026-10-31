@@ -74,6 +74,10 @@ def build_web_dictionary_import_router(service: WebSessionOperations) -> APIRout
             session_id, payload.token, payload.language, payload.identity, payload.selected,
         ))
 
+    @router.post("/clear", dependencies=[Depends(require_web_mutation)])
+    def clear(session_id: str, payload: ImportToken):
+        return _call(lambda: service.clear_dictionary_import_selection(session_id, payload.token))
+
     @router.post("/word-type", dependencies=[Depends(require_web_mutation)])
     def word_type(session_id: str, payload: ImportWordType):
         return _call(lambda: service.set_dictionary_import_word_type(
