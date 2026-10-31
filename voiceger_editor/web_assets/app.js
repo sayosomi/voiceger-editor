@@ -252,9 +252,11 @@
     if (name === "item") renderItem(false);
     if (name === "session" && batch) {
       $("default-takes").value = String(batch.default_take_count);
-      void loadWebSettings().catch(function (error) {
-        $("common-settings-error").textContent = error.message;
-        $("common-settings-error").hidden = false;
+      $("common-settings-form").hidden = true;
+      void loadWebSettings().then(function () {
+        if (currentView === "session") $("common-settings-form").hidden = false;
+      }).catch(function (error) {
+        if (currentView === "session") feedback(error.message);
       });
     }
     window.scrollTo(0, 0);
