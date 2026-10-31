@@ -63,7 +63,7 @@ const app = new Function("document", "$", "data", program)(document, $, {
 function parts(li) {
   const row = li.children[0];
   return {check:row.children[0], detail:row.children[1],
-    summary:row.children[1].children[0]};
+    summary:row.children[1].children[0], status:row.children[2]};
 }
 app.render();
 assert.equal($("dictionary-import-summary").textContent, "新規 1件 · 変更 2件 · 一致 3件");
@@ -73,13 +73,18 @@ const entries = $("dictionary-import-entries").children;
 assert.equal(entries.length, 3);
 const fresh=parts(entries[0]), changed=parts(entries[1]), english=parts(entries[2]);
 assert.equal(fresh.check.checked, true);
-assert.equal(fresh.summary.textContent, "太陽タイヨー新規");
+assert.equal(fresh.summary.textContent, "太陽タイヨー");
+assert.equal(fresh.status.textContent, "新規");
 assert.equal(changed.check.checked, false);
-assert.equal(changed.summary.textContent, "雨ア'メ→アメ変更");
-assert.equal(changed.summary.children[1].tagName, "span");
+assert.equal(changed.summary.textContent, "雨ア'メ→アメ");
+assert.equal(changed.status.textContent, "変更");
+assert.equal(changed.status.tagName, "span");
+changed.status.emit("click");
+assert.equal(changed.detail.open, false, "Status is not an interactive trigger");
 assert.equal(changed.detail.tagName, "details");
 assert.equal(changed.detail.open, false);
-assert.equal(english.summary.textContent, "sweetS W IY1 T→S W EH1 T変更");
+assert.equal(english.summary.textContent, "sweetS W IY1 T→S W EH1 T");
+assert.equal(english.status.textContent, "変更");
 assert.equal(english.detail.tagName, "div");
 
 changed.check.checked = true;
