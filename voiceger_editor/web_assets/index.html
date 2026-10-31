@@ -421,9 +421,9 @@
 
       <section id="view-session" class="screen" aria-labelledby="session-title" hidden>
         <button type="button" id="session-back" class="back-button">← 戻る</button>
-        <div class="screen-heading">
-          
+        <div class="screen-heading settings-screen-heading">
           <h2 id="session-title" tabindex="-1">設定</h2>
+          <button type="button" id="reset-settings">設定値を初期化</button>
         </div>
         <form id="common-settings-form" class="setting-section" novalidate>
           <div class="synthesis-settings-group">
@@ -438,10 +438,7 @@
             </div>
           </div>
           <div class="sampling-settings-group">
-            <div class="sampling-settings-heading">
-              <h3>サンプリング</h3>
-              <button type="button" id="reset-sampling">リセット</button>
-            </div>
+            <h3>サンプリング</h3>
             <div class="setting-two-columns">
               <label for="common-top-k">Top K
                 <input id="common-top-k" type="number" min="1" max="100" step="1" required>
