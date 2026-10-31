@@ -382,6 +382,124 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
         self.assertEqual(result.returncode, 0, result.stdout + "\n" + result.stderr)
         self.assertIn("WEB_SETTINGS_AUTOSAVE_PASS", result.stdout)
 
+    def reset(self, *, confirmed=False, revision=None, settings_revision=None):
+        data = self.settings()
+        return self.client.post(
+            self.base + "/settings/reset?expected_revision=" +
+            str(data["revision"] if revision is None else revision) +
+            "&expected_settings_revision=" +
+            str(data["settings_revision"] if settings_revision is None
+                else settings_revision),
+            headers=self.write_headers,
+            json={"confirm_take_invalidation": confirmed},
+        )
+
+    def test_reset_generation_defaults_preserves_user_output_and_item_voice(self):
+        custom = Settings(
+            output_dir=Path(self.temp.name) / "my-output",
+            filename_template="{YYYYMMDDHHmm}_{caption}",
+            output_format="mp3", save_text=True, save_lab=True,
+            style_id=1, speed=1.4, top_k=31, top_p=0.8,
+            temperature=0.6, take_count=7,
+        )
+        self.config = custom
+        self.service._batch_settings = custom
+        item = self.add()
+        self.assertEqual(self.service.set_default_take_count(
+            self.sid, self.batch()["revision"], 7
+        )["default_take_count"], 7)
+        item.session.candidates.append(
+            SimpleNamespace(number=1, frame_count=16000,
+                            sampling_rate=16000, style_name="Sweet")
+        )
+        item.mark_accepted(1)
+        before = self.settings()
+        unconfirmed = self.reset()
+        self.assertEqual(unconfirmed.status_code, 409, unconfirmed.text)
+        self.assertEqual(unconfirmed.json()["detail"]["code"],
+                         "take_invalidation_confirmation_required")
+        self.assertEqual(self.batch()["default_take_count"], 7)
+        self.assertEqual(self.settings()["settings_revision"],
+                         before["settings_revision"])
+        self.save_mock.assert_not_called()
+
+        result = self.reset(confirmed=True)
+        self.assertEqual(result.status_code, 200, result.text)
+        payload = result.json()
+        self.assertEqual(payload["settings"]["values"], {
+            "style_id": 3, "speed": 1.0, "top_k": 20,
+            "top_p": 1.0, "temperature": 1.0,
+        })
+        self.assertEqual(payload["batch"]["default_take_count"], 4)
+        self.assertEqual(self.batch()["default_take_count"], 4)
+        self.assertEqual(item.session.settings.style_id, 1)
+        self.assertEqual(item.session.settings.speed, 1.4)
+        self.assertEqual(item.session.candidates, [])
+        self.assertEqual(item.accepted_take_numbers, frozenset())
+        current = self.service._batch_settings
+        self.assertEqual(current.output_dir, custom.output_dir)
+        self.assertEqual(current.filename_template, custom.filename_template)
+        self.assertEqual(current.output_format, "mp3")
+        self.assertTrue(current.save_text)
+        self.assertTrue(current.save_lab)
+        self.assertEqual(self.save_mock.call_count, 1)
+
+    def test_reset_rolls_back_on_save_failure(self):
+        self.service._batch_settings = Settings(
+            output_dir=Path(self.temp.name), speed=1.35,
+        )
+        self.assertEqual(self.service.set_default_take_count(
+            self.sid, self.batch()["revision"], 7
+        )["default_take_count"], 7)
+        self.save_mock.side_effect = PermissionError("private Mac path")
+        before = self.settings()
+        response = self.reset(confirmed=True)
+        self.assertEqual(response.status_code, 503, response.text)
+        self.assertEqual(self.batch()["default_take_count"], 7)
+        self.assertEqual(self.settings()["settings_revision"],
+                         before["settings_revision"])
+        self.assertEqual(self.service._batch_settings.speed, 1.35)
+        self.assertNotIn("private Mac path", response.text)
+
+    def test_reset_take_count_only_does_not_modify_shared_settings(self):
+        self.assertEqual(self.service.set_default_take_count(
+            self.sid, self.batch()["revision"], 8
+        )["default_take_count"], 8)
+        before = self.settings()
+        response = self.reset(confirmed=True)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["batch"]["default_take_count"], 4)
+        self.assertEqual(self.settings()["settings_revision"],
+                         before["settings_revision"])
+        self.save_mock.assert_not_called()
+
+    def test_reset_stale_revision_and_missing_csrf_are_rejected(self):
+        previous = self.settings()
+        self.assertEqual(self.common(speed=1.2).status_code, 200)
+        stale = self.reset(
+            revision=self.batch()["revision"],
+            settings_revision=previous["settings_revision"],
+            confirmed=True,
+        )
+        self.assertEqual(stale.status_code, 409, stale.text)
+        self.assertEqual(stale.json()["detail"]["code"], "settings_revision_conflict")
+        unauthorized = self.client.post(
+            self.base + "/settings/reset?expected_revision=" +
+            str(self.batch()["revision"]) + "&expected_settings_revision=" +
+            str(self.settings()["settings_revision"]),
+            headers=self.read_headers,
+            json={"confirm_take_invalidation": True},
+        )
+        self.assertEqual(unauthorized.status_code, 403)
+        wrong_type = self.client.post(
+            self.base + "/settings/reset?expected_revision=" +
+            str(self.batch()["revision"]) + "&expected_settings_revision=" +
+            str(self.settings()["settings_revision"]),
+            headers=self.write_headers,
+            json={"confirm_take_invalidation": "yes"},
+        )
+        self.assertEqual(wrong_type.status_code, 422)
+
     def test_authenticated_values_and_style_catalog(self):
         data = self.settings()
         self.assertEqual(data["values"]["style_id"], 3)
