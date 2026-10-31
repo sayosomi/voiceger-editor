@@ -255,7 +255,7 @@ const runtime={
   batch:{revision:0,default_take_count:4},
   confirm:false,shouldWarn:false,failSave:false,busy:false
 };
-const prefix=\`
+const prefix=`
 var busy=false,batch=runtime.batch,commonSettingsData=runtime.data,
   currentView="session",window={confirm:()=>runtime.confirm};
 function setBusy(v){busy=v;runtime.busy=v;}
@@ -309,7 +309,7 @@ async function request(method,path,payload){
   runtime.batch.revision++;
   return next;
 }
-\`;
+`;
 const make=new Function("$","runtime","requests","listeners",
   prefix+js.slice(start,end)+"return {autoSaveCommon,autoSaveDefaultTakes};");
 const controls=make(id=>nodes[id],runtime,requests,listeners);
@@ -357,7 +357,7 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
             [node, "-e", source, str(ASSETS / "app.js")],
             capture_output=True, text=True, timeout=20, check=False,
         )
-        self.assertEqual(result.returncode, 0, result.stdout + "\\n" + result.stderr)
+        self.assertEqual(result.returncode, 0, result.stdout + "\n" + result.stderr)
         self.assertIn("WEB_SETTINGS_AUTOSAVE_PASS", result.stdout)
 
     def test_authenticated_values_and_style_catalog(self):
