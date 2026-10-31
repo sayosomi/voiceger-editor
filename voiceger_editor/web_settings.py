@@ -18,6 +18,10 @@ class WebSettingsValidation(ValueError):
     """Invalid or unavailable setting supplied by the Web client."""
 
 
+class WebSettingsUnavailable(RuntimeError):
+    """Settings could not be saved on the Mac."""
+
+
 _SHARED_FIELDS = ("style_id", "speed", "top_k", "top_p", "temperature")
 
 
@@ -174,7 +178,7 @@ class WebSettingsMixin:
                 try:
                     save_settings(updated)
                 except (OSError, SettingsError) as exc:
-                    raise WebSettingsValidation(
+                    raise WebSettingsUnavailable(
                         "Could not save settings on the Mac"
                     ) from exc
 
