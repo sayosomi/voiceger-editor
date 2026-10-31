@@ -225,6 +225,141 @@ console.log("WEB_SETTINGS_BROWSER_GUARDS_PASS");
         self.assertEqual(result.returncode, 0, result.stdout + "\n" + result.stderr)
         self.assertIn("WEB_SETTINGS_BROWSER_GUARDS_PASS", result.stdout)
 
+    def test_browser_auto_save_confirmation_and_reset(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node required for browser auto-save verification")
+        source = r"""
+const fs=require("fs"),assert=require("assert").strict;
+const js=fs.readFileSync(process.argv[1],"utf8");
+const start=js.indexOf("  function checkedCommonValues() {");
+const end=js.indexOf('  $("refresh-batch").addEventListener(',start);
+assert(start>=0 && end>start,"auto-save source not found");
+const listeners={},nodes={},requests=[];
+for(const id of ["common-settings-form","common-style","common-speed",
+  "common-top-k","common-top-p","common-temperature","reset-sampling",
+  "common-settings-error","common-settings-status","default-takes",
+  "default-takes-form","default-takes-error","default-takes-status"]){
+  nodes[id]={value:"",hidden:true,textContent:"",
+    addEventListener(type,callback){listeners[id+":"+type]=callback;}};
+}
+Object.assign(nodes["common-style"],{value:"3"});
+Object.assign(nodes["common-speed"],{value:"1.00"});
+Object.assign(nodes["common-top-k"],{value:"20"});
+Object.assign(nodes["common-top-p"],{value:"1.00"});
+Object.assign(nodes["common-temperature"],{value:"1.00"});
+Object.assign(nodes["default-takes"],{value:"4"});
+const runtime={
+  data:{styles:[{id:3},{id:1}],settings_revision:0,
+    values:{style_id:3,speed:1,top_k:20,top_p:1,temperature:1}},
+  batch:{revision:0,default_take_count:4},
+  confirm:false,shouldWarn:false,failSave:false,busy:false
+};
+const prefix=\`
+var busy=false,batch=runtime.batch,commonSettingsData=runtime.data,
+  currentView="session",window={confirm:()=>runtime.confirm};
+function setBusy(v){busy=v;runtime.busy=v;}
+function commonValues(){return {
+  style_id:Number($("common-style").value),
+  speed:Number($("common-speed").value),
+  top_k:Number($("common-top-k").value),
+  top_p:Number($("common-top-p").value),
+  temperature:Number($("common-temperature").value)
+};}
+function commonDirty(){const vals=commonValues();return Object.keys(vals).some(
+  key=>vals[key]!==commonSettingsData.values[key]);}
+function validSpeed(raw){const value=Number(raw);
+  if(!raw.trim()||!Number.isFinite(value)||value<=0)throw Error("invalid speed");
+  return value;}
+function validSampling(values){if(!Number.isInteger(values.top_k)||
+  values.top_k<1||values.top_k>100||
+  !Number.isFinite(values.top_p)||values.top_p<0||values.top_p>1||
+  !Number.isFinite(values.temperature)||values.temperature<0||
+  values.temperature>1)throw Error("invalid sampling");return values;}
+function validCount(raw){const n=Number(raw);
+  if(raw===""||!Number.isInteger(n)||n<1||n>100)throw Error("invalid count");
+  return n;}
+function settingsPath(){return "/settings";}
+function batchPath(){return "/batch";}
+function renderList(){}
+function refresh(){return Promise.resolve();}
+function feedback(){}
+function renderCommonSettings(result){
+  Object.assign(commonSettingsData,result);
+  for(const [key,value] of Object.entries(commonSettingsData.values))
+    $(key==="style_id"?"common-style":"common-"+key.replace("_","-")).value=String(value);
+  $("common-settings-error").hidden=true;
+}
+async function request(method,path,payload){
+  requests.push({method,path,payload});
+  if(runtime.failSave)throw Error("disk failure");
+  if(runtime.shouldWarn&&!payload.confirm_take_invalidation){
+    const error=Error("confirmation required");
+    error.conflictCode="take_invalidation_confirmation_required";
+    throw error;
+  }
+  if(path.startsWith("/batch")){
+    const next={revision:batch.revision+1,default_take_count:payload.count};
+    Object.assign(runtime.batch,next);return next;
+  }
+  const next={...commonSettingsData,settings_revision:commonSettingsData.settings_revision+1,
+    values:{style_id:payload.style_id,speed:payload.speed,top_k:payload.top_k,
+    top_p:payload.top_p,temperature:payload.temperature}};
+  Object.assign(runtime.data,next);
+  runtime.batch.revision++;
+  return next;
+}
+\`;
+const make=new Function("$","runtime","requests","listeners",
+  prefix+js.slice(start,end)+"return {autoSaveCommon,autoSaveDefaultTakes};");
+const controls=make(id=>nodes[id],runtime,requests,listeners);
+(async()=>{
+  nodes["common-speed"].value="1.23";
+  await controls.autoSaveCommon();
+  assert.equal(requests.length,1);
+  assert.equal(requests[0].payload.speed,1.23);
+  assert.equal(nodes["common-settings-status"].textContent,"保存済み");
+  runtime.shouldWarn=true;runtime.confirm=false;
+  nodes["common-top-k"].value="21";
+  await controls.autoSaveCommon();
+  assert.equal(requests.length,2);
+  assert.equal(runtime.data.values.top_k,20,"cancel does not apply");
+  assert.equal(nodes["common-top-k"].value,"20","cancel restores field");
+  runtime.confirm=true;
+  nodes["common-top-k"].value="22";
+  await controls.autoSaveCommon();
+  assert.equal(requests.length,4);
+  assert.equal(requests[3].payload.confirm_take_invalidation,true);
+  assert.equal(runtime.data.values.top_k,22);
+  runtime.shouldWarn=false;
+  nodes["common-top-p"].value="0.5";
+  runtime.failSave=true;
+  await controls.autoSaveCommon();
+  assert.equal(runtime.data.values.top_p,1);
+  assert.equal(nodes["common-top-p"].value,"0.5","failed save retains input");
+  assert.equal(nodes["common-settings-status"].textContent,"保存失敗");
+  runtime.failSave=false;
+  nodes["default-takes"].value="5";
+  await controls.autoSaveDefaultTakes();
+  assert.equal(requests.at(-1).payload.count,5);
+  assert.equal(nodes["default-takes-status"].textContent,"保存済み");
+  runtime.shouldWarn=false;
+  listeners["reset-sampling:click"]();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(runtime.data.values.top_k,20);
+  assert.equal(runtime.data.values.top_p,1);
+  assert.equal(runtime.data.values.temperature,1);
+  assert.equal(runtime.data.values.speed,1.23,"sampling reset must preserve Speed");
+  console.log("WEB_SETTINGS_AUTOSAVE_PASS");
+})().catch(error=>{console.error(error);process.exitCode=1;});
+"""
+        result = subprocess.run(
+            [node, "-e", source, str(ASSETS / "app.js")],
+            capture_output=True, text=True, timeout=20, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + "\\n" + result.stderr)
+        self.assertIn("WEB_SETTINGS_AUTOSAVE_PASS", result.stdout)
+
     def test_authenticated_values_and_style_catalog(self):
         data = self.settings()
         self.assertEqual(data["values"]["style_id"], 3)
