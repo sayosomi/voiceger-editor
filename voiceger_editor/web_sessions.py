@@ -20,6 +20,7 @@ from .web_batch_generation import WebBatchGenerationMixin
 from .web_takes import WebTakeMixin
 from .web_dictionary import WebDictionaryMixin
 from .web_dictionary_export import WebDictionaryExportMixin
+from .web_dictionary_import import WebDictionaryImportMixin
 from .web_pronunciation import WebPronunciationMixin
 from .web_english import WebEnglishMixin
 from .web_sections import WebSectionMixin
@@ -91,6 +92,7 @@ class _WebSession:
     english_groupings: dict[tuple[str, int], Any] = field(default_factory=dict)
     pending_recipe: Any = None
     pending_dictionary_export: Any = None
+    pending_dictionary_import: Any = None
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -102,7 +104,7 @@ class _WebSession:
         }
 
 
-class WebSessionOperations(WebDictionaryExportMixin, WebDictionaryMixin, WebBatchMixin, WebRecipeMixin, WebBatchGenerationMixin, WebEnglishMixin, WebSectionMixin, WebPronunciationMixin, WebTakeMixin):
+class WebSessionOperations(WebDictionaryImportMixin, WebDictionaryExportMixin, WebDictionaryMixin, WebBatchMixin, WebRecipeMixin, WebBatchGenerationMixin, WebEnglishMixin, WebSectionMixin, WebPronunciationMixin, WebTakeMixin):
     """Thread-safe, in-process session registry with one worker across sessions."""
 
     def __init__(
@@ -144,6 +146,7 @@ class WebSessionOperations(WebDictionaryExportMixin, WebDictionaryMixin, WebBatc
     @staticmethod
     def _dispose(session: _WebSession) -> None:
         session.pending_dictionary_export = None
+        session.pending_dictionary_import = None
         if session.pending_recipe is not None:
             session.pending_recipe.dispose()
             session.pending_recipe = None
