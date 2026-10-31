@@ -101,4 +101,24 @@ function harness() {
   h.allow(true);h.back();h.flush();
   assert.equal(h.state().currentView,"dictionary");
 }
+
+{
+  const h = harness();
+  h.setView("dictionary"); h.push("dictionary");
+  h.setView("dictionary-management"); h.push("dictionary-management");
+  h.setReview({token:"review"});
+  h.setView("dictionary-import-review"); h.push("dictionary-import-review");
+  h.window.history.back(); h.flush();
+  assert.equal(h.state().currentView,"dictionary-management");
+  h.window.history.forward(); h.flush();
+  assert.equal(h.state().currentView,"dictionary-import-review");
+  h.window.history.back(); h.flush();
+  h.setReview(null);
+  h.window.history.forward(); h.flush();
+  assert.equal(h.state().currentView,"dictionary-management");
+  h.window.history.back(); h.flush();
+  assert.equal(h.state().currentView,"dictionary-management");
+  h.window.history.back(); h.flush();
+  assert.equal(h.state().currentView,"dictionary");
+}
 console.log("DICT_MANAGEMENT_NAV_PASS");
