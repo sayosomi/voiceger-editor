@@ -124,7 +124,7 @@ class WebSynthesisSettingsTests(unittest.TestCase):
         )
 
     def common(self, *, style_id=3, speed=1.0, top_k=20,
-               top_p=1.0, temperature=1.0,
+               top_p=1.0, temperature=1.0, confirmed=False,
                revision=None, settings_revision=None):
         data = self.settings()
         rev = data["revision"] if revision is None else revision
@@ -139,6 +139,7 @@ class WebSynthesisSettingsTests(unittest.TestCase):
             json={
                 "style_id": style_id, "speed": speed, "top_k": top_k,
                 "top_p": top_p, "temperature": temperature,
+                "confirm_take_invalidation": confirmed,
             },
         )
 
@@ -154,6 +155,18 @@ class WebSynthesisSettingsTests(unittest.TestCase):
         self.assertIn('id="common-settings-form" class="setting-section" novalidate', html)
         self.assertIn('id="item-speed" type="number" inputmode="decimal" min="0" step="0.01"', html)
         self.assertIn('id="common-speed" type="number" inputmode="decimal" min="0" step="0.01"', html)
+        self.assertIn('class="sampling-settings-group"', html)
+        self.assertIn('class="sampling-settings-heading"', html)
+        self.assertIn('id="reset-sampling">リセット</button>', html)
+        self.assertIn('id="common-settings-status"', html)
+        self.assertIn('id="default-takes-status"', html)
+        self.assertNotIn('id="reset-common-draft"', html)
+        self.assertNotIn('<button type="submit">保存</button>\n        </form>\n        <div class="setting-section">\n          <h3>セッション', html)
+        self.assertIn('border-top: 1px solid #cbdcd2', css)
+        self.assertLess(html.index('id="common-speed"'),
+                        html.index('class="sampling-settings-heading"'))
+        self.assertLess(html.index('class="sampling-settings-heading"'),
+                        html.index('id="common-top-k"'))
 
     def test_actual_browser_settings_draft_guards(self):
         node = shutil.which("node")
@@ -281,7 +294,14 @@ console.log("WEB_SETTINGS_BROWSER_GUARDS_PASS");
                                 sampling_rate=16000, style_name="Neutral")
             )
             entry.mark_accepted(1)
-        result = self.common(top_k=30)
+        refused = self.common(top_k=30)
+        self.assertEqual(refused.status_code, 409, refused.text)
+        self.assertEqual(
+            refused.json()["detail"]["code"], "take_invalidation_confirmation_required"
+        )
+        self.assertEqual(len(item.session.candidates), 1)
+        self.save_mock.assert_not_called()
+        result = self.common(top_k=30, confirmed=True)
         self.assertEqual(result.status_code, 200, result.text)
         self.assertEqual(item.session.settings.style_id, 1)
         self.assertEqual(item.session.settings.speed, 1.25)
@@ -294,6 +314,38 @@ console.log("WEB_SETTINGS_BROWSER_GUARDS_PASS");
         self.assertEqual(self.common(style_id=1, top_k=30).status_code, 200)
         self.assertEqual(other.session.settings.style_id, 1)
 
+    def test_confirmation_covers_other_web_sessions(self):
+        other_sid = self.client.post(
+            "/api/web/sessions", headers=self.write_headers
+        ).json()["id"]
+        self.service.add_captions(other_sid, 0, "別セッション")
+        other = self.service._sessions[other_sid].batch.items[0]
+        other.session.candidates.append(
+            SimpleNamespace(number=1, frame_count=16000,
+                            sampling_rate=16000, style_name="Neutral")
+        )
+        revision = self.settings()["settings_revision"]
+        response = self.common(top_p=0.8)
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(len(other.session.candidates), 1)
+        self.assertEqual(self.settings()["settings_revision"], revision)
+        self.save_mock.assert_not_called()
+        confirmed = self.common(top_p=0.8, confirmed=True)
+        self.assertEqual(confirmed.status_code, 200, confirmed.text)
+        self.assertEqual(other.session.candidates, [])
+
+    def test_nonboolean_confirmation_is_rejected(self):
+        response = self.client.patch(
+            self.base + "/settings?expected_revision=" +
+            str(self.batch()["revision"]) + "&expected_settings_revision=0",
+            headers=self.write_headers,
+            json={"style_id": 3, "speed": 1, "top_k": 20,
+                  "top_p": 1, "temperature": 1,
+                  "confirm_take_invalidation": "yes"},
+        )
+        self.assertEqual(response.status_code, 422)
+        self.save_mock.assert_not_called()
+
     def test_failed_save_and_busy_worker_do_not_mutate(self):
         item = self.add()
         item.session.candidates.append(
@@ -301,7 +353,7 @@ console.log("WEB_SETTINGS_BROWSER_GUARDS_PASS");
                             sampling_rate=16000, style_name="Neutral")
         )
         self.save_mock.side_effect = PermissionError("private Mac path")
-        response = self.common(top_k=30)
+        response = self.common(top_k=30, confirmed=True)
         self.assertEqual(response.status_code, 503, response.text)
         self.assertNotIn("private Mac path", response.text)
         self.assertEqual(self.service._batch_settings.top_k, 20)
