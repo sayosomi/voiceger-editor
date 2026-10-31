@@ -309,6 +309,15 @@
         <button type="button" id="dictionary-management-back" class="back-button">← 辞書</button>
         <h2 id="dictionary-management-title" tabindex="-1">辞書管理</h2>
         <div class="dictionary-management">
+          <h3>インポート</h3>
+          <p class="help-text">MacのOutputフォルダから辞書ファイルを選択します。</p>
+          <label class="field-stack" for="dictionary-import-file">ファイルを選択
+            <select id="dictionary-import-file"></select>
+          </label>
+          <button type="button" id="dictionary-import-open" class="item-link dictionary-import-open">内容を確認</button>
+          <p id="dictionary-import-message" class="help-text dictionary-import-message" role="status" aria-live="polite" tabindex="-1" hidden></p>
+        </div>
+        <div class="dictionary-management">
           <h3>エクスポート</h3>
           <p class="help-text">MacのOutputフォルダに保存します。</p>
           <div class="dictionary-export-actions">
