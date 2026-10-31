@@ -2438,6 +2438,12 @@
       var data = await request("POST", importPath() + "/review", {
         filename: filename, expected_revision: current.revision
       });
+      if (!data.items.length) {
+        await request("POST", importPath() + "/cancel", {token: data.token});
+        dictionaryImportReview = null;
+        dictionaryImportNotice("dictionary-import-message", "すべて一致しています。取り込みは不要です。", false);
+        return;
+      }
       dictionaryImportReview = data;
       renderDictionaryImportReview();
       showView("dictionary-import-review", true);
