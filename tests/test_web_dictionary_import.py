@@ -190,3 +190,10 @@ class WebImportTests(unittest.TestCase):
             checked = subprocess.run(["node", "--check", str(ASSETS / "app.js")],
                                      capture_output=True, text=True)
             self.assertEqual(checked.returncode, 0, checked.stderr)
+            review_ui = subprocess.run(
+                ["node", str(ASSETS.parent.parent / "tests" / "fixtures" /
+                 "web_dictionary_import_review.js"), str(ASSETS / "app.js")],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(review_ui.returncode, 0, review_ui.stderr)
+            self.assertIn("DICT_IMPORT_REVIEW_PASS", review_ui.stdout)
