@@ -2375,6 +2375,138 @@
         error.message, true);
     } finally { setBusy(false); }
   }
+  function importPath() {
+    return dictionaryPath() + "/import";
+  }
+  function dictionaryImportNotice(id, message, isError) {
+    var notice = $(id);
+    notice.textContent = message;
+    notice.hidden = !message;
+    notice.dataset.error = isError ? "true" : "false";
+    if (isError) {
+      notice.scrollIntoView({behavior: "auto", block: "center"});
+      notice.focus({preventScroll: true});
+    }
+  }
+  async function loadDictionaryImportFiles() {
+    if (!sessionId) return;
+    var chosen = $("dictionary-import-file").value;
+    var response = await request("GET", importPath() + "/files");
+    var files = response.files || [];
+    var input = $("dictionary-import-file");
+    input.replaceChildren();
+    if (!files.length) {
+      var empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = "ファイルがありません";
+      input.append(empty);
+      $("dictionary-import-open").disabled = true;
+    } else {
+      files.forEach(function (filename) {
+        var option = document.createElement("option");
+        option.value = filename;
+        option.textContent = filename;
+        input.append(option);
+      });
+      if (files.includes(chosen)) input.value = chosen;
+      $("dictionary-import-open").disabled = busy;
+    }
+  }
+  async function openDictionaryImportReview() {
+    if (busy || currentView !== "dictionary-management") return;
+    var filename = $("dictionary-import-file").value;
+    if (!filename) {
+      dictionaryImportNotice("dictionary-import-message",
+        "MacのOutputフォルダに対象ファイルがありません。", true);
+      return;
+    }
+    setBusy(true);
+    try {
+      var current = await request("GET", dictionaryPath() + "/ja?sort=surface_asc");
+      var data = await request("POST", importPath() + "/review", {
+        filename: filename, expected_revision: current.revision
+      });
+      dictionaryImportReview = data;
+      renderDictionaryImportReview();
+      showView("dictionary-import-review", true);
+      dictionaryPushHistory("dictionary-import-review");
+    } catch (error) {
+      dictionaryImportNotice("dictionary-import-message", error.message, true);
+    } finally { setBusy(false); }
+  }
+  function renderDictionaryImportReview() {
+    var data = dictionaryImportReview;
+    if (!data) return;
+    $("dictionary-import-source").textContent = data.filename;
+    $("dictionary-import-summary").textContent = "新規 " + data.new + "件 · 競合 " +
+      data.conflicts + "件 · 一致 " + data.exact + "件（変更なし）";
+    $("dictionary-import-selection").textContent = "選択 " + data.selected + "件";
+    $("dictionary-import-commit").disabled = busy || data.selected === 0;
+    $("dictionary-import-clear").disabled = busy || data.selected === 0;
+    var list = $("dictionary-import-entries");
+    list.replaceChildren();
+    data.items.forEach(function (item) {
+      var li = document.createElement("li");
+      var row = document.createElement("label");
+      row.className = "dictionary-import-row";
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = item.selected;
+      checkbox.disabled = busy;
+      checkbox.setAttribute("aria-label", item.surface + "を取り込む");
+      checkbox.addEventListener("change", function () {
+        void updateDictionaryImportSelection(item.language, item.identity, checkbox.checked);
+      });
+      var words = document.createElement("span");
+      words.className = "dictionary-import-word";
+      var name = document.createElement("strong");
+      name.textContent = item.surface;
+      var annotation = document.createElement("small");
+      annotation.textContent = (item.language === "ja" ? "日本語" : "English") +
+        " · " + (item.relation === "conflict" ? "競合" : "新規") +
+        " · " + item.pronunciation;
+      words.append(name, annotation);
+      row.append(checkbox, words);
+      li.append(row);
+      var details = document.createElement("details");
+      var summary = document.createElement("summary");
+      summary.textContent = "発音・品詞を比較";
+      details.append(summary);
+      var incoming = document.createElement("p");
+      incoming.textContent = "取り込み: " + item.pronunciation;
+      var existing = document.createElement("p");
+      existing.textContent = item.existing_pronunciation ?
+        "登録済み: " + item.existing_pronunciation : "登録済み: なし";
+      details.append(incoming, existing);
+      if (item.language === "ja") {
+        var typeLabel = document.createElement("label");
+        typeLabel.textContent = "取り込み後の品詞";
+        var typeSelect = document.createElement("select");
+        [["PROPER_NOUN","固有名詞"],["COMMON_NOUN","普通名詞"],
+         ["VERB","動詞"],["ADJECTIVE","形容詞"],["SUFFIX","接尾辞"]]
+          .forEach(function (optionData) {
+            var option = document.createElement("option");
+            option.value = optionData[0];
+            option.textContent = optionData[1];
+            typeSelect.append(option);
+          });
+        typeSelect.value = item.word_type;
+        typeSelect.addEventListener("change", function () {
+          void updateDictionaryImportWordType(item.identity, typeSelect.value);
+        });
+        typeLabel.append(typeSelect);
+        details.append(typeLabel);
+        if (item.existing_word_type) {
+          var currentType = document.createElement("p");
+          currentType.textContent = "登録済みの品詞: " +
+            dictionaryTypeLabel(item.existing_word_type);
+          details.append(currentType);
+        }
+      }
+      li.append(details);
+      list.append(li);
+    });
+  }
   function dictionaryPronunciationDirty() {
     return currentView === "dictionary-pron" && dictPronOpening !== null &&
       $("dictionary-pron-text").value !== dictPronOpening;
