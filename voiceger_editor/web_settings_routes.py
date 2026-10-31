@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, StrictFloat, StrictInt
+from pydantic import BaseModel, StrictBool, StrictFloat, StrictInt
 
 from .web_routes import _translate_error
 from .web_security import require_web_access, require_web_mutation
@@ -30,6 +30,7 @@ class CommonSynthesisPayload(BaseModel):
     top_k: StrictInt
     top_p: Number
     temperature: Number
+    confirm_take_invalidation: StrictBool = False
 
 
 def _call(action):
