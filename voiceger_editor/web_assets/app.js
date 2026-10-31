@@ -56,6 +56,7 @@
   var dictionaryHistoryDestination = null;
   var dictionaryHistoryNotice = "";
   var dictionaryImportReview = null;
+  var dictionaryImportExpanded = new Set();
   var settingsReturnView = "list", settingsHistoryActive = false;
   var settingsHistoryDestination = null;
   var SESSION_KEY = "voiceger-web-session-id";
@@ -2451,6 +2452,7 @@
         dictionaryImportNotice("dictionary-import-message", "すべて一致しています。取り込みは不要です。", false);
         return;
       }
+      dictionaryImportExpanded.clear();
       dictionaryImportReview = data;
       renderDictionaryImportReview();
       showView("dictionary-import-review", true);
@@ -2467,16 +2469,17 @@
     var data = dictionaryImportReview;
     if (!data) return;
     $("dictionary-import-source").textContent = data.filename;
-    $("dictionary-import-summary").textContent = "新規 " + data.new + "件 · 競合 " +
-      data.conflicts + "件 · 一致 " + data.exact + "件（変更なし）";
-    $("dictionary-import-selection").textContent = "選択 " + data.selected + "件";
+    $("dictionary-import-summary").textContent = "新規 " + data.new + "件 · 変更 " +
+      data.conflicts + "件 · 一致 " + data.exact + "件";
     setFixed("dictionary-import-commit", data.selected === 0);
+    $("dictionary-import-commit").textContent = "選択した" + data.selected + "件を取り込む";
     setFixed("dictionary-import-clear", data.selected === 0);
     var list = $("dictionary-import-entries");
     list.replaceChildren();
     data.items.forEach(function (item) {
+      var rowKey = item.language + ":" + item.identity;
       var li = document.createElement("li");
-      var row = document.createElement("label");
+      var row = document.createElement("div");
       row.className = "dictionary-import-row";
       var checkbox = document.createElement("input");
       checkbox.type = "checkbox";
@@ -2486,30 +2489,53 @@
       checkbox.addEventListener("change", function () {
         void updateDictionaryImportSelection(item.language, item.identity, checkbox.checked);
       });
+      row.append(checkbox);
+
+      // The status is inert text; only the checkbox changes selection.
+      // For Japanese, the word/reading surface toggles the optional details.
+      var expandable = item.language === "ja";
+      var details = document.createElement(expandable ? "details" : "div");
+      details.className = "dictionary-import-details";
+      if (expandable) {
+        details.open = dictionaryImportExpanded.has(rowKey);
+        details.addEventListener("toggle", function () {
+          if (details.open) dictionaryImportExpanded.add(rowKey);
+          else dictionaryImportExpanded.delete(rowKey);
+        });
+      }
+      var summary = document.createElement(expandable ? "summary" : "div");
+      summary.className = "dictionary-import-main";
       var words = document.createElement("span");
       words.className = "dictionary-import-word";
       var name = document.createElement("strong");
       name.textContent = item.surface;
-      var annotation = document.createElement("small");
-      annotation.textContent = (item.language === "ja" ? "日本語" : "English") +
-        " · " + (item.relation === "conflict" ? "競合" : "新規") +
-        " · " + item.pronunciation;
-      words.append(name, annotation);
-      row.append(checkbox, words);
-      li.append(row);
-      var details = document.createElement("details");
-      var summary = document.createElement("summary");
-      summary.textContent = "発音・品詞を比較";
+      var reading = document.createElement("span");
+      reading.className = "dictionary-import-reading";
+      if (item.relation === "conflict" && item.existing_pronunciation &&
+          item.existing_pronunciation !== item.pronunciation) {
+        var previous = document.createElement("span");
+        previous.textContent = item.existing_pronunciation;
+        var arrow = document.createElement("span");
+        arrow.className = "dictionary-import-arrow";
+        arrow.textContent = "→";
+        var incoming = document.createElement("span");
+        incoming.textContent = item.pronunciation;
+        reading.append(previous, arrow, incoming);
+      } else {
+        reading.textContent = item.pronunciation;
+      }
+      words.append(name, reading);
+      var status = document.createElement("span");
+      status.className = "dictionary-import-status";
+      status.textContent = item.relation === "conflict" ? "変更" : "新規";
+      summary.append(words, status);
       details.append(summary);
-      var incoming = document.createElement("p");
-      incoming.textContent = "取り込み: " + item.pronunciation;
-      var existing = document.createElement("p");
-      existing.textContent = item.existing_pronunciation ?
-        "登録済み: " + item.existing_pronunciation : "登録済み: なし";
-      details.append(incoming, existing);
-      if (item.language === "ja") {
-        var typeLabel = document.createElement("label");
-        typeLabel.textContent = "取り込み後の品詞";
+
+      if (expandable) {
+        var extra = document.createElement("div");
+        extra.className = "dictionary-import-extra";
+        var wordType = document.createElement("label");
+        wordType.textContent = "品詞";
         var typeSelect = document.createElement("select");
         [["PROPER_NOUN","固有名詞"],["COMMON_NOUN","普通名詞"],
          ["VERB","動詞"],["ADJECTIVE","形容詞"],["SUFFIX","接尾辞"]]
@@ -2523,16 +2549,25 @@
         typeSelect.addEventListener("change", function () {
           void updateDictionaryImportWordType(item.identity, typeSelect.value);
         });
-        typeLabel.append(typeSelect);
-        details.append(typeLabel);
-        if (item.existing_word_type) {
+        wordType.append(typeSelect);
+        extra.append(wordType);
+        if (item.existing_word_type &&
+            item.existing_word_type !== item.word_type) {
           var currentType = document.createElement("p");
-          currentType.textContent = "登録済みの品詞: " +
+          currentType.textContent = "登録済みの品詞：" +
             dictionaryTypeLabel(item.existing_word_type);
-          details.append(currentType);
+          extra.append(currentType);
         }
+        if (item.existing_priority !== null &&
+            item.existing_priority !== item.priority) {
+          var priority = document.createElement("p");
+          priority.textContent = "優先度：" + item.existing_priority + " → " + item.priority;
+          extra.append(priority);
+        }
+        details.append(extra);
       }
-      li.append(details);
+      row.append(details);
+      li.append(row);
       list.append(li);
     });
   }
