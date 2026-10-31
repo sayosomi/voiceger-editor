@@ -2557,6 +2557,44 @@
       renderDictionaryImportReview();
     }
   }
+  async function commitDictionaryImport() {
+    if (busy || currentView !== "dictionary-import-review" ||
+        !dictionaryImportReview || dictionaryImportReview.selected < 1) return;
+    var review = dictionaryImportReview;
+    if (!window.confirm("新規 " + (review.selected - review.replacements) +
+      "件、既存の置換 " + review.replacements +
+      "件を取り込みますか？\n未選択の単語は変更しません。")) return;
+    setBusy(true);
+    var succeeded = false;
+    try {
+      var result = await request("POST", importPath() + "/commit", {
+        token: review.token, confirmed: true
+      });
+      succeeded = true;
+      dictionaryImportReview = null;
+      dictionaryImportNotice("dictionary-import-message", "新規 " + result.imported +
+        "件、置換 " + result.replaced + "件、スキップ " + result.skipped +
+        "件。取り込みました。", false);
+    } catch (error) {
+      dictionaryImportNotice("dictionary-import-review-message", error.message, true);
+      dictionaryImportReview = null;
+    } finally { setBusy(false); }
+    if (succeeded) dictionaryBack();
+    else setFixed("dictionary-import-commit", true);
+  }
+  async function cancelDictionaryImport() {
+    if (busy || currentView !== "dictionary-import-review") return;
+    var review = dictionaryImportReview;
+    dictionaryImportReview = null;
+    if (review) {
+      setBusy(true);
+      try {
+        await request("POST", importPath() + "/cancel", {token: review.token});
+      } catch (_ignored) { /* A cancelled review is never committed. */ }
+      finally { setBusy(false); }
+    }
+    dictionaryBack();
+  }
   function dictionaryPronunciationDirty() {
     return currentView === "dictionary-pron" && dictPronOpening !== null &&
       $("dictionary-pron-text").value !== dictPronOpening;
