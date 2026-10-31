@@ -55,15 +55,18 @@
   var dictionaryHistoryDepth = 0;
   var dictionaryHistoryDestination = null;
   var dictionaryHistoryNotice = "";
+  var dictionaryImportReview = null;
+  var dictionaryImportExpanded = new Set();
   var settingsReturnView = "list", settingsHistoryActive = false;
   var settingsHistoryDestination = null;
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
-  var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session", "dictionary", "dictionary-management", "dictionary-entry", "dictionary-pron"];
+  var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session", "dictionary", "dictionary-management", "dictionary-import-review", "dictionary-entry", "dictionary-pron"];
   var screenTitles = {
     connect: "接続", list: "Batch List", recipe: "ファイル", add: "Caption追加",
     item: "Batch Item", pronunciation: "発音編集", section: "セクション編集", session: "接続・設定",
     dictionary: "辞書", "dictionary-management": "辞書管理",
+    "dictionary-import-review": "取り込み内容",
     "dictionary-entry": "辞書の単語", "dictionary-pron": "辞書発音編集"
   };
 
@@ -253,13 +256,14 @@
         destination = backState && backState.voicegerDictionary &&
           backState.sessionId === sessionId &&
           (backState.view === "dictionary" ||
+           backState.view === "dictionary-management" ||
            backState.view === "dictionary-entry") ?
           backState.view : dictReturnView;
       }
       dictionaryHistoryDepth = event && event.state &&
         Number.isInteger(event.state.depth) ? event.state.depth :
         destination === "dictionary" ? 1 :
-        destination === "dictionary-entry" ? 2 : 0;
+        destination === "dictionary-entry" || destination === "dictionary-management" ? 2 : 0;
       dictPronOpening = null;
       if (destination !== "dictionary-entry") {
         dictEntry = null;
@@ -295,6 +299,20 @@
       showView("dictionary-management", true);
       return;
     }
+    if (dictionaryTarget && currentView === "dictionary-management" &&
+        dictionaryTarget.view === "dictionary-import-review" &&
+        Number.isInteger(dictionaryTarget.depth) &&
+        dictionaryTarget.depth > dictionaryHistoryDepth) {
+      if (busy) { window.history.back(); return; }
+      dictionaryHistoryDepth = dictionaryTarget.depth;
+      if (dictionaryImportReview) showView("dictionary-import-review", true);
+      else {
+        window.history.replaceState({ voicegerDictionary: true,
+          sessionId: sessionId, view: "dictionary-management",
+          depth: dictionaryTarget.depth }, "");
+      }
+      return;
+    }
     if (dictionaryTarget && currentView.indexOf("dictionary") === 0 &&
         Number.isInteger(dictionaryTarget.depth) &&
         dictionaryTarget.depth > dictionaryHistoryDepth &&
@@ -314,6 +332,13 @@
       showView("dictionary", true);
       return;
     }
+    if (dictionaryTarget && currentView === "dictionary-management" &&
+        dictionaryTarget.view === "dictionary-management") {
+      // A discarded import review may have been normalized to management.
+      dictionaryHistoryDepth = Number.isInteger(dictionaryTarget.depth) ?
+        dictionaryTarget.depth : dictionaryHistoryDepth;
+      return;
+    }
     if (dictionaryTarget && currentView === "dictionary" &&
         dictionaryTarget.view === "dictionary") {
       // Both Back and Forward may land on the list (including normalized states).
@@ -322,7 +347,7 @@
       return;
     }
     if (currentView === "dictionary" || currentView === "dictionary-management" ||
-        currentView === "dictionary-entry" || currentView === "dictionary-pron") {
+        currentView === "dictionary-import-review" || currentView === "dictionary-entry" || currentView === "dictionary-pron") {
       if (busy || !(currentView === "dictionary-pron" &&
           event && event.state && event.state.voicegerDictionary &&
           event.state.view === "dictionary-entry" ?
@@ -343,6 +368,8 @@
         showView("dictionary", true);
       } else if (currentView === "dictionary-management") {
         showView("dictionary", true);
+      } else if (currentView === "dictionary-import-review") {
+        showView("dictionary-management", true);
       } else {
         showView(dictReturnView, true);
       }
@@ -474,9 +501,13 @@
         conflict: "この操作は現在実行できません。状態を確認してください。",
         recipe_changed: "Mac側のファイルが変更・削除されました。選び直してください。",
         dictionary_changed: "辞書が別の画面で変更されました。最新の一覧を取得してください。",
-        review_expired: "確認が古くなりました。最初から操作してください。"
+        review_expired: "確認が古くなりました。最初から操作してください。",
+        source_changed: "Macのファイルまたは辞書が変更されました。ファイルを選び直してください。",
+        confirmation_required: "取り込み対象を選び、確認してから実行してください。"
       };
       var invalidPronunciation = {
+        invalid_import: "辞書ファイルの形式・内容を確認してください。ZIP・辞書JSONのみ利用できます。",
+        invalid_filename: "ファイル名は .voiceger.json で終わる単一の名前を指定してください。",
         invalid_pronunciation: "発音形式が正しくありません。各アクセント句に ' または正しい [ ] を指定し、句の区切りには空白を使ってください。",
         unsupported_pronunciation: "選択した発音は編集できません。最新のBatchを取得してください。",
         invalid_english_pronunciation: "ARPAbetの音素・強勢数字（0/1/2）を確認してください。",
@@ -485,7 +516,7 @@
         invalid_section: "選択したセクションは操作できません。現在の内容を確認してください。",
         invalid_section_text: "文章を確認してください。空欄・改行は使用できません。",
         stale_section: "セクションの文章が更新されています。編集画面を開き直してください。",
-        invalid_filename: "ファイル名は .voiceger.json で終わる単一の名前を指定してください。",
+
         invalid_recipe: "Batchレシピが不正か、必要なVoicegerスタイルがありません。",
         missing_preparation: "すべてのCaptionの発音準備が必要です。除外したCaptionも確認してください。",
         invalid_dictionary: "辞書の入力内容を確認してください。発音・品詞・優先度・重複に注意してください。"
@@ -493,6 +524,7 @@
       var error = new Error(
         response.status === 401 ? "認証できません。トークンを確認してください。" :
         response.status === 503 ? (conflictCode === "dictionary_io" ? "Mac側の辞書を保存できませんでした。" :
+          conflictCode === "import_io" ? "Macの辞書ファイルを読み書きできませんでした。" :
           conflictCode === "recipe_io" ?
           "Mac側のOutputフォルダまたはファイルを操作できません。" :
           "Mac側の接続設定を確認してください。") :
@@ -505,6 +537,9 @@
       );
       if (conflictCode === "missing_preparation" && problemIndex !== null) {
         error.message = "Caption " + problemIndex + " の発音を準備してください（除外中も対象）。";
+      }
+      if (conflictCode === "invalid_filename" && path.includes("/dictionary/import")) {
+        error.message = "MacのOutputフォルダ内のZIP・JSONファイルを選び直してください。";
       }
       error.code = response.status;
       error.conflictCode = conflictCode;
@@ -2298,6 +2333,10 @@
     if (busy || currentView !== "dictionary" || dictionaryHistoryDestination) return;
     if (!showView("dictionary-management", true)) return;
     dictionaryExportNotice("", false);
+    dictionaryImportNotice("dictionary-import-message", "", false);
+    void loadDictionaryImportFiles().catch(function (error) {
+      dictionaryImportNotice("dictionary-import-message", error.message, true);
+    });
     dictionaryPushHistory("dictionary-management");
   }
   function dictionaryExportNotice(text, isError) {
@@ -2355,6 +2394,266 @@
         "MacのOutputフォルダへ書き込めませんでした。保存先と空き容量を確認してください。" :
         error.message, true);
     } finally { setBusy(false); }
+  }
+  function importPath() {
+    return dictionaryPath() + "/import";
+  }
+  function dictionaryImportNotice(id, message, isError) {
+    var notice = $(id);
+    notice.textContent = message;
+    notice.hidden = !message;
+    notice.dataset.error = isError ? "true" : "false";
+    if (isError) {
+      notice.scrollIntoView({behavior: "auto", block: "center"});
+      notice.focus({preventScroll: true});
+    }
+  }
+  async function loadDictionaryImportFiles() {
+    if (!sessionId) return;
+    var chosen = $("dictionary-import-file").value;
+    var response = await request("GET", importPath() + "/files");
+    var files = response.files || [];
+    var input = $("dictionary-import-file");
+    input.replaceChildren();
+    if (!files.length) {
+      var empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = "ファイルがありません";
+      input.append(empty);
+      setFixed("dictionary-import-open", true);
+    } else {
+      files.forEach(function (filename) {
+        var option = document.createElement("option");
+        option.value = filename;
+        option.textContent = filename;
+        input.append(option);
+      });
+      if (files.includes(chosen)) input.value = chosen;
+      setFixed("dictionary-import-open", false);
+    }
+  }
+  async function openDictionaryImportReview() {
+    if (busy || currentView !== "dictionary-management") return;
+    var filename = $("dictionary-import-file").value;
+    if (!filename) {
+      dictionaryImportNotice("dictionary-import-message",
+        "MacのOutputフォルダに対象ファイルがありません。", true);
+      return;
+    }
+    setBusy(true);
+    try {
+      var current = await request("GET", dictionaryPath() + "/ja?sort=surface_asc");
+      var data = await request("POST", importPath() + "/review", {
+        filename: filename, expected_revision: current.revision
+      });
+      if (!data.items.length) {
+        await request("POST", importPath() + "/cancel", {token: data.token});
+        dictionaryImportReview = null;
+        dictionaryImportNotice("dictionary-import-message", "すべて一致しています。取り込みは不要です。", false);
+        return;
+      }
+      dictionaryImportExpanded.clear();
+      dictionaryImportReview = data;
+      renderDictionaryImportReview();
+      showView("dictionary-import-review", true);
+      dictionaryPushHistory("dictionary-import-review");
+    } catch (error) {
+      dictionaryImportNotice("dictionary-import-message", error.message, true);
+    } finally {
+      setBusy(false);
+      if (currentView === "dictionary-import-review" && dictionaryImportReview)
+        renderDictionaryImportReview();
+    }
+  }
+  function renderDictionaryImportReview() {
+    var data = dictionaryImportReview;
+    if (!data) return;
+    $("dictionary-import-source").textContent = data.filename;
+    $("dictionary-import-summary").textContent = "新規 " + data.new + "件 · 変更 " +
+      data.conflicts + "件 · 一致 " + data.exact + "件";
+    setFixed("dictionary-import-commit", data.selected === 0);
+    $("dictionary-import-commit").textContent = "選択した" + data.selected + "件を取り込む";
+    setFixed("dictionary-import-clear", data.selected === 0);
+    var list = $("dictionary-import-entries");
+    list.replaceChildren();
+    data.items.forEach(function (item) {
+      var rowKey = item.language + ":" + item.identity;
+      var li = document.createElement("li");
+      var row = document.createElement("div");
+      row.className = "dictionary-import-row";
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = item.selected;
+      checkbox.disabled = busy;
+      checkbox.setAttribute("aria-label", item.surface + "を取り込む");
+      checkbox.addEventListener("change", function () {
+        void updateDictionaryImportSelection(item.language, item.identity, checkbox.checked);
+      });
+      row.append(checkbox);
+
+      // The status is inert text; only the checkbox changes selection.
+      // For Japanese, the word/reading surface toggles the optional details.
+      var expandable = item.language === "ja";
+      var details = document.createElement(expandable ? "details" : "div");
+      details.className = "dictionary-import-details";
+      if (expandable) {
+        details.open = dictionaryImportExpanded.has(rowKey);
+        details.addEventListener("toggle", function () {
+          if (details.open) dictionaryImportExpanded.add(rowKey);
+          else dictionaryImportExpanded.delete(rowKey);
+        });
+      }
+      var summary = document.createElement(expandable ? "summary" : "div");
+      summary.className = "dictionary-import-main";
+      var words = document.createElement("span");
+      words.className = "dictionary-import-word";
+      var name = document.createElement("strong");
+      name.textContent = item.surface;
+      var reading = document.createElement("span");
+      reading.className = "dictionary-import-reading";
+      if (item.relation === "conflict" && item.existing_pronunciation &&
+          item.existing_pronunciation !== item.pronunciation) {
+        var previous = document.createElement("span");
+        previous.textContent = item.existing_pronunciation;
+        var arrow = document.createElement("span");
+        arrow.className = "dictionary-import-arrow";
+        arrow.textContent = "→";
+        var incoming = document.createElement("span");
+        incoming.textContent = item.pronunciation;
+        reading.append(previous, arrow, incoming);
+      } else {
+        reading.textContent = item.pronunciation;
+      }
+      words.append(name, reading);
+      var status = document.createElement("span");
+      status.className = "dictionary-import-status";
+      status.textContent = item.relation === "conflict" ? "変更" : "新規";
+      summary.append(words);
+      details.append(summary);
+
+      if (expandable) {
+        var extra = document.createElement("div");
+        extra.className = "dictionary-import-extra";
+        var wordType = document.createElement("label");
+        wordType.textContent = "品詞";
+        var typeSelect = document.createElement("select");
+        [["PROPER_NOUN","固有名詞"],["COMMON_NOUN","普通名詞"],
+         ["VERB","動詞"],["ADJECTIVE","形容詞"],["SUFFIX","接尾辞"]]
+          .forEach(function (optionData) {
+            var option = document.createElement("option");
+            option.value = optionData[0];
+            option.textContent = optionData[1];
+            typeSelect.append(option);
+          });
+        typeSelect.value = item.word_type;
+        typeSelect.addEventListener("change", function () {
+          void updateDictionaryImportWordType(item.identity, typeSelect.value);
+        });
+        wordType.append(typeSelect);
+        extra.append(wordType);
+        if (item.existing_word_type &&
+            item.existing_word_type !== item.word_type) {
+          var currentType = document.createElement("p");
+          currentType.textContent = "登録済みの品詞：" +
+            dictionaryTypeLabel(item.existing_word_type);
+          extra.append(currentType);
+        }
+        if (item.existing_priority !== null &&
+            item.existing_priority !== item.priority) {
+          var priority = document.createElement("p");
+          priority.textContent = "優先度：" + item.existing_priority + " → " + item.priority;
+          extra.append(priority);
+        }
+        details.append(extra);
+      }
+      row.append(details, status);
+      li.append(row);
+      list.append(li);
+    });
+  }
+  async function updateDictionaryImportSelection(language, identity, selected) {
+    if (busy || !dictionaryImportReview) return;
+    setBusy(true);
+    try {
+      dictionaryImportReview = await request("POST", importPath() + "/selection", {
+        token: dictionaryImportReview.token, language: language,
+        identity: identity, selected: selected
+      });
+      dictionaryImportNotice("dictionary-import-review-message", "", false);
+    } catch (error) {
+      dictionaryImportNotice("dictionary-import-review-message", error.message, true);
+    } finally {
+      setBusy(false);
+      renderDictionaryImportReview();
+    }
+  }
+  async function updateDictionaryImportWordType(identity, wordType) {
+    if (busy || !dictionaryImportReview) return;
+    setBusy(true);
+    try {
+      dictionaryImportReview = await request("POST", importPath() + "/word-type", {
+        token: dictionaryImportReview.token, identity: identity, word_type: wordType
+      });
+      dictionaryImportNotice("dictionary-import-review-message", "", false);
+    } catch (error) {
+      dictionaryImportNotice("dictionary-import-review-message", error.message, true);
+    } finally {
+      setBusy(false);
+      renderDictionaryImportReview();
+    }
+  }
+  async function clearDictionaryImportSelection() {
+    if (busy || !dictionaryImportReview) return;
+    setBusy(true);
+    try {
+      dictionaryImportReview = await request("POST", importPath() + "/clear", {
+        token: dictionaryImportReview.token
+      });
+      dictionaryImportNotice("dictionary-import-review-message", "", false);
+    } catch (error) {
+      dictionaryImportNotice("dictionary-import-review-message", error.message, true);
+    } finally {
+      setBusy(false);
+      renderDictionaryImportReview();
+    }
+  }
+  async function commitDictionaryImport() {
+    if (busy || currentView !== "dictionary-import-review" ||
+        !dictionaryImportReview || dictionaryImportReview.selected < 1) return;
+    var review = dictionaryImportReview;
+    if (!window.confirm("新規 " + (review.selected - review.replacements) +
+      "件、既存の置換 " + review.replacements +
+      "件を取り込みますか？\n未選択の単語は変更しません。")) return;
+    setBusy(true);
+    var succeeded = false;
+    try {
+      var result = await request("POST", importPath() + "/commit", {
+        token: review.token, confirmed: true
+      });
+      succeeded = true;
+      dictionaryImportReview = null;
+      dictionaryImportNotice("dictionary-import-message", "新規 " + result.imported +
+        "件、置換 " + result.replaced + "件、スキップ " + result.skipped +
+        "件。取り込みました。", false);
+    } catch (error) {
+      dictionaryImportNotice("dictionary-import-review-message", error.message, true);
+      dictionaryImportReview = null;
+    } finally { setBusy(false); }
+    if (succeeded) dictionaryBack();
+    else setFixed("dictionary-import-commit", true);
+  }
+  async function cancelDictionaryImport() {
+    if (busy || currentView !== "dictionary-import-review") return;
+    var review = dictionaryImportReview;
+    dictionaryImportReview = null;
+    if (review) {
+      setBusy(true);
+      try {
+        await request("POST", importPath() + "/cancel", {token: review.token});
+      } catch (_ignored) { /* A cancelled review is never committed. */ }
+      finally { setBusy(false); }
+    }
+    dictionaryBack();
   }
   function dictionaryPronunciationDirty() {
     return currentView === "dictionary-pron" && dictPronOpening !== null &&
@@ -2483,6 +2782,7 @@
       return;
     }
     var destination = currentView === "dictionary-pron" ? "dictionary-entry" :
+      currentView === "dictionary-import-review" ? "dictionary-management" :
       (currentView === "dictionary-entry" || currentView === "dictionary-management") ?
       "dictionary" : dictReturnView;
     dictPronOpening = null;
@@ -3010,6 +3310,21 @@
   $("dictionary-back").addEventListener("click", dictionaryBack);
   $("dictionary-manage").addEventListener("click", openDictionaryManagement);
   $("dictionary-management-back").addEventListener("click", dictionaryBack);
+  $("dictionary-import-open").addEventListener("click", function () {
+    void openDictionaryImportReview();
+  });
+  $("dictionary-import-file").addEventListener("change", function () {
+    dictionaryImportNotice("dictionary-import-message", "", false);
+  });
+  $("dictionary-import-back").addEventListener("click", function () {
+    void cancelDictionaryImport();
+  });
+  $("dictionary-import-clear").addEventListener("click", function () {
+    void clearDictionaryImportSelection();
+  });
+  $("dictionary-import-commit").addEventListener("click", function () {
+    void commitDictionaryImport();
+  });
   $("dictionary-ja").addEventListener("click", function () {
     if (dictLanguage === "ja" || busy) return;
     dictLanguage = "ja"; dictSort = "surface_asc"; dictQuery = ""; dictType = "ALL";
