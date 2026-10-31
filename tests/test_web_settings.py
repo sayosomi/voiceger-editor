@@ -156,16 +156,17 @@ class WebSynthesisSettingsTests(unittest.TestCase):
         self.assertIn('id="item-speed" type="number" inputmode="decimal" min="0" step="0.01"', html)
         self.assertIn('id="common-speed" type="number" inputmode="decimal" min="0" step="0.01"', html)
         self.assertIn('class="sampling-settings-group"', html)
-        self.assertIn('class="sampling-settings-heading"', html)
-        self.assertIn('id="reset-sampling">リセット</button>', html)
+        self.assertIn('class="settings-screen-heading"', html)
+        self.assertIn('id="reset-settings">設定値を初期化</button>', html)
+        self.assertNotIn('id="reset-sampling"', html)
         self.assertIn('id="common-settings-status"', html)
         self.assertIn('id="default-takes-status"', html)
         self.assertNotIn('id="reset-common-draft"', html)
         self.assertNotIn('<button type="submit">保存</button>\n        </form>\n        <div class="setting-section">\n          <h3>セッション', html)
         self.assertIn('border-top: 1px solid #cbdcd2', css)
         self.assertLess(html.index('id="common-speed"'),
-                        html.index('class="sampling-settings-heading"'))
-        self.assertLess(html.index('class="sampling-settings-heading"'),
+                        html.index('class="sampling-settings-group"'))
+        self.assertLess(html.index('class="sampling-settings-group"'),
                         html.index('id="common-top-k"'))
 
     def test_actual_browser_settings_draft_guards(self):
@@ -237,7 +238,7 @@ const end=js.indexOf('  $("refresh-batch").addEventListener(',start);
 assert(start>=0 && end>start,"auto-save source not found");
 const listeners={},nodes={},requests=[];
 for(const id of ["common-settings-form","common-style","common-speed",
-  "common-top-k","common-top-p","common-temperature","reset-sampling",
+  "common-top-k","common-top-p","common-temperature","reset-settings",
   "common-settings-error","common-settings-status","default-takes",
   "default-takes-form","default-takes-error","default-takes-status"]){
   nodes[id]={value:"",hidden:true,textContent:"",
@@ -302,6 +303,16 @@ async function request(method,path,payload){
     const next={revision:batch.revision+1,default_take_count:payload.count};
     Object.assign(runtime.batch,next);return next;
   }
+  if(path.endsWith("/reset?expected_revision="+runtime.batch.revision+
+    "&expected_settings_revision="+runtime.data.settings_revision)){
+    const next={...commonSettingsData,
+      settings_revision:commonSettingsData.settings_revision+1,
+      values:{style_id:3,speed:1,top_k:20,top_p:1,temperature:1}};
+    Object.assign(runtime.data,next);
+    runtime.batch.revision++;
+    runtime.batch.default_take_count=4;
+    return {settings:next,batch:runtime.batch};
+  }
   const next={...commonSettingsData,settings_revision:commonSettingsData.settings_revision+1,
     values:{style_id:payload.style_id,speed:payload.speed,top_k:payload.top_k,
     top_p:payload.top_p,temperature:payload.temperature}};
@@ -344,12 +355,23 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
   assert.equal(requests.at(-1).payload.count,5);
   assert.equal(nodes["default-takes-status"].textContent,"保存済み");
   runtime.shouldWarn=false;
-  listeners["reset-sampling:click"]();
+  runtime.confirm=false;
+  const beforeReset=requests.length;
+  listeners["reset-settings:click"]();
   await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(requests.length,beforeReset,"cancel must not request reset");
+  runtime.confirm=true;
+  listeners["reset-settings:click"]();
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(requests.length,beforeReset+1);
+  assert.equal(requests.at(-1).method,"POST");
+  assert.equal(requests.at(-1).payload.confirm_take_invalidation,true);
   assert.equal(runtime.data.values.top_k,20);
   assert.equal(runtime.data.values.top_p,1);
   assert.equal(runtime.data.values.temperature,1);
-  assert.equal(runtime.data.values.speed,1.23,"sampling reset must preserve Speed");
+  assert.equal(runtime.data.values.speed,1);
+  assert.equal(runtime.batch.default_take_count,4);
+  assert.equal(nodes["default-takes"].value,"4");
   console.log("WEB_SETTINGS_AUTOSAVE_PASS");
 })().catch(error=>{console.error(error);process.exitCode=1;});
 """
