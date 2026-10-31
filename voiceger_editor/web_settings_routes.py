@@ -13,7 +13,7 @@ from .web_sessions import (
     WebSessionClosed, WebSessionConflict, WebSessionNotFound,
     WebSessionOperations,
 )
-from .web_settings import WebSettingsValidation
+from .web_settings import WebSettingsUnavailable, WebSettingsValidation
 
 
 Number = Union[StrictFloat, StrictInt]
@@ -39,6 +39,8 @@ def _call(action):
         raise _translate_error(exc) from None
     except WebSettingsValidation:
         raise HTTPException(status_code=422, detail="Invalid or unavailable setting") from None
+    except WebSettingsUnavailable:
+        raise HTTPException(status_code=503, detail={"code": "settings_io"}) from None
     except (ValueError, TypeError):
         raise HTTPException(status_code=422, detail="Invalid setting") from None
     except Exception:
