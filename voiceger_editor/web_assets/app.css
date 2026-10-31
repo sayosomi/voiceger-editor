@@ -205,6 +205,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   min-height: 44px; background: #fff; border: 1px solid #cbdcd2; border-radius: 10px; font: inherit; }
 .item-inline-form .button-row button:not(.primary-button) { min-height: 44px;
   border: 1px solid #d0ded4; border-radius: 10px; padding: 10px 14px; background: #fff; }
+.item-voice-grid, .setting-two-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.item-voice-grid { padding: 12px 0 0; }
+.item-voice-grid label, .setting-two-columns label { display: grid; gap: 5px; min-width: 0; font-size: 13px; font-weight: 750; color: #456358; }
+.item-voice-grid input, .item-voice-grid select, .setting-two-columns input, .setting-two-columns select {
+  min-width: 0; width: 100%; min-height: 44px; padding: 9px 10px; font: inherit;
+  background: #fff; border: 1px solid #cbdcd2; border-radius: 10px; color: #263b33;
+}
+.field-error { color: #9b3c30; font-size: 12px; line-height: 1.5; margin: 0; }
 .item-quick-actions { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 14px 0; }
 .item-quick-actions button { min-height: 44px; }
 #preview-audio { border: 1px solid #c8dbd1; border-radius: 11px; background: #eff6f2;
