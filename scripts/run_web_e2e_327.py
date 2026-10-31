@@ -109,9 +109,35 @@ def _check_port() -> None:
             raise LaunchBlocked("Port 8002 is occupied; stop the prior E2E server") from exc
 
 
+def _copy_current_terms_acceptance(source: Path, destination: Path) -> None:
+    """Reuse only the Mac user's validated current consent in disposable HOME."""
+    from voiceger_editor.terms_acceptance import current_acceptance_status
+
+    if not current_acceptance_status(source).accepted:
+        raise LaunchBlocked(
+            "Current Voiceger terms are not accepted on the Mac. "
+            "Review the official terms and run "
+            "'voiceger-editor --accept-voiceger-terms' locally."
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, destination)
+    if not current_acceptance_status(destination).accepted:
+        raise LaunchBlocked("The isolated terms acceptance copy failed validation")
+
+
 def main() -> int:
     try:
         head = _verify_and_refresh()
+        sys.path.insert(0, str(REPOSITORY))
+        from voiceger_editor.terms_acceptance import current_acceptance_status
+
+        real_terms = current_acceptance_status()
+        if not real_terms.accepted:
+            raise LaunchBlocked(
+                "The Mac has no current Voiceger terms acceptance. "
+                "Review the official terms and run "
+                "'voiceger-editor --accept-voiceger-terms' locally."
+            )
         _check_port()
         _prepare_scratch()
     except (LaunchBlocked, OSError) as exc:
@@ -125,9 +151,10 @@ def main() -> int:
     # Isolate default_config_path(), so common settings save cannot modify
     # the Human's normal macOS Application Support config.json.
     os.environ["HOME"] = str(SCRATCH / "home")
-    sys.path.insert(0, str(REPOSITORY))
 
     try:
+        from voiceger_editor.terms_acceptance import default_acceptance_path
+        _copy_current_terms_acceptance(real_terms.path, default_acceptance_path())
         from voiceger_editor.settings import Settings
         from voiceger_editor.user_dictionary import UserDictionaryCore
         from voiceger_editor.voiceger_adapter import VoicegerAdapter
@@ -148,6 +175,7 @@ def main() -> int:
         service._batch_settings = Settings(output_dir=output)
         print("E2E HEAD: " + head, flush=True)
         print("ISOLATED SETTINGS: " + str(SCRATCH / "home"), flush=True)
+        print("VOICEGER TERMS: validated Mac consent copied to test HOME", flush=True)
         print("ISOLATED OUTPUT: " + str(output), flush=True)
         print("LOCAL URL: http://127.0.0.1:8002", flush=True)
         print("ACCESS TOKEN: " + token, flush=True)
@@ -157,6 +185,9 @@ def main() -> int:
         return 0
     except KeyboardInterrupt:
         return 0
+    except (LaunchBlocked, OSError) as exc:
+        print("BLOCKED: " + str(exc), file=sys.stderr)
+        return 1
     finally:
         if SCRATCH.exists() and not SCRATCH.is_symlink():
             shutil.rmtree(SCRATCH)
