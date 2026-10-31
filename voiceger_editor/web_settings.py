@@ -117,7 +117,7 @@ class WebSettingsMixin:
     def save_common_synthesis(
         self, identifier: str, revision: int, settings_revision: int, *,
         style_id: int, speed: float, top_k: int, top_p: float,
-        temperature: float,
+        temperature: float, confirm_take_invalidation: bool = False,
     ) -> dict[str, Any]:
         from .web_sessions import WebSessionConflict
 
@@ -171,6 +171,21 @@ class WebSettingsMixin:
 
             if not changed_names and not targets:
                 return self._settings_view(session)
+
+            # The backend sees every active Web session, not just the phone's
+            # visible Batch. A destructive auto-save must never silently
+            # invalidate generated/accepted Takes in another session.
+            if not confirm_take_invalidation and any(
+                (item.session.active_candidate_count
+                 or item.accepted_take_numbers
+                 or item.generation_outcome is not None)
+                for _, item, target in targets
+                if self._changed_synthesis(item.session.settings, target)
+            ):
+                raise WebSessionConflict(
+                    "Changing these settings invalidates temporary Takes",
+                    code="take_invalidation_confirmation_required",
+                )
 
             # Only an accepted save is applied in memory. No temporary Takes
             # are modified if filesystem persistence fails.
