@@ -118,6 +118,7 @@ class WebSettingsMixin:
         self, identifier: str, revision: int, settings_revision: int, *,
         style_id: int, speed: float, top_k: int, top_p: float,
         temperature: float, confirm_take_invalidation: bool = False,
+        preserve_item_voice: bool = False,
     ) -> dict[str, Any]:
         from .web_sessions import WebSessionConflict
 
@@ -155,7 +156,7 @@ class WebSettingsMixin:
                         name: getattr(updated, name)
                         for name in _SHARED_FIELDS
                         if name not in {"style_id", "speed"}
-                        or name in changed_names
+                        or (name in changed_names and not preserve_item_voice)
                     }
                     target = replace(original, **changes)
                     if target != original:
@@ -247,6 +248,7 @@ class WebSettingsMixin:
                 top_p=defaults.top_p,
                 temperature=defaults.temperature,
                 confirm_take_invalidation=confirm_take_invalidation,
+                preserve_item_voice=True,
             )
             if session.batch.default_take_count != defaults.take_count:
                 session.batch.default_take_count = defaults.take_count
