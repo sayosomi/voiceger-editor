@@ -610,20 +610,24 @@
     }
     select.value = String(selectedId);
   }
+  function numericField(value) {
+    var number = Number(value);
+    return Number(number.toFixed(2)) === number ? number.toFixed(2) : String(value);
+  }
   function renderItemVoice(item) {
     if (!commonSettingsData || typeof item.style_id !== "number") return;
     if (document.activeElement !== $("item-style") && document.activeElement !== $("item-speed")) {
       setStyleOptions($("item-style"), commonSettingsData.styles, item.style_id, item.style_name);
-      $("item-speed").value = Number(item.speed).toFixed(2);
+      $("item-speed").value = numericField(item.speed);
     }
   }
   function renderCommonSettings(data) {
     commonSettingsData = data;
     setStyleOptions($("common-style"), data.styles, data.values.style_id);
-    $("common-speed").value = Number(data.values.speed).toFixed(2);
+    $("common-speed").value = numericField(data.values.speed);
     $("common-top-k").value = String(data.values.top_k);
-    $("common-top-p").value = Number(data.values.top_p).toFixed(2);
-    $("common-temperature").value = Number(data.values.temperature).toFixed(2);
+    $("common-top-p").value = numericField(data.values.top_p);
+    $("common-temperature").value = numericField(data.values.temperature);
     $("common-settings-error").hidden = true;
   }
   async function loadWebSettings() {
