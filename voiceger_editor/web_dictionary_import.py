@@ -102,6 +102,24 @@ class WebDictionaryImportMixin:
                 raise WebDictionaryImportValidation("invalid_import") from None
             return review_payload(state, self._dictionary())
 
+    def clear_dictionary_import_selection(self, session_id: str, token: str):
+        with self._lock:
+            _, state = self._require_import(session_id, token)
+            review = state.review
+            try:
+                for item in tuple(review.items):
+                    if hasattr(item, "source_uuid"):
+                        identity, language = item.source_uuid, "ja"
+                    else:
+                        identity, language = item.incoming.surface, "en"
+                    if isinstance(review, DictionaryBackupReview):
+                        review.set_selected(identity, False, language=language)
+                    else:
+                        review.set_selected(identity, False)
+            except DictionaryImportError:
+                raise WebDictionaryImportValidation("invalid_import") from None
+            return review_payload(state, self._dictionary())
+
     def set_dictionary_import_word_type(
         self, session_id: str, token: str, identity: str, word_type: str,
     ):
