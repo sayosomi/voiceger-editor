@@ -36,7 +36,7 @@ class WebSessionConflict(RuntimeError):
     """A typed, safe conflict; never expose arbitrary exception text."""
 
     CODES = frozenset({
-        "conflict", "revision_conflict", "worker_busy",
+        "conflict", "revision_conflict", "settings_revision_conflict", "worker_busy",
         "terms_required", "accepted_take_protected", "already_accepted",
     })
 
