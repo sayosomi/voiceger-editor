@@ -139,19 +139,19 @@ const unloadHandler = cut('  window.addEventListener("beforeunload"',
   console.log("F02_HISTORY_PASS");
 }
 async function quickTests() {
-  const quickSource = cut("  // Quick Save does not Apply",
+  const quickSource = cut("  function dictionaryQuickMatches(language, surface) {",
                          '  $("dictionary-back").addEventListener("click", dictionaryBack);');
   const elements={};
-  const $=id=>elements[id] ||= {value:"",dataset:{},hidden:true};
+  const $=id=>elements[id] ||= {value:"",dataset:{},hidden:true,attributes:{},removeAttribute(k){delete this.attributes[k];},setAttribute(k,v){this.attributes[k]=v;},scrollIntoView(){},focus(){}};
   const calls=[];
   let activeLanguage="ja", responses=[], confirms=0, manualPriority=false;
   const window={confirm(){confirms++;return true;}};
   const document={querySelectorAll(){return [];}};
   const setup=[
     'let busy=false,currentView="pronunciation",dictQuickMatches=[],',
-    'dictQuickPriorityEdited=false,pronunciationTarget={language:"ja"};',
+    'dictQuickPriorityEdited=false,dictQuickPronSurface=null,pronunciationTarget={language:"ja"};',
     'function dictionaryPath(){return "/api/web/sessions/s/dictionary";}',
-    'function setBusy(v){busy=v;}', 'function feedback(){}',
+    'function setBusy(v){busy=v;}', 'function feedback(){}', 'function clearPlayer(){}',
     'async function request(method,path,payload){',
     '  record(method,path,payload);',
     '  if(method==="GET")return getMatches(path);',
