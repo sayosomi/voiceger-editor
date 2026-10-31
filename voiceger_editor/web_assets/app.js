@@ -255,13 +255,14 @@
         destination = backState && backState.voicegerDictionary &&
           backState.sessionId === sessionId &&
           (backState.view === "dictionary" ||
+           backState.view === "dictionary-management" ||
            backState.view === "dictionary-entry") ?
           backState.view : dictReturnView;
       }
       dictionaryHistoryDepth = event && event.state &&
         Number.isInteger(event.state.depth) ? event.state.depth :
         destination === "dictionary" ? 1 :
-        destination === "dictionary-entry" ? 2 : 0;
+        destination === "dictionary-entry" || destination === "dictionary-management" ? 2 : 0;
       dictPronOpening = null;
       if (destination !== "dictionary-entry") {
         dictEntry = null;
@@ -297,6 +298,20 @@
       showView("dictionary-management", true);
       return;
     }
+    if (dictionaryTarget && currentView === "dictionary-management" &&
+        dictionaryTarget.view === "dictionary-import-review" &&
+        Number.isInteger(dictionaryTarget.depth) &&
+        dictionaryTarget.depth > dictionaryHistoryDepth) {
+      if (busy) { window.history.back(); return; }
+      dictionaryHistoryDepth = dictionaryTarget.depth;
+      if (dictionaryImportReview) showView("dictionary-import-review", true);
+      else {
+        window.history.replaceState({ voicegerDictionary: true,
+          sessionId: sessionId, view: "dictionary-management",
+          depth: dictionaryTarget.depth }, "");
+      }
+      return;
+    }
     if (dictionaryTarget && currentView.indexOf("dictionary") === 0 &&
         Number.isInteger(dictionaryTarget.depth) &&
         dictionaryTarget.depth > dictionaryHistoryDepth &&
@@ -324,7 +339,7 @@
       return;
     }
     if (currentView === "dictionary" || currentView === "dictionary-management" ||
-        currentView === "dictionary-entry" || currentView === "dictionary-pron") {
+        currentView === "dictionary-import-review" || currentView === "dictionary-entry" || currentView === "dictionary-pron") {
       if (busy || !(currentView === "dictionary-pron" &&
           event && event.state && event.state.voicegerDictionary &&
           event.state.view === "dictionary-entry" ?
@@ -345,6 +360,8 @@
         showView("dictionary", true);
       } else if (currentView === "dictionary-management") {
         showView("dictionary", true);
+      } else if (currentView === "dictionary-import-review") {
+        showView("dictionary-management", true);
       } else {
         showView(dictReturnView, true);
       }
@@ -2485,6 +2502,7 @@
       return;
     }
     var destination = currentView === "dictionary-pron" ? "dictionary-entry" :
+      currentView === "dictionary-import-review" ? "dictionary-management" :
       (currentView === "dictionary-entry" || currentView === "dictionary-management") ?
       "dictionary" : dictReturnView;
     dictPronOpening = null;
