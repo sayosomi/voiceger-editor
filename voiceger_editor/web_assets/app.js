@@ -2400,7 +2400,7 @@
       empty.value = "";
       empty.textContent = "ファイルがありません";
       input.append(empty);
-      $("dictionary-import-open").disabled = true;
+      setFixed("dictionary-import-open", true);
     } else {
       files.forEach(function (filename) {
         var option = document.createElement("option");
@@ -2409,7 +2409,7 @@
         input.append(option);
       });
       if (files.includes(chosen)) input.value = chosen;
-      $("dictionary-import-open").disabled = busy;
+      setFixed("dictionary-import-open", false);
     }
   }
   async function openDictionaryImportReview() {
@@ -2432,7 +2432,11 @@
       dictionaryPushHistory("dictionary-import-review");
     } catch (error) {
       dictionaryImportNotice("dictionary-import-message", error.message, true);
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+      if (currentView === "dictionary-import-review" && dictionaryImportReview)
+        renderDictionaryImportReview();
+    }
   }
   function renderDictionaryImportReview() {
     var data = dictionaryImportReview;
@@ -2441,8 +2445,8 @@
     $("dictionary-import-summary").textContent = "新規 " + data.new + "件 · 競合 " +
       data.conflicts + "件 · 一致 " + data.exact + "件（変更なし）";
     $("dictionary-import-selection").textContent = "選択 " + data.selected + "件";
-    $("dictionary-import-commit").disabled = busy || data.selected === 0;
-    $("dictionary-import-clear").disabled = busy || data.selected === 0;
+    setFixed("dictionary-import-commit", data.selected === 0);
+    setFixed("dictionary-import-clear", data.selected === 0);
     var list = $("dictionary-import-entries");
     list.replaceChildren();
     data.items.forEach(function (item) {
