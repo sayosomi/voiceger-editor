@@ -261,8 +261,12 @@
       $("default-takes-error").hidden = true;
       $("default-takes-status").hidden = true;
       $("common-settings-form").hidden = true;
+      $("reset-settings").disabled = true;
       void loadWebSettings().then(function () {
-        if (currentView === "session") $("common-settings-form").hidden = false;
+        if (currentView === "session") {
+          $("common-settings-form").hidden = false;
+          $("reset-settings").disabled = false;
+        }
       }).catch(function (error) {
         if (currentView === "session") feedback(error.message);
       });
@@ -2517,12 +2521,30 @@
     "common-top-p", "common-temperature"].forEach(function (id) {
     $(id).addEventListener("change", function () { void autoSaveCommon(); });
   });
-  $("reset-sampling").addEventListener("click", function () {
-    if (busy || !commonSettingsData) return;
-    $("common-top-k").value = "20";
-    $("common-top-p").value = "1.00";
-    $("common-temperature").value = "1.00";
-    void autoSaveCommon();
+  $("reset-settings").addEventListener("click", async function () {
+    if (busy || !batch || !commonSettingsData || currentView !== "session") return;
+    if (!window.confirm(
+      "Style・Speed・Top K・Top P・Temperature・標準Take数を初期化します。生成済みTakeや採用状態はリセットされる場合があります。保存済み音声、Output保存先、ファイル名、Captionの個別設定は維持します。実行しますか？"
+    )) return;
+    setBusy(true);
+    settingsStatus("common-settings-status", "初期化中…");
+    try {
+      var result = await request("POST", settingsPath() + "/reset?expected_revision=" +
+        encodeURIComponent(batch.revision) + "&expected_settings_revision=" +
+        encodeURIComponent(commonSettingsData.settings_revision),
+        { confirm_take_invalidation: true });
+      batch = result.batch;
+      renderCommonSettings(result.settings);
+      $("default-takes").value = String(batch.default_take_count);
+      $("default-takes-error").hidden = true;
+      renderList();
+      settingsStatus("default-takes-status", "");
+      settingsStatus("common-settings-status", "初期化しました");
+    } catch (error) {
+      $("common-settings-error").textContent = error.message;
+      $("common-settings-error").hidden = false;
+      settingsStatus("common-settings-status", "初期化失敗");
+    } finally { setBusy(false); }
   });
   async function autoSaveDefaultTakes() {
     if (busy || !batch || currentView !== "session") return;
