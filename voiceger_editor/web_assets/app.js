@@ -2690,7 +2690,7 @@
   }
   async function dictionarySave(event) {
     event.preventDefault();
-    if (busy || !dictEntry || !dictData) return;
+    if (busy || dictionaryHistoryDestination || !dictEntry || !dictData) return;
     var data = dictionaryFormValue();
     hideDictionaryDuplicate();
     if (!data.notation.trim()) { showDictionarySaveError("発音を入力してください。"); return; }
@@ -2734,7 +2734,7 @@
     } finally { setBusy(false); }
   }
   async function dictionaryDelete() {
-    if (!dictEntry || !dictEntry.id || busy ||
+    if (!dictEntry || !dictEntry.id || busy || dictionaryHistoryDestination ||
         !window.confirm("この単語を辞書から削除しますか？")) return;
     setBusy(true);
     try {

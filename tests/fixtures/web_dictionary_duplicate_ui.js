@@ -41,7 +41,7 @@ const create=new Function("$","window","flags","calls",
   'hideDictionaryDuplicate,state(){return {busy,dictQuery,dictLanguage,'+
   'dictionaryHistoryDestination,dictEntry,dictDuplicate}},'+
   'setLanguage(value){dictLanguage=value},setWordType(value){$("dictionary-word-type").value=value},'+
-  'setId(value){dictEntry.id=value}};'
+  'setId(value){dictEntry.id=value},completeHistory(){dictionaryHistoryDestination=null;}};'
 );
 const app=create($,window,flags,calls);
 $("dictionary-surface").value="hello";
@@ -71,6 +71,8 @@ async function run(){
   assert.equal(app.state().dictQuery,"Hello");
   assert.equal(app.state().dictionaryHistoryDestination,"dictionary");
   assert.equal(els["dictionary-duplicate"].hidden,true);
+  // The previous navigation has completed before testing another entry.
+  app.completeHistory();
   // Japanese different part of speech is not a duplicate.
   app.setLanguage("ja");app.setWordType("COMMON_NOUN");
   $("dictionary-surface").value="雨";
