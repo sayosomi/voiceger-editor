@@ -111,6 +111,8 @@ def review_payload(state, core):
                  else " ".join(existing.phonemes)) if existing is not None else None
             ),
             "word_type": japanese_word_type(incoming).value if japanese else None,
+            "priority": incoming.priority if japanese else None,
+            "existing_priority": existing.priority if japanese and existing else None,
             "existing_word_type": (
                 japanese_word_type(existing).value if japanese and existing else None
             ),
