@@ -2322,6 +2322,10 @@
     if (busy || currentView !== "dictionary" || dictionaryHistoryDestination) return;
     if (!showView("dictionary-management", true)) return;
     dictionaryExportNotice("", false);
+    dictionaryImportNotice("dictionary-import-message", "", false);
+    void loadDictionaryImportFiles().catch(function (error) {
+      dictionaryImportNotice("dictionary-import-message", error.message, true);
+    });
     dictionaryPushHistory("dictionary-management");
   }
   function dictionaryExportNotice(text, isError) {
@@ -3255,6 +3259,21 @@
   $("dictionary-back").addEventListener("click", dictionaryBack);
   $("dictionary-manage").addEventListener("click", openDictionaryManagement);
   $("dictionary-management-back").addEventListener("click", dictionaryBack);
+  $("dictionary-import-open").addEventListener("click", function () {
+    void openDictionaryImportReview();
+  });
+  $("dictionary-import-file").addEventListener("change", function () {
+    dictionaryImportNotice("dictionary-import-message", "", false);
+  });
+  $("dictionary-import-back").addEventListener("click", function () {
+    void cancelDictionaryImport();
+  });
+  $("dictionary-import-clear").addEventListener("click", function () {
+    void clearDictionaryImportSelection();
+  });
+  $("dictionary-import-commit").addEventListener("click", function () {
+    void commitDictionaryImport();
+  });
   $("dictionary-ja").addEventListener("click", function () {
     if (dictLanguage === "ja" || busy) return;
     dictLanguage = "ja"; dictSort = "surface_asc"; dictQuery = ""; dictType = "ALL";
