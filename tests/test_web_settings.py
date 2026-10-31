@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -150,6 +152,54 @@ class WebSynthesisSettingsTests(unittest.TestCase):
         self.assertIn('id="edit-take-count"', html)
         self.assertNotIn("このCaptionの生成条件", html)
         self.assertIn('id="common-settings-form"', html)
+
+    def test_actual_browser_settings_draft_guards(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node required for browser guard verification")
+        source = r"""
+const fs=require("fs"),assert=require("assert").strict;
+const js=fs.readFileSync(process.argv[1],"utf8");
+const begin=js.indexOf("  function itemVoiceDirty(item) {");
+const end=js.indexOf("  function guardDraft() {",begin);
+assert(begin>=0 && end>begin,"settings guard source not found");
+const nodes={
+  "item-style":{value:"3"},
+  "item-speed":{value:"1.00"},
+  "common-style":{value:"3"},
+  "common-speed":{value:"1.00"},
+  "common-top-k":{value:"20"},
+  "common-top-p":{value:"1.00"},
+  "common-temperature":{value:"1.00"},
+};
+const data={values:{style_id:3,speed:1,top_k:20,top_p:1,temperature:1}};
+const make=data=>new Function("$","commonSettingsData",
+  js.slice(begin,end)+"return {itemVoiceDirty,commonDirty};"
+)(id=>nodes[id],data);
+const guards=make(data),item={style_id:3,speed:1};
+assert.equal(guards.itemVoiceDirty(item),false);
+assert.equal(guards.commonDirty(),false);
+nodes["item-speed"].value="1.25";
+assert.equal(guards.itemVoiceDirty(item),true);
+nodes["item-speed"].value="1.00";
+nodes["item-style"].value="1";
+assert.equal(guards.itemVoiceDirty(item),true);
+nodes["item-style"].value="3";
+nodes["common-temperature"].value="0.85";
+assert.equal(guards.commonDirty(),true);
+nodes["common-temperature"].value="";
+assert.equal(guards.commonDirty(),true);
+nodes["common-temperature"].value="1.00";
+assert.equal(make(null).commonDirty(),false);
+assert.equal(make(null).itemVoiceDirty(item),false);
+console.log("WEB_SETTINGS_BROWSER_GUARDS_PASS");
+"""
+        result = subprocess.run(
+            [node, "-e", source, str(ASSETS / "app.js")],
+            capture_output=True, text=True, timeout=20, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + "\n" + result.stderr)
+        self.assertIn("WEB_SETTINGS_BROWSER_GUARDS_PASS", result.stdout)
 
     def test_authenticated_values_and_style_catalog(self):
         data = self.settings()
