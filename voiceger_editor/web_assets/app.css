@@ -452,3 +452,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .global-nav { gap: 4px; }
   .global-nav .header-action { padding: 8px; font-size: 12px; }
 }
+
+/* Slice 9a: compact dictionary toolbar and dedicated management screen. */
+.dictionary-list-header { align-items: center; }
+.dictionary-list-header h2 { flex: none; }
+.dictionary-header-actions { display: flex; flex-wrap: nowrap; align-items: center;
+  gap: 7px; min-width: 0; margin-left: auto; }
+.dictionary-header-actions .item-link { white-space: nowrap; padding: 8px 10px; }
+.dictionary-header-actions .dictionary-manage-action { background: #fff;
+  border-color: #cbdcd2; }
+.dictionary-management { margin-top: 20px; }
+.dictionary-management h3 { margin: 0 0 8px; }
+.dictionary-management .help-text { margin: 0 0 14px; }
+.dictionary-export-actions { display: grid; gap: 8px; }
+.dictionary-export-actions button { width: 100%; min-height: 48px; border: 1px solid #cbdcd2;
+  background: #f4f9f5; color: #285e4f; border-radius: 10px; text-align: left; padding: 10px 12px; }
+#dictionary-export-message { overflow-wrap: anywhere; scroll-margin-top: 90px; }
+#dictionary-export-message[data-error="true"] { color: #812c25; font-weight: 700; }

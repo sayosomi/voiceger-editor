@@ -59,11 +59,12 @@
   var settingsHistoryDestination = null;
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
-  var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session", "dictionary", "dictionary-entry", "dictionary-pron"];
+  var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session", "dictionary", "dictionary-management", "dictionary-entry", "dictionary-pron"];
   var screenTitles = {
     connect: "接続", list: "Batch List", recipe: "ファイル", add: "Caption追加",
     item: "Batch Item", pronunciation: "発音編集", section: "セクション編集", session: "接続・設定",
-    dictionary: "辞書", "dictionary-entry": "辞書の単語", "dictionary-pron": "辞書発音編集"
+    dictionary: "辞書", "dictionary-management": "辞書管理",
+    "dictionary-entry": "辞書の単語", "dictionary-pron": "辞書発音編集"
   };
 
   function savedSession() {
@@ -284,6 +285,16 @@
     }
     var dictionaryTarget = event && event.state && event.state.voicegerDictionary &&
       event.state.sessionId === sessionId ? event.state : null;
+    if (dictionaryTarget && currentView === "dictionary" &&
+        dictionaryTarget.view === "dictionary-management" &&
+        Number.isInteger(dictionaryTarget.depth) &&
+        dictionaryTarget.depth > dictionaryHistoryDepth) {
+      // Management is safe to reopen on Forward: it holds no editable draft.
+      if (busy) { window.history.back(); return; }
+      dictionaryHistoryDepth = dictionaryTarget.depth;
+      showView("dictionary-management", true);
+      return;
+    }
     if (dictionaryTarget && currentView.indexOf("dictionary") === 0 &&
         Number.isInteger(dictionaryTarget.depth) &&
         dictionaryTarget.depth > dictionaryHistoryDepth &&
@@ -310,8 +321,8 @@
         dictionaryTarget.depth : Math.max(1, dictionaryHistoryDepth - 1);
       return;
     }
-    if (currentView === "dictionary" || currentView === "dictionary-entry" ||
-        currentView === "dictionary-pron") {
+    if (currentView === "dictionary" || currentView === "dictionary-management" ||
+        currentView === "dictionary-entry" || currentView === "dictionary-pron") {
       if (busy || !(currentView === "dictionary-pron" &&
           event && event.state && event.state.voicegerDictionary &&
           event.state.view === "dictionary-entry" ?
@@ -329,6 +340,8 @@
       } else if (currentView === "dictionary-entry") {
         dictEntry = null;
         dictEntryOriginal = null;
+        showView("dictionary", true);
+      } else if (currentView === "dictionary-management") {
         showView("dictionary", true);
       } else {
         showView(dictReturnView, true);
@@ -2281,6 +2294,68 @@
   function dictionaryPath() {
     return "/api/web/sessions/" + encodeURIComponent(sessionId) + "/dictionary";
   }
+  function openDictionaryManagement() {
+    if (busy || currentView !== "dictionary" || dictionaryHistoryDestination) return;
+    if (!showView("dictionary-management", true)) return;
+    dictionaryExportNotice("", false);
+    dictionaryPushHistory("dictionary-management");
+  }
+  function dictionaryExportNotice(text, isError) {
+    var notice = $("dictionary-export-message");
+    notice.textContent = text;
+    notice.hidden = !text;
+    notice.dataset.error = isError ? "true" : "false";
+    if (text) {
+      notice.scrollIntoView({ behavior: "auto", block: "center" });
+      if (isError) notice.focus({ preventScroll: true });
+    }
+  }
+  async function exportDictionary(format) {
+    if (busy || currentView !== "dictionary-management" || !sessionId) return;
+    setBusy(true);
+    var tokenForCancel = "";
+    try {
+      var latest = await request("GET", dictionaryPath() + "/" + encodeURIComponent(dictLanguage) +
+        "?sort=" + encodeURIComponent(dictSort) + "&query=" +
+        encodeURIComponent(dictQuery) + "&word_type=" + encodeURIComponent(dictType));
+      dictData = latest;
+      var revision = latest.revision;
+      var review = await request("POST", dictionaryPath() + "/export/review", {
+        format: format, expected_revision: revision
+      });
+      tokenForCancel = review.token;
+      var confirmLoss = false;
+      if (format === "voicevox" && review.lossy_pitch_count > 0) {
+        confirmLoss = window.confirm(
+          review.lossy_pitch_count + "件の追加アクセント情報はVOICEVOX JSONに保存されません。\n" +
+          "完全な保存にはZIPバックアップを使用してください。\nこのまま書き出しますか？"
+        );
+        if (!confirmLoss) {
+          await request("POST", dictionaryPath() + "/export/cancel",
+            { token: review.token });
+          tokenForCancel = "";
+          dictionaryExportNotice("エクスポートを中止しました。ファイルは作成していません。", false);
+          return;
+        }
+      }
+      var saved = await request("POST", dictionaryPath() + "/export/commit", {
+        token: review.token, expected_revision: revision,
+        confirmed_pitch_loss: confirmLoss
+      });
+      tokenForCancel = "";
+      dictionaryExportNotice(
+        saved.filename + " をMacのOutputフォルダに保存しました。", false);
+    } catch (error) {
+      // Cancel any outstanding review. Never retry a failed commit blindly.
+      if (tokenForCancel) {
+        try { await request("POST", dictionaryPath() + "/export/cancel",
+          { token: tokenForCancel }); } catch (_ignored) {}
+      }
+      dictionaryExportNotice(error.conflictCode === "export_io" ?
+        "MacのOutputフォルダへ書き込めませんでした。保存先と空き容量を確認してください。" :
+        error.message, true);
+    } finally { setBusy(false); }
+  }
   function dictionaryPronunciationDirty() {
     return currentView === "dictionary-pron" && dictPronOpening !== null &&
       $("dictionary-pron-text").value !== dictPronOpening;
@@ -2408,7 +2483,8 @@
       return;
     }
     var destination = currentView === "dictionary-pron" ? "dictionary-entry" :
-      currentView === "dictionary-entry" ? "dictionary" : dictReturnView;
+      (currentView === "dictionary-entry" || currentView === "dictionary-management") ?
+      "dictionary" : dictReturnView;
     dictPronOpening = null;
     if (destination !== "dictionary-entry") {
       dictEntry = null;
@@ -2932,6 +3008,8 @@
   }
 
   $("dictionary-back").addEventListener("click", dictionaryBack);
+  $("dictionary-manage").addEventListener("click", openDictionaryManagement);
+  $("dictionary-management-back").addEventListener("click", dictionaryBack);
   $("dictionary-ja").addEventListener("click", function () {
     if (dictLanguage === "ja" || busy) return;
     dictLanguage = "ja"; dictSort = "surface_asc"; dictQuery = ""; dictType = "ALL";
@@ -3025,6 +3103,12 @@
     clearPlayer();
   });
   $("dictionary-quick-form").addEventListener("submit", saveDictionaryQuick);
+  $("dictionary-export-native").addEventListener("click", function () {
+    void exportDictionary("native");
+  });
+  $("dictionary-export-voicevox").addEventListener("click", function () {
+    void exportDictionary("voicevox");
+  });
 
   fetch("/api/web/health", { method: "GET", cache: "no-store" })
     .then(function (response) {
