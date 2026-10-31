@@ -151,7 +151,9 @@ class WebSynthesisSettingsTests(unittest.TestCase):
         self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr))", css)
         self.assertIn('id="edit-take-count"', html)
         self.assertNotIn("このCaptionの生成条件", html)
-        self.assertIn('id="common-settings-form"', html)
+        self.assertIn('id="common-settings-form" class="setting-section" novalidate', html)
+        self.assertIn('id="item-speed" type="number" inputmode="decimal" min="0" step="0.01"', html)
+        self.assertIn('id="common-speed" type="number" inputmode="decimal" min="0" step="0.01"', html)
 
     def test_actual_browser_settings_draft_guards(self):
         node = shutil.which("node")
@@ -192,6 +194,15 @@ assert.equal(guards.commonDirty(),true);
 nodes["common-temperature"].value="1.00";
 assert.equal(make(null).commonDirty(),false);
 assert.equal(make(null).itemVoiceDirty(item),false);
+const speedStart=js.indexOf("  function validSpeed(raw) {");
+const speedEnd=js.indexOf("  async function saveItemVoice() {",speedStart);
+assert(speedStart>=0 && speedEnd>speedStart,"speed validation source not found");
+const precision=new Function(js.slice(speedStart,speedEnd)+
+  "return {validSpeed,validSampling};")();
+assert.equal(precision.validSpeed("1.234567"),1.234567);
+assert.equal(precision.validSampling({
+  style_id:3,speed:1.234567,top_k:20,top_p:1,temperature:1
+}).speed,1.234567);
 console.log("WEB_SETTINGS_BROWSER_GUARDS_PASS");
 """
         result = subprocess.run(
