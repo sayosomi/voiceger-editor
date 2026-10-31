@@ -145,6 +145,18 @@
           <p id="pronunciation-value" class="pronunciation-value" hidden></p>
           <div id="pronunciation-sections" class="pronunciation-sections" hidden></div>
         </section>
+        <div class="item-voice-grid" aria-label="個別の音声設定">
+          <label for="item-style">Style
+            <select id="item-style" aria-label="このCaptionのStyle"></select>
+          </label>
+          <label for="item-speed">Speed
+            <span class="item-speed-value">
+              <input id="item-speed" type="number" inputmode="decimal" min="0" step="0.01" aria-label="このCaptionのSpeed">
+              <span aria-hidden="true">x</span>
+            </span>
+          </label>
+        </div>
+        <p id="item-voice-error" class="field-error" role="alert" hidden></p>
         <div class="item-quick-actions">
           <button type="button" id="preview-audio" hidden>▶ Preview</button>
           <button type="button" id="edit-take-count" class="item-link">Take数</button>
@@ -409,20 +421,50 @@
 
       <section id="view-session" class="screen" aria-labelledby="session-title" hidden>
         <button type="button" id="session-back" class="back-button">← 戻る</button>
-        <div class="screen-heading">
-          
+        <div class="screen-heading settings-screen-heading">
           <h2 id="session-title" tabindex="-1">設定</h2>
+          <button type="button" id="reset-settings">設定値を初期化</button>
         </div>
+        <form id="common-settings-form" class="setting-section" novalidate>
+          <div class="synthesis-settings-group">
+            <h3>音声生成</h3>
+            <div class="setting-two-columns">
+              <label for="common-style">Style
+                <select id="common-style" required></select>
+              </label>
+              <label for="common-speed">Speed
+                <input id="common-speed" type="number" inputmode="decimal" min="0" step="0.01" required>
+              </label>
+            </div>
+          </div>
+          <div class="sampling-settings-group">
+            <h3>サンプリング</h3>
+            <div class="setting-two-columns">
+              <label for="common-top-k">Top K
+                <input id="common-top-k" type="number" min="1" max="100" step="1" required>
+              </label>
+              <label for="common-top-p">Top P
+                <input id="common-top-p" type="number" inputmode="decimal" min="0" max="1" step="any" required>
+              </label>
+              <label for="common-temperature">Temperature
+                <input id="common-temperature" type="number" inputmode="decimal" min="0" max="1" step="any" required>
+              </label>
+            </div>
+          </div>
+          <p id="common-settings-error" class="field-error" role="alert" hidden></p>
+          <p id="common-settings-status" class="settings-status" role="status" aria-live="polite" hidden></p>
+        </form>
+        <form id="default-takes-form" class="setting-section" novalidate>
+          <label for="default-takes">標準Take数</label>
+          <input id="default-takes" type="number" min="1" max="100" step="1" required>
+          <p id="default-takes-error" class="field-error" role="alert" hidden></p>
+          <p id="default-takes-status" class="settings-status" role="status" aria-live="polite" hidden></p>
+        </form>
         <div class="setting-section">
           <p class="field-title">Webサーバー</p>
           <p id="connection-status" class="connection-status" role="status" aria-live="polite">接続状態を確認中…</p>
           <p id="server-version" class="help-text">Voiceger Editor Web</p>
         </div>
-        <form id="default-takes-form" class="setting-section">
-          <label for="default-takes">標準Take数</label>
-          <input id="default-takes" type="number" min="1" max="100" step="1" required>
-          <button type="submit">保存</button>
-        </form>
         <div class="setting-section">
           <h3>セッション</h3>
           <p class="help-text">BatchはMac上のWebサーバーに一時的に保持されます。サーバー再起動時は復元されません。</p>

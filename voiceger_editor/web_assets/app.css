@@ -140,6 +140,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .setting-section {
   display: grid; gap: 12px; padding: 20px 0; border-bottom: 1px solid #e0e8e2;
 }
+.synthesis-settings-group, .sampling-settings-group { display: grid; gap: 12px; }
+.synthesis-settings-group h3, .sampling-settings-group h3 { margin: 0; }
+.sampling-settings-group {
+  border-top: 1px solid #cbdcd2; padding-top: 20px; margin-top: 8px;
+}
+.settings-screen-heading {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.settings-screen-heading button {
+  min-height: 44px; padding: 9px 12px; border-radius: 12px;
+  background: #f2f7f4; border: 1px solid #d2dfd8;
+  color: #295d51; font-size: 12px; font-weight: 700;
+}
+.settings-status { font-size: 12px; color: #456358; margin: 0; }
 .setting-section .check-row { display: flex; align-items: center; gap: 12px; min-height: 44px; }
 .check-row input { width: 22px; height: 22px; accent-color: #23675a; flex: none; }
 .setting-section button { justify-self: start; }
@@ -205,6 +219,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   min-height: 44px; background: #fff; border: 1px solid #cbdcd2; border-radius: 10px; font: inherit; }
 .item-inline-form .button-row button:not(.primary-button) { min-height: 44px;
   border: 1px solid #d0ded4; border-radius: 10px; padding: 10px 14px; background: #fff; }
+.item-voice-grid, .setting-two-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.item-voice-grid { padding: 12px 0 0; }
+.item-voice-grid label, .setting-two-columns label { display: grid; gap: 5px; min-width: 0; font-size: 13px; font-weight: 750; color: #456358; }
+.item-voice-grid input, .item-voice-grid select, .setting-two-columns input, .setting-two-columns select {
+  min-width: 0; width: 100%; min-height: 44px; padding: 9px 10px; font: inherit;
+  background: #fff; border: 1px solid #cbdcd2; border-radius: 10px; color: #263b33;
+}
+.item-speed-value { display: block; position: relative; min-width: 0; }
+.item-speed-value > input { padding-right: 26px; }
+.item-speed-value > span { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #627a71; pointer-events: none; }
+.field-error { color: #9b3c30; font-size: 12px; line-height: 1.5; margin: 0; }
 .item-quick-actions { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 14px 0; }
 .item-quick-actions button { min-height: 44px; }
 #preview-audio { border: 1px solid #c8dbd1; border-radius: 11px; background: #eff6f2;

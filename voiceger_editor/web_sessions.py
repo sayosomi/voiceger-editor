@@ -18,6 +18,7 @@ from .web_batch import WebBatchMixin
 from .web_recipe import WebRecipeMixin
 from .web_batch_generation import WebBatchGenerationMixin
 from .web_takes import WebTakeMixin
+from .web_settings import WebSettingsMixin
 from .web_dictionary import WebDictionaryMixin
 from .web_dictionary_export import WebDictionaryExportMixin
 from .web_dictionary_import import WebDictionaryImportMixin
@@ -35,8 +36,9 @@ class WebSessionConflict(RuntimeError):
     """A typed, safe conflict; never expose arbitrary exception text."""
 
     CODES = frozenset({
-        "conflict", "revision_conflict", "worker_busy",
+        "conflict", "revision_conflict", "settings_revision_conflict", "worker_busy",
         "terms_required", "accepted_take_protected", "already_accepted",
+        "take_invalidation_confirmation_required",
     })
 
     def __init__(self, message: str, *, code: str = "conflict") -> None:
@@ -104,7 +106,7 @@ class _WebSession:
         }
 
 
-class WebSessionOperations(WebDictionaryImportMixin, WebDictionaryExportMixin, WebDictionaryMixin, WebBatchMixin, WebRecipeMixin, WebBatchGenerationMixin, WebEnglishMixin, WebSectionMixin, WebPronunciationMixin, WebTakeMixin):
+class WebSessionOperations(WebSettingsMixin, WebDictionaryImportMixin, WebDictionaryExportMixin, WebDictionaryMixin, WebBatchMixin, WebRecipeMixin, WebBatchGenerationMixin, WebEnglishMixin, WebSectionMixin, WebPronunciationMixin, WebTakeMixin):
     """Thread-safe, in-process session registry with one worker across sessions."""
 
     def __init__(
@@ -134,6 +136,7 @@ class WebSessionOperations(WebDictionaryImportMixin, WebDictionaryExportMixin, W
         self._dictionary_preview_provider = dictionary_preview_provider
         self._batch_adapter = dictionary_adapter
         self._batch_settings = None
+        self._settings_revision = 0
         self._lock = threading.RLock()
         self._sessions: dict[str, _WebSession] = {}
         self._active: tuple[str, str] | None = None

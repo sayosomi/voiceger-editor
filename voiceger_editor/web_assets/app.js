@@ -59,6 +59,7 @@
   var dictionaryImportExpanded = new Set();
   var settingsReturnView = "list", settingsHistoryActive = false;
   var settingsHistoryDestination = null;
+  var commonSettingsData = null;
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
   var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session", "dictionary", "dictionary-management", "dictionary-import-review", "dictionary-entry", "dictionary-pron"];
@@ -108,7 +109,37 @@
     return selectedMode === "custom" &&
       Number($("item-takes").value) !== item.take_count_override;
   }
+  function itemVoiceDirty(item) {
+    if (!commonSettingsData || !item || typeof item.style_id !== "number") return false;
+    return $("item-style").value !== String(item.style_id) ||
+      $("item-speed").value.trim() === "" ||
+      Number($("item-speed").value) !== item.speed;
+  }
+  function commonValues() {
+    return {
+      style_id: Number($("common-style").value),
+      speed: Number($("common-speed").value),
+      top_k: Number($("common-top-k").value),
+      top_p: Number($("common-top-p").value),
+      temperature: Number($("common-temperature").value)
+    };
+  }
+  function commonDirty() {
+    if (!commonSettingsData) return false;
+    var current = commonValues();
+    return Object.keys(current).some(function (field) {
+      return $(field === "style_id" ? "common-style" :
+        "common-" + field.replace("_", "-")).value === "" ||
+        current[field] !== commonSettingsData.values[field];
+    });
+  }
+  function defaultTakesDirty() {
+    return Boolean(batch) && ($("default-takes").value.trim() === "" ||
+      Number($("default-takes").value) !== batch.default_take_count);
+  }
   function guardDraft() {
+    if (currentView === "session" && (commonDirty() || defaultTakesDirty()))
+      return window.confirm("保存されていない設定変更を破棄して移動しますか？");
     if (currentView === "dictionary-pron") {
       var pronChanged = dictionaryPronunciationDirty();
       var entryChanged = dictionaryEntryDirty();
@@ -137,6 +168,9 @@
       }
       if (takeCountChanged) {
         return window.confirm("未保存のTake数変更を破棄して移動しますか？");
+      }
+      if (itemVoiceDirty(item)) {
+        return window.confirm("未保存のStyle / Speed変更を破棄して移動しますか？");
       }
     }
     if (pronunciationDirty()) {
@@ -220,7 +254,23 @@
     }
     feedback("");
     if (name === "item") renderItem(false);
-    if (name === "session" && batch) $("default-takes").value = String(batch.default_take_count);
+    if (name === "session" && batch) {
+      $("default-takes").value = String(batch.default_take_count);
+      $("common-settings-error").hidden = true;
+      $("common-settings-status").hidden = true;
+      $("default-takes-error").hidden = true;
+      $("default-takes-status").hidden = true;
+      $("common-settings-form").hidden = true;
+      $("reset-settings").disabled = true;
+      void loadWebSettings().then(function () {
+        if (currentView === "session") {
+          $("common-settings-form").hidden = false;
+          $("reset-settings").disabled = false;
+        }
+      }).catch(function (error) {
+        if (currentView === "session") feedback(error.message);
+      });
+    }
     window.scrollTo(0, 0);
     var title = $("view-" + name).querySelector("h2");
     if (title) title.focus({ preventScroll: true });
@@ -462,7 +512,8 @@
     if (!enterPronunciation(item, true)) window.history.back();
   });
   window.addEventListener("beforeunload", function (event) {
-    if (!pronunciationDirty() && !sectionDirty() &&
+    if (!(currentView === "session" && (commonDirty() || defaultTakesDirty())) &&
+        !pronunciationDirty() && !sectionDirty() &&
         !dictionaryPronunciationDirty() &&
         !((currentView === "dictionary-entry" ||
            currentView === "dictionary-pron") && dictionaryEntryDirty())) return;
@@ -494,7 +545,9 @@
       // Allowlist user-facing explanations; never render untrusted server errors.
       var conflictMessages = {
         revision_conflict: "別の画面で変更されています。最新の一覧を取得してください。",
+        settings_revision_conflict: "共通設定が別の画面で変更されています。開き直してください。",
         worker_busy: "Mac側で別の処理を実行中です。完了後に再試行してください。",
+        take_invalidation_confirmation_required: "生成済みTakeを保護するため確認が必要です。",
         terms_required: "Mac側で最新のVoiceger利用規約への承諾が必要です。",
         accepted_take_protected: "採用済みTakeを保護しました。Take数を増やすか採用状態を確認してください。",
         already_accepted: "このTakeはすでに採用済みです。",
@@ -523,7 +576,9 @@
       };
       var error = new Error(
         response.status === 401 ? "認証できません。トークンを確認してください。" :
-        response.status === 503 ? (conflictCode === "dictionary_io" ? "Mac側の辞書を保存できませんでした。" :
+        response.status === 503 ? (conflictCode === "settings_io" ?
+          "Mac側の設定を保存できませんでした。保存先のアクセス権を確認してください。" :
+          conflictCode === "dictionary_io" ? "Mac側の辞書を保存できませんでした。" :
           conflictCode === "import_io" ? "Macの辞書ファイルを読み書きできませんでした。" :
           conflictCode === "recipe_io" ?
           "Mac側のOutputフォルダまたはファイルを操作できません。" :
@@ -549,6 +604,101 @@
   }
   function batchPath() {
     return "/api/web/sessions/" + encodeURIComponent(sessionId) + "/batch";
+  }
+  function settingsPath() {
+    return "/api/web/sessions/" + encodeURIComponent(sessionId) + "/settings";
+  }
+  function setStyleOptions(select, styles, selectedId, selectedLabel) {
+    select.replaceChildren();
+    styles.forEach(function (style) {
+      var option = document.createElement("option");
+      option.value = String(style.id);
+      option.textContent = style.name;
+      select.appendChild(option);
+    });
+    if (!styles.some(function (style) { return style.id === selectedId; })) {
+      var unavailable = document.createElement("option");
+      unavailable.value = String(selectedId);
+      unavailable.textContent = (selectedLabel || ("Style " + selectedId)) + "（利用不可）";
+      select.appendChild(unavailable);
+    }
+    select.value = String(selectedId);
+  }
+  function numericField(value) {
+    var number = Number(value);
+    return Number(number.toFixed(2)) === number ? number.toFixed(2) : String(value);
+  }
+  function renderItemVoice(item) {
+    if (!commonSettingsData || typeof item.style_id !== "number") return;
+    if (document.activeElement !== $("item-style") && document.activeElement !== $("item-speed")) {
+      setStyleOptions($("item-style"), commonSettingsData.styles, item.style_id, item.style_name);
+      $("item-speed").value = numericField(item.speed);
+    }
+  }
+  function renderCommonSettings(data) {
+    commonSettingsData = data;
+    setStyleOptions($("common-style"), data.styles, data.values.style_id);
+    $("common-speed").value = numericField(data.values.speed);
+    $("common-top-k").value = String(data.values.top_k);
+    $("common-top-p").value = numericField(data.values.top_p);
+    $("common-temperature").value = numericField(data.values.temperature);
+    $("common-settings-error").hidden = true;
+  }
+  async function loadWebSettings() {
+    var originalSession = sessionId;
+    var data = await request("GET", settingsPath());
+    if (!sessionId || originalSession !== sessionId) return;
+    renderCommonSettings(data);
+    if (currentView === "item") {
+      var item = batch && batch.items.find(function (entry) { return entry.id === selectedId; });
+      if (item) renderItemVoice(item);
+    }
+  }
+  function validSpeed(raw) {
+    var speed = Number(raw);
+    if (!raw.trim() || !Number.isFinite(speed) || speed <= 0)
+      throw new Error("Speedは0より大きい数値を入力してください。");
+    return speed;
+  }
+  function validSampling(values) {
+    if (!Number.isInteger(values.top_k) || values.top_k < 1 || values.top_k > 100 ||
+        !Number.isFinite(values.top_p) || values.top_p < 0 || values.top_p > 1 ||
+        !Number.isFinite(values.temperature) || values.temperature < 0 ||
+        values.temperature > 1 ||
+        !Number.isFinite(values.speed) || values.speed <= 0)
+      throw new Error("Top Kは1〜100、Top P・Temperatureは0〜1、Speedは正の数値にしてください。");
+    return values;
+  }
+  async function saveItemVoice() {
+    if (busy || !selectedId || !batch || !commonSettingsData) return;
+    var id = selectedId;
+    var item = batch.items.find(function (entry) { return entry.id === id; });
+    if (!item) return;
+    var errorRow = $("item-voice-error");
+    try {
+      var values = { style_id: Number($("item-style").value),
+        speed: validSpeed($("item-speed").value) };
+      if (!commonSettingsData.styles.some(function (style) { return style.id === values.style_id; }))
+        throw new Error("選択したStyleはMacで使用できません。");
+      if (values.style_id === item.style_id && values.speed === item.speed) {
+        errorRow.hidden = true;
+        return;
+      }
+      setBusy(true);
+      try {
+        batch = await request("PATCH", itemAudioPath(id) + "/voice?expected_revision=" +
+          encodeURIComponent(batch.revision), values);
+        renderList();
+        renderItem(false);
+        errorRow.hidden = true;
+      } finally { setBusy(false); }
+    } catch (error) {
+      errorRow.textContent = error.message;
+      errorRow.hidden = false;
+      if (error.conflictCode === "revision_conflict") {
+        try { await refresh(); } catch (_ignored) {}
+      }
+    }
   }
   function validCount(value) {
     var number = Number(value);
@@ -913,6 +1063,7 @@
     $("item-takes-form").hidden = !takeCountEditMode;
     $("edit-take-count").hidden = takeCountEditMode;
     $("edit-take-count").textContent = "Take数 " + item.effective_take_count;
+    renderItemVoice(item);
     $("item-pronunciation").hidden = !item.is_prepared;
     var pure = !!item.pronunciation;
     $("pronunciation-value").hidden = true;
@@ -947,6 +1098,14 @@
     renderItem(false);
     showView("item", true);
     maybePrepareOnOpen(batch.items.find(function (item) { return item.id === id; }));
+    if (!commonSettingsData) {
+      void loadWebSettings().then(function () {
+        if (currentView === "item" && selectedId === id) renderItem(false);
+      }).catch(function (error) {
+        $("item-voice-error").textContent = error.message;
+        $("item-voice-error").hidden = false;
+      });
+    }
   }
   function resetLocal(clearSessionId) {
     clearPlayer();
@@ -979,6 +1138,9 @@
     settingsReturnView = "list";
     settingsHistoryActive = false;
     settingsHistoryDestination = null;
+    commonSettingsData = null;
+    $("common-settings-error").hidden = true;
+    $("item-voice-error").hidden = true;
     dictEntry = null;
     dictEntryOriginal = null;
     dictPronOpening = null;
@@ -2284,12 +2446,141 @@
     if (index === batch.items.length - 1) openCaptionAdd(true);
     else adjacent(1);
   });
+  $("item-style").addEventListener("change", function () { void saveItemVoice(); });
+  $("item-speed").addEventListener("change", function () { void saveItemVoice(); });
+  // 0.01 is the Speed arrow increment, not a precision limit.
+  // Native stepMismatch is deliberately not used for validating this form.
+  function checkedCommonValues() {
+    if (["common-top-k", "common-top-p", "common-temperature"].some(
+      function (id) { return !$(id).value.trim(); }
+    )) throw new Error("Top K・Top P・Temperatureを入力してください。");
+    var values = commonValues();
+    values.speed = validSpeed($("common-speed").value);
+    validSampling(values);
+    if (!commonSettingsData.styles.some(function (style) { return style.id === values.style_id; }))
+      throw new Error("選択したStyleはMacで使用できません。");
+    return values;
+  }
+  function settingsStatus(id, message) {
+    var element = $(id);
+    element.textContent = message;
+    element.hidden = !message;
+  }
+  async function autoSaveCommon() {
+    if (busy || !batch || !commonSettingsData || currentView !== "session") return;
+    var errorRow = $("common-settings-error");
+    var statusId = "common-settings-status";
+    try {
+      var values = checkedCommonValues();
+      if (!commonDirty()) {
+        errorRow.hidden = true;
+        return;
+      }
+      setBusy(true);
+      settingsStatus(statusId, "保存中…");
+      try {
+        var address = settingsPath() + "?expected_revision=" +
+          encodeURIComponent(batch.revision) + "&expected_settings_revision=" +
+          encodeURIComponent(commonSettingsData.settings_revision);
+        var result;
+        try {
+          result = await request("PATCH", address, values);
+        } catch (error) {
+          if (error.conflictCode !== "take_invalidation_confirmation_required") throw error;
+          if (!window.confirm(
+            "この変更で生成済みTakeや採用状態がリセットされます。保存済みの音声ファイルは残ります。変更しますか？"
+          )) {
+            renderCommonSettings(commonSettingsData);
+            settingsStatus(statusId, "変更を取り消しました");
+            return;
+          }
+          result = await request("PATCH", address,
+            Object.assign({}, values, { confirm_take_invalidation: true }));
+        }
+        renderCommonSettings(result);
+        errorRow.hidden = true;
+        try {
+          await refresh();
+          settingsStatus(statusId, "保存済み");
+        } catch (error) {
+          settingsStatus(statusId, "保存済み（Batchの再取得に失敗）");
+          feedback(error.message);
+        }
+      } finally { setBusy(false); }
+    } catch (error) {
+      errorRow.textContent = error.message;
+      errorRow.hidden = false;
+      settingsStatus(statusId, "保存失敗");
+    }
+  }
+  $("common-settings-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    void autoSaveCommon();
+  });
+  ["common-style", "common-speed", "common-top-k",
+    "common-top-p", "common-temperature"].forEach(function (id) {
+    $(id).addEventListener("change", function () { void autoSaveCommon(); });
+  });
+  $("reset-settings").addEventListener("click", async function () {
+    if (busy || !batch || !commonSettingsData || currentView !== "session") return;
+    if (!window.confirm(
+      "Style・Speed・Top K・Top P・Temperature・標準Take数を初期化します。生成済みTakeや採用状態はリセットされる場合があります。保存済み音声、Output保存先、ファイル名、Captionの個別設定は維持します。実行しますか？"
+    )) return;
+    setBusy(true);
+    settingsStatus("common-settings-status", "初期化中…");
+    try {
+      var result = await request("POST", settingsPath() + "/reset?expected_revision=" +
+        encodeURIComponent(batch.revision) + "&expected_settings_revision=" +
+        encodeURIComponent(commonSettingsData.settings_revision),
+        { confirm_take_invalidation: true });
+      batch = result.batch;
+      renderCommonSettings(result.settings);
+      $("default-takes").value = String(batch.default_take_count);
+      $("default-takes-error").hidden = true;
+      renderList();
+      settingsStatus("default-takes-status", "");
+      settingsStatus("common-settings-status", "初期化しました");
+    } catch (error) {
+      $("common-settings-error").textContent = error.message;
+      $("common-settings-error").hidden = false;
+      settingsStatus("common-settings-status", "初期化失敗");
+    } finally { setBusy(false); }
+  });
+  async function autoSaveDefaultTakes() {
+    if (busy || !batch || currentView !== "session") return;
+    var errorRow = $("default-takes-error");
+    var statusId = "default-takes-status";
+    try {
+      var count = validCount($("default-takes").value);
+      if (count === batch.default_take_count) {
+        errorRow.hidden = true;
+        return;
+      }
+      setBusy(true);
+      settingsStatus(statusId, "保存中…");
+      try {
+        batch = await request("PATCH", batchPath() + "/default-take-count?expected_revision=" +
+          encodeURIComponent(batch.revision), { count: count });
+        renderList();
+        $("default-takes").value = String(batch.default_take_count);
+        errorRow.hidden = true;
+        settingsStatus(statusId, "保存済み");
+      } finally { setBusy(false); }
+    } catch (error) {
+      errorRow.textContent = error.message;
+      errorRow.hidden = false;
+      settingsStatus(statusId, "保存失敗");
+      if (error.conflictCode === "revision_conflict") {
+        try { await refresh(); } catch (_ignored) {}
+      }
+    }
+  }
   $("default-takes-form").addEventListener("submit", function (event) {
     event.preventDefault();
-    try {
-      mutate("PATCH", "/default-take-count",
-        { count: validCount($("default-takes").value) }, "標準Take数を更新しました。");
-    } catch (error) { feedback(error.message); }
+    void autoSaveDefaultTakes();
+  });
+  $("default-takes").addEventListener("change", function () {
+    void autoSaveDefaultTakes();
   });
   $("refresh-batch").addEventListener("click", async function () {
     if (busy) return;
@@ -2303,11 +2594,12 @@
     } finally { setBusy(false); }
   });
   $("disconnect-session").addEventListener("click", function () {
-    if (busy) return;
+    if (busy || !guardDraft()) return;
     resetLocal(true);
   });
   $("close-session").addEventListener("click", async function () {
-    if (busy || !window.confirm("セッションと未保存のCaptionをすべて破棄しますか？")) return;
+    if (busy || !guardDraft() ||
+        !window.confirm("セッションと未保存のCaptionをすべて破棄しますか？")) return;
     setBusy(true);
     try {
       await request("DELETE", "/api/web/sessions/" + encodeURIComponent(sessionId));
