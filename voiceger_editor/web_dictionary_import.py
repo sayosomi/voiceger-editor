@@ -41,13 +41,15 @@ class WebDictionaryImportMixin:
                     for entry in os.listdir(directory):
                         try:
                             allowed_filename(entry)
+                            if entry.endswith(".voiceger.json"):
+                                continue
                             info = os.stat(entry, dir_fd=directory, follow_symlinks=False)
                         except (WebDictionaryImportValidation, OSError):
                             continue
                         if stat.S_ISREG(info.st_mode) and info.st_size <= MAX_SOURCE_BYTES:
                             names.append(entry)
                     _check_root_path(root, root_identity)
-                return {"files": sorted(names)[:200]}
+                return {"files": sorted(names, reverse=True)[:200]}
             except (OSError, WebRecipeValidation):
                 raise WebDictionaryImportValidation("import_io") from None
 
