@@ -55,15 +55,17 @@
   var dictionaryHistoryDepth = 0;
   var dictionaryHistoryDestination = null;
   var dictionaryHistoryNotice = "";
+  var dictionaryImportReview = null;
   var settingsReturnView = "list", settingsHistoryActive = false;
   var settingsHistoryDestination = null;
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
-  var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session", "dictionary", "dictionary-management", "dictionary-entry", "dictionary-pron"];
+  var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session", "dictionary", "dictionary-management", "dictionary-import-review", "dictionary-entry", "dictionary-pron"];
   var screenTitles = {
     connect: "接続", list: "Batch List", recipe: "ファイル", add: "Caption追加",
     item: "Batch Item", pronunciation: "発音編集", section: "セクション編集", session: "接続・設定",
     dictionary: "辞書", "dictionary-management": "辞書管理",
+    "dictionary-import-review": "取り込み内容",
     "dictionary-entry": "辞書の単語", "dictionary-pron": "辞書発音編集"
   };
 
