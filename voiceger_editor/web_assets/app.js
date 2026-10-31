@@ -331,6 +331,13 @@
       showView("dictionary", true);
       return;
     }
+    if (dictionaryTarget && currentView === "dictionary-management" &&
+        dictionaryTarget.view === "dictionary-management") {
+      // A discarded import review may have been normalized to management.
+      dictionaryHistoryDepth = Number.isInteger(dictionaryTarget.depth) ?
+        dictionaryTarget.depth : dictionaryHistoryDepth;
+      return;
+    }
     if (dictionaryTarget && currentView === "dictionary" &&
         dictionaryTarget.view === "dictionary") {
       // Both Back and Forward may land on the list (including normalized states).
