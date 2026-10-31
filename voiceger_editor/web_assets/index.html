@@ -426,40 +426,47 @@
           <h2 id="session-title" tabindex="-1">設定</h2>
         </div>
         <form id="common-settings-form" class="setting-section" novalidate>
-          <h3>音声生成</h3>
-          <div class="setting-two-columns">
-            <label for="common-style">Style
-              <select id="common-style" required></select>
-            </label>
-            <label for="common-speed">Speed
-              <input id="common-speed" type="number" inputmode="decimal" min="0" step="0.01" required>
-            </label>
-            <label for="common-top-k">Top K
-              <input id="common-top-k" type="number" min="1" max="100" step="1" required>
-            </label>
-            <label for="common-top-p">Top P
-              <input id="common-top-p" type="number" inputmode="decimal" min="0" max="1" step="any" required>
-            </label>
-            <label for="common-temperature">Temperature
-              <input id="common-temperature" type="number" inputmode="decimal" min="0" max="1" step="any" required>
-            </label>
+          <div class="synthesis-settings-group">
+            <h3>音声生成</h3>
+            <div class="setting-two-columns">
+              <label for="common-style">Style
+                <select id="common-style" required></select>
+              </label>
+              <label for="common-speed">Speed
+                <input id="common-speed" type="number" inputmode="decimal" min="0" step="0.01" required>
+              </label>
+            </div>
+          </div>
+          <div class="sampling-settings-group">
+            <div class="sampling-settings-heading">
+              <h3>サンプリング</h3>
+              <button type="button" id="reset-sampling">リセット</button>
+            </div>
+            <div class="setting-two-columns">
+              <label for="common-top-k">Top K
+                <input id="common-top-k" type="number" min="1" max="100" step="1" required>
+              </label>
+              <label for="common-top-p">Top P
+                <input id="common-top-p" type="number" inputmode="decimal" min="0" max="1" step="any" required>
+              </label>
+              <label for="common-temperature">Temperature
+                <input id="common-temperature" type="number" inputmode="decimal" min="0" max="1" step="any" required>
+              </label>
+            </div>
           </div>
           <p id="common-settings-error" class="field-error" role="alert" hidden></p>
-          <div class="button-row">
-            <button type="submit" class="primary-button">保存</button>
-            <button type="button" id="reset-sampling">サンプリング初期値</button>
-            <button type="button" id="reset-common-draft">元に戻す</button>
-          </div>
+          <p id="common-settings-status" class="settings-status" role="status" aria-live="polite" hidden></p>
         </form>
         <div class="setting-section">
           <p class="field-title">Webサーバー</p>
           <p id="connection-status" class="connection-status" role="status" aria-live="polite">接続状態を確認中…</p>
           <p id="server-version" class="help-text">Voiceger Editor Web</p>
         </div>
-        <form id="default-takes-form" class="setting-section">
+        <form id="default-takes-form" class="setting-section" novalidate>
           <label for="default-takes">標準Take数</label>
           <input id="default-takes" type="number" min="1" max="100" step="1" required>
-          <button type="submit">保存</button>
+          <p id="default-takes-error" class="field-error" role="alert" hidden></p>
+          <p id="default-takes-status" class="settings-status" role="status" aria-live="polite" hidden></p>
         </form>
         <div class="setting-section">
           <h3>セッション</h3>
