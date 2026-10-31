@@ -216,3 +216,13 @@ class DictionaryExportWebTests(unittest.TestCase):
                 capture_output=True, text=True, check=False,
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
+            behavior = subprocess.run(
+                [
+                    "node",
+                    str(Path(__file__).parent / "fixtures" / "web_dictionary_export_ui.js"),
+                    str(ASSETS / "app.js"),
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(behavior.returncode, 0, behavior.stderr)
+            self.assertIn("node_export_ui_pass", behavior.stdout)
