@@ -29,6 +29,7 @@ function harness() {
     'let dictionaryHistoryDepth=0,dictionaryHistoryDestination=null,',
     'dictionaryHistoryNotice="",dictReturnView="list";',
     'let dictEntry=null,dictEntryOriginal=null,dictPronOpening=null;',
+    'let dictionaryImportReview=null;',
     'let settingsHistoryActive=false,settingsHistoryDestination=null,settingsReturnView="list";',
     'let sectionHistoryActive=false,pronunciationHistoryActive=false;',
     'function guardDraft(){return isAllowed();}',
@@ -41,6 +42,7 @@ function harness() {
     cut('  function openDictionaryManagement() {', '  function dictionaryExportNotice(text, isError) {'),
     'return {open:openDictionaryManagement,back:dictionaryBack,global:navigateGlobal,',
     'push:dictionaryPushHistory,setView(v){currentView=v},',
+    'setReview(v){dictionaryImportReview=v},',
     'state(){return {currentView,dictionaryHistoryDepth,dictionaryHistoryDestination};}};'
   ].join("\n");
   const app = new Function("window","views","notices","isAllowed",setup)(
@@ -54,7 +56,7 @@ function harness() {
   }
   function entry() { return entries[index]; }
   return {...app,window,views,notices,pending,flush,entry,
-    allow(value){allowed=value;}};
+    allow(value){allowed=value;},setReview(value){app.setReview(value);}};
 }
 {
   const h = harness();
