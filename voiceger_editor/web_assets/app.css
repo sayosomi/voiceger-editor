@@ -140,6 +140,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .setting-section {
   display: grid; gap: 12px; padding: 20px 0; border-bottom: 1px solid #e0e8e2;
 }
+.synthesis-settings-group, .sampling-settings-group { display: grid; gap: 12px; }
+.synthesis-settings-group h3, .sampling-settings-group h3 { margin: 0; }
+.sampling-settings-group {
+  border-top: 1px solid #cbdcd2; padding-top: 20px; margin-top: 8px;
+}
+.sampling-settings-heading {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.settings-status { font-size: 12px; color: #456358; margin: 0; }
 .setting-section .check-row { display: flex; align-items: center; gap: 12px; min-height: 44px; }
 .check-row input { width: 22px; height: 22px; accent-color: #23675a; flex: none; }
 .setting-section button { justify-self: start; }
