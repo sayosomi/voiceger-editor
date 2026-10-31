@@ -2358,6 +2358,7 @@
     });
   }
   function dictionaryPushHistory(view) {
+    if (dictionaryHistoryDestination) return;
     try {
       var depth = dictionaryHistoryDepth + 1;
       window.history.pushState({ voicegerDictionary: true,
@@ -2366,7 +2367,7 @@
     } catch (_ignored) { /* Browser may restrict history. */ }
   }
   function navigateGlobal(destination) {
-    if (busy || !sessionId) return;
+    if (busy || !sessionId || dictionaryHistoryDestination) return;
     if (destination === currentView) return;
     if (currentView === "session" && settingsHistoryActive) {
       if (destination === "dictionary") dictReturnView = settingsReturnView;
@@ -2380,8 +2381,7 @@
       var steps = destination === "dictionary" ?
         Math.max(0, dictionaryHistoryDepth - 1) : dictionaryHistoryDepth;
       if (steps > 0) {
-        dictionaryHistoryDestination = destination;
-        window.history.go(-steps);
+        requestDictionaryHistoryExit(destination, -steps);
         return;
       }
       dictPronOpening = null;
@@ -2399,13 +2399,12 @@
     showView(destination);
   }
   function dictionaryBack() {
-    if (busy || !(currentView === "dictionary-pron" ?
+    if (dictionaryHistoryDestination || busy || !(currentView === "dictionary-pron" ?
         guardDictionaryPronunciationDraft() : guardDraft())) return;
     if (dictionaryHistoryDepth > 0) {
       // The popstate handler owns state cleanup and the resulting screen.
       // Resolve the target on popstate, not from currentView alone.
-      dictionaryHistoryDestination = "dictionary-back";
-      window.history.back();
+      requestDictionaryHistoryExit("dictionary-back", -1);
       return;
     }
     var destination = currentView === "dictionary-pron" ? "dictionary-entry" :
@@ -2416,6 +2415,21 @@
       dictEntryOriginal = null;
     }
     showView(destination, true);
+  }
+  // The destination doubles as the in-flight guard until the first popstate.
+  // Repeated Android taps must never schedule another browser history exit.
+  function requestDictionaryHistoryExit(destination, delta) {
+    if (dictionaryHistoryDestination) return false;
+    dictionaryHistoryDestination = destination;
+    try {
+      if (delta === -1) window.history.back();
+      else window.history.go(delta);
+    } catch (_error) {
+      dictionaryHistoryDestination = null;
+      feedback("履歴移動に失敗しました。もう一度操作してください。");
+      return false;
+    }
+    return true;
   }
   function revealDictionaryRegistrationError(id) {
     var notice = $(id);
@@ -2460,14 +2474,13 @@
     revealDictionaryRegistrationError("dictionary-duplicate");
   }
   function viewDictionaryDuplicate() {
-    if (busy || !dictDuplicate || !guardDraft()) return;
+    if (dictionaryHistoryDestination || busy || !dictDuplicate || !guardDraft()) return;
     dictQuery = dictDuplicate.surface;
     dictSort = "surface_asc";
     dictType = "ALL";
     hideDictionaryDuplicate();
     if (dictionaryHistoryDepth > 0) {
-      dictionaryHistoryDestination = "dictionary";
-      window.history.back();
+      requestDictionaryHistoryExit("dictionary", -1);
     } else {
       dictEntry = null;
       dictEntryOriginal = null;
@@ -2513,7 +2526,7 @@
     finally { setBusy(false); }
   }
   function openDictionaryEntry(row) {
-    if (!dictData || busy) return;
+    if (!dictData || busy || dictionaryHistoryDestination) return;
     var entry = row || { id: null, surface: "", notation: "",
       word_type: "PROPER_NOUN", priority: 5 };
     dictEntry = { id: entry.id, language: dictLanguage,
@@ -2533,7 +2546,7 @@
     dictionaryPushHistory("dictionary-entry");
   }
   function enterDictionaryPronunciation() {
-    if (!dictEntry || busy) return;
+    if (!dictEntry || busy || dictionaryHistoryDestination) return;
     dictPronOpening = dictEntry.notation;
     $("dictionary-pron-context").textContent = $("dictionary-surface").value;
     $("dictionary-pron-title").textContent = dictLanguage === "en" ? "英語発音編集" : "発音編集";
@@ -2547,12 +2560,12 @@
     dictSelection = { start: input.selectionStart, end: input.selectionEnd };
   }
   function leaveDictionaryPronunciation() {
-    if (!dictEntry || !guardDictionaryPronunciationDraft()) return;
-    dictPronOpening = null;
+    if (dictionaryHistoryDestination || !dictEntry || busy ||
+        !guardDictionaryPronunciationDraft()) return;
     if (dictionaryHistoryDepth > 0) {
-      dictionaryHistoryDestination = "dictionary-entry";
-      window.history.back();
+      requestDictionaryHistoryExit("dictionary-entry", -1);
     } else {
+      dictPronOpening = null;
       showView("dictionary-entry", true);
     }
   }
@@ -2581,7 +2594,7 @@
   }
   async function applyDictionaryPronunciation(event) {
     event.preventDefault();
-    if (!dictEntry || busy) return;
+    if (!dictEntry || busy || dictionaryHistoryDestination) return;
     var notation = $("dictionary-pron-text").value;
     var surface = $("dictionary-surface").value;
     clearDictionaryPronunciationError();
@@ -2593,11 +2606,10 @@
       });
       dictEntry.notation = notation;
       $("dictionary-pron-value").textContent = notation || "未入力";
-      dictPronOpening = null;
       if (dictionaryHistoryDepth > 0) {
-        dictionaryHistoryDestination = "dictionary-entry";
-        window.history.back();
+        requestDictionaryHistoryExit("dictionary-entry", -1);
       } else {
+        dictPronOpening = null;
         showView("dictionary-entry", true);
       }
     } catch (error) { showDictionaryPronunciationError(error, notation, "反映"); }
@@ -2664,13 +2676,14 @@
     finally { setBusy(false); }
   }
   function dictionaryFinish(message) {
-    dictEntry = null;
-    dictEntryOriginal = null;
+    if (dictionaryHistoryDestination) return;
     if (dictionaryHistoryDepth > 1) {
-      dictionaryHistoryDestination = "dictionary";
       dictionaryHistoryNotice = message;
-      window.history.go(1 - dictionaryHistoryDepth);
+      if (!requestDictionaryHistoryExit("dictionary", 1 - dictionaryHistoryDepth))
+        dictionaryHistoryNotice = "";
     } else {
+      dictEntry = null;
+      dictEntryOriginal = null;
       showView("dictionary", true);
       feedback(message);
     }

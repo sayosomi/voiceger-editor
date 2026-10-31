@@ -138,7 +138,7 @@ nav.navigateGlobal("list");
 if(messages.join("|")!=="go:-3") throw Error("Nested navigation must unwind history");
 messages=[];
 nav.dictionaryBack();
-if(messages.join("|")!=="back") throw Error("Dictionary Back must follow browser history");
+if(messages.length) throw Error("Pending global navigation must suppress duplicate Back");
 console.log("GLOBAL_DICTIONARY_NAV_PASS");
 """
         result = subprocess.run(
@@ -302,6 +302,19 @@ const app = f($,window,log,()=>shouldReject);
 
 
 
+
+    def test_dictionary_history_single_flight_delayed_popstate(self):
+        root = Path(__file__).resolve().parents[1]
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node not available")
+        result = subprocess.run([
+            node, str(root / "tests" / "fixtures" /
+                      "web_dictionary_history_single_flight.js"),
+            str(root / "voiceger_editor" / "web_assets" / "app.js")
+        ], capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("DICT_HISTORY_SINGLE_FLIGHT_PASS", result.stdout)
 
     def test_pronunciation_cancel_does_not_double_back(self):
         root = Path(__file__).resolve().parents[1]
