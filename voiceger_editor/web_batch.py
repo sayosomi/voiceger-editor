@@ -39,6 +39,9 @@ def _row(batch: CaptionBatch, item: CaptionBatchItem, sections: list[dict]) -> d
         "included": item.included_for_generation,
         "take_count_override": item.take_count_override,
         "effective_take_count": batch.effective_take_count(item),
+        "style_id": item.session.settings.style_id,
+        "style_name": item.session.style.name,
+        "speed": item.session.settings.speed,
         "is_prepared": item.session.is_prepared,
         "candidate_count": item.session.active_candidate_count,
         "accepted_take_numbers": sorted(item.accepted_take_numbers),
@@ -71,12 +74,11 @@ class WebBatchMixin:
             return self._caption_factory(caption)
         if self._batch_adapter is None:
             from .voiceger_adapter import VoicegerAdapter
-            from .settings import load_settings
 
             # Lazy adapter construction does not load the synthesis models.
             self._batch_adapter = VoicegerAdapter()
-            if self._batch_settings is None:
-                self._batch_settings = load_settings()
+        if self._batch_settings is None:
+            self._batch_settings = self._recipe_settings()
         from .session import UtteranceSession
 
         return UtteranceSession.from_caption(
