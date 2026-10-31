@@ -133,9 +133,13 @@
         current[field] !== commonSettingsData.values[field];
     });
   }
+  function defaultTakesDirty() {
+    return Boolean(batch) && ($("default-takes").value.trim() === "" ||
+      Number($("default-takes").value) !== batch.default_take_count);
+  }
   function guardDraft() {
-    if (currentView === "session" && commonDirty())
-      return window.confirm("未保存の音声生成設定を破棄して移動しますか？");
+    if (currentView === "session" && (commonDirty() || defaultTakesDirty()))
+      return window.confirm("保存されていない設定変更を破棄して移動しますか？");
     if (currentView === "dictionary-pron") {
       var pronChanged = dictionaryPronunciationDirty();
       var entryChanged = dictionaryEntryDirty();
@@ -252,6 +256,10 @@
     if (name === "item") renderItem(false);
     if (name === "session" && batch) {
       $("default-takes").value = String(batch.default_take_count);
+      $("common-settings-error").hidden = true;
+      $("common-settings-status").hidden = true;
+      $("default-takes-error").hidden = true;
+      $("default-takes-status").hidden = true;
       $("common-settings-form").hidden = true;
       void loadWebSettings().then(function () {
         if (currentView === "session") $("common-settings-form").hidden = false;
@@ -500,7 +508,8 @@
     if (!enterPronunciation(item, true)) window.history.back();
   });
   window.addEventListener("beforeunload", function (event) {
-    if (!pronunciationDirty() && !sectionDirty() &&
+    if (!(currentView === "session" && (commonDirty() || defaultTakesDirty())) &&
+        !pronunciationDirty() && !sectionDirty() &&
         !dictionaryPronunciationDirty() &&
         !((currentView === "dictionary-entry" ||
            currentView === "dictionary-pron") && dictionaryEntryDirty())) return;
@@ -534,6 +543,7 @@
         revision_conflict: "別の画面で変更されています。最新の一覧を取得してください。",
         settings_revision_conflict: "共通設定が別の画面で変更されています。開き直してください。",
         worker_busy: "Mac側で別の処理を実行中です。完了後に再試行してください。",
+        take_invalidation_confirmation_required: "生成済みTakeを保護するため確認が必要です。",
         terms_required: "Mac側で最新のVoiceger利用規約への承諾が必要です。",
         accepted_take_protected: "採用済みTakeを保護しました。Take数を増やすか採用状態を確認してください。",
         already_accepted: "このTakeはすでに採用済みです。",
