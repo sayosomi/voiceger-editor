@@ -32,6 +32,9 @@ class CommonSynthesisPayload(BaseModel):
     temperature: Number
     confirm_take_invalidation: StrictBool = False
 
+class ResetSettingsPayload(BaseModel):
+    confirm_take_invalidation: StrictBool = False
+
 
 def _call(action):
     try:
@@ -64,6 +67,18 @@ def build_web_settings_router(service: WebSessionOperations) -> APIRouter:
         return _call(lambda: service.save_common_synthesis(
             session_id, expected_revision, expected_settings_revision,
             **payload.dict(),
+        ))
+
+    @router.post("/{session_id}/settings/reset",
+                 dependencies=[Depends(require_web_mutation)])
+    def reset_generation_settings(
+        session_id: str, payload: ResetSettingsPayload,
+        expected_revision: int = Query(..., ge=0),
+        expected_settings_revision: int = Query(..., ge=0),
+    ):
+        return _call(lambda: service.reset_generation_settings(
+            session_id, expected_revision, expected_settings_revision,
+            confirm_take_invalidation=payload.confirm_take_invalidation,
         ))
 
     @router.patch("/{session_id}/batch/items/{item_id}/voice",
