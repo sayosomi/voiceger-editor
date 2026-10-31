@@ -2434,11 +2434,16 @@
   });
   $("item-style").addEventListener("change", function () { void saveItemVoice(); });
   $("item-speed").addEventListener("change", function () { void saveItemVoice(); });
+  // 0.01 is the Speed arrow-key increment, not a manual precision limit.
+  // Validate explicitly because native stepMismatch is bypassed on this form.
   $("common-settings-form").addEventListener("submit", async function (event) {
     event.preventDefault();
     if (busy || !batch || !commonSettingsData) return;
     var errorRow = $("common-settings-error");
     try {
+      if (["common-top-k", "common-top-p", "common-temperature"].some(
+        function (id) { return !$(id).value.trim(); }
+      )) throw new Error("Top K・Top P・Temperatureを入力してください。");
       var values = commonValues();
       values.speed = validSpeed($("common-speed").value);
       validSampling(values);
