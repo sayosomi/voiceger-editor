@@ -2444,54 +2444,121 @@
   });
   $("item-style").addEventListener("change", function () { void saveItemVoice(); });
   $("item-speed").addEventListener("change", function () { void saveItemVoice(); });
-  // 0.01 is the Speed arrow-key increment, not a manual precision limit.
-  // Validate explicitly because native stepMismatch is bypassed on this form.
-  $("common-settings-form").addEventListener("submit", async function (event) {
-    event.preventDefault();
-    if (busy || !batch || !commonSettingsData) return;
+  // 0.01 is the Speed arrow increment, not a precision limit.
+  // Native stepMismatch is deliberately not used for validating this form.
+  function checkedCommonValues() {
+    if (["common-top-k", "common-top-p", "common-temperature"].some(
+      function (id) { return !$(id).value.trim(); }
+    )) throw new Error("Top K・Top P・Temperatureを入力してください。");
+    var values = commonValues();
+    values.speed = validSpeed($("common-speed").value);
+    validSampling(values);
+    if (!commonSettingsData.styles.some(function (style) { return style.id === values.style_id; }))
+      throw new Error("選択したStyleはMacで使用できません。");
+    return values;
+  }
+  function settingsStatus(id, message) {
+    var element = $(id);
+    element.textContent = message;
+    element.hidden = !message;
+  }
+  async function autoSaveCommon() {
+    if (busy || !batch || !commonSettingsData || currentView !== "session") return;
     var errorRow = $("common-settings-error");
+    var statusId = "common-settings-status";
     try {
-      if (["common-top-k", "common-top-p", "common-temperature"].some(
-        function (id) { return !$(id).value.trim(); }
-      )) throw new Error("Top K・Top P・Temperatureを入力してください。");
-      var values = commonValues();
-      values.speed = validSpeed($("common-speed").value);
-      validSampling(values);
-      if (!commonSettingsData.styles.some(function (style) { return style.id === values.style_id; }))
-        throw new Error("選択したStyleはMacで使用できません。");
+      var values = checkedCommonValues();
+      if (!commonDirty()) {
+        errorRow.hidden = true;
+        return;
+      }
       setBusy(true);
+      settingsStatus(statusId, "保存中…");
       try {
-        var result = await request("PATCH", settingsPath() + "?expected_revision=" +
+        var address = settingsPath() + "?expected_revision=" +
           encodeURIComponent(batch.revision) + "&expected_settings_revision=" +
-          encodeURIComponent(commonSettingsData.settings_revision), values);
+          encodeURIComponent(commonSettingsData.settings_revision);
+        var result;
+        try {
+          result = await request("PATCH", address, values);
+        } catch (error) {
+          if (error.conflictCode !== "take_invalidation_confirmation_required") throw error;
+          if (!window.confirm(
+            "この変更で生成済みTakeや採用状態がリセットされます。保存済みの音声ファイルは残ります。変更しますか？"
+          )) {
+            renderCommonSettings(commonSettingsData);
+            settingsStatus(statusId, "変更を取り消しました");
+            return;
+          }
+          result = await request("PATCH", address,
+            Object.assign({}, values, { confirm_take_invalidation: true }));
+        }
         renderCommonSettings(result);
-        await refresh();
-        feedback("音声生成設定を保存しました。");
+        errorRow.hidden = true;
+        try {
+          await refresh();
+          settingsStatus(statusId, "保存済み");
+        } catch (error) {
+          settingsStatus(statusId, "保存済み（Batchの再取得に失敗）");
+          feedback(error.message);
+        }
       } finally { setBusy(false); }
     } catch (error) {
       errorRow.textContent = error.message;
       errorRow.hidden = false;
-      if (error.conflictCode === "settings_revision_conflict" ||
-          error.conflictCode === "revision_conflict") {
-        feedback("設定が別の画面で変更されています。未保存の入力を確認してください。");
-      }
+      settingsStatus(statusId, "保存失敗");
     }
+  }
+  $("common-settings-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    void autoSaveCommon();
+  });
+  ["common-style", "common-speed", "common-top-k",
+    "common-top-p", "common-temperature"].forEach(function (id) {
+    $(id).addEventListener("change", function () { void autoSaveCommon(); });
   });
   $("reset-sampling").addEventListener("click", function () {
+    if (busy || !commonSettingsData) return;
     $("common-top-k").value = "20";
     $("common-top-p").value = "1.00";
     $("common-temperature").value = "1.00";
-    $("common-settings-error").hidden = true;
+    void autoSaveCommon();
   });
-  $("reset-common-draft").addEventListener("click", function () {
-    if (commonSettingsData) renderCommonSettings(commonSettingsData);
-  });
+  async function autoSaveDefaultTakes() {
+    if (busy || !batch || currentView !== "session") return;
+    var errorRow = $("default-takes-error");
+    var statusId = "default-takes-status";
+    try {
+      var count = validCount($("default-takes").value);
+      if (count === batch.default_take_count) {
+        errorRow.hidden = true;
+        return;
+      }
+      setBusy(true);
+      settingsStatus(statusId, "保存中…");
+      try {
+        batch = await request("PATCH", batchPath() + "/default-take-count?expected_revision=" +
+          encodeURIComponent(batch.revision), { count: count });
+        renderList();
+        $("default-takes").value = String(batch.default_take_count);
+        errorRow.hidden = true;
+        settingsStatus(statusId, "保存済み");
+      } finally { setBusy(false); }
+    } catch (error) {
+      errorRow.textContent = error.message;
+      errorRow.hidden = false;
+      settingsStatus(statusId, "保存失敗");
+      if (error.conflictCode === "revision_conflict") {
+        try { await refresh(); } catch (_ignored) {}
+      }
+    }
+  }
   $("default-takes-form").addEventListener("submit", function (event) {
     event.preventDefault();
-    try {
-      mutate("PATCH", "/default-take-count",
-        { count: validCount($("default-takes").value) }, "標準Take数を更新しました。");
-    } catch (error) { feedback(error.message); }
+    void autoSaveDefaultTakes();
+  });
+  $("default-takes").addEventListener("change", function () {
+    void autoSaveDefaultTakes();
   });
   $("refresh-batch").addEventListener("click", async function () {
     if (busy) return;
