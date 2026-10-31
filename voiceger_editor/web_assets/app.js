@@ -2528,7 +2528,7 @@
       var status = document.createElement("span");
       status.className = "dictionary-import-status";
       status.textContent = item.relation === "conflict" ? "変更" : "新規";
-      summary.append(words, status);
+      summary.append(words);
       details.append(summary);
 
       if (expandable) {
@@ -2566,7 +2566,7 @@
         }
         details.append(extra);
       }
-      row.append(details);
+      row.append(details, status);
       li.append(row);
       list.append(li);
     });
