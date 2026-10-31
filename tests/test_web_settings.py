@@ -194,6 +194,22 @@ class WebSynthesisSettingsTests(unittest.TestCase):
         )
         self.assertEqual(item.session.settings, self.config)
 
+    def test_common_noop_preserves_high_precision_values(self):
+        precise = Settings(
+            output_dir=Path(self.temp.name),
+            speed=1.2345, top_p=0.125, temperature=0.98765,
+        )
+        self.service._batch_settings = precise
+        previous = self.settings()
+        result = self.common(
+            speed=1.2345, top_p=0.125, temperature=0.98765,
+        )
+        self.assertEqual(result.status_code, 200, result.text)
+        self.assertEqual(result.json()["settings_revision"],
+                         previous["settings_revision"])
+        self.save_mock.assert_not_called()
+        self.assertEqual(self.service._batch_settings, precise)
+
     def test_common_sampling_clears_candidates_and_keeps_local_style(self):
         item = self.add()
         other = self.add("ふたつめ")
