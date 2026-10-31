@@ -260,7 +260,8 @@ class WebSynthesisSettingsTests(unittest.TestCase):
             top_k=30, revision=self.batch()["revision"],
             settings_revision=old["settings_revision"],
         )
-        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(stale.status_code, 409, stale.text)
+        self.assertEqual(stale.json()["detail"]["code"], "settings_revision_conflict")
         unauthorized = self.client.patch(
             self.base + "/settings?expected_revision=" +
             str(self.batch()["revision"]) + "&expected_settings_revision=1",
