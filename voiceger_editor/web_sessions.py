@@ -38,6 +38,7 @@ class WebSessionConflict(RuntimeError):
     CODES = frozenset({
         "conflict", "revision_conflict", "settings_revision_conflict", "worker_busy",
         "terms_required", "accepted_take_protected", "already_accepted",
+        "take_invalidation_confirmation_required",
     })
 
     def __init__(self, message: str, *, code: str = "conflict") -> None:
