@@ -128,7 +128,8 @@
     if (!commonSettingsData) return false;
     var current = commonValues();
     return Object.keys(current).some(function (field) {
-      return $("common-" + field.replace("_", "-")).value === "" ||
+      return $(field === "style_id" ? "common-style" :
+        "common-" + field.replace("_", "-")).value === "" ||
         current[field] !== commonSettingsData.values[field];
     });
   }
@@ -559,7 +560,9 @@
       };
       var error = new Error(
         response.status === 401 ? "認証できません。トークンを確認してください。" :
-        response.status === 503 ? (conflictCode === "dictionary_io" ? "Mac側の辞書を保存できませんでした。" :
+        response.status === 503 ? (conflictCode === "settings_io" ?
+          "Mac側の設定を保存できませんでした。保存先のアクセス権を確認してください。" :
+          conflictCode === "dictionary_io" ? "Mac側の辞書を保存できませんでした。" :
           conflictCode === "import_io" ? "Macの辞書ファイルを読み書きできませんでした。" :
           conflictCode === "recipe_io" ?
           "Mac側のOutputフォルダまたはファイルを操作できません。" :
