@@ -18,7 +18,7 @@ const window={confirm(message){prompts.push(message);return flags.allowDiscard;}
 const source=[
   'let busy=false,currentView="dictionary",dictLanguage="ja",dictEntry=null,dictEntryOriginal=null,',
   'dictData={revision:"rev-ja",entries:[]},dictDuplicate=null,dictSort="surface_asc",dictQuery="",dictType="ALL",',
-  'dictListRequest=0,sessionId="session";',
+  'dictListRequest=0,sessionId="session",dictionaryHistoryDestination=null;',
   'function setBusy(v){busy=v;}',
   'function feedback(v){$("feedback").textContent=v;}',
   'function dictionaryPath(){return "/api/web/sessions/session/dictionary";}',

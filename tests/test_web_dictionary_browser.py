@@ -178,7 +178,7 @@ const base = [
  `let currentView="dictionary-pron",dictPronOpening="シ'コク",`,
  `dictEntry={notation:"シ'コク",id:"id"},`,
  `dictEntryOriginal={surface:"元",notation:"シ'コク",word_type:"PROPER_NOUN",priority:5},`,
- 'busy=false,dictLanguage="ja",dictionaryHistoryDepth=0;',
+ 'busy=false,dictLanguage="ja",dictionaryHistoryDepth=0,dictionaryHistoryDestination=null;',
  'function setBusy(v){busy=v;}', 'function showView(v){currentView=v;return true;}',
  'function feedback(m){log.push(m);}',
  'function dictionaryPath(){return "/api/test/dictionary";}',

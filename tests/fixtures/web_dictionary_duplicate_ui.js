@@ -33,6 +33,8 @@ const create=new Function("$","window","flags","calls",
   ' calls.writes.push({method,url,payload});'+
   ' if(flags.postFailure)throw flags.postFailure;return {changed:true};}'+
   first('  function dictionaryFormValue() {','  function dictionaryTypeLabel(value) {')+
+  first('  function requestDictionaryHistoryExit(destination, delta) {',
+        '  function revealDictionaryRegistrationError(id) {')+
   first('  function revealDictionaryRegistrationError(id) {','  function renderDictionaryEntryLanguage() {')+
   first('  async function dictionarySave(event) {','  async function dictionaryDelete() {')+
   'return {dictionarySave,dictionaryDuplicateFor,viewDictionaryDuplicate,'+

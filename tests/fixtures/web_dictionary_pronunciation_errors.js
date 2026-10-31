@@ -18,7 +18,7 @@ const $ = key => nodes[key] ||= {
 const state={reject:true,error:Object.assign(
   new Error("辞書の入力内容を確認してください。"),{conflictCode:"invalid_dictionary"})};
 const factory=new Function("$","trace","state",
-  'let dictLanguage="ja",dictEntry={notation:"saved"},dictPronOpening="saved",busy=false,dictionaryHistoryDepth=0;' +
+  'let dictLanguage="ja",dictEntry={notation:"saved"},dictPronOpening="saved",busy=false,dictionaryHistoryDepth=0,dictionaryHistoryDestination=null;' +
   'function feedback(m){trace.push("global:"+m);}' +
   'function setBusy(v){busy=v;}' +
   'function dictionaryPath(){return "/dictionary";}' +
