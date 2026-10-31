@@ -150,7 +150,10 @@
             <select id="item-style" aria-label="このCaptionのStyle"></select>
           </label>
           <label for="item-speed">Speed
-            <input id="item-speed" type="number" inputmode="decimal" min="0.01" step="0.01" aria-label="このCaptionのSpeed">
+            <span class="item-speed-value">
+              <input id="item-speed" type="number" inputmode="decimal" min="0.01" step="0.01" aria-label="このCaptionのSpeed">
+              <span aria-hidden="true">x</span>
+            </span>
           </label>
         </div>
         <p id="item-voice-error" class="field-error" role="alert" hidden></p>
