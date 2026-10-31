@@ -33,6 +33,7 @@
   var pronunciationComposing = false;
   var pronunciationHistoryActive = false;
   var pronunciationExitPending = null;
+  var pronunciationHistoryExitInFlight = false;
   var pronunciationReturnView = "item";
   var pronunciationSelection = { start: 0, end: 0 };
   var sectionTarget = null;
@@ -42,12 +43,27 @@
   var sectionExitPending = null;
   var sectionStale = false;
   var autoPrepareFailures = new Set();
+  var dictLanguage = "ja", dictSort = "surface_asc", dictQuery = "", dictType = "ALL";
+  var dictData = null, dictEntry = null, dictEntryOriginal = null;
+  var dictDuplicate = null;
+  var dictPronOpening = null, dictSelection = { start: 0, end: 0 }, dictComposing = false;
+  var dictListRequest = 0, dictReturnView = "list", dictQuickMatches = [];
+  var dictQuickPriorityEdited = false;
+  // The quick form's draft is independent from the Batch pronunciation.
+  // null means Surface changed and its prior pronunciation is invalid.
+  var dictQuickPronSurface = null;
+  var dictionaryHistoryDepth = 0;
+  var dictionaryHistoryDestination = null;
+  var dictionaryHistoryNotice = "";
+  var settingsReturnView = "list", settingsHistoryActive = false;
+  var settingsHistoryDestination = null;
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
-  var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session"];
+  var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session", "dictionary", "dictionary-entry", "dictionary-pron"];
   var screenTitles = {
-    connect: "接続", list: "Batch List", recipe: "Batch操作", add: "Caption追加",
-    item: "Batch Item", pronunciation: "発音編集", section: "セクション編集", session: "接続・設定"
+    connect: "接続", list: "Batch List", recipe: "ファイル", add: "Caption追加",
+    item: "Batch Item", pronunciation: "発音編集", section: "セクション編集", session: "接続・設定",
+    dictionary: "辞書", "dictionary-entry": "辞書の単語", "dictionary-pron": "辞書発音編集"
   };
 
   function savedSession() {
@@ -89,6 +105,16 @@
       Number($("item-takes").value) !== item.take_count_override;
   }
   function guardDraft() {
+    if (currentView === "dictionary-pron") {
+      var pronChanged = dictionaryPronunciationDirty();
+      var entryChanged = dictionaryEntryDirty();
+      if (pronChanged && entryChanged)
+        return window.confirm("未反映の発音と未保存の単語変更を破棄しますか？");
+      if (pronChanged) return window.confirm("未反映の辞書発音変更を破棄しますか？");
+      if (entryChanged) return window.confirm("未保存の辞書変更を破棄しますか？");
+    }
+    if (currentView === "dictionary-entry" && dictionaryEntryDirty())
+      return window.confirm("未保存の辞書変更を破棄しますか？");
     if (sectionDirty()) {
       return window.confirm("未反映のセクション変更を破棄して移動しますか？");
     }
@@ -126,7 +152,10 @@
     }
     if (currentView === "pronunciation" && name !== currentView &&
         pronunciationHistoryActive) {
-      // Consume the editor-only history entry before switching screens.
+      // Only one browser Back per editor exit. A second tap before popstate
+      // must not cross the parent document and lose the in-memory token.
+      if (pronunciationHistoryExitInFlight) return false;
+      pronunciationHistoryExitInFlight = true;
       pronunciationExitPending = { destination: name,
         message: pronunciationExitPending ? pronunciationExitPending.message : "" };
       window.history.back();
@@ -135,7 +164,9 @@
     if (name !== "list" && reorderMode) endReorderMode();
     if (name !== "list" && typeof closeBatchMenu === "function") closeBatchMenu();
     if (name !== "list" && deleteMode) endDeleteMode();
-    if ((currentView === "item" && name !== "item") ||
+    if ((currentView === "dictionary-pron" && name !== "dictionary-pron") ||
+        (currentView === "dictionary-entry" && name !== "dictionary-entry") ||
+        (currentView === "item" && name !== "item") ||
         (currentView === "pronunciation" && name !== "pronunciation") ||
         (currentView === "section" && name !== "section")) clearPlayer();
     if (currentView === "section" && name !== "section") {
@@ -148,18 +179,41 @@
     }
     if (currentView === "pronunciation" && name !== "pronunciation") {
       pronunciationHistoryActive = false;
+      pronunciationHistoryExitInFlight = false;
       pronunciationExitPending = null;
       pronunciationOpening = null;
       if (typeof pronunciationTarget !== "undefined") pronunciationTarget = null;
       pronunciationItemId = "";
       pronunciationStale = false;
     }
+    var previousView = currentView;
     currentView = name;
     viewNames.forEach(function (viewName) {
       $("view-" + viewName).hidden = viewName !== name;
     });
 
-    $("header-session").hidden = !sessionId || name === "connect" || name === "session";
+    $("header-batch").disabled = !sessionId || name === "connect";
+    $("global-nav").hidden = !sessionId || name === "connect";
+    $("header-session").setAttribute("aria-current", name === "session" ? "page" : "false");
+    $("header-batch").setAttribute("aria-current",
+      ["list", "item", "add", "recipe", "pronunciation", "section"].includes(name) ?
+      "page" : "false");
+    $("header-dictionary").setAttribute("aria-current",
+      name.indexOf("dictionary") === 0 ? "page" : "false");
+    if (name === "dictionary" && previousView.indexOf("dictionary") !== 0 &&
+        dictionaryHistoryDepth === 0) {
+      dictionaryPushHistory("dictionary");
+    }
+    if (name === "session" && previousView !== "session" &&
+        !settingsHistoryActive) {
+      settingsReturnView = previousView === "pronunciation" || previousView === "section" ?
+        "item" : previousView.indexOf("dictionary") === 0 ? "dictionary" : previousView;
+      settingsHistoryActive = true;
+      window.history.pushState({ voicegerSettings: true, sessionId: sessionId }, "");
+    }
+    if (name === "dictionary" && previousView !== name) {
+      void loadDictionary().catch(function (error) { feedback(error.message); });
+    }
     feedback("");
     if (name === "item") renderItem(false);
     if (name === "session" && batch) $("default-takes").value = String(batch.default_take_count);
@@ -188,6 +242,121 @@
   // Android Back/Forward both traverse the real browser history. Forward
   // restores a fresh server-owned pronunciation, never a discarded draft.
   window.addEventListener("popstate", function (event) {
+    if (dictionaryHistoryDestination) {
+      var destination = dictionaryHistoryDestination;
+      dictionaryHistoryDestination = null;
+      if (destination === "dictionary-back") {
+        // The visible Back button must follow the actual browser history state.
+        // Forward may have normalized several entries to the Dictionary list.
+        var backState = event && event.state;
+        destination = backState && backState.voicegerDictionary &&
+          backState.sessionId === sessionId &&
+          (backState.view === "dictionary" ||
+           backState.view === "dictionary-entry") ?
+          backState.view : dictReturnView;
+      }
+      dictionaryHistoryDepth = event && event.state &&
+        Number.isInteger(event.state.depth) ? event.state.depth :
+        destination === "dictionary" ? 1 :
+        destination === "dictionary-entry" ? 2 : 0;
+      dictPronOpening = null;
+      if (destination !== "dictionary-entry") {
+        dictEntry = null;
+        dictEntryOriginal = null;
+      }
+      showView(destination, true);
+      if (dictionaryHistoryNotice) {
+        feedback(dictionaryHistoryNotice);
+        dictionaryHistoryNotice = "";
+      }
+      return;
+    }
+    if (currentView === "session" && settingsHistoryActive) {
+      if (busy || !guardDraft()) {
+        window.history.pushState({ voicegerSettings: true, sessionId: sessionId }, "");
+        return;
+      }
+      settingsHistoryActive = false;
+      var settingsDestination = settingsHistoryDestination || settingsReturnView;
+      settingsHistoryDestination = null;
+      showView(settingsDestination, true);
+      return;
+    }
+    var dictionaryTarget = event && event.state && event.state.voicegerDictionary &&
+      event.state.sessionId === sessionId ? event.state : null;
+    if (dictionaryTarget && currentView.indexOf("dictionary") === 0 &&
+        Number.isInteger(dictionaryTarget.depth) &&
+        dictionaryTarget.depth > dictionaryHistoryDepth &&
+        dictionaryTarget.view !== "dictionary") {
+      // Browser Forward points into an editor whose draft was discarded by Back.
+      // Replace that stale history entry with a safe list entry, not a phantom editor.
+      if (busy || !guardDraft()) {
+        window.history.back();
+        return;
+      }
+      window.history.replaceState({ voicegerDictionary: true,
+        sessionId: sessionId, view: "dictionary", depth: dictionaryTarget.depth }, "");
+      dictionaryHistoryDepth = dictionaryTarget.depth;
+      dictPronOpening = null;
+      dictEntry = null;
+      dictEntryOriginal = null;
+      showView("dictionary", true);
+      return;
+    }
+    if (dictionaryTarget && currentView === "dictionary" &&
+        dictionaryTarget.view === "dictionary") {
+      // Both Back and Forward may land on the list (including normalized states).
+      dictionaryHistoryDepth = Number.isInteger(dictionaryTarget.depth) ?
+        dictionaryTarget.depth : Math.max(1, dictionaryHistoryDepth - 1);
+      return;
+    }
+    if (currentView === "dictionary" || currentView === "dictionary-entry" ||
+        currentView === "dictionary-pron") {
+      if (busy || !(currentView === "dictionary-pron" &&
+          event && event.state && event.state.voicegerDictionary &&
+          event.state.view === "dictionary-entry" ?
+          guardDictionaryPronunciationDraft() : guardDraft())) {
+        try { window.history.pushState({ voicegerDictionary: true,
+          sessionId: sessionId, view: currentView, depth: dictionaryHistoryDepth }, ""); }
+        catch (_ignored) { /* The draft still stays open. */ }
+        return;
+      }
+      dictionaryHistoryDepth = dictionaryTarget && Number.isInteger(dictionaryTarget.depth) ?
+        dictionaryTarget.depth : Math.max(0, dictionaryHistoryDepth - 1);
+      if (currentView === "dictionary-pron") {
+        dictPronOpening = null;
+        showView("dictionary-entry", true);
+      } else if (currentView === "dictionary-entry") {
+        dictEntry = null;
+        dictEntryOriginal = null;
+        showView("dictionary", true);
+      } else {
+        showView(dictReturnView, true);
+      }
+      return;
+    }
+    if (event && event.state && event.state.voicegerSettings) {
+      if (busy || !sessionId || event.state.sessionId !== sessionId || !guardDraft()) {
+        window.history.back();
+        return;
+      }
+      settingsHistoryActive = true;
+      showView("session", true);
+      return;
+    }
+    if (event && event.state && event.state.voicegerDictionary) {
+      if (busy || !sessionId || event.state.sessionId !== sessionId || !guardDraft() ||
+          event.state.view !== "dictionary") {
+        // Never restore an old dictionary word/pronunciation draft from Forward.
+        window.history.back();
+        return;
+      }
+      dictReturnView = currentView === "item" ? "item" : "list";
+      dictionaryHistoryDepth = Number.isInteger(event.state.depth) ?
+        event.state.depth : 1;
+      showView("dictionary", true);
+      return;
+    }
     if (sectionHistoryActive && currentView === "section") {
       if ((!sectionExitPending && busy) || (!sectionExitPending && !guardDraft())) {
         window.history.pushState(sectionHistoryState(), "");
@@ -222,6 +391,7 @@
       }
       var pending = pronunciationExitPending;
       pronunciationHistoryActive = false;
+      pronunciationHistoryExitInFlight = false;
       pronunciationExitPending = null;
       showView(pending ? pending.destination : pronunciationReturnView, true);
       if (pending && pending.message) feedback(pending.message);
@@ -252,7 +422,10 @@
     if (!enterPronunciation(item, true)) window.history.back();
   });
   window.addEventListener("beforeunload", function (event) {
-    if (!pronunciationDirty() && !sectionDirty()) return;
+    if (!pronunciationDirty() && !sectionDirty() &&
+        !dictionaryPronunciationDirty() &&
+        !((currentView === "dictionary-entry" ||
+           currentView === "dictionary-pron") && dictionaryEntryDirty())) return;
     event.preventDefault();
     // Browser text is intentionally controlled by the browser, not this app.
     event.returnValue = "";
@@ -287,6 +460,7 @@
         already_accepted: "このTakeはすでに採用済みです。",
         conflict: "この操作は現在実行できません。状態を確認してください。",
         recipe_changed: "Mac側のファイルが変更・削除されました。選び直してください。",
+        dictionary_changed: "辞書が別の画面で変更されました。最新の一覧を取得してください。",
         review_expired: "確認が古くなりました。最初から操作してください。"
       };
       var invalidPronunciation = {
@@ -300,11 +474,13 @@
         stale_section: "セクションの文章が更新されています。編集画面を開き直してください。",
         invalid_filename: "ファイル名は .voiceger.json で終わる単一の名前を指定してください。",
         invalid_recipe: "Batchレシピが不正か、必要なVoicegerスタイルがありません。",
-        missing_preparation: "すべてのCaptionの発音準備が必要です。除外したCaptionも確認してください。"
+        missing_preparation: "すべてのCaptionの発音準備が必要です。除外したCaptionも確認してください。",
+        invalid_dictionary: "辞書の入力内容を確認してください。発音・品詞・優先度・重複に注意してください。"
       };
       var error = new Error(
         response.status === 401 ? "認証できません。トークンを確認してください。" :
-        response.status === 503 ? (conflictCode === "recipe_io" ?
+        response.status === 503 ? (conflictCode === "dictionary_io" ? "Mac側の辞書を保存できませんでした。" :
+          conflictCode === "recipe_io" ?
           "Mac側のOutputフォルダまたはファイルを操作できません。" :
           "Mac側の接続設定を確認してください。") :
         response.status === 409 ?
@@ -746,6 +922,21 @@
     pronunciationItemId = "";
     pronunciationStale = false;
     pronunciationComposing = false;
+    pronunciationHistoryActive = false;
+    pronunciationHistoryExitInFlight = false;
+    pronunciationExitPending = null;
+    dictionaryHistoryDepth = 0;
+    dictionaryHistoryDestination = null;
+    dictionaryHistoryNotice = "";
+    settingsReturnView = "list";
+    settingsHistoryActive = false;
+    settingsHistoryDestination = null;
+    dictEntry = null;
+    dictEntryOriginal = null;
+    dictPronOpening = null;
+    dictData = null;
+    dictQuickPronSurface = null;
+    $("dictionary-quick-form").hidden = true;
     endDeleteMode();
     token = "";
     sessionId = "";
@@ -1427,14 +1618,10 @@
     var input = $("pronunciation-text");
     pronunciationSelection = { start: input.selectionStart, end: input.selectionEnd };
   }
-  function editPronunciationAtCaret(mark, backspace) {
-    if (busy || pronunciationComposing || currentView !== "pronunciation" ||
-        pronunciationStale) return;
-    var input = $("pronunciation-text");
-    var a = Math.min(pronunciationSelection.start, input.value.length);
-    var b = Math.min(pronunciationSelection.end, input.value.length);
+  function replaceAtCaret(input, selection, mark, backspace) {
+    var a = Math.min(selection.start, input.value.length);
+    var b = Math.min(selection.end, input.value.length);
     if (backspace && a === b && a > 0) {
-      // The Intl grapheme boundary preserves emoji, combining sequences, etc.
       var previous = 0;
       if (typeof Intl.Segmenter === "function") {
         var segments = new Intl.Segmenter("ja", { granularity: "grapheme" }).segment(
@@ -1447,8 +1634,14 @@
     }
     input.setRangeText(backspace ? "" : mark, a, b, "end");
     input.focus({ preventScroll: true });
-    rememberPronunciationSelection();
     input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  function editPronunciationAtCaret(mark, backspace) {
+    if (busy || pronunciationComposing || currentView !== "pronunciation" ||
+        pronunciationStale) return;
+    var input = $("pronunciation-text");
+    replaceAtCaret(input, pronunciationSelection, mark, backspace);
+    rememberPronunciationSelection();
   }
   function enterPronunciation(item, fromHistory) {
     pronunciationReturnView = currentView;
@@ -1491,6 +1684,8 @@
     $("pronunciation-text").focus({ preventScroll: true });
     $("pronunciation-text").setSelectionRange(opening.length, opening.length);
     rememberPronunciationSelection();
+    pronunciationHistoryExitInFlight = false;
+    pronunciationExitPending = null;
     if (fromHistory) {
       pronunciationHistoryActive = true;
     } else {
@@ -1945,8 +2140,14 @@
   $("open-add").addEventListener("click", function () { openCaptionAdd(false); });
   $("add-back").addEventListener("click", backFromCaptionAdd);
   $("item-back").addEventListener("click", function () { showView("list"); });
-  $("session-back").addEventListener("click", function () { showView("list"); });
-  $("header-session").addEventListener("click", function () { showView("session"); });
+  $("session-back").addEventListener("click", function () {
+    if (busy) return;
+    if (settingsHistoryActive) window.history.back();
+    else showView(settingsReturnView, true);
+  });
+  $("header-batch").addEventListener("click", function () { navigateGlobal("list"); });
+  $("header-session").addEventListener("click", function () { navigateGlobal("session"); });
+  $("header-dictionary").addEventListener("click", function () { navigateGlobal("dictionary"); });
   function shouldSubmitCaptions(event) {
     return event.key === "Enter" && event.metaKey &&
       !event.isComposing && event.keyCode !== 229 && !event.repeat;
@@ -2066,6 +2267,764 @@
     } catch (error) { feedback(error.message); }
     finally { setBusy(false); }
   });
+
+
+  var dictionarySortModes = {
+    ja: [["surface_asc", "Surface ↑"], ["surface_desc", "Surface ↓"],
+         ["word_type", "品詞"], ["priority_asc", "Priority ↑"],
+         ["priority_desc", "Priority ↓"], ["added_asc", "Added ↑"],
+         ["added_desc", "Added ↓"]],
+    en: [["surface_asc", "Surface ↑"], ["surface_desc", "Surface ↓"],
+         ["added_asc", "Added ↑"], ["added_desc", "Added ↓"]]
+  };
+
+  function dictionaryPath() {
+    return "/api/web/sessions/" + encodeURIComponent(sessionId) + "/dictionary";
+  }
+  function dictionaryPronunciationDirty() {
+    return currentView === "dictionary-pron" && dictPronOpening !== null &&
+      $("dictionary-pron-text").value !== dictPronOpening;
+  }
+  function guardDictionaryPronunciationDraft() {
+    return !dictionaryPronunciationDirty() ||
+      window.confirm("未反映の辞書発音変更を破棄しますか？");
+  }
+  function dictionaryEntryDirty() {
+    if (!dictEntry || !dictEntryOriginal) return false;
+    return JSON.stringify(dictionaryFormValue()) !== JSON.stringify(dictEntryOriginal);
+  }
+  function dictionaryFormValue() {
+    return { surface: $("dictionary-surface").value,
+      notation: dictEntry ? dictEntry.notation : "",
+      word_type: $("dictionary-word-type").value,
+      priority: Number($("dictionary-priority").value) };
+  }
+  function dictionaryTypeLabel(value) {
+    return { PROPER_NOUN: "固有名詞", COMMON_NOUN: "普通名詞",
+      VERB: "動詞", ADJECTIVE: "形容詞", SUFFIX: "接尾辞" }[value] || value;
+  }
+  async function loadDictionary() {
+    if (!sessionId || !token) return;
+    var requestNo = ++dictListRequest;
+    var url = dictionaryPath() + "/" + encodeURIComponent(dictLanguage) +
+      "?sort=" + encodeURIComponent(dictSort) + "&query=" + encodeURIComponent(dictQuery) +
+      "&word_type=" + encodeURIComponent(dictType);
+    var data = await request("GET", url);
+    if (requestNo !== dictListRequest) return;
+    dictData = data;
+    renderDictionary();
+  }
+  function renderDictionary() {
+    $("dictionary-ja").setAttribute("aria-pressed", String(dictLanguage === "ja"));
+    $("dictionary-en").setAttribute("aria-pressed", String(dictLanguage === "en"));
+    $("dictionary-filter-type-label").hidden = dictLanguage !== "ja";
+    $("dictionary-sort").replaceChildren();
+    dictionarySortModes[dictLanguage].forEach(function (option) {
+      var node = document.createElement("option");
+      node.value = option[0];
+      node.textContent = option[1];
+      $("dictionary-sort").append(node);
+    });
+    $("dictionary-sort").value = dictSort;
+    $("dictionary-query").value = dictQuery;
+    $("dictionary-filter-type").value = dictType;
+    $("dictionary-words").replaceChildren();
+    if (!dictData) return;
+    $("dictionary-count").textContent = dictData.shown + "/" + dictData.total + "件";
+    if (!dictData.entries.length) {
+      var empty = document.createElement("li");
+      empty.className = "help-text";
+      empty.textContent = "該当する単語はありません。";
+      $("dictionary-words").append(empty);
+    }
+    dictData.entries.forEach(function (row) {
+      var li = document.createElement("li");
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "dictionary-word";
+      var name = document.createElement("strong");
+      name.textContent = row.surface;
+      var pronunciation = document.createElement("span");
+      pronunciation.textContent = row.notation;
+      button.append(name, pronunciation);
+      if (dictLanguage === "ja") {
+        var meta = document.createElement("small");
+        meta.textContent = dictionaryTypeLabel(row.word_type) + " · 優先度 " + row.priority;
+        button.append(meta);
+      }
+      button.addEventListener("click", function () { openDictionaryEntry(row); });
+      li.append(button);
+      $("dictionary-words").append(li);
+    });
+  }
+  function dictionaryPushHistory(view) {
+    if (dictionaryHistoryDestination) return;
+    try {
+      var depth = dictionaryHistoryDepth + 1;
+      window.history.pushState({ voicegerDictionary: true,
+        sessionId: sessionId, view: view, depth: depth }, "");
+      dictionaryHistoryDepth = depth;
+    } catch (_ignored) { /* Browser may restrict history. */ }
+  }
+  function navigateGlobal(destination) {
+    if (busy || !sessionId || dictionaryHistoryDestination) return;
+    if (destination === currentView) return;
+    if (currentView === "session" && settingsHistoryActive) {
+      if (destination === "dictionary") dictReturnView = settingsReturnView;
+      settingsHistoryDestination = destination;
+      window.history.back();
+      return;
+    }
+    if (currentView.indexOf("dictionary") === 0) {
+      if (!guardDraft()) return;
+      // Unwind only the nested dictionary history created by this session.
+      var steps = destination === "dictionary" ?
+        Math.max(0, dictionaryHistoryDepth - 1) : dictionaryHistoryDepth;
+      if (steps > 0) {
+        requestDictionaryHistoryExit(destination, -steps);
+        return;
+      }
+      dictPronOpening = null;
+      dictEntry = null;
+      dictEntryOriginal = null;
+      showView(destination, true);
+      return;
+    }
+    if (destination === "dictionary") {
+      dictReturnView = currentView === "pronunciation" || currentView === "section" ?
+        "item" : currentView === "recipe" ? "list" : currentView;
+      dictEntry = null;
+      dictEntryOriginal = null;
+    }
+    showView(destination);
+  }
+  function dictionaryBack() {
+    if (dictionaryHistoryDestination || busy || !(currentView === "dictionary-pron" ?
+        guardDictionaryPronunciationDraft() : guardDraft())) return;
+    if (dictionaryHistoryDepth > 0) {
+      // The popstate handler owns state cleanup and the resulting screen.
+      // Resolve the target on popstate, not from currentView alone.
+      requestDictionaryHistoryExit("dictionary-back", -1);
+      return;
+    }
+    var destination = currentView === "dictionary-pron" ? "dictionary-entry" :
+      currentView === "dictionary-entry" ? "dictionary" : dictReturnView;
+    dictPronOpening = null;
+    if (destination !== "dictionary-entry") {
+      dictEntry = null;
+      dictEntryOriginal = null;
+    }
+    showView(destination, true);
+  }
+  // The destination doubles as the in-flight guard until the first popstate.
+  // Repeated Android taps must never schedule another browser history exit.
+  function requestDictionaryHistoryExit(destination, delta) {
+    if (dictionaryHistoryDestination) return false;
+    dictionaryHistoryDestination = destination;
+    try {
+      if (delta === -1) window.history.back();
+      else window.history.go(delta);
+    } catch (_error) {
+      dictionaryHistoryDestination = null;
+      feedback("履歴移動に失敗しました。もう一度操作してください。");
+      return false;
+    }
+    return true;
+  }
+  function revealDictionaryRegistrationError(id) {
+    var notice = $(id);
+    notice.scrollIntoView({ behavior: "auto", block: "center" });
+    notice.focus({ preventScroll: true });
+  }
+  function hideDictionarySaveError() {
+    $("dictionary-save-error").hidden = true;
+    $("dictionary-save-error").textContent = "";
+  }
+  function showDictionarySaveError(message) {
+    hideDictionaryDuplicate();
+    $("dictionary-save-error").textContent = message;
+    $("dictionary-save-error").hidden = false;
+    feedback("");
+    revealDictionaryRegistrationError("dictionary-save-error");
+  }
+  function hideDictionaryDuplicate() {
+    hideDictionarySaveError();
+    dictDuplicate = null;
+    $("dictionary-duplicate").hidden = true;
+    $("dictionary-duplicate-title").textContent = "";
+    $("dictionary-duplicate-description").textContent = "";
+  }
+  function dictionaryDuplicateFor(data, matches) {
+    if (!matches || !Array.isArray(matches.entries)) return null;
+    return matches.entries.find(function (row) {
+      return dictLanguage === "en" || row.word_type === data.word_type;
+    }) || null;
+  }
+  function showDictionaryDuplicate(row) {
+    hideDictionarySaveError();
+    dictDuplicate = { surface: row.surface, language: dictLanguage };
+    $("dictionary-duplicate-title").textContent =
+      "「" + row.surface + "」は登録済みです";
+    $("dictionary-duplicate-description").textContent = dictLanguage === "en" ?
+      "英語辞書では大文字・小文字を区別しません。新規追加はできません。登録済みの単語を編集してください。" :
+      "日本語辞書では表記と品詞の組み合わせが同じ単語を重複登録できません（" +
+      dictionaryTypeLabel(row.word_type) + "）。登録済みの単語を編集してください。";
+    $("dictionary-duplicate").hidden = false;
+    feedback("");
+    revealDictionaryRegistrationError("dictionary-duplicate");
+  }
+  function viewDictionaryDuplicate() {
+    if (dictionaryHistoryDestination || busy || !dictDuplicate || !guardDraft()) return;
+    dictQuery = dictDuplicate.surface;
+    dictSort = "surface_asc";
+    dictType = "ALL";
+    hideDictionaryDuplicate();
+    if (dictionaryHistoryDepth > 0) {
+      requestDictionaryHistoryExit("dictionary", -1);
+    } else {
+      dictEntry = null;
+      dictEntryOriginal = null;
+      showView("dictionary", true);
+    }
+  }
+  function renderDictionaryEntryLanguage() {
+    // Language is selectable only while adding a new word, never on edit.
+    var isNew = Boolean(dictEntry && !dictEntry.id);
+    $("dictionary-entry-tabs").hidden = !isNew;
+    $("dictionary-entry-ja").setAttribute("aria-pressed", String(dictLanguage === "ja"));
+    $("dictionary-entry-en").setAttribute("aria-pressed", String(dictLanguage === "en"));
+    $("dictionary-ja-fields").hidden = dictLanguage !== "ja";
+  }
+  async function switchDictionaryEntryLanguage(language) {
+    if (busy || currentView !== "dictionary-entry" || !dictEntry || dictEntry.id ||
+        (language !== "ja" && language !== "en") || language === dictLanguage) return;
+    if (dictionaryEntryDirty() &&
+        !window.confirm("入力中の単語を破棄して言語を切り替えますか？")) return;
+    setBusy(true);
+    try {
+      // Fetch the target dictionary/revision *before* replacing the draft.
+      // A failed request must preserve the source language and all inputs.
+      var url = dictionaryPath() + "/" + encodeURIComponent(language) +
+        "?sort=surface_asc&query=&word_type=ALL";
+      var target = await request("GET", url);
+      ++dictListRequest; // Discard an outstanding old-language list response.
+      dictLanguage = language;
+      dictSort = "surface_asc"; dictQuery = ""; dictType = "ALL";
+      dictData = target;
+      dictEntry = { id: null, language: language, surface: "", notation: "",
+        word_type: "PROPER_NOUN", priority: 5 };
+      $("dictionary-surface").value = "";
+      $("dictionary-word-type").value = "PROPER_NOUN";
+      $("dictionary-priority").value = "5";
+      $("dictionary-pron-value").textContent = "未入力";
+      dictEntryOriginal = dictionaryFormValue();
+      hideDictionaryDuplicate();
+      renderDictionary();
+      renderDictionaryEntryLanguage();
+      feedback("");
+    } catch (error) { feedback(error.message); }
+    finally { setBusy(false); }
+  }
+  function openDictionaryEntry(row) {
+    if (!dictData || busy || dictionaryHistoryDestination) return;
+    var entry = row || { id: null, surface: "", notation: "",
+      word_type: "PROPER_NOUN", priority: 5 };
+    dictEntry = { id: entry.id, language: dictLanguage,
+      surface: entry.surface, notation: entry.notation,
+      word_type: entry.word_type || "PROPER_NOUN",
+      priority: entry.priority === undefined ? 5 : entry.priority };
+    $("dictionary-surface").value = dictEntry.surface;
+    $("dictionary-word-type").value = dictEntry.word_type;
+    $("dictionary-priority").value = String(dictEntry.priority);
+    renderDictionaryEntryLanguage();
+    $("dictionary-delete").hidden = !entry.id;
+    $("dictionary-entry-title").textContent = entry.id ? "単語を編集" : "単語を追加";
+    dictEntryOriginal = dictionaryFormValue();
+    hideDictionaryDuplicate();
+    $("dictionary-pron-value").textContent = dictEntry.notation || "未入力";
+    showView("dictionary-entry", true);
+    dictionaryPushHistory("dictionary-entry");
+  }
+  function enterDictionaryPronunciation() {
+    if (!dictEntry || busy || dictionaryHistoryDestination) return;
+    dictPronOpening = dictEntry.notation;
+    $("dictionary-pron-context").textContent = $("dictionary-surface").value;
+    $("dictionary-pron-title").textContent = dictLanguage === "en" ? "英語発音編集" : "発音編集";
+    $("dictionary-pron-text").value = dictPronOpening;
+    clearDictionaryPronunciationError();
+    showView("dictionary-pron", true);
+    dictionaryPushHistory("dictionary-pron");
+    var input = $("dictionary-pron-text");
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(input.value.length, input.value.length);
+    dictSelection = { start: input.selectionStart, end: input.selectionEnd };
+  }
+  function leaveDictionaryPronunciation() {
+    if (dictionaryHistoryDestination || !dictEntry || busy ||
+        !guardDictionaryPronunciationDraft()) return;
+    if (dictionaryHistoryDepth > 0) {
+      requestDictionaryHistoryExit("dictionary-entry", -1);
+    } else {
+      dictPronOpening = null;
+      showView("dictionary-entry", true);
+    }
+  }
+  function clearDictionaryPronunciationError() {
+    $("dictionary-pron-error").hidden = true;
+    $("dictionary-pron-error").textContent = "";
+    $("dictionary-pron-text").removeAttribute("aria-invalid");
+  }
+  function showDictionaryPronunciationError(error, notation, operation) {
+    var explanation = error.message;
+    if (error.conflictCode === "invalid_dictionary") {
+      if (dictLanguage === "ja") {
+        explanation = /\s/.test(notation) ?
+          "日本語辞書の発音は空白で区切れません。空白を削除して、1つのアクセント句にしてください。アクセントは ' または [ ] で指定します。" :
+          "日本語の発音形式を確認してください。1つのアクセント句として、アクセントは ' または [ ] で指定してください。";
+      } else {
+        explanation = "ARPAbetの音素と強勢数字（0/1/2）を確認してください。";
+      }
+    }
+    $("dictionary-pron-error").textContent = operation + "できません。 " + explanation;
+    $("dictionary-pron-error").hidden = false;
+    $("dictionary-pron-text").setAttribute("aria-invalid", "true");
+    feedback("");
+    $("dictionary-pron-error").scrollIntoView({ behavior: "auto", block: "center" });
+    $("dictionary-pron-error").focus({ preventScroll: true });
+  }
+  async function applyDictionaryPronunciation(event) {
+    event.preventDefault();
+    if (!dictEntry || busy || dictionaryHistoryDestination) return;
+    var notation = $("dictionary-pron-text").value;
+    var surface = $("dictionary-surface").value;
+    clearDictionaryPronunciationError();
+    setBusy(true);
+    try {
+      // The core validator also powers Save: never silently Apply bad drafts.
+      await request("POST", dictionaryPath() + "/pronunciation/validate", {
+        language: dictLanguage, surface: surface, notation: notation
+      });
+      dictEntry.notation = notation;
+      $("dictionary-pron-value").textContent = notation || "未入力";
+      if (dictionaryHistoryDepth > 0) {
+        requestDictionaryHistoryExit("dictionary-entry", -1);
+      } else {
+        dictPronOpening = null;
+        showView("dictionary-entry", true);
+      }
+    } catch (error) { showDictionaryPronunciationError(error, notation, "反映"); }
+    finally { setBusy(false); }
+  }
+  function rememberDictionarySelection() {
+    var input = $("dictionary-pron-text");
+    dictSelection = { start: input.selectionStart, end: input.selectionEnd };
+  }
+  async function waitDictionaryOperation(op) {
+    while (op.status === "running" || op.status === "cancelling") {
+      await new Promise(function (resolve) { setTimeout(resolve, 500); });
+      op = await request("GET", "/api/web/sessions/" + encodeURIComponent(sessionId) +
+        "/operations/" + encodeURIComponent(op.id));
+    }
+    if (op.status !== "succeeded")
+      throw new Error(op.status === "cancelled" ? "キャンセルしました。" :
+        (op.error || "辞書の音声処理が完了しませんでした。"));
+    return op.result || {};
+  }
+  async function dictionaryGenerate() {
+    if (!dictEntry || busy) return;
+    var surface = $("dictionary-surface").value;
+    setBusy(true);
+    try {
+      var op = await request("POST", dictionaryPath() + "/pronunciation/generate",
+        { language: dictLanguage, surface: surface });
+      var result = await waitDictionaryOperation(op);
+      if (!dictEntry) return;
+      dictEntry.notation = result.notation;
+      $("dictionary-pron-value").textContent = result.notation || "未入力";
+      feedback("発音を生成しました。保存前にPreviewで確認してください。");
+    } catch (error) { feedback(error.message); }
+    finally { setBusy(false); }
+  }
+  async function dictionaryPreview() {
+    if (!dictEntry || busy) return;
+    var notation = $("dictionary-pron-text").value;
+    clearDictionaryPronunciationError();
+    clearPlayer();
+    setBusy(true);
+    try {
+      var op = await request("POST", dictionaryPath() + "/pronunciation/preview", {
+        language: dictLanguage, surface: $("dictionary-surface").value,
+        notation: notation
+      });
+      var result = await waitDictionaryOperation(op);
+      var response = await fetch(dictionaryPath() + "/audio/preview/" +
+        encodeURIComponent(result.preview_id), {
+        headers: { Authorization: "Bearer " + token }, cache: "no-store",
+        credentials: "same-origin"
+      });
+      if (!response.ok) throw new Error("Preview音声を取得できませんでした。");
+      var bytes = await response.blob();
+      if (!bytes.size || bytes.type.indexOf("audio/") !== 0)
+        throw new Error("Preview音声が無効です。");
+      playingUrl = URL.createObjectURL(bytes);
+      var player = $("phone-player");
+      player.src = playingUrl;
+      player.hidden = false;
+      try { await player.play(); }
+      catch (_ignored) { feedback("プレイヤーの再生ボタンを押してください。"); }
+    } catch (error) { showDictionaryPronunciationError(error, notation, "Preview"); }
+    finally { setBusy(false); }
+  }
+  function dictionaryFinish(message) {
+    if (dictionaryHistoryDestination) return;
+    if (dictionaryHistoryDepth > 1) {
+      dictionaryHistoryNotice = message;
+      if (!requestDictionaryHistoryExit("dictionary", 1 - dictionaryHistoryDepth))
+        dictionaryHistoryNotice = "";
+    } else {
+      dictEntry = null;
+      dictEntryOriginal = null;
+      showView("dictionary", true);
+      feedback(message);
+    }
+  }
+  async function dictionarySave(event) {
+    event.preventDefault();
+    if (busy || dictionaryHistoryDestination || !dictEntry || !dictData) return;
+    var data = dictionaryFormValue();
+    hideDictionaryDuplicate();
+    if (!data.notation.trim()) { showDictionarySaveError("発音を入力してください。"); return; }
+    if (dictLanguage === "ja" &&
+      (!Number.isInteger(data.priority) || data.priority < 0 || data.priority > 10)) {
+      showDictionarySaveError("優先度は0〜10で指定してください。"); return;
+    }
+    setBusy(true);
+    try {
+      // Explain duplicate failures beside Save before sending a failing write.
+      // The Core-backed endpoint owns casefold and Japanese identity rules.
+      if (!dictEntry.id) {
+        var matches = await dictionaryQuickMatches(dictLanguage, data.surface);
+        var duplicate = dictionaryDuplicateFor(data, matches);
+        if (duplicate) {
+          showDictionaryDuplicate(duplicate);
+          return;
+        }
+        hideDictionaryDuplicate();
+      }
+      var payload = { ...data, language: dictLanguage, expected_revision: dictData.revision };
+      var address = dictionaryPath() + "/words" +
+        (dictEntry.id ? "/" + encodeURIComponent(dictEntry.id) : "");
+      var result = await request(dictEntry.id ? "PUT" : "POST", address, payload);
+      dictionaryFinish(result.changed ? "辞書に保存しました。" : "変更はありません。");
+    } catch (error) {
+      if (!dictEntry.id && error.conflictCode === "invalid_dictionary") {
+        // Another client may have added the same word after our initial check.
+        try {
+          var latestMatches = await dictionaryQuickMatches(dictLanguage, data.surface);
+          var lateDuplicate = dictionaryDuplicateFor(data, latestMatches);
+          if (lateDuplicate) {
+            showDictionaryDuplicate(lateDuplicate);
+            return;
+          }
+        } catch (_ignored) { /* Keep the original validated error. */ }
+      }
+      showDictionarySaveError(error.conflictCode === "revision_conflict" ?
+        "辞書が更新されています。入力内容を保持しています。戻って一覧を再取得してください。" :
+        error.message);
+    } finally { setBusy(false); }
+  }
+  async function dictionaryDelete() {
+    if (!dictEntry || !dictEntry.id || busy || dictionaryHistoryDestination ||
+        !window.confirm("この単語を辞書から削除しますか？")) return;
+    setBusy(true);
+    try {
+      await request("DELETE", dictionaryPath() + "/words/" +
+        encodeURIComponent(dictEntry.id) + "?language=" +
+        encodeURIComponent(dictLanguage) + "&expected_revision=" +
+        encodeURIComponent(dictData.revision));
+      dictionaryFinish("単語を削除しました。");
+    } catch (error) { feedback(error.message); }
+    finally { setBusy(false); }
+  }
+
+  // Quick Save never Applies the source pronunciation or modifies Batch Takes.
+  // A changed Surface must not retain the sentence's pronunciation.
+  function dictionaryQuickMatches(language, surface) {
+    return request("GET", dictionaryPath() + "/" + encodeURIComponent(language) +
+      "/matches?surface=" + encodeURIComponent(surface));
+  }
+  function dictionaryQuickPriority() {
+    if (dictQuickPriorityEdited) return;
+    var selectedType = $("dictionary-quick-type").value;
+    var match = dictQuickMatches.find(function (row) {
+      return row.word_type === selectedType;
+    });
+    $("dictionary-quick-priority").value = String(match ? match.priority : 5);
+  }
+  function clearDictionaryQuickError() {
+    $("dictionary-quick-error").hidden = true;
+    $("dictionary-quick-error").textContent = "";
+    $("dictionary-quick-notation").removeAttribute("aria-invalid");
+  }
+  function showDictionaryQuickError(message) {
+    $("dictionary-quick-error").textContent = message;
+    $("dictionary-quick-error").hidden = false;
+    $("dictionary-quick-notation").setAttribute("aria-invalid", "true");
+    feedback("");
+    $("dictionary-quick-error").scrollIntoView({ behavior: "auto", block: "center" });
+    $("dictionary-quick-error").focus({ preventScroll: true });
+  }
+  function dictionaryQuickSurfaceChanged() {
+    if ($("dictionary-quick-form").hidden) return;
+    var surface = $("dictionary-quick-surface").value;
+    if (dictQuickPronSurface === surface) return;
+    // Never attempt automatic substring-to-phoneme mapping.
+    dictQuickPronSurface = null;
+    $("dictionary-quick-notation").value = "";
+    $("dictionary-quick-hint").textContent =
+      "Surfaceを変更しました。この単語の発音を生成するか入力してください。";
+    clearDictionaryQuickError();
+    clearPlayer();
+  }
+  function dictionaryQuickNotationChanged() {
+    if ($("dictionary-quick-form").hidden) return;
+    // Explicit manual edits after a Surface change belong to this Surface.
+    dictQuickPronSurface = $("dictionary-quick-surface").value;
+    clearDictionaryQuickError();
+    clearPlayer();
+  }
+  function dictionaryQuickDraft() {
+    var surface = $("dictionary-quick-surface").value;
+    var notation = $("dictionary-quick-notation").value;
+    if (!surface.trim()) {
+      showDictionaryQuickError("Surfaceに登録する単語を入力してください。");
+      return null;
+    }
+    if (dictQuickPronSurface !== surface || !notation.trim()) {
+      showDictionaryQuickError("この単語の発音を生成するか入力してから保存してください。");
+      return null;
+    }
+    return { surface: surface, notation: notation,
+      language: $("dictionary-quick-form").dataset.language };
+  }
+  async function openDictionaryQuick() {
+    if (busy || currentView !== "pronunciation") return;
+    var language = pronunciationTarget && pronunciationTarget.language || "ja";
+    var seed = $("pronunciation-caption").textContent;
+    dictQuickMatches = [];
+    dictQuickPriorityEdited = false;
+    setBusy(true);
+    try {
+      var snapshot = await dictionaryQuickMatches(language, seed);
+      dictQuickMatches = snapshot.entries;
+      $("dictionary-quick-form").dataset.language = language;
+      $("dictionary-quick-form").dataset.revision = snapshot.revision;
+      $("dictionary-quick-surface").value = seed;
+      $("dictionary-quick-notation").value = $("pronunciation-text").value;
+      dictQuickPronSurface = seed;
+      $("dictionary-quick-hint").textContent =
+        "現在の発音を使用します。単語だけ登録する場合はSurfaceを変更してください。";
+      clearDictionaryQuickError();
+      document.querySelectorAll(".dictionary-quick-ja").forEach(function (node) {
+        node.hidden = language !== "ja";
+      });
+      $("dictionary-quick-type").value = "PROPER_NOUN";
+      dictionaryQuickPriority();
+      $("dictionary-quick-form").hidden = false;
+      feedback("");
+    } catch (error) { feedback(error.message); }
+    finally { setBusy(false); }
+  }
+  async function generateDictionaryQuick() {
+    if (busy || currentView !== "pronunciation" || $("dictionary-quick-form").hidden) return;
+    var surface = $("dictionary-quick-surface").value;
+    var language = $("dictionary-quick-form").dataset.language;
+    if (!surface.trim()) {
+      showDictionaryQuickError("Surfaceに登録する単語を入力してください。");
+      return;
+    }
+    clearDictionaryQuickError();
+    setBusy(true);
+    try {
+      var op = await request("POST", dictionaryPath() + "/pronunciation/generate",
+        { language: language, surface: surface });
+      var result = await waitDictionaryOperation(op);
+      if (!result.notation) throw new Error("発音を生成できませんでした。");
+      $("dictionary-quick-notation").value = result.notation;
+      dictQuickPronSurface = surface;
+      $("dictionary-quick-hint").textContent =
+        "生成した発音を確認してください。必要なら編集できます。";
+      feedback("");
+    } catch (error) { showDictionaryQuickError(error.message); }
+    finally { setBusy(false); }
+  }
+  async function previewDictionaryQuick() {
+    if (busy || currentView !== "pronunciation" || $("dictionary-quick-form").hidden) return;
+    clearDictionaryQuickError();
+    var draft = dictionaryQuickDraft();
+    if (!draft) return;
+    clearPlayer();
+    setBusy(true);
+    try {
+      var op = await request("POST", dictionaryPath() + "/pronunciation/preview", draft);
+      var result = await waitDictionaryOperation(op);
+      var response = await fetch(dictionaryPath() + "/audio/preview/" +
+        encodeURIComponent(result.preview_id), {
+        headers: { Authorization: "Bearer " + token }, cache: "no-store",
+        credentials: "same-origin"
+      });
+      if (!response.ok) throw new Error("Preview音声を取得できませんでした。");
+      var bytes = await response.blob();
+      if (!bytes.size || bytes.type.indexOf("audio/") !== 0)
+        throw new Error("Preview音声が無効です。");
+      playingUrl = URL.createObjectURL(bytes);
+      var player = $("phone-player");
+      player.src = playingUrl;
+      player.hidden = false;
+      try { await player.play(); }
+      catch (_ignored) { feedback("プレイヤーの再生ボタンを押してください。"); }
+    } catch (error) { showDictionaryQuickError(error.message); }
+    finally { setBusy(false); }
+  }
+  async function saveDictionaryQuick(event) {
+    event.preventDefault();
+    if (busy || currentView !== "pronunciation" ||
+        $("dictionary-quick-form").hidden) return;
+    clearDictionaryQuickError();
+    var draft = dictionaryQuickDraft();
+    if (!draft) return;
+    var language = draft.language;
+    var surface = draft.surface;
+    var wordType = $("dictionary-quick-type").value;
+    setBusy(true);
+    try {
+      // Resolve again after Surface edits: existing word and revision checks
+      // apply identically to generated and manually edited pronunciations.
+      var snapshot = await dictionaryQuickMatches(language, surface);
+      if (snapshot.revision !== $("dictionary-quick-form").dataset.revision)
+        throw new Error("辞書が更新されています。登録画面を開き直してください。");
+      var candidates = snapshot.entries.filter(function (word) {
+        return language === "en" || word.word_type === wordType;
+      });
+      if (candidates.length > 1) {
+        showDictionaryQuickError("同じ表記の登録が複数あります。辞書一覧で対象を確認してください。");
+        return;
+      }
+      if (language === "ja" && !dictQuickPriorityEdited) {
+        $("dictionary-quick-priority").value =
+          String(candidates.length ? candidates[0].priority : 5);
+      }
+      if (candidates.length && !window.confirm(
+        "既存の辞書単語をこの発音で更新しますか？")) return;
+      var payload = {
+        expected_revision: snapshot.revision,
+        language: language, surface: surface, notation: draft.notation,
+        word_type: wordType, priority: Number($("dictionary-quick-priority").value)
+      };
+      var address = dictionaryPath() + "/words" +
+        (candidates.length ? "/" + encodeURIComponent(candidates[0].id) : "");
+      await request(candidates.length ? "PUT" : "POST", address, payload);
+      $("dictionary-quick-form").hidden = true;
+      dictQuickPronSurface = null;
+      feedback("辞書に保存しました。Batch Itemの発音とTakeは変更していません。");
+    } catch (error) { showDictionaryQuickError(error.message); }
+    finally { setBusy(false); }
+  }
+
+  $("dictionary-back").addEventListener("click", dictionaryBack);
+  $("dictionary-ja").addEventListener("click", function () {
+    if (dictLanguage === "ja" || busy) return;
+    dictLanguage = "ja"; dictSort = "surface_asc"; dictQuery = ""; dictType = "ALL";
+    loadDictionary().catch(function (error) { feedback(error.message); });
+  });
+  $("dictionary-en").addEventListener("click", function () {
+    if (dictLanguage === "en" || busy) return;
+    dictLanguage = "en"; dictSort = "surface_asc"; dictQuery = ""; dictType = "ALL";
+    loadDictionary().catch(function (error) { feedback(error.message); });
+  });
+  $("dictionary-sort").addEventListener("change", function () {
+    dictSort = this.value;
+    loadDictionary().catch(function (error) { feedback(error.message); });
+  });
+  $("dictionary-query").addEventListener("input", function () {
+    dictQuery = this.value;
+    loadDictionary().catch(function (error) { feedback(error.message); });
+  });
+  $("dictionary-filter-type").addEventListener("change", function () {
+    dictType = this.value;
+    loadDictionary().catch(function (error) { feedback(error.message); });
+  });
+  $("dictionary-add").addEventListener("click", function () { openDictionaryEntry(null); });
+  $("dictionary-entry-ja").addEventListener("click", function () {
+    void switchDictionaryEntryLanguage("ja");
+  });
+  $("dictionary-entry-en").addEventListener("click", function () {
+    void switchDictionaryEntryLanguage("en");
+  });
+  $("dictionary-entry-back").addEventListener("click", dictionaryBack);
+  $("dictionary-pron-open").addEventListener("click", enterDictionaryPronunciation);
+  $("dictionary-entry-form").addEventListener("submit", dictionarySave);
+  $("dictionary-surface").addEventListener("input", hideDictionaryDuplicate);
+  $("dictionary-word-type").addEventListener("change", hideDictionaryDuplicate);
+  $("dictionary-duplicate-view").addEventListener("click", viewDictionaryDuplicate);
+  $("dictionary-delete").addEventListener("click", dictionaryDelete);
+  $("dictionary-generate").addEventListener("click", dictionaryGenerate);
+  $("dictionary-pron-back").addEventListener("click", leaveDictionaryPronunciation);
+  $("dictionary-pron-cancel").addEventListener("click", leaveDictionaryPronunciation);
+  $("dictionary-pron-reset").addEventListener("click", function () {
+    if (busy || dictPronOpening === null) return;
+    $("dictionary-pron-text").value = dictPronOpening;
+    clearDictionaryPronunciationError();
+    $("dictionary-pron-text").focus({ preventScroll: true });
+    $("dictionary-pron-text").setSelectionRange(dictPronOpening.length, dictPronOpening.length);
+    rememberDictionarySelection();
+  });
+  $("dictionary-pron-form").addEventListener("submit", applyDictionaryPronunciation);
+  $("dictionary-preview").addEventListener("click", dictionaryPreview);
+  $("dictionary-pron-text").addEventListener("input", clearDictionaryPronunciationError);
+  $("dictionary-pron-text").addEventListener("compositionstart", function () { dictComposing = true; });
+  $("dictionary-pron-text").addEventListener("compositionend", function () {
+    dictComposing = false; rememberDictionarySelection();
+  });
+  ["select", "keyup", "mouseup", "touchend", "input"].forEach(function (type) {
+    $("dictionary-pron-text").addEventListener(type, rememberDictionarySelection);
+  });
+  $("dictionary-pron-assists").querySelectorAll(
+    "[data-dictionary-insert], [data-dictionary-backspace]").forEach(function (button) {
+    button.addEventListener("mousedown", function (event) { event.preventDefault(); });
+    var composingAtPointerDown = false;
+    button.addEventListener("pointerdown", function () {
+      composingAtPointerDown = dictComposing;
+      if (!dictComposing) rememberDictionarySelection();
+    });
+    button.addEventListener("pointercancel", function () { composingAtPointerDown = false; });
+    button.addEventListener("click", function () {
+      var suppress = composingAtPointerDown;
+      composingAtPointerDown = false;
+      if (busy || suppress || dictComposing || currentView !== "dictionary-pron") return;
+      replaceAtCaret($("dictionary-pron-text"), dictSelection,
+        button.dataset.dictionaryInsert || "",
+        button.hasAttribute("data-dictionary-backspace"));
+      rememberDictionarySelection();
+    });
+  });
+  $("open-dictionary-quick").addEventListener("click", openDictionaryQuick);
+  $("dictionary-quick-surface").addEventListener("input", dictionaryQuickSurfaceChanged);
+  $("dictionary-quick-notation").addEventListener("input", dictionaryQuickNotationChanged);
+  $("dictionary-quick-generate").addEventListener("click", generateDictionaryQuick);
+  $("dictionary-quick-preview").addEventListener("click", previewDictionaryQuick);
+  $("dictionary-quick-type").addEventListener("change", dictionaryQuickPriority);
+  $("dictionary-quick-priority").addEventListener("input", function () {
+    dictQuickPriorityEdited = true;
+  });
+  $("dictionary-quick-cancel").addEventListener("click", function () {
+    if (busy) return;
+    $("dictionary-quick-form").hidden = true;
+    dictQuickPronSurface = null;
+    clearDictionaryQuickError();
+    clearPlayer();
+  });
+  $("dictionary-quick-form").addEventListener("submit", saveDictionaryQuick);
 
   fetch("/api/web/health", { method: "GET", cache: "no-store" })
     .then(function (response) {

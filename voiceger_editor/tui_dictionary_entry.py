@@ -16,6 +16,7 @@ from .pronunciation import (
     AccentPhrase as CoreAccentPhrase, PitchEvent, Pronunciation,
     format_pronunciation, parse_pronunciation,
 )
+from .dictionary_editing import (_katakana_notation, _reading_morae, _word_type_for_context, _japanese_preview_query, _english_preview_query)
 from .tui_adjustments import step_bounded, step_cyclic
 from .tui_dictionary_list import DictionaryListStateOwner
 from .tui_dictionary_operations import (
@@ -49,70 +50,6 @@ from .voicevox_api_models import (
 
 DictionaryEntryIntent = Union[EditorIntent, DictionaryOperationIntent]
 
-
-def _katakana_notation(value: str) -> str:
-    """Normalize editable Japanese kana without changing pitch markers or punctuation."""
-    return "".join(
-        chr(ord(char) + 0x60) if "ぁ" <= char <= "ゖ" else char
-        for char in value
-    )
-
-
-def _reading_morae(reading: str) -> tuple[str, ...]:
-    if "'" in reading or "/" in reading or any(ch in reading for ch in "。？！"):
-        raise ValueError("Dictionary pronunciation must be one kana reading")
-    parsed = parse_pronunciation(reading + "'")
-    if len(parsed.phrases) != 1:
-        raise ValueError("Dictionary pronunciation must contain one accent phrase")
-    return parsed.phrases[0].morae
-
-
-def _word_type_for_context(context_id: int) -> JapaneseWordType:
-    for word_type in _WORD_TYPES:
-        if expand_word_type(word_type.value)["context_id"] == context_id:
-            return word_type
-    raise ValueError(f"Unsupported Japanese dictionary word type context: {context_id}")
-
-
-def _japanese_preview_query(
-    morae: Sequence[str], accent: int, events: Sequence[PitchEvent] = (),
-) -> AudioQuery:
-    if not morae:
-        raise ValueError("Japanese pronunciation must not be empty")
-    preview_accent = accent if accent > 0 else len(morae)
-    if events:
-        CoreAccentPhrase(tuple(morae), preview_accent, tuple(events))
-    return AudioQuery(
-        accent_phrases=[
-            AccentPhrase(
-                moras=[Mora(text=mora, vowel="") for mora in morae],
-                accent=preview_accent,
-            )
-        ],
-        kana=None,
-        pronunciationPitchEvents=[
-            PronunciationPitchEvents(
-                accentPhraseIndex=0,
-                events=[JapanesePitchEvent(afterMora=e.after_mora, symbol=e.symbol) for e in events],
-            )
-        ] if events else None,
-    )
-
-
-def _english_preview_query(surface: str, phonemes: Sequence[str]) -> AudioQuery:
-    if not surface.strip():
-        raise ValueError("English dictionary Surface must not be empty")
-    normalized = normalize_english_phonemes(phonemes)
-    return AudioQuery(
-        accent_phrases=[],
-        voicegerSegments=[
-            VoicegerSegment(
-                language="en",
-                text=surface,
-                phonemes=normalized,
-            )
-        ],
-    )
 
 
 class DictionaryEntryOwner:

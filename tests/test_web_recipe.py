@@ -367,8 +367,8 @@ class WebRecipeTests(unittest.TestCase):
         html = (ASSETS / "index.html").read_text(encoding="utf-8")
         js = (ASSETS / "app.js").read_text(encoding="utf-8")
         for marker in (
-            'id="open-batch-menu"', "Batch操作", "Macから読み込む",
-            "Batchを保存", 'id="recipe-filename"', 'id="recipe-files"',
+            'id="open-batch-menu"', 'aria-label="Batchファイル"',
+            '>読み込む</button>', '>保存</button>', 'id="recipe-filename"', 'id="recipe-files"',
             'value="batch.voiceger.json"',
         ):
             self.assertIn(marker, html)

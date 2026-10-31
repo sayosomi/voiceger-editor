@@ -13,10 +13,12 @@ import time
 from typing import Any, Callable
 
 from .caption_batch import CaptionBatch
+from .user_dictionary import UserDictionaryCore
 from .web_batch import WebBatchMixin
 from .web_recipe import WebRecipeMixin
 from .web_batch_generation import WebBatchGenerationMixin
 from .web_takes import WebTakeMixin
+from .web_dictionary import WebDictionaryMixin
 from .web_pronunciation import WebPronunciationMixin
 from .web_english import WebEnglishMixin
 from .web_sections import WebSectionMixin
@@ -98,7 +100,7 @@ class _WebSession:
         }
 
 
-class WebSessionOperations(WebBatchMixin, WebRecipeMixin, WebBatchGenerationMixin, WebEnglishMixin, WebSectionMixin, WebPronunciationMixin, WebTakeMixin):
+class WebSessionOperations(WebDictionaryMixin, WebBatchMixin, WebRecipeMixin, WebBatchGenerationMixin, WebEnglishMixin, WebSectionMixin, WebPronunciationMixin, WebTakeMixin):
     """Thread-safe, in-process session registry with one worker across sessions."""
 
     def __init__(
@@ -111,6 +113,9 @@ class WebSessionOperations(WebBatchMixin, WebRecipeMixin, WebBatchGenerationMixi
         history_limit: int = 8,
         caption_factory: Callable[[str], Any] | None = None,
         english_group_provider: Callable[[str], Any] | None = None,
+        dictionary_core: UserDictionaryCore | None = None,
+        dictionary_adapter: Any | None = None,
+        dictionary_preview_provider: Callable[..., Any] | None = None,
     ) -> None:
         if max_sessions < 1 or idle_seconds <= 0 or history_limit < 1:
             raise ValueError("session limits must be positive")
@@ -121,7 +126,9 @@ class WebSessionOperations(WebBatchMixin, WebRecipeMixin, WebBatchGenerationMixi
         self._history_limit = history_limit
         self._caption_factory = caption_factory
         self._english_group_provider = english_group_provider
-        self._batch_adapter = None
+        self._dictionary_core = dictionary_core
+        self._dictionary_preview_provider = dictionary_preview_provider
+        self._batch_adapter = dictionary_adapter
         self._batch_settings = None
         self._lock = threading.RLock()
         self._sessions: dict[str, _WebSession] = {}

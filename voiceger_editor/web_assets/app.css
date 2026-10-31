@@ -62,7 +62,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .field-stack label, .setting-section label, .field-title {
   color: #456358; font-size: 13px; font-weight: 750; margin: 0;
 }
-.field-stack input, .field-stack textarea, .setting-section input:not([type=checkbox]), .setting-section select {
+.field-stack input, .field-stack select, .field-stack textarea,
+.setting-section input:not([type=checkbox]), .setting-section select {
   width: 100%; max-width: 100%; min-height: 48px; padding: 11px 13px;
   background: #fff; color: #263b33; font: inherit; font-size: 15px; line-height: 1.5;
   border: 1px solid #cbdcd2; border-radius: 12px;
@@ -277,7 +278,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 #preview-pronunciation { border: 1px solid #c8dbd1; background: #eff6f2;
   color: #285e4f; font-weight: 750; }
 .pronunciation-actions-secondary { display: flex; gap: 8px; justify-content: space-between; }
-.pronunciation-actions-secondary button { min-height: 44px; padding: 10px 13px;
+.pronunciation-actions-secondary button, #dictionary-quick-cancel {
+  min-height: 44px; padding: 10px 13px;
   border: 1px solid #d0ded4; border-radius: 10px; background: #fff; color: #285e4f; }
 #phone-player:not([hidden]) { display: block; margin: 10px 20px; width: calc(100% - 40px); }
 
@@ -389,3 +391,64 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .recipe-files li { border: 1px solid #d7e5dc; border-radius: 12px; overflow-wrap: anywhere; }
 .recipe-files button { min-height: 52px; }
 #recipe-save-form .help-text { margin: 0 0 12px; }
+
+
+/* Dictionary Web Slice 8: compact touch list and direct editor. */
+.dictionary-tabs { display: flex; gap: 8px; margin: 16px 0; }
+.dictionary-duplicate { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid #b9cec2;
+  border-radius: 12px; background: #f1f6f2; color: #244f41; line-height: 1.5; }
+.dictionary-duplicate[hidden] { display: none; }
+.dictionary-duplicate p { margin: 0; font-size: 13px; }
+.dictionary-duplicate .item-link { justify-self: start; }
+.dictionary-pron-error { margin: 0; padding: 12px 14px; line-height: 1.5;
+  border: 1px solid #bd6b60; border-left: 4px solid #b93c30; border-radius: 12px;
+  background: #fff0ed; color: #812c25; font-size: 14px; font-weight: 700;
+  scroll-margin-top: 90px; }
+.dictionary-duplicate, .dictionary-save-error { scroll-margin-top: 90px; }
+.dictionary-save-error { margin: 0; padding: 12px 14px; line-height: 1.5;
+  border: 1px solid #d5a9a0; border-radius: 12px; background: #fff1ee;
+  color: #783f36; font-size: 14px; font-weight: 650; }
+.dictionary-tabs button { flex: 1; min-height: 44px; border-radius: 11px; border: 1px solid #cbdcd2; background: #fff; color: #285e4f; font-weight: 700; }
+.dictionary-tabs button[aria-pressed="true"] { background: #23675a; color: white; }
+.dictionary-tabs[hidden] { display: none; }
+.dictionary-filters { margin: 12px 0; }
+.dictionary-filter-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dictionary-filter-row label { display: grid; gap: 7px; }
+.dictionary-filter-row select { min-height: 44px; width: 100%; background: white; border: 1px solid #cbdcd2; border-radius: 10px; padding: 8px; }
+.dictionary-words { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.dictionary-words li { margin: 0; }
+.dictionary-word { width: 100%; min-height: 70px; padding: 13px; text-align: left; display: grid; gap: 5px; border: 1px solid #dce8df; border-radius: 12px; background: white; color: #244035; }
+.dictionary-word strong { font-size: 15px; }
+.dictionary-word span { font-size: 13px; overflow-wrap: anywhere; }
+.dictionary-word small { font-size: 11px; color: #71857b; }
+.dictionary-edit-pron { display: flex; gap: 12px; align-items: center; border-bottom: 1px solid #dce8df; padding: 6px 0; }
+.dictionary-edit-pron p { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+#dictionary-delete { min-height: 44px; border: 1px solid #eacbc5; background: #fff4f2; color: #96524a; border-radius: 10px; }
+.dictionary-quick { border: 1px solid #cbdcd2; background: white; border-radius: 12px; padding: 14px; margin-top: 20px; }
+.dictionary-quick .button-row button { min-height: 44px; }
+#dictionary-quick-generate, #dictionary-quick-preview {
+  min-height: 44px; width: 100%; text-align: center; justify-content: center;
+  border: 1px solid #c8dbd1; border-radius: 10px; padding: 10px 12px;
+  background: #eff6f2; color: #285e4f; font-weight: 700;
+}
+#dictionary-quick-notation { font-size: 17px; line-height: 1.7; }
+#dictionary-quick-hint { margin: 0; }
+#dictionary-quick-error { scroll-margin-top: 90px; }
+
+/* Three-level app navigation: global domains stay visible on nested screens. */
+.brand-home { border: 0; background: transparent; color: inherit; padding: 0; text-align: left; }
+.brand-home:disabled { opacity: 1; cursor: default; }
+.brand-name { font-size: 15px; font-weight: 800; line-height: 1.2; }
+.global-nav { display: flex; flex: none; align-items: center; gap: 6px; }
+.global-nav[hidden] { display: none; }
+.global-nav .header-action { min-width: 44px; min-height: 44px; padding: 9px 10px; }
+.global-nav .header-action[aria-current="page"] { background: #dfeee5; border-color: #85b69d; }
+.item-titlebar { margin-bottom: 10px; }
+.item-titlebar .back-button { margin: 0; }
+.item-titlebar h2 { font-size: 14px; color: #71857b; font-weight: 700; }
+@media (max-width: 380px) {
+  .brand-symbol { width: 30px; height: 30px; border-radius: 9px; }
+  .brand-name { font-size: 13px; }
+  .global-nav { gap: 4px; }
+  .global-nav .header-action { padding: 8px; font-size: 12px; }
+}
