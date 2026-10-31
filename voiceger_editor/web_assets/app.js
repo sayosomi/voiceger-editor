@@ -2281,6 +2281,62 @@
   function dictionaryPath() {
     return "/api/web/sessions/" + encodeURIComponent(sessionId) + "/dictionary";
   }
+  function dictionaryExportNotice(text, isError) {
+    var notice = $("dictionary-export-message");
+    notice.textContent = text;
+    notice.hidden = !text;
+    notice.dataset.error = isError ? "true" : "false";
+    if (text) {
+      notice.scrollIntoView({ behavior: "auto", block: "center" });
+      if (isError) notice.focus({ preventScroll: true });
+    }
+  }
+  async function exportDictionary(format) {
+    if (busy || currentView !== "dictionary" || !sessionId) return;
+    setBusy(true);
+    var tokenForCancel = "";
+    try {
+      var latest = await request("GET", dictionaryPath() + "/" + encodeURIComponent(dictLanguage) +
+        "?sort=" + encodeURIComponent(dictSort) + "&query=" +
+        encodeURIComponent(dictQuery) + "&word_type=" + encodeURIComponent(dictType));
+      dictData = latest;
+      var revision = latest.revision;
+      var review = await request("POST", dictionaryPath() + "/export/review", {
+        format: format, expected_revision: revision
+      });
+      tokenForCancel = review.token;
+      var confirmLoss = false;
+      if (format === "voicevox" && review.lossy_pitch_count > 0) {
+        confirmLoss = window.confirm(
+          review.lossy_pitch_count + "件の追加アクセント情報はVOICEVOX JSONに保存されません。\n" +
+          "完全な保存にはZIPバックアップを使用してください。\nこのまま書き出しますか？"
+        );
+        if (!confirmLoss) {
+          await request("POST", dictionaryPath() + "/export/cancel",
+            { token: review.token });
+          tokenForCancel = "";
+          dictionaryExportNotice("エクスポートを中止しました。ファイルは作成していません。", false);
+          return;
+        }
+      }
+      var saved = await request("POST", dictionaryPath() + "/export/commit", {
+        token: review.token, expected_revision: revision,
+        confirmed_pitch_loss: confirmLoss
+      });
+      tokenForCancel = "";
+      dictionaryExportNotice(
+        saved.filename + " をMacのOutputフォルダに保存しました。", false);
+    } catch (error) {
+      // Cancel any outstanding review. Never retry a failed commit blindly.
+      if (tokenForCancel) {
+        try { await request("POST", dictionaryPath() + "/export/cancel",
+          { token: tokenForCancel }); } catch (_ignored) {}
+      }
+      dictionaryExportNotice(error.conflictCode === "export_io" ?
+        "MacのOutputフォルダへ書き込めませんでした。保存先と空き容量を確認してください。" :
+        error.message, true);
+    } finally { setBusy(false); }
+  }
   function dictionaryPronunciationDirty() {
     return currentView === "dictionary-pron" && dictPronOpening !== null &&
       $("dictionary-pron-text").value !== dictPronOpening;
@@ -3025,6 +3081,12 @@
     clearPlayer();
   });
   $("dictionary-quick-form").addEventListener("submit", saveDictionaryQuick);
+  $("dictionary-export-native").addEventListener("click", function () {
+    void exportDictionary("native");
+  });
+  $("dictionary-export-voicevox").addEventListener("click", function () {
+    void exportDictionary("voicevox");
+  });
 
   fetch("/api/web/health", { method: "GET", cache: "no-store" })
     .then(function (response) {

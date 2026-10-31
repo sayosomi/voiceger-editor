@@ -452,3 +452,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .global-nav { gap: 4px; }
   .global-nav .header-action { padding: 8px; font-size: 12px; }
 }
+
+/* Slice 9a: export remains within the existing Dictionary domain. */
+.dictionary-management { margin: 8px 0 16px; border: 1px solid #d0e0d5;
+  border-radius: 12px; padding: 9px 12px; background: #fff; }
+.dictionary-management summary { cursor: pointer; min-height: 44px; display: flex;
+  align-items: center; font-weight: 700; color: #285e4f; }
+.dictionary-management .help-text { margin: 4px 0 12px; }
+.dictionary-export-actions { display: grid; gap: 8px; }
+.dictionary-export-actions button { width: 100%; min-height: 48px; border: 1px solid #cbdcd2;
+  background: #f4f9f5; color: #285e4f; border-radius: 10px; text-align: left; padding: 10px 12px; }
+#dictionary-export-message { overflow-wrap: anywhere; scroll-margin-top: 90px; }
+#dictionary-export-message[data-error="true"] { color: #812c25; font-weight: 700; }

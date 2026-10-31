@@ -275,6 +275,15 @@
           <h2 id="dictionary-title" tabindex="-1">辞書</h2>
           <button type="button" id="dictionary-add" class="item-link">＋ 単語を追加</button>
         </div>
+        <details id="dictionary-management" class="dictionary-management">
+          <summary>辞書管理</summary>
+          <p class="help-text">MacのOutputフォルダに保存します。</p>
+          <div class="dictionary-export-actions">
+            <button type="button" id="dictionary-export-native">ZIPバックアップ（日本語・英語）</button>
+            <button type="button" id="dictionary-export-voicevox">VOICEVOX JSON（日本語）</button>
+          </div>
+          <p id="dictionary-export-message" class="help-text" role="status" aria-live="polite" tabindex="-1" hidden></p>
+        </details>
         <div class="dictionary-tabs" role="group" aria-label="辞書の言語">
           <button type="button" id="dictionary-ja" aria-pressed="true">日本語</button>
           <button type="button" id="dictionary-en" aria-pressed="false">English</button>
