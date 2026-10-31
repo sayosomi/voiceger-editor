@@ -271,19 +271,13 @@
 
       <section id="view-dictionary" class="screen" aria-labelledby="dictionary-title" hidden>
         <button type="button" id="dictionary-back" class="back-button">← 戻る</button>
-        <div class="section-top">
+        <div class="section-top dictionary-list-header">
           <h2 id="dictionary-title" tabindex="-1">辞書</h2>
-          <button type="button" id="dictionary-add" class="item-link">＋ 単語を追加</button>
-        </div>
-        <details id="dictionary-management" class="dictionary-management">
-          <summary>辞書管理</summary>
-          <p class="help-text">MacのOutputフォルダに保存します。</p>
-          <div class="dictionary-export-actions">
-            <button type="button" id="dictionary-export-native">ZIPバックアップ（日本語・英語）</button>
-            <button type="button" id="dictionary-export-voicevox">VOICEVOX JSON（日本語）</button>
+          <div class="dictionary-header-actions">
+            <button type="button" id="dictionary-add" class="item-link">＋ 単語を追加</button>
+            <button type="button" id="dictionary-manage" class="item-link dictionary-manage-action" aria-label="辞書管理">管理</button>
           </div>
-          <p id="dictionary-export-message" class="help-text" role="status" aria-live="polite" tabindex="-1" hidden></p>
-        </details>
+        </div>
         <div class="dictionary-tabs" role="group" aria-label="辞書の言語">
           <button type="button" id="dictionary-ja" aria-pressed="true">日本語</button>
           <button type="button" id="dictionary-en" aria-pressed="false">English</button>
@@ -309,6 +303,20 @@
         </div>
         <p id="dictionary-count" class="help-text" role="status"></p>
         <ul id="dictionary-words" class="dictionary-words" aria-label="登録済み単語"></ul>
+      </section>
+
+      <section id="view-dictionary-management" class="screen" aria-labelledby="dictionary-management-title" hidden>
+        <button type="button" id="dictionary-management-back" class="back-button">← 辞書</button>
+        <h2 id="dictionary-management-title" tabindex="-1">辞書管理</h2>
+        <div class="dictionary-management">
+          <h3>エクスポート</h3>
+          <p class="help-text">MacのOutputフォルダに保存します。</p>
+          <div class="dictionary-export-actions">
+            <button type="button" id="dictionary-export-native">ZIPバックアップ（日本語・英語）</button>
+            <button type="button" id="dictionary-export-voicevox">VOICEVOX JSON（日本語）</button>
+          </div>
+          <p id="dictionary-export-message" class="help-text" role="status" aria-live="polite" tabindex="-1" hidden></p>
+        </div>
       </section>
 
       <section id="view-dictionary-entry" class="screen" aria-labelledby="dictionary-entry-title" hidden>

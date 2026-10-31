@@ -201,8 +201,18 @@ class DictionaryExportWebTests(unittest.TestCase):
 
         html = (ASSETS / "index.html").read_text(encoding="utf-8")
         js = (ASSETS / "app.js").read_text(encoding="utf-8")
-        self.assertIn('id="dictionary-management"', html)
-        self.assertIn('id="dictionary-export-native"', html)
+        dictionary_list = html.split('<section id="view-dictionary"')[1].split(
+            "</section>", 1,
+        )[0]
+        management = html.split('<section id="view-dictionary-management"')[1].split(
+            "</section>", 1,
+        )[0]
+        self.assertIn('id="dictionary-manage"', dictionary_list)
+        self.assertIn('id="dictionary-add"', dictionary_list)
+        self.assertNotIn("<details", dictionary_list)
+        self.assertNotIn('id="dictionary-export-native"', dictionary_list)
+        self.assertIn('id="dictionary-management-back"', management)
+        self.assertIn('id="dictionary-export-native"', management)
         self.assertIn('id="dictionary-export-voicevox"', html)
         self.assertIn('id="dictionary-export-message"', html)
         self.assertIn('role="status"', html)
@@ -226,3 +236,14 @@ class DictionaryExportWebTests(unittest.TestCase):
             )
             self.assertEqual(behavior.returncode, 0, behavior.stderr)
             self.assertIn("node_export_ui_pass", behavior.stdout)
+            navigation = subprocess.run(
+                [
+                    "node",
+                    str(Path(__file__).parent / "fixtures" /
+                        "web_dictionary_management_navigation.js"),
+                    str(ASSETS / "app.js"),
+                ],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(navigation.returncode, 0, navigation.stderr)
+            self.assertIn("DICT_MANAGEMENT_NAV_PASS", navigation.stdout)

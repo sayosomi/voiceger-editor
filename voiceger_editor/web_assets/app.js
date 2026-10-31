@@ -59,11 +59,12 @@
   var settingsHistoryDestination = null;
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
-  var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session", "dictionary", "dictionary-entry", "dictionary-pron"];
+  var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session", "dictionary", "dictionary-management", "dictionary-entry", "dictionary-pron"];
   var screenTitles = {
     connect: "接続", list: "Batch List", recipe: "ファイル", add: "Caption追加",
     item: "Batch Item", pronunciation: "発音編集", section: "セクション編集", session: "接続・設定",
-    dictionary: "辞書", "dictionary-entry": "辞書の単語", "dictionary-pron": "辞書発音編集"
+    dictionary: "辞書", "dictionary-management": "辞書管理",
+    "dictionary-entry": "辞書の単語", "dictionary-pron": "辞書発音編集"
   };
 
   function savedSession() {
@@ -284,6 +285,16 @@
     }
     var dictionaryTarget = event && event.state && event.state.voicegerDictionary &&
       event.state.sessionId === sessionId ? event.state : null;
+    if (dictionaryTarget && currentView === "dictionary" &&
+        dictionaryTarget.view === "dictionary-management" &&
+        Number.isInteger(dictionaryTarget.depth) &&
+        dictionaryTarget.depth > dictionaryHistoryDepth) {
+      // Management is safe to reopen on Forward: it holds no editable draft.
+      if (busy) { window.history.back(); return; }
+      dictionaryHistoryDepth = dictionaryTarget.depth;
+      showView("dictionary-management", true);
+      return;
+    }
     if (dictionaryTarget && currentView.indexOf("dictionary") === 0 &&
         Number.isInteger(dictionaryTarget.depth) &&
         dictionaryTarget.depth > dictionaryHistoryDepth &&
@@ -310,8 +321,8 @@
         dictionaryTarget.depth : Math.max(1, dictionaryHistoryDepth - 1);
       return;
     }
-    if (currentView === "dictionary" || currentView === "dictionary-entry" ||
-        currentView === "dictionary-pron") {
+    if (currentView === "dictionary" || currentView === "dictionary-management" ||
+        currentView === "dictionary-entry" || currentView === "dictionary-pron") {
       if (busy || !(currentView === "dictionary-pron" &&
           event && event.state && event.state.voicegerDictionary &&
           event.state.view === "dictionary-entry" ?
@@ -329,6 +340,8 @@
       } else if (currentView === "dictionary-entry") {
         dictEntry = null;
         dictEntryOriginal = null;
+        showView("dictionary", true);
+      } else if (currentView === "dictionary-management") {
         showView("dictionary", true);
       } else {
         showView(dictReturnView, true);
@@ -2281,6 +2294,12 @@
   function dictionaryPath() {
     return "/api/web/sessions/" + encodeURIComponent(sessionId) + "/dictionary";
   }
+  function openDictionaryManagement() {
+    if (busy || currentView !== "dictionary" || dictionaryHistoryDestination) return;
+    if (!showView("dictionary-management", true)) return;
+    dictionaryExportNotice("", false);
+    dictionaryPushHistory("dictionary-management");
+  }
   function dictionaryExportNotice(text, isError) {
     var notice = $("dictionary-export-message");
     notice.textContent = text;
@@ -2292,7 +2311,7 @@
     }
   }
   async function exportDictionary(format) {
-    if (busy || currentView !== "dictionary" || !sessionId) return;
+    if (busy || currentView !== "dictionary-management" || !sessionId) return;
     setBusy(true);
     var tokenForCancel = "";
     try {
@@ -2464,7 +2483,8 @@
       return;
     }
     var destination = currentView === "dictionary-pron" ? "dictionary-entry" :
-      currentView === "dictionary-entry" ? "dictionary" : dictReturnView;
+      (currentView === "dictionary-entry" || currentView === "dictionary-management") ?
+      "dictionary" : dictReturnView;
     dictPronOpening = null;
     if (destination !== "dictionary-entry") {
       dictEntry = null;
@@ -2988,6 +3008,8 @@
   }
 
   $("dictionary-back").addEventListener("click", dictionaryBack);
+  $("dictionary-manage").addEventListener("click", openDictionaryManagement);
+  $("dictionary-management-back").addEventListener("click", dictionaryBack);
   $("dictionary-ja").addEventListener("click", function () {
     if (dictLanguage === "ja" || busy) return;
     dictLanguage = "ja"; dictSort = "surface_asc"; dictQuery = ""; dictType = "ALL";
