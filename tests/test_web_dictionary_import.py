@@ -155,7 +155,7 @@ class WebImportTests(unittest.TestCase):
         }).status_code, 422)
         self.assertEqual(self.post("/review", {
             "filename": "shortcut.json", "expected_revision": self.revision(),
-        }).status_code, 409)
+        }).status_code, 422)
         revision = self.revision()
         self.assertEqual(self.client.post(self.url + "/review", json={
             "filename": self.zip_name, "expected_revision": revision,
