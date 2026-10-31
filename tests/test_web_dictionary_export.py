@@ -182,6 +182,7 @@ class DictionaryExportWebTests(unittest.TestCase):
             self.service._active = None
 
     def test_storage_failure_does_not_expose_path_or_touch_dictionary(self):
+        original = self.revision()
         review = self.review("native").json()
         with patch(
             "voiceger_editor.web_dictionary_export.export_voiceger_editor_dictionaries",
@@ -192,7 +193,7 @@ class DictionaryExportWebTests(unittest.TestCase):
         self.assertEqual(failed.json()["detail"], {"code": "export_io"})
         self.assertNotIn("private", failed.text)
         self.assertEqual(self.commit(review).status_code, 409)
-        self.assertEqual(self.revision(), review["token"] if False else self.revision())
+        self.assertEqual(self.revision(), original)
 
     def test_mobile_ui_markup_and_production_js_syntax(self):
         import shutil
