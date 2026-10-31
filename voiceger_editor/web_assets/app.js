@@ -499,7 +499,7 @@
       };
       var invalidPronunciation = {
         invalid_import: "辞書ファイルの形式・内容を確認してください。ZIP・辞書JSONのみ利用できます。",
-        invalid_filename: "MacのOutputフォルダ内のZIP・JSONファイルを選び直してください。",
+        invalid_filename: "ファイル名は .voiceger.json で終わる単一の名前を指定してください。",
         invalid_pronunciation: "発音形式が正しくありません。各アクセント句に ' または正しい [ ] を指定し、句の区切りには空白を使ってください。",
         unsupported_pronunciation: "選択した発音は編集できません。最新のBatchを取得してください。",
         invalid_english_pronunciation: "ARPAbetの音素・強勢数字（0/1/2）を確認してください。",
@@ -529,6 +529,9 @@
       );
       if (conflictCode === "missing_preparation" && problemIndex !== null) {
         error.message = "Caption " + problemIndex + " の発音を準備してください（除外中も対象）。";
+      }
+      if (conflictCode === "invalid_filename" && path.includes("/dictionary/import")) {
+        error.message = "MacのOutputフォルダ内のZIP・JSONファイルを選び直してください。";
       }
       error.code = response.status;
       error.conflictCode = conflictCode;
