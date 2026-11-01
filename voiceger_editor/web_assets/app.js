@@ -22,6 +22,8 @@
   var connectionEpoch = 0, refreshSequence = 0;
   var expiredSession = false;
   var generationUnconfirmed = false;
+  var audioUnconfirmed = null;
+  var creationRequestId = "";
   var recipeMode = "";
   var batchMenuOpen = false;
   var playingUrl = "";
@@ -758,9 +760,9 @@
     }, 160);
   }
   async function loadWebSettings() {
-    var originalSession = sessionId;
+    var originalSession = sessionId, epoch = connectionEpoch;
     var data = await request("GET", settingsPath());
-    if (!sessionId || originalSession !== sessionId) return;
+    if (!sessionId || originalSession !== sessionId || epoch !== connectionEpoch) return;
     renderCommonSettings(data);
     if (currentView === "item") {
       var item = batch && batch.items.find(function (entry) { return entry.id === selectedId; });
@@ -1225,6 +1227,8 @@
     ++refreshSequence;
     expiredSession = false;
     generationUnconfirmed = false;
+    audioUnconfirmed = null;
+    creationRequestId = "";
     batchPolling = false;
     audioPolling = false;
     detachedPolling = false;
@@ -1806,6 +1810,10 @@
   }
   async function startAudio(itemId, suffix, payload, automaticPrepare) {
     if (busy || !batch || !selectedId || itemId !== selectedId) return;
+    if (audioUnconfirmed) {
+      feedback("Mac側の音声操作を再取得してください。", true);
+      return;
+    }
     var item = batch.items.find(function (entry) { return entry.id === itemId; });
     if (!item) return;
     if ($("edit-caption").value !== item.caption) {
@@ -1816,15 +1824,19 @@
     takeMenuOpen = false;
     $("take-menu").hidden = true;
     var epoch = connectionEpoch;
+    audioUnconfirmed = { itemId: itemId, suffix: suffix };
     setBusy(true);
     try {
       var op = await request("POST", itemAudioPath(itemId) + suffix +
         (suffix.includes("?") ? "&" : "?") +
         "expected_revision=" + batch.revision, payload);
       if (epoch !== connectionEpoch) return;
+      audioUnconfirmed = null;
+      latestSessionOperation = op;
       await followAudioOperation(op, itemId);
     } catch (error) {
       if (epoch !== connectionEpoch) return;
+      if (!retryable(error)) audioUnconfirmed = null;
       // A definitive failed auto-prepare should not silently retry on open.
       // Transport failures are ambiguous: the Mac worker may still be running.
       if (suffix === "/audio/prepare" && !retryable(error))
@@ -1941,6 +1953,27 @@
     }
   }
 
+  function reconcileAudioStart(sessionSnapshot) {
+    latestSessionOperation = sessionSnapshot.latest_operation || null;
+    // Only a successful authoritative read can resolve an uncertain POST.
+    // A matching completed/running operation is recovered below; a missing
+    // operation allows the user to retry deliberately after reconciliation.
+    audioUnconfirmed = null;
+  }
+  function reloadRecoveredItemSettings(itemId) {
+    var epoch = connectionEpoch, identity = sessionId;
+    if (commonSettingsData) return;
+    void loadWebSettings().then(function () {
+      if (epoch === connectionEpoch && identity === sessionId &&
+          currentView === "item" && selectedId === itemId)
+        renderItem(false);
+    }).catch(function (error) {
+      if (epoch !== connectionEpoch || identity !== sessionId ||
+          currentView !== "item" || selectedId !== itemId) return;
+      $("item-voice-error").textContent = error.message;
+      $("item-voice-error").hidden = false;
+    });
+  }
   function resumeSessionOperations() {
     if (!batch || !sessionId || !token) return;
     // The server is the authority, including an operation that completed
@@ -1971,6 +2004,7 @@
       selectedId = itemId;
       renderItem(false);
       showView("item", true);
+      reloadRecoveredItemSettings(itemId);
       void followAudioOperation(op, itemId);
     } else {
       feedback(op.status === "succeeded" ? "前回の音声操作は完了しています。" :
@@ -2580,8 +2614,7 @@
           try {
             var restored = await request("GET", "/api/web/sessions/" +
               encodeURIComponent(existing));
-            latestSessionOperation = restored.latest_operation || null;
-            await refresh();
+            if (await refresh()) reconcileAudioStart(restored);
           }
           catch (error) {
             if (error.code !== 404) throw error;
@@ -2595,9 +2628,19 @@
         }
       }
       if (!sessionId) {
-        // Creation is the user's initial Connect or explicit New Session.
-        var created = await request("POST", "/api/web/sessions");
+        // Preserve the same request key across ambiguous POST failures.
+        if (!creationRequestId) {
+          if (!window.crypto || !window.crypto.getRandomValues)
+            throw new Error("安全なセッション作成を開始できません。");
+          creationRequestId = Array.from(
+            window.crypto.getRandomValues(new Uint8Array(24)),
+            function (byte) { return byte.toString(16).padStart(2, "0"); }
+          ).join("");
+        }
+        var created = await request("POST", "/api/web/sessions",
+          { idempotency_key: creationRequestId });
         sessionId = created.id;
+        creationRequestId = "";
         latestSessionOperation = created.latest_operation || null;
         remember(sessionId);
         await refresh();
@@ -2918,9 +2961,11 @@
       var restored = await request("GET", "/api/web/sessions/" +
         encodeURIComponent(identity));
       if (epoch !== connectionEpoch || identity !== sessionId) return;
-      latestSessionOperation = restored.latest_operation || null;
       recovered = await refresh();
-      if (recovered) feedback("再接続しました。");
+      if (recovered) {
+        reconcileAudioStart(restored);
+        feedback("再接続しました。");
+      }
     } catch (error) {
       if (epoch !== connectionEpoch || identity !== sessionId) return;
       var handled = await handleSessionFailure(error);
