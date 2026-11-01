@@ -281,6 +281,21 @@ class OutputTests(unittest.TestCase):
             list(Path(self.tmp.name).glob(".voiceger-editor-probe-*")), [],
         )
 
+    def test_existing_readonly_directory_cannot_be_selected(self):
+        if os.name != "posix" or os.geteuid() == 0:
+            self.skipTest("Requires unprivileged POSIX filesystem permissions")
+        directory = Path(self.tmp.name) / "read-only"
+        directory.mkdir()
+        directory.chmod(0o555)
+        before = self.get_output()
+        try:
+            response = self.patch_output(output_dir=str(directory))
+            self.assertEqual(response.status_code, 422, response.text)
+            self.assertEqual(self.get_output(), before)
+            self.save.assert_not_called()
+        finally:
+            directory.chmod(0o700)
+
     def test_preflight_failure_keeps_disk_settings_and_other_sessions(self):
         first = self.add()
         other_sid = self.client.post(
