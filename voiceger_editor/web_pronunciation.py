@@ -91,7 +91,7 @@ class WebPronunciationMixin:
 
         return self._start_take_work(
             session_id, session, kind="pronunciation-preview", total=1, run=work,
-            on_terminal=on_terminal,
+            detail={"item_id": item_id}, on_terminal=on_terminal,
         )
 
     def start_japanese_draft_preview(
