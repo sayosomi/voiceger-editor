@@ -6,6 +6,7 @@ from voiceger_editor.english_group_boundaries import bound_english_groups
 from voiceger_editor.mixed_language import build_mixed_synthesis_plan
 from voiceger_editor.pronunciation import parse_pronunciation
 from voiceger_editor.query_ja_arpabet import convert_japanese_section_to_arpabet
+from voiceger_editor.query_editing import replace_english_phoneme_groups
 from voiceger_editor.voicevox_api_models import VoicegerSegment
 from voiceger_editor.voicevox_query import (
     build_audio_query,
@@ -110,6 +111,57 @@ class JapaneseArpabetQueryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not Japanese"):
             convert_japanese_section_to_arpabet(
                 query, "ア'メ", segment_index=0,
+            )
+        self.assertEqual(query.model_dump(), before)
+
+    def test_edit_after_conversion_resizes_only_selected_group(self):
+        original = build_audio_query(pronunciation=parse_pronunciation("ア'メ。"))
+        converted = convert_japanese_section_to_arpabet(
+            original, "ズ'ンダ/ノダ'！",
+            pure_japanese_utterance_text="ずんだもんはかしこいのだ！",
+        )
+        segment = converted.voicegerSegments[0]
+        groups = bound_english_groups(segment)
+        changed = tuple(group for _label, group in groups)
+        with_longer_first = (
+            changed[0] + ("R", "AA0"), *changed[1:],
+        )
+        updated = replace_english_phoneme_groups(
+            converted, segment_index=0, phoneme_groups=with_longer_first,
+        )
+        self.assertEqual(
+            [len(phones) for _label, phones in bound_english_groups(updated.voicegerSegments[0])],
+            [len(group) for group in with_longer_first],
+        )
+        self.assertEqual(
+            [label for label, _ in bound_english_groups(updated.voicegerSegments[0])],
+            [label for label, _ in groups],
+        )
+        self.assertEqual(
+            [group for label, group in bound_english_groups(segment)],
+            [group for label, group in groups],
+        )
+        self.assertEqual(
+            updated.voicegerSegments[0].text, segment.text,
+        )
+
+    def test_no_empty_group_or_group_count_change_after_conversion(self):
+        query = convert_japanese_section_to_arpabet(
+            build_audio_query(pronunciation=parse_pronunciation("ア'メ。")),
+            "ズ'ンダ/ノダ'！",
+            pure_japanese_utterance_text="ずんだもんはかしこいのだ！",
+        )
+        before = query.model_dump()
+        groups = tuple(group for label, group in bound_english_groups(query.voicegerSegments[0]))
+        with self.assertRaisesRegex(ValueError, "must not become empty"):
+            replace_english_phoneme_groups(
+                query, segment_index=0,
+                phoneme_groups=((), *groups[1:]),
+            )
+        with self.assertRaisesRegex(ValueError, "group count"):
+            replace_english_phoneme_groups(
+                query, segment_index=0,
+                phoneme_groups=(groups[0] + groups[1], *groups[2:]),
             )
         self.assertEqual(query.model_dump(), before)
 
