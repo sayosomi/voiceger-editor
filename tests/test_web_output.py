@@ -47,6 +47,10 @@ class FakeSpeech:
             raise ValueError("Output preflight changed synthesis values")
         return lambda: setattr(self, "settings", settings)
 
+    def stage_generation_settings(self, settings):
+        """Stage a no-fail settings commit, matching the session test contract."""
+        return lambda: setattr(self, "settings", settings)
+
     def replace_settings(self, settings, *, preserve_takes=False):
         self.settings = settings
         if not preserve_takes:
