@@ -1,0 +1,129 @@
+# TUI ↔ Web parity evidence matrix (Issue #335)
+
+This is an **internal development/acceptance record**, not a replacement for the published v0.1.1 user guides. Scope is the checked remote `main` snapshot `a5b38a5be945f281a0464fcbca906e53d99b9764` (2026-11-02 JST). The baseline aggregate [CI run 41319648352](https://github.com/sayosomi/voiceger-editor/actions/runs/41319648352) is successful. Re-evaluate rows and the exact-head CI after any changes.
+
+## Method and status semantics
+
+- **PASS**: equivalent **behavior** is represented by current product implementation and an owner-local automated test under the baseline CI. Not a claim about real Android hardware or future release commits.
+- **UNVERIFIED**: the required evidence is outside this remote-code/CI inspection, or a specific cross-frontend outcome has not yet been demonstrated. These block **final acceptance** until their next action is completed.
+- **GAP**: a demonstrated missing requirement; record a focused follow-up Issue and block final acceptance. No GAP is asserted from absence of a button name alone.
+- **NOT-APPLICABLE**: an explicitly intentional frontend-specific affordance, not a missing speech capability.
+
+The Web UI is session-oriented, with server state in `web_sessions.py`, APIs in `web_*_routes.py`, and UI in `web_assets/app.js`. The TUI is composed by `tui.py` with dedicated `tui_*` owners. Shared domain behavior lives outside the presentation-specific modules. The tests below are **test file references**, not substitutes for inspecting the asserted behavior. Nonautomatable device setup and physical playback are separately marked UNVERIFIED.
+
+## 1. Batch List
+
+| Scenario | TUI entry / behavior | Web entry / behavior | Implementation owners | Automated evidence / limit | Status / next action |
+| --- | --- | --- | --- | --- | --- |
+| Add one or multiline Captions | Batch List add; split multiline content | Batch List → Caption追加 | `tui_batch.py` / `web_batch.py`, `web_batch_routes.py` | `test_tui_batch.py`, `test_web_batch.py::test_multiline_add_identity_inclusion_order_and_take_counts` | PASS; none |
+| Edit Caption without changing speech | Batch Item Caption; preserve existing spoken data and Takes | Batch Item → Caption編集 | `tui_batch_item.py` / `web_batch.py` | `test_web_batch.py::test_caption_only_edit_does_not_invalidate_takes_and_delete_cleans` | PASS; none |
+| Generation inclusion / selection | Batch List Space toggles inclusion | Row checkbox, separate from row navigation | `tui_batch.py` / `web_batch.py`, `app.js` | `test_tui_batch.py::test_space_toggles_focused_caption_without_changing_focus`, `test_web_batch.py` | PASS; none |
+| Reorder stable items | Batch List move order without changing item identity | Separate drag-handle reorder mode; keyboard alternative | `tui_batch.py` / `web_batch.py`, `app.js` | `test_tui_batch.py::test_open_item_identity_survives_reordering`, `test_web_batch.py` | PASS; focused touch feel pending under device UX row |
+| Delete one or many | Confirm deletion; preserve unrelated items | Batch List → 削除 mode and confirmation | `tui_batch.py` / `web_batch.py` | `test_tui_batch.py`, `test_web_batch.py::test_bulk_delete_validates_every_id_before_mutation` | PASS; none |
+| Default Take count / item override | Batch default and Batch Item override | Batch settings default; Batch Item Take数 override | `tui_batch_item.py`, `tui_batch.py` / `web_batch.py` | `test_web_batch.py`, `test_web_section_take_count_guard.py` | PASS; none |
+| Single-item generation | Generate current item's Takes | Batch Item → Take生成 | `tui_operations.py` / `web_takes.py` | `test_tui_operations.py`, `test_web_takes.py` | PASS; none |
+| Included batch generation | Batch List → generate selected; preserve order and individual counts | Batch List → 一括生成 | `tui_batch.py` / `web_batch_generation.py` | `test_web_batch_generation.py::test_empty_and_inclusion_order_and_effective_take_counts` | PASS; none |
+| Progress, busy, cancellation, partial failure | Running/cancel status; no silent acceptance loss | Inline progress and cancel, operation polling | `tui_operation_status.py` / `web_batch_generation.py`, `web_sessions.py` | `test_web_batch_generation.py::test_failure_preserves_first_item_and_reports_failing_item`, `test_web_takes.py` | PASS; none |
+| Batch recipe JSON write/read | Write/read with replacement confirmation | ファイル → 保存/読み込む; select files under Mac Output | `tui_batch_recipe.py` / `web_recipe.py`, `app.js` | `test_tui_batch_recipe.py`, `test_web_recipe.py`, `test_web_recipe_browser.py` | PASS; path-picker UX intentionally differs |
+| Recipe does not restore generated Takes | Read replaces structured Captions/settings, not transient Take checkpoint | Same; replacement discards session candidates | `tui_batch_recipe.py` / `web_recipe.py` | `test_web_recipe.py::test_read_requires_confirmed_snapshot_and_preserves_outputs` | PASS; explicitly explain in user guides |
+
+## 2. Batch Item / pronunciation
+
+| Scenario | TUI entry / behavior | Web entry / behavior | Implementation owners | Automated evidence / limit | Status / next action |
+| --- | --- | --- | --- | --- | --- |
+| Caption independent of spoken sections | Batch Item Caption and pronunciation sections separate | Caption編集 separate from 発音 / セクション編集 | `tui_batch_item.py` / `web_sections.py`, `web_batch.py` | `test_web_sections.py`, `test_web_batch.py` | PASS; none |
+| JA/EN spoken-section text | Add/edit/delete, maintain order | Section editor add/edit/delete, preserve surviving sections | `tui_batch_item.py` / `web_sections.py` | `test_web_sections.py`, `test_web_section_browser.py` | PASS; none |
+| Japanese mora and accent phrases | Direct pronunciation editor / accent selection | 発音 → direct JA pronunciation editor | `tui_editor_pronunciation.py` / `web_pronunciation.py`, `app.js` | `test_tui_editor_pronunciation.py`, `test_web_pronunciation.py` | PASS; none |
+| Multiple pitch peaks in a Japanese phrase | Multi-peak notation and editing | Direct multi-peak edit using same canonical model | `tui_batch_item.py` / `web_pronunciation.py` | `test_tui_batch_multi_peak.py`, `test_web_pronunciation.py` | PASS; none |
+| Japanese punctuation | Punctuation belongs to canonical pronunciation, not Caption edit | Pronunciation editor preserves/can edit punctuation | `tui_editor_pronunciation.py` / `web_pronunciation.py` | `test_web_pronunciation.py`, `test_web_pronunciation_browser.py` | PASS for API/editor integration; cross-render semantics covered with EN below |
+| English ARPAbet editing | Word phonemes in direct editor | Direct phoneme editor | `tui_editor_english.py` / `web_english.py` | `test_tui_editor_english.py`, `test_web_mixed_pronunciation.py` | PASS; none |
+| English primary / secondary stress | Edit stress on selected word | Direct stress editor | `tui_editor_english.py` / `web_english.py` | `test_tui_editor_english.py`, `test_web_mixed_pronunciation.py::test_noop_stress_edit_punctuation_and_saved_take_preserved` | PASS; none |
+| English punctuation is visible/editable | Punctuation row in pronunciation | Canonical punctuation rows exposed in Web editor | `tui_editor_english.py` / `web_english.py`, `app.js` | `test_web_mixed_pronunciation.py::test_uneditable_source_punctuation_is_never_hidden`, `test_web_mixed_pronunciation_browser.py` | PASS; none |
+| Mixed JA/EN section/word boundaries | Mixed-language group editing | Same, editable per language | `tui_batch_item.py` / `web_english.py`, `web_sections.py` | `test_web_mixed_pronunciation.py::test_mixed_japanese_edits_only_selected_section` | PASS; none |
+| Reanalysis of current pronunciation | Rebuild/reanalyse from spoken content | 発音付近の「再解析」と confirmation | `tui_batch_item.py` / `web_pronunciation.py`, `app.js` | `test_web_reanalysis_browser.py`, `test_web_pronunciation.py` | PASS; none |
+| Preview vs Apply | Preview is noncommitting; Apply commits edit | Preview / 反映 separate, conflict-safe | `tui_editor_pronunciation.py` / `web_pronunciation.py`, `web_sections.py` | `test_web_pronunciation.py::test_draft_preview_never_commits_or_clears_takes`, `test_web_sections.py` | PASS; none |
+| No-op preservation / changed Take invalidation | No-op keeps Takes; real speech change invalidates candidates | Same, accepted output remains on disk | `tui_batch_item.py` / `web_pronunciation.py`, `web_sections.py` | `test_web_pronunciation.py::test_apply_real_change_invalidates_candidates_not_saved_outputs`, `test_web_sections.py` | PASS; none |
+| Uncommitted edits and navigation | Cancel/discard or confirmation | Browser Back / header navigation guarded | `tui_editors.py` / `app.js` | `test_web_section_browser.py`, `test_web_dictionary_browser.py` | PASS for DOM policy; real touch/browser history UX remains below |
+
+## 3. Takes and generation controls
+
+| Scenario | TUI entry / behavior | Web entry / behavior | Implementation owners | Automated evidence / limit | Status / next action |
+| --- | --- | --- | --- | --- | --- |
+| Preview vs committed generation | Preview ephemeral; Generate makes Take candidates | Separate Preview / Take生成 | `tui_operations.py` / `web_takes.py` | `test_web_takes.py::test_initial_generation_audio_auth_and_browser_preview`, `test_web_preview.py` | PASS; device audio separately UNVERIFIED |
+| Play and compare Take candidates | Take playback and selection | Take list playback controls | `tui_operation_playback.py` / `web_takes.py`, `app.js` | `test_web_takes.py::test_browser_playback_states_and_stale_requests`, `test_web_media_ownership.py` | PASS for simulated browser; physical phone audio UNVERIFIED |
+| Accept multiple Takes | Adopt any accepted candidates; durable output | Per-Take 採用 | `tui_operation_acceptance.py` / `web_takes.py` | `test_web_takes.py::test_multiple_acceptance_and_caption_edit_preserves_output` | PASS; physical Mac file E2E separately UNVERIFIED |
+| Regenerate one / unaccepted all | Replace only eligible candidates, preserve accepted ones | Take menu / per-Take regeneration | `tui_operations.py` / `web_takes.py` | `test_web_takes.py::test_single_regeneration_failure_retains_original_candidate`, `test_web_takes.py::test_bulk_shrink_failure_preserves_old_and_accepted_candidates` | PASS; none |
+| Clear / cancel / busy / worker failure | Explicit clear, operation ownership and status | Clear and cancellation, revision/busy guards | `tui_operation_conflicts.py` / `web_takes.py`, `web_sessions.py` | `test_web_takes.py::test_worker_conflict_cancel_retains_completed_candidates`, `test_web_sessions_http.py` | PASS; none |
+| Save failure / already-saved output | Adoption never falsely succeeds; saved files unaffected by later reset | Same, with error status | `tui_operation_acceptance.py` / `web_takes.py` | `test_web_takes.py::test_save_failure_does_not_mark_acceptance`, `test_web_takes.py::test_rebuild_and_clear_do_not_delete_accepted_files` | PASS; none |
+| Shared Style/Speed/sampling vs item override | Global defaults + per-item Style/Speed | 設定 and Batch Item local Style/Speed | `tui_settings.py`, `tui_batch_item.py` / `web_settings.py` | `test_tui_settings.py`, `test_web_settings.py::test_item_voice_keeps_accepted_takes_and_siblings` | PASS; none |
+| Generation sampling and candidate safety | Top K/P/Temperature changes affect future generations | Shared settings propagate without deleting candidates | `tui_settings.py` / `web_settings.py` | `test_web_settings.py::test_common_sampling_preserves_candidates_acceptance_and_local_style` | PASS; none |
+
+## 4. User dictionaries
+
+| Scenario | TUI entry / behavior | Web entry / behavior | Implementation owners | Automated evidence / limit | Status / next action |
+| --- | --- | --- | --- | --- | --- |
+| JA dictionary CRUD including multi-peak | Japanese dictionary list/entry | 辞書 → 日本語, direct add/edit/delete | `tui_dictionary.py` / `web_dictionary.py` | `test_web_dictionary.py::test_japanese_multi_peak_crud_and_conflicts` | PASS; none |
+| EN dictionary CRUD, stress, collision | English dictionary list/entry | 辞書 → 英語, direct add/edit/delete | `tui_dictionary.py` / `web_dictionary.py` | `test_web_dictionary.py::test_english_stress_casefold_and_rename_collision` | PASS; none |
+| Search/filter/sort | Dictionary list sort/filter | Web dictionary list search/filter/sort | `tui_dictionary_list.py` / `web_dictionary.py`, `app.js` | `test_tui_dictionary_list.py`, `test_web_dictionary_browser.py` | PASS for available controls; device presentation below |
+| Direct pronunciation and preview | Dictionary list/entry editor and playback | 辞書発音編集, generate pronunciation and preview | `tui_dictionary.py` / `web_dictionary.py` | `test_web_dictionary.py::test_direct_apply_validation_is_authenticated_noncommitting_and_language_specific`, `test_web_dictionary_browser.py` | PASS; none |
+| In-context dictionary registration | Save from spoken pronunciation editor | 発音 editor → 辞書に登録 | `tui_dictionary.py` / `web_dictionary.py`, `app.js` | `test_web_dictionary.py::test_quick_matches_use_core_identity_and_preserve_priority`, `test_web_dictionary_browser.py` | PASS; none |
+| Selective import, review and merge | Import list with selection / word-type review | 辞書管理 → 読み込み → selection / conflict review | `tui_dictionary_import.py` / `web_dictionary_import.py` | `test_tui_dictionary_import.py`, `test_web_dictionary_import.py` | PASS; Web only reads Mac Output files |
+| Native ZIP / VOICEVOX JSON export | Native/VOICEVOX export | 辞書管理 → 書き出し | `tui_dictionary_export.py` / `web_dictionary_export.py` | `test_tui_dictionary_export.py`, `test_web_dictionary_export.py` | PASS; none |
+| Multi-peak information-loss warning | VOICEVOX export warns about lost peaks | Review and explicit confirmation | `tui_dictionary_export.py` / `web_dictionary_export.py` | `test_web_dictionary_export.py::test_voicevox_warning_cancel_then_confirmed_output` | PASS; none |
+| Output boundaries and unsafe paths | Output-directory export; paths checked | Mac Output only; no arbitrary phone path | `tui_dictionary_export.py` / `web_dictionary_import_source.py`, `web_dictionary_export.py` | `test_web_dictionary_import.py::test_source_restrictions_auth_and_conflicts`, `test_web_dictionary_export.py` | PASS; device file picking intentionally differs |
+
+## 5. Settings and output
+
+| Scenario | TUI entry / behavior | Web entry / behavior | Implementation owners | Automated evidence / limit | Status / next action |
+| --- | --- | --- | --- | --- | --- |
+| Style/Speed defaults, 0.01 Speed precision | Settings values, per-item override | 設定 → 音声生成, per-item fields | `tui_settings.py` / `web_settings.py` | `test_web_settings.py::test_common_noop_preserves_high_precision_values`, `test_web_settings.py` | PASS; none |
+| Top K / Top P / Temperature | TUI sampling controls | Web common sampling inputs | `tui_settings.py` / `web_settings.py` | `test_web_settings.py::test_common_sampling_preserves_candidates_acceptance_and_local_style` | PASS; none |
+| Reset, atomic rollback and autosave | TUI settings apply/reset; CLI persistence | Web auto-save and confirmed 設定値を初期化 | `tui_settings.py` / `web_settings.py`, `app.js` | `test_web_settings.py::test_browser_common_autosave_and_reset_preserve_takes`, `test_web_settings.py::test_real_partial_disk_write_failure_preserves_web_and_output_state` | PASS; UI save interaction intentionally differs |
+| Output directory and writable boundary | Output edit, validation | 設定 → 出力, Mac path edit and write probe | `tui_output_path.py` / `web_output.py` | `test_web_output.py::test_reject_non_directory_ancestors_and_symlinks`, `test_web_output.py::test_output_write_probe_rejects_permission_and_readonly_errors` | PASS; none |
+| Filename template, preview, collision | Custom template and suffix collision avoidance | Template edit and live preview | `tui_settings.py` / `web_output.py` | `test_web_output.py::test_preview_and_invalid_values`, `test_web_output.py::test_web_output_values_reach_audio_saver_and_preserve_collisions` | PASS; none |
+| WAV/FLAC/MP3 | TUI accepted Take output | Web accepted Take uses same saver and formats | `tui_operation_acceptance.py` / `web_output.py`, `web_takes.py` | `test_web_output.py::test_web_format_values_reach_flac_and_mp3_encoders` | PASS for mocked encoder routes; real optional FFmpeg presence UNVERIFIED |
+| Optional TXT / LAB sidecars | TUI accepted-output sidecars | Output settings and shared saver | `tui_settings.py` / `web_output.py` | `test_web_output.py`, `tests/test_output.py` | PASS for core contracts; physical LAB/Julius and Windows boundaries UNVERIFIED |
+| Reset excludes Output directory | TUI separate output preference | Web reset preserves Output | `tui_settings.py` / `web_settings.py` | `test_web_settings.py::test_reset_generation_defaults_preserves_user_output_and_item_voice` | PASS; none |
+| Invalid values, stale rev, settings write failure | Fail without corrupting settings | Error display and rollback | `tui_settings.py` / `web_settings.py`, `web_output.py` | `test_web_settings.py::test_reset_stale_revision_and_missing_csrf_are_rejected`, `test_web_output.py::test_real_partial_file_write_failure_rolls_back_output` | PASS; none |
+
+## 6. Connection, lifecycle, security
+
+| Scenario | TUI entry / behavior | Web entry / behavior | Implementation owners | Automated evidence / limit | Status / next action |
+| --- | --- | --- | --- | --- | --- |
+| Local runtime / session isolation | Local TUI process | localhost Web `voiceger_editor.web:app`, session-owned state | `entrypoint.py`, `tui.py` / `web.py`, `web_sessions.py` | `test_web.py`, `test_web_sessions_core.py` | PASS for code contract; physical host configuration below |
+| Bearer auth, mutation header and Origin | TUI local input, no browser auth equivalent | `VOICEGER_WEB_TOKEN`, header and Origin fail closed | `web_security.py`, `web.py` | `test_web_sessions_http.py::test_authorization_and_fail_closed_configuration`, `test_web_batch.py` | PASS; none |
+| Android/Tailscale HTTPS Serve / ACL | No TUI analogue | Local Mac backend proxied via tailnet, no Funnel | `web.py`, `scripts/run_web_e2e_331.py` | CI cannot inspect real Mac Serve/ACL | UNVERIFIED; inspect actual Mac Serve and run narrow device test |
+| Reload and reconnect | TUI stays active until quit | Reauthentication, same-process session ID and operation polling | `web_sessions.py`, `app.js` | `test_web_session_lifecycle_browser.py`, `test_web_sessions_http.py` | PASS for simulated browser states; real-device usability below |
+| Explicit close / idle expiry | TUI session disposal | Web 作業を終了, session cleanup | `tui_batch.py` / `web_sessions.py`, `app.js` | `test_web_sessions_core.py`, `test_web_takes.py::test_session_close_disposes_candidates_not_accepted_output` | PASS; none |
+| Server restart is not Take recovery | Local TUI restart opens a new run | Web process restart cannot restore expired session/Takes | `tui.py` / `web_sessions.py` | `test_web_sessions_http.py::test_restart_does_not_recover_session` | PASS; explain explicitly in guides |
+| Operation races and stale browser audio | TUI operation ownership | Web revision guards, abort/stale audio management | `tui_operation_conflicts.py` / `web_sessions.py`, `app.js` | `test_web_playback_pending.py`, `test_web_media_ownership.py`, `test_web_session_lifecycle_browser.py` | PASS; none |
+| TUI keyboard vs Web touch layout | TUI numbered/key navigation | Web touch, form controls, browser Back | `tui_navigation.py` / `web_assets/app.js` | Intentional different affordances; not exact key-layout parity | NOT-APPLICABLE; do not treat UI layout differences as gaps |
+| Phone playback, navigation and Mac accepted output | No phone analogue | Android browser playback and Mac disk output | `web_takes.py`, `app.js` | Browser DOM tests cannot certify physical playback or UX | UNVERIFIED; focused Android/Tailscale Human test, isolated scratch only |
+
+## 7. Backward compatibility and release
+
+| Scenario | TUI entry / behavior | Web entry / behavior | Implementation owners | Automated evidence / limit | Status / next action |
+| --- | --- | --- | --- | --- | --- |
+| Existing TUI startup / interactions | `voiceger-editor` TUI | New Web frontend does not replace CLI | `entrypoint.py`, `tui.py` / `web.py` | `test_entrypoint.py`, `test_tui*.py`, CI Windows startup job | PASS for automated scope; physical Windows not certified |
+| VOICEVOX-style HTTP API compatibility | Separate `voiceger_editor.api:app` | Web API uses distinct `/api/web` routes | `api.py` / `web.py` | `test_api_synthesis.py`, `test_api_user_dictionary.py`, `test_api_english_dictionary.py` | PASS for tested subset; not full VOICEVOX engine equivalence |
+| Current installed packaging and assets | CLI version from `_version.py`, `pyproject.toml` | Web static HTML/CSS/JS included in wheel | `pyproject.toml`, `voiceger_editor/web.py` | Baseline CI package smoke installs `[api,tui,lab,web]` and checks web assets | PASS for CI; documented Web launch smoke after prose approval |
+| Real Voiceger runtime integration | Real synthesis requires separate local Voiceger | Shares local upstream adapter | `voiceger_adapter.py`, `tests/integration/test_voiceger_runtime.py` | Integration suite is opt-in and not covered by aggregate CI | UNVERIFIED; explicitly authorized isolated Mac integration test |
+| Actual release-bound documentation | Existing guides describe published v0.1.1 TUI/API | No approved Web user guide yet | `README*.md`, `docs/ja/`, `docs/en/` | Human prose approval required by Issue #335 | UNVERIFIED; propose exact JA/EN text, obtain approval before any user-guide write |
+| Intended release commit and version | v0.1.1 is currently published | Final release version not yet approved | `_version.py`, release/tag state | Baseline release tag `v0.1.1`; no publication approval | UNVERIFIED; exact-head CI + independent review + Human E2E + separate release approval |
+
+## Distinctions that must survive documentation
+
+1. A **Batch recipe** stores Batch content/pronunciation/generation settings; it is **not** a recovery checkpoint for generated/accepted Take state.
+2. Browser reload, backend restart, and explicit 作業を終了 have different session effects. Already-saved audio remains on the Mac; transient candidates are disposable.
+3. Web file access is restricted to the **Mac Output** domain. Android does not choose a local phone directory. A different file picker or TUI key shortcut is not a semantic audio-feature gap.
+4. `/api/web/` is not the VOICEVOX-compatible API surface; `/audio_query` and `/synthesis` belong to the separate API app.
+5. No claim of physical Windows synthesis, all Voiceger revisions, every LAB dependency configuration, or external/public hosting follows from CI.
+
+## Pending gates / update procedure
+
+- Run aggregate `CI` on the **final pushed PR HEAD**, confirm each required job including packaging and Python 3.9, and independently review that exact commit. The baseline main CI alone does not approve a future PR HEAD.
+- Confirm the Mac's actual tailnet Serve / ACL configuration and run **one narrow Android/Tailscale experience-only E2E** (navigation/touch/audio and accepted file) using only `scratch/issue335-e2e` and the real user's already-accepted terms. Do not repeat automated correctness assertions by hand.
+- Run optional real Voiceger integration only in the isolated approved environment; do not modify the Voiceger upstream checkout.
+- Map user-facing guide changes and seek **explicit Human approval of exact JA/EN prose** before writing/committing any user-facing documentation.
+- Revisit every UNVERIFIED row before Issue closure. If a concrete missing product feature is established, create a focused follow-up Issue and record **GAP**; do not implement it opportunistically in this acceptance slice.
+- Separate release checklist and release notes from user guides. Do not change the version, create a tag/release, or publish without separate explicit authorization.
