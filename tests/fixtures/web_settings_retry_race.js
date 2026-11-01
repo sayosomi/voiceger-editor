@@ -13,9 +13,25 @@ const formCode=part("  function loadSessionForms() {",
                     "  function pronunciationHistoryState() {");
 const settingsCode=part("  function setStyleOptions(",
                         "  function validSpeed(raw) {");
+const dirtyCode=part("  function commonValues() {","  function guardDraft() {");
+const loadInvalidation=part("  function invalidateSettingsLoads() {",
+                            "  var outputPreviewSequence = ");
+const validation=part("  function validSpeed(raw) {",
+                      "  async function saveItemVoice() {");
+const commonSave=part("  function checkedCommonValues() {",
+                      '  $("common-settings-form").addEventListener("submit"');
+const outputSave=part("  async function autoSaveOutput() {",
+                      '  $("output-settings-form").addEventListener("submit"');
+const commonEditEvents=part('  ["common-style", "common-speed",',
+                            '  $("reset-settings").addEventListener');
+const outputEditEvents=part('  ["output-dir", "output-template",',
+                            '  fetch("/api/web/health"');
 function node(){
   return {value:"",textContent:"",hidden:false,disabled:false,
-    checked:false,children:[],replaceChildren(){this.children=[];},
+    checked:false,children:[],listeners:{},
+    addEventListener(name,callback){(this.listeners[name] ||= []).push(callback);},
+    emit(name){for(const f of this.listeners[name]||[])f();},
+    replaceChildren(){this.children=[];},
     append(el){this.children.push(el);},appendChild(el){this.children.push(el);}};
 }
 const nodes=new Map();
@@ -24,8 +40,8 @@ const $=id=>{
   return nodes.get(id);
 };
 const document={createElement:()=>node(),activeElement:null};
-let commonPending=[],outputPending=[],requests=[],messages=[];
-let view="session";
+let requests=[],messages=[];
+const patches={common:[],output:[]};
 function deferred(){
   let resolve,reject;
   const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});
@@ -43,10 +59,14 @@ function output(path,revision){
       mp3_bitrate:"128k",save_text:false,save_lab:false}};
 }
 const pending={common:[],output:[]};
-function request(method,path){
+function request(method,path,payload){
+  const key=path.includes("/output")?"output":"common";
+  requests.push({method,key,path,payload});
+  if(method==="PATCH"){
+    assert(patches[key].length,"Unexpected "+key+" PATCH");
+    return patches[key].shift();
+  }
   assert.equal(method,"GET");
-  const key=path.endsWith("/output")?"output":"common";
-  requests.push({key,path});
   assert(pending[key].length,"Unexpected "+key+" GET");
   return pending[key].shift();
 }
@@ -54,14 +74,21 @@ function queue(c,o){pending.common.push(c);pending.output.push(o);}
 const factory=new Function("$","document","request","feedback","retryable",
   "setTimeout","clearTimeout",
   "var sessionId='sid',connectionEpoch=1,currentView='session'," +
-  "selectedId='',batch=null,outputPreviewTimer=null,outputPreviewSequence=0;" +
+  "selectedId='',batch={revision:0},busy=false," +
+  "outputPreviewTimer=null,outputPreviewSequence=0;" +
   "var commonSettingsData=null,outputSettingsData=null;" +
   "var commonSettingsLoadSequence=0,outputSettingsLoadSequence=0," +
+  "commonSettingsEditSequence=0,outputSettingsEditSequence=0," +
   "sessionFormsLoadSequence=0;" +
   "function settingsPath(){return '/api/web/sessions/'+sessionId+'/settings';}" +
+  "function setBusy(v){busy=v;}" +
+  "function refresh(){batch.revision++;return Promise.resolve(true);}" +
   "function renderItemVoice(){}" +
-  formCode+settingsCode+
+  loadInvalidation+dirtyCode+formCode+settingsCode+validation+
+  commonSave+outputSave+commonEditEvents+outputEditEvents+
   ";return {loadSessionForms,loadWebSettings,loadWebOutputSettings," +
+  "autoSaveCommon,autoSaveOutput," +
+  "paintCommon:renderCommonSettings,paintOutput:renderOutputSettings," +
   "changeSession:()=>{sessionId='new';connectionEpoch++;}," +
   "getData:()=>({common:commonSettingsData,output:outputSettingsData})," +
   "getView:()=>currentView};"
@@ -94,6 +121,9 @@ async function run(){
   assert.equal($("common-speed").value,"1.99",
     "Old Common GET overwrote edited Speed after successful retry");
   assert.equal(app.getData().common.settings_revision,2);
+  // The next phase represents a completed save (not an uncommitted draft).
+  app.paintCommon(common(1.25,2));
+  app.paintOutput(output("/new",2));
 
   // Mirror the race: old Output arrives after a failed Common and retry.
   const oldOutput=deferred();
@@ -112,6 +142,8 @@ async function run(){
   assert.equal($("common-speed").value,"1.88");
   assert.equal(app.getData().output.settings_revision,4);
   assert.equal(app.getData().common.settings_revision,4);
+  app.paintCommon(common(1.75,4));
+  app.paintOutput(output("/newer",4));
 
   // Stale failed form round must not re-enable error feedback after success.
   const delayedFailure=deferred();
@@ -126,6 +158,57 @@ async function run(){
     "Old failure showed retry after newer successful load");
   assert.equal($("common-speed").value,"2.00");
   assert.equal($("output-dir").value,"/stable");
+
+  // GET -> unsaved user input: an arriving response cannot reset the draft.
+  const beforeDraft=deferred();
+  pending.common.push(beforeDraft.promise);
+  const draftGet=app.loadWebSettings();
+  $("common-speed").value="2.25";
+  $("common-speed").emit("input");
+  beforeDraft.resolve(common(1.0,5));
+  await draftGet;
+  assert.equal($("common-speed").value,"2.25","Uncommitted edit was overwritten");
+  app.paintCommon(common(2,6));
+  app.paintOutput(output("/stable",6));
+
+  // Both old GETs were issued before a Common PATCH. Its success must make
+  // them invalid even though Output shares the same settings_revision.
+  const beforeCommonSave=deferred(),beforeCommonOutput=deferred();
+  pending.common.push(beforeCommonSave.promise);
+  pending.output.push(beforeCommonOutput.promise);
+  const commonGet=app.loadWebSettings(),outputGet=app.loadWebOutputSettings();
+  $("common-speed").value="1.25";
+  $("common-speed").emit("input");
+  patches.common.push(common(1.25,7));
+  await app.autoSaveCommon();
+  assert.equal($("common-speed").value,"1.25");
+  assert.equal(app.getData().common.settings_revision,7);
+  beforeCommonSave.resolve(common(1,6));
+  beforeCommonOutput.resolve(output("/stale-before-patch",6));
+  await Promise.all([commonGet,outputGet]);
+  assert.equal($("common-speed").value,"1.25");
+  assert.equal($("output-dir").value,"/stable");
+  assert.equal(app.getData().common.settings_revision,7);
+
+  // Mirror with a successful Output PATCH and both old GETs.
+  const beforeOutputSave=deferred(),beforeOutputCommon=deferred();
+  pending.output.push(beforeOutputSave.promise);
+  pending.common.push(beforeOutputCommon.promise);
+  const outputOld=app.loadWebOutputSettings(),commonOld=app.loadWebSettings();
+  $("output-dir").value="/edited-output";
+  $("output-dir").emit("input");
+  patches.output.push(output("/edited-output",8));
+  await app.autoSaveOutput();
+  assert.equal($("output-dir").value,"/edited-output");
+  assert.equal(app.getData().common.settings_revision,8);
+  beforeOutputSave.resolve(output("/old-output",7));
+  beforeOutputCommon.resolve(common(0.75,7));
+  await Promise.all([outputOld,commonOld]);
+  assert.equal($("common-speed").value,"1.25");
+  assert.equal($("output-dir").value,"/edited-output");
+  assert.equal(app.getData().common.settings_revision,8);
+  assert.equal(app.getData().output.settings_revision,8);
+
   console.log("WEB_SETTINGS_RETRY_STALE_RESPONSE_PASS");
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});
