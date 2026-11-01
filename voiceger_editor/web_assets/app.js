@@ -18,6 +18,7 @@
   var batchOperation = null;
   var batchPolling = false;
   var audioPolling = false;
+  var detachedPolling = false;
   var connectionEpoch = 0, refreshSequence = 0;
   var expiredSession = false;
   var generationUnconfirmed = false;
@@ -1226,6 +1227,7 @@
     generationUnconfirmed = false;
     batchPolling = false;
     audioPolling = false;
+    detachedPolling = false;
     clearPlayer();
     audioOperation = null;
     batchOperation = null;
@@ -1897,6 +1899,36 @@
     }
   }
 
+  // Dictionary and runtime operations have no recoverable editor draft after
+  // reload. Observe their server status, without replaying the original POST.
+  async function followDetachedOperation(op) {
+    if (detachedPolling || batchPolling || audioPolling) return;
+    var identity = sessionId, epoch = connectionEpoch;
+    detachedPolling = true;
+    feedback("Mac側で処理を継続中です。");
+    try {
+      while (op.status === "running" || op.status === "cancelling") {
+        await new Promise(function (resolve) { setTimeout(resolve, 650); });
+        if (epoch !== connectionEpoch || identity !== sessionId) return;
+        op = await request("GET", "/api/web/sessions/" +
+          encodeURIComponent(identity) + "/operations/" + encodeURIComponent(op.id));
+      }
+      if (epoch !== connectionEpoch || identity !== sessionId) return;
+      await refresh();
+      if (epoch !== connectionEpoch || identity !== sessionId) return;
+      feedback(op.status === "succeeded" ?
+        "Mac側の処理が完了しました。必要なら画面を開き直してください。" :
+        op.status === "cancelled" ? "Mac側の処理はキャンセルされました。" :
+        "Mac側の処理を完了できませんでした。");
+    } catch (error) {
+      if (epoch !== connectionEpoch || identity !== sessionId) return;
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
+    } finally {
+      if (epoch === connectionEpoch && identity === sessionId) detachedPolling = false;
+    }
+  }
+
   function resumeSessionOperations() {
     if (!batch || !sessionId || !token) return;
     // The server is the authority, including an operation that completed
@@ -1915,7 +1947,11 @@
     }
     var kinds = ["prepare", "preview", "pronunciation-preview",
       "generate", "regenerate-one", "regenerate-all", "accept"];
-    if (!kinds.includes(op.kind) || !op.detail || !op.detail.item_id) return;
+    if (!kinds.includes(op.kind) || !op.detail || !op.detail.item_id) {
+      if (op.status === "running" || op.status === "cancelling")
+        void followDetachedOperation(op);
+      return;
+    }
     var itemId = op.detail.item_id;
     if (!batch.items.some(function (item) { return item.id === itemId; })) return;
     if (op.status === "running" || op.status === "cancelling") {
