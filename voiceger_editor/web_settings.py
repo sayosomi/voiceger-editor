@@ -153,7 +153,7 @@ class WebSettingsMixin:
             # TUI full Apply reconciles shared sampling values even for
             # imported recipe items with older values. Item Style/Speed are
             # retained unless that particular global field was changed.
-            targets = []
+            staged = []
             for owned_session in self._sessions.values():
                 for item in owned_session.batch.items:
                     original = item.session.settings
@@ -169,17 +169,15 @@ class WebSettingsMixin:
                         })
                     target = replace(original, **changes)
                     if target != original:
-                        adapter = getattr(item.session, "_adapter", None)
-                        if adapter is not None:
-                            try:
-                                get_style(adapter.voiceger_root, target.style_id)
-                            except (ValueError, OSError, AttributeError) as exc:
-                                raise WebSettingsValidation(
-                                    "An item's Style is unavailable on the Mac"
-                                ) from exc
-                        targets.append((owned_session, item, target))
+                        try:
+                            commit = item.session.stage_generation_settings(target)
+                        except (ValueError, RuntimeError, TypeError, OSError, AttributeError) as exc:
+                            raise WebSettingsValidation(
+                                "An item's generation settings are unavailable on the Mac"
+                            ) from exc
+                        staged.append((owned_session, commit))
 
-            if not changed_names and not output_changed and not targets:
+            if not changed_names and not output_changed and not staged:
                 return self._settings_view(session)
 
             # Only an accepted save is applied in memory. No temporary Takes
@@ -193,10 +191,10 @@ class WebSettingsMixin:
                     ) from exc
 
             affected_sessions: set[str] = set()
-            for owned_session, item, target in targets:
-                # Settings affect future generation. Historical Take WAVs,
-                # acceptance markers and completion state stay intact.
-                item.session.replace_settings(target, preserve_takes=True)
+            for owned_session, commit in staged:
+                # Every failure-prone operation completed before persistence.
+                # Prepared commits preserve historical Takes and acceptance.
+                commit()
                 owned_session.preview_audio = None
                 affected_sessions.add(owned_session.identifier)
 
