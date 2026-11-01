@@ -7,8 +7,8 @@ function part(a,b){const i=js.indexOf(a),j=js.indexOf(b,i);
 const settings=part("  async function loadWebSettings() {","  function validSpeed(");
 const audio=part("  async function followAudioOperation(","  function renderBatchProgress(");
 const recovery=part("  function reconcileAudioStart(","  function closeBatchMenu()");
-const retry=part('  $("refresh-batch").addEventListener("click"',
-                 '  $("disconnect-session").addEventListener');
+const retry=part('  $("retry-connection").addEventListener("click"',
+                 '  $("close-session").addEventListener("click"');
 const $nodes={};function $(id){
   return $nodes[id] ||= {value:"",textContent:"",hidden:false,disabled:false,
     dataset:{fixedDisabled:"false"},listeners:{},
