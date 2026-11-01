@@ -26,11 +26,12 @@ class WebE2ETermsIsolationTests(TestCase):
             original = mac_record.read_bytes()
             test_home = root / "test-home"
             test_home.mkdir()
-            # Override both native macOS HOME and Windows APPDATA so no
-            # machine-wide acceptance path is used by this regression test.
+            # Isolate each platform's configuration root. Linux CI can
+            # provide XDG_CONFIG_HOME outside the patched HOME directory.
             with patch.dict(os.environ, {
                 "HOME": str(test_home),
                 "APPDATA": str(test_home / "AppData" / "Roaming"),
+                "XDG_CONFIG_HOME": str(test_home / ".config"),
             }):
                 isolated_record = default_acceptance_path()
                 self.assertNotEqual(mac_record, isolated_record)
