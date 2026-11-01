@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .filename import (
-    FilenameTemplateError, render_output_basename, validate_filename_template,
+    FilenameTemplateError, render_output_basename,
 )
 from .output import (
     FLAC_ENCODINGS, MP3_BITRATES, WAV_ENCODINGS,
@@ -103,7 +103,10 @@ class WebOutputMixin:
             if not changes["output_dir"].strip():
                 raise WebOutputValidation("invalid_output_dir")
             try:
-                validate_filename_template(changes["filename_template"])
+                render_output_basename(
+                    template=changes["filename_template"],
+                    text="サンプル", style="Neutral",
+                )
             except FilenameTemplateError:
                 raise WebOutputValidation("invalid_filename_template") from None
             if changes["output_format"] not in available_output_formats():
