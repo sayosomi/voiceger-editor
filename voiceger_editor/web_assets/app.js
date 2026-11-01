@@ -1333,6 +1333,8 @@
         encodeURIComponent(batch.revision);
       var updatedBatch = await request(method, path, payload);
       if (epoch !== connectionEpoch) return false;
+      // A mutation response outranks any GET issued before its commit.
+      ++refreshSequence;
       batch = updatedBatch;
       if (options && options.saveCaption) captionEditMode = false;
       if (options && options.saveCount) takeCountEditMode = false;
