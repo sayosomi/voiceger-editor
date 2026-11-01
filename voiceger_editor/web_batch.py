@@ -96,10 +96,7 @@ class WebBatchMixin:
         )
         return {
             "revision": session.revision,
-            "active_operation": (
-                operation.snapshot() if operation is not None
-                and operation.kind == "batch-generate" else None
-            ),
+            "active_operation": operation.snapshot() if operation is not None else None,
             "default_take_count": batch.default_take_count,
             "items": [_row(batch, item, self._pronunciation_sections(session, item))
                       for item in batch.items],

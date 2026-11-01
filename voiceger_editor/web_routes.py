@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
+from pydantic import BaseModel, Field, StrictStr
+from typing import Optional
 
 from .web_security import require_web_access, require_web_mutation
 from .web_sessions import (
@@ -26,13 +28,19 @@ def _translate_error(exc: Exception) -> HTTPException:
     raise exc
 
 
+class SessionCreationRequest(BaseModel):
+    idempotency_key: StrictStr = Field(min_length=48, max_length=48, pattern=r"^[0-9a-f]{48}$")
+
+
 def build_web_session_router(service: WebSessionOperations) -> APIRouter:
     router = APIRouter(prefix="/api/web", include_in_schema=False)
 
     @router.post("/sessions", status_code=201, dependencies=[Depends(require_web_mutation)])
-    def create_session():
+    def create_session(payload: Optional[SessionCreationRequest] = Body(default=None)):
         try:
-            return service.create()
+            return service.create(
+                request_id=payload.idempotency_key if payload is not None else None,
+            )
         except (WebSessionClosed, WebSessionCapacity) as exc:
             raise _translate_error(exc) from None
 

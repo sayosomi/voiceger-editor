@@ -87,6 +87,7 @@ class _Operation:
 class _WebSession:
     identifier: str
     touched: float
+    creation_request_id: str | None = None
     revision: int = 0
     batch: CaptionBatch = field(default_factory=lambda: CaptionBatch(default_take_count=4))
     operations: dict[str, _Operation] = field(default_factory=dict)
@@ -97,12 +98,16 @@ class _WebSession:
     pending_dictionary_import: Any = None
 
     def snapshot(self) -> dict[str, Any]:
+        latest_id = next(reversed(self.operations), None)
+        latest = self.operations.get(latest_id) if latest_id is not None else None
         return {
             "id": self.identifier,
             "ephemeral": True,
             "restart_recovery": False,
             "item_count": len(self.batch),
             "default_take_count": self.batch.default_take_count,
+            # Operation history is separate from immutable Batch snapshots.
+            "latest_operation": latest.snapshot() if latest is not None else None,
         }
 
 
@@ -177,16 +182,26 @@ class WebSessionOperations(WebSettingsMixin, WebOutputMixin, WebDictionaryImport
         session.touched = self._clock()
         return session
 
-    def create(self) -> dict[str, Any]:
+    def create(self, *, request_id: str | None = None) -> dict[str, Any]:
         with self._lock:
             self._ensure_running()
             self._reap()
+            # A lost HTTP response must not allocate a second session. The
+            # key remains private and lives only as long as its owner session.
+            if request_id is not None:
+                for existing in self._sessions.values():
+                    if existing.creation_request_id == request_id:
+                        existing.touched = self._clock()
+                        return existing.snapshot()
             if len(self._sessions) >= self._max_sessions:
                 raise WebSessionCapacity("Too many active Web sessions")
             identifier = secrets.token_urlsafe(24)
             while identifier in self._sessions:
                 identifier = secrets.token_urlsafe(24)
-            session = _WebSession(identifier=identifier, touched=self._clock())
+            session = _WebSession(
+                identifier=identifier, touched=self._clock(),
+                creation_request_id=request_id,
+            )
             self._sessions[identifier] = session
             return session.snapshot()
 

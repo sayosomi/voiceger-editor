@@ -23,6 +23,7 @@
     </header>
     <main>
       <p id="feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+      <button type="button" id="retry-connection" class="item-link" hidden>再試行</button>
 
       <section id="view-connect" class="screen" aria-labelledby="connect-title">
         <div class="screen-heading">
@@ -32,7 +33,7 @@
         </div>
         <form id="auth-form" class="field-stack">
           <label for="web-token">Webアクセストークン</label>
-          <input id="web-token" type="password" minlength="32" required autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Mac側で表示されたトークン">
+          <input id="web-token" type="password" minlength="32" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Mac側で表示されたトークン">
           <button type="submit" id="connect-button" class="primary-button">接続する</button>
         </form>
         <p id="auth-status" class="help-text" role="status" aria-live="polite">未接続</p>
@@ -499,19 +500,11 @@
         </form>
         <div class="setting-section">
           <p class="field-title">Webサーバー</p>
-          <p id="connection-status" class="connection-status" role="status" aria-live="polite">接続状態を確認中…</p>
           <p id="server-version" class="help-text">Voiceger Editor Web</p>
         </div>
-        <div class="setting-section">
-          <h3>セッション</h3>
-          <p class="help-text">BatchはMac上のWebサーバーに一時的に保持されます。サーバー再起動時は復元されません。</p>
-          <div class="button-row">
-            <button type="button" id="refresh-batch">Batchを再取得</button>
-            <button type="button" id="disconnect-session">切断</button>
-          </div>
-        </div>
         <div class="danger-zone">
-          <button type="button" id="close-session" class="danger-button">セッションを終了・破棄</button>
+          <p class="help-text">作業を終了すると、Mac側のBatchと未保存のTakeは消えます。保存済み音声は残ります。</p>
+          <button type="button" id="close-session" class="danger-button">作業を終了</button>
         </div>
       </section>
       <audio id="phone-player" controls preload="none" hidden aria-label="スマホで音声を再生"></audio>

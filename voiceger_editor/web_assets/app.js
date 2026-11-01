@@ -6,6 +6,7 @@
   var token = "";
   var sessionId = "";
   var batch = null;
+  var latestSessionOperation = null;
   var selectedId = "";
   var currentView = "connect";
   var busy = false;
@@ -16,6 +17,13 @@
   var audioOperation = null;
   var batchOperation = null;
   var batchPolling = false;
+  var audioPolling = false;
+  var detachedPolling = false;
+  var connectionEpoch = 0, refreshSequence = 0;
+  var expiredSession = false;
+  var generationUnconfirmed = false;
+  var audioUnconfirmed = null;
+  var creationRequestId = "";
   var recipeMode = "";
   var batchMenuOpen = false;
   var playingUrl = "";
@@ -61,6 +69,17 @@
   var settingsHistoryDestination = null;
   var commonSettingsData = null;
   var outputSettingsData = null;
+  // A same-session retry must invalidate older, still-pending settings GETs.
+  var commonSettingsLoadSequence = 0, outputSettingsLoadSequence = 0;
+  var commonSettingsEditSequence = 0, outputSettingsEditSequence = 0;
+  var sessionFormsLoadSequence = 0;
+  function invalidateSettingsLoads() {
+    // Both settings endpoints share a server settings_revision. A PATCH in
+    // either section makes every older settings snapshot unsafe to render.
+    ++commonSettingsLoadSequence;
+    ++outputSettingsLoadSequence;
+    ++sessionFormsLoadSequence;
+  }
   var outputPreviewSequence = 0, outputPreviewTimer = null;
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
@@ -83,9 +102,13 @@
       else window.sessionStorage.removeItem(SESSION_KEY);
     } catch (_ignored) { /* Storage may be unavailable. */ }
   }
-  function feedback(text) {
+  function feedback(text, retry) {
     $("feedback").textContent = text;
     $("feedback").hidden = !text;
+    $("retry-connection").hidden = !retry || !sessionId || !token;
+  }
+  function retryable(error) {
+    return error.code === 0 || (error.code === 503 && !error.conflictCode);
   }
   function setBusy(value) {
     busy = value;
@@ -272,20 +295,30 @@
       $("common-settings-form").hidden = true;
       $("output-settings-form").hidden = true;
       $("reset-settings").disabled = true;
-      void Promise.all([loadWebSettings(), loadWebOutputSettings()]).then(function () {
-        if (currentView === "session") {
-          $("common-settings-form").hidden = false;
-          $("output-settings-form").hidden = false;
-          $("reset-settings").disabled = false;
-        }
-      }).catch(function (error) {
-        if (currentView === "session") feedback(error.message);
-      });
+      void loadSessionForms();
     }
     window.scrollTo(0, 0);
     var title = $("view-" + name).querySelector("h2");
     if (title) title.focus({ preventScroll: true });
     return true;
+  }
+  // Keep the settings screen usable after a recoverable connection failure.
+  function loadSessionForms() {
+    var identity = sessionId, epoch = connectionEpoch;
+    var sequence = ++sessionFormsLoadSequence;
+    return Promise.all([loadWebSettings(), loadWebOutputSettings()]).then(function () {
+      if (sequence !== sessionFormsLoadSequence ||
+          epoch !== connectionEpoch || identity !== sessionId ||
+          currentView !== "session") return;
+      $("common-settings-form").hidden = false;
+      $("output-settings-form").hidden = false;
+      $("reset-settings").disabled = false;
+    }).catch(function (error) {
+      if (sequence !== sessionFormsLoadSequence ||
+          epoch !== connectionEpoch || identity !== sessionId ||
+          currentView !== "session") return;
+      feedback(error.message, retryable(error));
+    });
   }
   function pronunciationHistoryState() {
     return {
@@ -537,11 +570,18 @@
     var headers = { Authorization: "Bearer " + token };
     if (method !== "GET") headers["X-Voiceger-Web-Request"] = "1";
     if (payload !== undefined) headers["Content-Type"] = "application/json";
-    var response = await fetch(path, {
-      method: method, headers: headers, cache: "no-store",
-      credentials: "same-origin",
-      body: payload === undefined ? undefined : JSON.stringify(payload)
-    });
+    var response;
+    try {
+      response = await fetch(path, {
+        method: method, headers: headers, cache: "no-store",
+        credentials: "same-origin",
+        body: payload === undefined ? undefined : JSON.stringify(payload)
+      });
+    } catch (_networkError) {
+      var offline = new Error("Macに接続できません。再試行してください。");
+      offline.code = 0;
+      throw offline;
+    }
     if (!response.ok) {
       var conflictCode = "";
       var problemIndex = null;
@@ -591,16 +631,17 @@
       };
       var error = new Error(
         response.status === 401 ? "認証できません。トークンを確認してください。" :
+        response.status === 403 ? "接続が拒否されました。接続設定を確認してください。" :
         response.status === 503 ? (conflictCode === "settings_io" ?
           "Mac側の設定を保存できませんでした。保存先のアクセス権を確認してください。" :
           conflictCode === "dictionary_io" ? "Mac側の辞書を保存できませんでした。" :
           conflictCode === "import_io" ? "Macの辞書ファイルを読み書きできませんでした。" :
           conflictCode === "recipe_io" ?
           "Mac側のOutputフォルダまたはファイルを操作できません。" :
-          "Mac側の接続設定を確認してください。") :
+          "Mac側のサービスを利用できません。再試行してください。") :
         response.status === 409 ?
           (conflictMessages[conflictCode] || conflictMessages.conflict) :
-        response.status === 404 ? "セッションが見つかりません。再接続してください。" :
+        response.status === 404 ? "対象を取得できません。最新の状態を確認してください。" :
         response.status === 422 ?
           (invalidPronunciation[conflictCode] || "入力内容を確認してください。") :
         "操作を完了できませんでした。"
@@ -714,9 +755,14 @@
     scheduleOutputPreview();
   }
   async function loadWebOutputSettings() {
-    var originalSession = sessionId;
+    var originalSession = sessionId, epoch = connectionEpoch;
+    var sequence = ++outputSettingsLoadSequence;
+    var editSequence = outputSettingsEditSequence;
     var data = await request("GET", settingsPath() + "/output");
-    if (!sessionId || originalSession !== sessionId) return;
+    if (!sessionId || originalSession !== sessionId ||
+        epoch !== connectionEpoch || sequence !== outputSettingsLoadSequence ||
+        editSequence !== outputSettingsEditSequence ||
+        (currentView === "session" && outputDirty())) return;
     renderOutputSettings(data);
   }
   function scheduleOutputPreview() {
@@ -740,9 +786,14 @@
     }, 160);
   }
   async function loadWebSettings() {
-    var originalSession = sessionId;
+    var originalSession = sessionId, epoch = connectionEpoch;
+    var sequence = ++commonSettingsLoadSequence;
+    var editSequence = commonSettingsEditSequence;
     var data = await request("GET", settingsPath());
-    if (!sessionId || originalSession !== sessionId) return;
+    if (!sessionId || originalSession !== sessionId ||
+        epoch !== connectionEpoch || sequence !== commonSettingsLoadSequence ||
+        editSequence !== commonSettingsEditSequence ||
+        (currentView === "session" && commonDirty())) return;
     renderCommonSettings(data);
     if (currentView === "item") {
       var item = batch && batch.items.find(function (entry) { return entry.id === selectedId; });
@@ -1203,6 +1254,15 @@
     }
   }
   function resetLocal(clearSessionId) {
+    ++connectionEpoch;
+    ++refreshSequence;
+    expiredSession = false;
+    generationUnconfirmed = false;
+    audioUnconfirmed = null;
+    creationRequestId = "";
+    batchPolling = false;
+    audioPolling = false;
+    detachedPolling = false;
     clearPlayer();
     audioOperation = null;
     batchOperation = null;
@@ -1250,25 +1310,76 @@
     token = "";
     sessionId = "";
     batch = null;
+    latestSessionOperation = null;
     selectedId = "";
     $("web-token").value = "";
     $("new-captions").value = "";
     $("auth-status").textContent = "未接続";
+    $("connect-button").textContent = "接続する";
     if (clearSessionId) remember("");
     showView("connect", true);
+    // A discarded in-flight operation must not leave the login controls locked.
+    setBusy(false);
+  }
+  function markExpired() {
+    var inMemoryToken = token;
+    resetLocal(true);
+    token = inMemoryToken;
+    expiredSession = true;
+    $("connect-button").textContent = "新しいセッションを開始";
+    $("auth-status").textContent =
+      "前回のセッションは終了または期限切れです。未保存のTakeは復元できません。保存済み音声は残っています。";
+  }
+  async function handleSessionFailure(error) {
+    if (error.code === 401 || error.code === 403) {
+      resetLocal(false);
+      $("auth-status").textContent = error.message;
+      return true;
+    }
+    if (error.code !== 404 || !sessionId) return false;
+    // An individual item/operation 404 is not a missing session.
+    var checkingId = sessionId, checkingEpoch = connectionEpoch;
+    try {
+      await request("GET", "/api/web/sessions/" + encodeURIComponent(checkingId));
+    } catch (checkError) {
+      if (checkingEpoch !== connectionEpoch || checkingId !== sessionId) return true;
+      if (checkError.code === 404) {
+        markExpired();
+        return true;
+      }
+      if (checkError.code === 401 || checkError.code === 403) {
+        resetLocal(false);
+        $("auth-status").textContent = checkError.message;
+        return true;
+      }
+      feedback(checkError.message, retryable(checkError));
+      return true;
+    }
+    return false;
   }
   async function refresh() {
-    batch = await request("GET", batchPath());
+    var identity = sessionId, epoch = connectionEpoch, sequence = ++refreshSequence;
+    var latest = await request("GET", batchPath());
+    if (epoch !== connectionEpoch || identity !== sessionId ||
+        sequence !== refreshSequence) return false;
+    batch = latest;
+    generationUnconfirmed = false;
     renderList();
     if (currentView === "item") renderItem(true);
+    return true;
   }
   async function mutate(method, suffix, payload, success, options) {
     if (busy || !batch) return false;
+    var epoch = connectionEpoch;
     setBusy(true);
     try {
       var path = batchPath() + suffix + "?expected_revision=" +
         encodeURIComponent(batch.revision);
-      batch = await request(method, path, payload);
+      var updatedBatch = await request(method, path, payload);
+      if (epoch !== connectionEpoch) return false;
+      // A mutation response outranks any GET issued before its commit.
+      ++refreshSequence;
+      batch = updatedBatch;
       if (options && options.saveCaption) captionEditMode = false;
       if (options && options.saveCount) takeCountEditMode = false;
       renderList();
@@ -1276,21 +1387,25 @@
       feedback(success);
       return true;
     } catch (error) {
+      if (epoch !== connectionEpoch) return false;
       if (error.conflictCode === "revision_conflict") {
         // A stale deletion selection must not be applied to a refreshed Batch.
         if (deleteMode) selectedForDelete.clear();
         try { await refresh(); } catch (_ignored) { /* Keep conflict feedback. */ }
       }
-      if (error.code === 404 || error.code === 401) {
-        resetLocal(error.code === 404);
-      } else if (batch) {
-        // Restore server-owned values for controls such as the include checkbox.
-        renderList();
-        if (selectedId) renderItem(true);
+      var handled = await handleSessionFailure(error);
+      if (!handled) {
+        if (batch) {
+          // Restore the server-owned values for controls such as inclusion.
+          renderList();
+          if (selectedId) renderItem(true);
+        }
+        feedback(error.message, retryable(error));
       }
-      feedback(error.message);
       return false;
-    } finally { setBusy(false); }
+    } finally {
+      if (epoch === connectionEpoch) setBusy(false);
+    }
   }
 
 
@@ -1646,38 +1761,39 @@
       $("cancel-pronunciation-audio").disabled = op.status !== "running";
     }
   }
-  async function startAudio(itemId, suffix, payload, automaticPrepare) {
-    if (busy || !batch || !selectedId || itemId !== selectedId) return;
-    var item = batch.items.find(function (entry) { return entry.id === itemId; });
-    if (!item) return;
-    if ($("edit-caption").value !== item.caption) {
-      feedback("未保存のCaptionを先に保存してください。");
-      return;
-    }
-    clearPlayer();
-    takeMenuOpen = false;
-    $("take-menu").hidden = true;
+  // Exactly one item-operation poll is active per page and session generation.
+  async function followAudioOperation(op, itemId) {
+    if (audioPolling || !op || !itemId) return;
+    var identity = sessionId, epoch = connectionEpoch;
+    audioPolling = true;
     setBusy(true);
     try {
-      var op = await request("POST", itemAudioPath(itemId) + suffix +
-        (suffix.includes("?") ? "&" : "?") +
-        "expected_revision=" + batch.revision, payload);
       audioOperation = op;
       displayAudioProgress(op);
       while (op.status === "running" || op.status === "cancelling") {
         await new Promise(function (resolve) { setTimeout(resolve, 650); });
-        op = await request("GET", "/api/web/sessions/" +
-          encodeURIComponent(sessionId) + "/operations/" + encodeURIComponent(op.id));
+        if (identity !== sessionId || epoch !== connectionEpoch) return;
+        var latest = await request("GET", "/api/web/sessions/" +
+          encodeURIComponent(identity) + "/operations/" + encodeURIComponent(op.id));
+        if (identity !== sessionId || epoch !== connectionEpoch) return;
+        // A late running response cannot undo an acknowledged cancellation.
+        if (audioOperation && audioOperation.id === latest.id &&
+            audioOperation.status === "cancelling" && latest.status === "running") {
+          latest = audioOperation;
+        }
+        op = latest;
         audioOperation = op;
         displayAudioProgress(op);
       }
-      if (suffix === "/audio/prepare") {
+      if (identity !== sessionId || epoch !== connectionEpoch) return;
+      if (op.kind === "prepare") {
         if (op.status === "succeeded") autoPrepareFailures.delete(itemId);
         else autoPrepareFailures.add(itemId);
       }
       await refresh();
+      if (identity !== sessionId || epoch !== connectionEpoch) return;
       if (op.status === "succeeded") {
-        feedback(op.kind === "accept" ?
+        feedback(op.kind === "accept" && op.result && op.result.audio_name ?
           "保存しました: " + op.result.audio_name +
           (op.result.lab_warning ? "（LABは生成できませんでした。依存ツールと発音を確認してください）" : "") :
           (op.kind === "preview" || op.kind === "pronunciation-preview") ?
@@ -1689,13 +1805,13 @@
       }
       if (op.status === "succeeded" &&
           (op.kind === "preview" || op.kind === "pronunciation-preview") &&
-          op.result && op.result.preview_id) {
+          op.result && op.result.preview_id && selectedId === itemId) {
         setBusy(false);
         await playAudio(itemAudioPath(itemId) + "/audio/preview/" +
           encodeURIComponent(op.result.preview_id), itemId, "preview");
       }
     } catch (error) {
-      if (suffix === "/audio/prepare") autoPrepareFailures.add(itemId);
+      if (identity !== sessionId || epoch !== connectionEpoch) return;
       if (error.conflictCode === "revision_conflict") {
         if (currentView === "pronunciation") {
           pronunciationStale = true;
@@ -1705,23 +1821,75 @@
           sectionStale = true;
           setFixed("apply-section", true);
         }
-        try { await refresh(); } catch (_ignored) { /* Preserve original error. */ }
+        try { await refresh(); } catch (_ignored) {}
       }
-      if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
-      feedback(error.conflictCode === "revision_conflict" && pronunciationStale ?
-        "別の画面で変更されています。編集をキャンセルし、最新の発音を開き直してください。" :
-        error.message);
+      if (identity !== sessionId || epoch !== connectionEpoch) return;
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
     } finally {
-      audioOperation = null;
-      $("operation-panel").hidden = true;
-      $("pronunciation-operation-panel").hidden = true;
-      $("section-operation-panel").hidden = true;
-      setBusy(false);
-      if (batch && currentView === "item") renderItem(true);
-      updatePlaybackUI();
+      if (identity === sessionId && epoch === connectionEpoch) {
+        audioPolling = false;
+        audioOperation = null;
+        $("operation-panel").hidden = true;
+        $("pronunciation-operation-panel").hidden = true;
+        $("section-operation-panel").hidden = true;
+        setBusy(false);
+        if (batch && currentView === "item") renderItem(true);
+        updatePlaybackUI();
+      }
     }
   }
-
+  async function startAudio(itemId, suffix, payload, automaticPrepare) {
+    if (busy || !batch || !selectedId || itemId !== selectedId) return;
+    if (audioUnconfirmed) {
+      feedback("Mac側の音声操作を再取得してください。", true);
+      return;
+    }
+    var item = batch.items.find(function (entry) { return entry.id === itemId; });
+    if (!item) return;
+    if ($("edit-caption").value !== item.caption) {
+      feedback("未保存のCaptionを先に保存してください。");
+      return;
+    }
+    clearPlayer();
+    takeMenuOpen = false;
+    $("take-menu").hidden = true;
+    var epoch = connectionEpoch;
+    audioUnconfirmed = { itemId: itemId, suffix: suffix };
+    setBusy(true);
+    try {
+      var op = await request("POST", itemAudioPath(itemId) + suffix +
+        (suffix.includes("?") ? "&" : "?") +
+        "expected_revision=" + batch.revision, payload);
+      if (epoch !== connectionEpoch) return;
+      audioUnconfirmed = null;
+      latestSessionOperation = op;
+      await followAudioOperation(op, itemId);
+    } catch (error) {
+      if (epoch !== connectionEpoch) return;
+      if (!retryable(error)) audioUnconfirmed = null;
+      // A definitive failed auto-prepare should not silently retry on open.
+      // Transport failures are ambiguous: the Mac worker may still be running.
+      if (suffix === "/audio/prepare" && !retryable(error))
+        autoPrepareFailures.add(itemId);
+      if (error.conflictCode === "revision_conflict") {
+        if (currentView === "pronunciation") {
+          pronunciationStale = true;
+          setFixed("apply-pronunciation", true);
+        }
+        if (currentView === "section") {
+          sectionStale = true;
+          setFixed("apply-section", true);
+        }
+        try { await refresh(); } catch (_ignored) {}
+      }
+      if (epoch !== connectionEpoch) return;
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
+    } finally {
+      if (epoch === connectionEpoch && !audioPolling) setBusy(false);
+    }
+  }
 
   function renderBatchProgress(op) {
     batchOperation = op;
@@ -1742,32 +1910,29 @@
 
   async function followBatchOperation(op) {
     if (batchPolling || !op || op.kind !== "batch-generate") return;
+    var identity = sessionId, epoch = connectionEpoch;
     batchPolling = true;
     setBusy(true);
     try {
       while (op.status === "running" || op.status === "cancelling") {
         renderBatchProgress(op);
         await new Promise(function (resolve) { setTimeout(resolve, 650); });
-        try {
-          op = await request("GET", "/api/web/sessions/" +
-            encodeURIComponent(sessionId) + "/operations/" + encodeURIComponent(op.id));
-          await refresh();
-          feedback("");
-        } catch (error) {
-          if (error.code === 401 || error.code === 404) throw error;
-          feedback("通信が途切れています。進捗を再取得します。");
+        if (identity !== sessionId || epoch !== connectionEpoch) return;
+        var latest = await request("GET", "/api/web/sessions/" +
+          encodeURIComponent(identity) + "/operations/" + encodeURIComponent(op.id));
+        if (identity !== sessionId || epoch !== connectionEpoch) return;
+        if (batchOperation && batchOperation.id === latest.id &&
+            batchOperation.status === "cancelling" && latest.status === "running") {
+          latest = batchOperation;
         }
-      }
-      var refreshed = true;
-      try {
+        op = latest;
         await refresh();
-      } catch (error) {
-        if (error.code === 401 || error.code === 404) throw error;
-        refreshed = false;
+        if (identity !== sessionId || epoch !== connectionEpoch) return;
+        feedback("");
       }
-      if (!refreshed) {
-        feedback("生成は終了しましたが、一覧を更新できません。再接続してください。");
-      } else if (op.status === "succeeded") {
+      await refresh();
+      if (identity !== sessionId || epoch !== connectionEpoch) return;
+      if (op.status === "succeeded") {
         feedback("一括生成が完了しました。");
       } else {
         feedback(op.status === "cancelled" ?
@@ -1775,20 +1940,107 @@
           (op.error || "一括生成に失敗しました。"));
       }
     } catch (error) {
-      if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
-      feedback(error.message);
+      if (identity !== sessionId || epoch !== connectionEpoch) return;
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
     } finally {
-      batchPolling = false;
-      batchOperation = null;
-      $("batch-progress-panel").hidden = true;
-      setBusy(false);
-      if (batch) renderList();
+      if (identity === sessionId && epoch === connectionEpoch) {
+        batchPolling = false;
+        batchOperation = null;
+        $("batch-progress-panel").hidden = true;
+        setBusy(false);
+        if (batch) renderList();
+      }
     }
   }
 
-  function resumeBatchOperation() {
-    if (batch && batch.active_operation && !batchPolling) {
-      followBatchOperation(batch.active_operation);
+  // Dictionary and runtime operations have no recoverable editor draft after
+  // reload. Observe their server status, without replaying the original POST.
+  async function followDetachedOperation(op) {
+    if (detachedPolling || batchPolling || audioPolling) return;
+    var identity = sessionId, epoch = connectionEpoch;
+    detachedPolling = true;
+    feedback("Mac側で処理を継続中です。");
+    try {
+      while (op.status === "running" || op.status === "cancelling") {
+        await new Promise(function (resolve) { setTimeout(resolve, 650); });
+        if (epoch !== connectionEpoch || identity !== sessionId) return;
+        op = await request("GET", "/api/web/sessions/" +
+          encodeURIComponent(identity) + "/operations/" + encodeURIComponent(op.id));
+      }
+      if (epoch !== connectionEpoch || identity !== sessionId) return;
+      await refresh();
+      if (epoch !== connectionEpoch || identity !== sessionId) return;
+      feedback(op.status === "succeeded" ?
+        "Mac側の処理が完了しました。必要なら画面を開き直してください。" :
+        op.status === "cancelled" ? "Mac側の処理はキャンセルされました。" :
+        "Mac側の処理を完了できませんでした。");
+    } catch (error) {
+      if (epoch !== connectionEpoch || identity !== sessionId) return;
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
+    } finally {
+      if (epoch === connectionEpoch && identity === sessionId) detachedPolling = false;
+    }
+  }
+
+  function reconcileAudioStart(sessionSnapshot) {
+    latestSessionOperation = sessionSnapshot.latest_operation || null;
+    // Only a successful authoritative read can resolve an uncertain POST.
+    // A matching completed/running operation is recovered below; a missing
+    // operation allows the user to retry deliberately after reconciliation.
+    audioUnconfirmed = null;
+  }
+  function reloadRecoveredItemSettings(itemId) {
+    var epoch = connectionEpoch, identity = sessionId;
+    if (commonSettingsData) return;
+    void loadWebSettings().then(function () {
+      if (epoch === connectionEpoch && identity === sessionId &&
+          currentView === "item" && selectedId === itemId)
+        renderItem(false);
+    }).catch(function (error) {
+      if (epoch !== connectionEpoch || identity !== sessionId ||
+          currentView !== "item" || selectedId !== itemId) return;
+      $("item-voice-error").textContent = error.message;
+      $("item-voice-error").hidden = false;
+    });
+  }
+  function resumeSessionOperations() {
+    if (!batch || !sessionId || !token) return;
+    // The server is the authority, including an operation that completed
+    // during navigation or an offline interval. Never POST to resume.
+    var op = batch.active_operation || latestSessionOperation;
+    if (!op) return;
+    if (op.kind === "batch-generate") {
+      if (op.status === "running" || op.status === "cancelling") {
+        if (!batchPolling) void followBatchOperation(op);
+      } else {
+        feedback(op.status === "succeeded" ? "一括生成が完了しました。" :
+          op.status === "cancelled" ? "一括生成をキャンセルしました。" :
+          "前回の一括生成は完了していません。");
+      }
+      return;
+    }
+    var kinds = ["prepare", "preview", "pronunciation-preview",
+      "generate", "regenerate-one", "regenerate-all", "accept"];
+    if (!kinds.includes(op.kind) || !op.detail || !op.detail.item_id) {
+      if (op.status === "running" || op.status === "cancelling")
+        void followDetachedOperation(op);
+      return;
+    }
+    var itemId = op.detail.item_id;
+    if (!batch.items.some(function (item) { return item.id === itemId; })) return;
+    if (op.status === "running" || op.status === "cancelling") {
+      if (audioPolling) return;
+      selectedId = itemId;
+      renderItem(false);
+      showView("item", true);
+      reloadRecoveredItemSettings(itemId);
+      void followAudioOperation(op, itemId);
+    } else {
+      feedback(op.status === "succeeded" ? "前回の音声操作は完了しています。" :
+        op.status === "cancelled" ? "前回の音声操作はキャンセルされました。" :
+        "前回の音声操作は完了していません。");
     }
   }
 
@@ -1902,25 +2154,38 @@
 
   async function startBatchGeneration() {
     if (busy || !batch || reorderMode || deleteMode) return;
+    if (generationUnconfirmed || (batch.active_operation &&
+        ["running", "cancelling"].includes(batch.active_operation.status))) {
+      feedback("Mac側の生成状態を再取得してください。", true);
+      return;
+    }
+    var epoch = connectionEpoch;
+    generationUnconfirmed = true;
     setBusy(true);
     try {
       var result = await request("POST", batchPath() + "/generate?expected_revision=" +
         encodeURIComponent(batch.revision));
+      if (epoch !== connectionEpoch) return;
+      generationUnconfirmed = false;
       if (result.status === "no-op") {
         feedback(result.reason === "empty_selection" ?
           "生成対象のCaptionをチェックしてください。" :
           "対象のTakeはすべて採用済みです。");
         return;
       }
+      batch.active_operation = result;
       await followBatchOperation(result);
     } catch (error) {
+      if (epoch !== connectionEpoch) return;
+      if (!retryable(error)) generationUnconfirmed = false;
       if (error.conflictCode === "revision_conflict") {
         try { await refresh(); } catch (_ignored) {}
       }
-      if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
-      feedback(error.message);
+      if (epoch !== connectionEpoch) return;
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
     } finally {
-      if (!batchPolling) setBusy(false);
+      if (epoch === connectionEpoch && !batchPolling) setBusy(false);
     }
   }
 
@@ -2062,8 +2327,8 @@
         feedback("別の画面で変更されています。編集をキャンセルし、最新の発音を開き直してください。");
         setFixed("apply-pronunciation", true);
       } else {
-        if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
-        feedback(error.message);
+        var handled = await handleSessionFailure(error);
+        if (!handled) feedback(error.message, retryable(error));
       }
     } finally { setBusy(false); }
   }
@@ -2153,8 +2418,8 @@
         setFixed("delete-section", true);
         try { await refresh(); } catch (_ignored) { /* Preserve original error. */ }
       }
-      if (error.code === 401 || error.code === 404) resetLocal(error.code === 404);
-      feedback(error.message);
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
     } finally {
       setBusy(false);
     }
@@ -2234,8 +2499,8 @@
         setFixed("apply-section", true);
         try { await refresh(); } catch (_ignored) {}
       }
-      if (error.code === 401 || error.code === 404) resetLocal(error.code === 404);
-      feedback(error.message);
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
     } finally { setBusy(false); }
   });
   $("open-pronunciation").addEventListener("click", openPronunciation);
@@ -2359,43 +2624,77 @@
   $("auth-form").addEventListener("submit", async function (event) {
     event.preventDefault();
     if (busy) return;
-    var candidate = $("web-token").value;
+    // A failed request may retry with the in-memory credential; reload never can.
+    var candidate = $("web-token").value || token;
     if (candidate.length < 32) {
       $("auth-status").textContent = "32文字以上のトークンが必要です。";
       return;
     }
+    var explicitlyNew = expiredSession;
     token = candidate;
     $("web-token").value = "";
     setBusy(true);
     try {
-      var existing = savedSession();
-      if (existing) {
-        sessionId = existing;
-        try { await refresh(); }
-        catch (error) {
-          if (error.code !== 404) throw error;
-          sessionId = "";
-          remember("");
+      if (explicitlyNew) {
+        expiredSession = false;
+        sessionId = "";
+      } else {
+        var existing = sessionId || savedSession();
+        if (existing) {
+          sessionId = existing;
+          try {
+            var restored = await request("GET", "/api/web/sessions/" +
+              encodeURIComponent(existing));
+            if (await refresh()) reconcileAudioStart(restored);
+          }
+          catch (error) {
+            if (error.code !== 404) throw error;
+            var lost = await handleSessionFailure(error);
+            if (!lost) {
+              $("auth-status").textContent = error.message;
+              $("connect-button").textContent = "再試行";
+            }
+            return;
+          }
         }
       }
       if (!sessionId) {
-        var created = await request("POST", "/api/web/sessions");
+        // Preserve the same request key across ambiguous POST failures.
+        if (!creationRequestId) {
+          if (!window.crypto || !window.crypto.getRandomValues)
+            throw new Error("安全なセッション作成を開始できません。");
+          creationRequestId = Array.from(
+            window.crypto.getRandomValues(new Uint8Array(24)),
+            function (byte) { return byte.toString(16).padStart(2, "0"); }
+          ).join("");
+        }
+        var created = await request("POST", "/api/web/sessions",
+          { idempotency_key: creationRequestId });
         sessionId = created.id;
+        creationRequestId = "";
+        latestSessionOperation = created.latest_operation || null;
         remember(sessionId);
         await refresh();
       }
       $("auth-status").textContent = "接続済み";
+      $("connect-button").textContent = "接続する";
     } catch (error) {
-      token = "";
-      sessionId = "";
-      batch = null;
+      if (error.code === 404 && sessionId) {
+        if (await handleSessionFailure(error)) return;
+      }
+      if (error.code === 401 || error.code === 403) {
+        token = "";
+        sessionId = "";
+        batch = null;
+      }
       $("auth-status").textContent = error.message;
+      $("connect-button").textContent = token ? "再試行" : "接続する";
       return;
     } finally {
       setBusy(false);
     }
     showView("list", true);
-    resumeBatchOperation();
+    resumeSessionOperations();
   });
   $("open-batch-menu").addEventListener("click", function () {
     if (busy || reorderMode || deleteMode) return;
@@ -2583,6 +2882,7 @@
           encodeURIComponent(batch.revision) + "&expected_settings_revision=" +
           encodeURIComponent(commonSettingsData.settings_revision);
         var result = await request("PATCH", address, values);
+        invalidateSettingsLoads();
         renderCommonSettings(result);
         errorRow.hidden = true;
         try {
@@ -2605,7 +2905,11 @@
   });
   ["common-style", "common-speed", "common-top-k",
     "common-top-p", "common-temperature"].forEach(function (id) {
-    $(id).addEventListener("change", function () { void autoSaveCommon(); });
+    $(id).addEventListener("input", function () { ++commonSettingsEditSequence; });
+    $(id).addEventListener("change", function () {
+      ++commonSettingsEditSequence;
+      void autoSaveCommon();
+    });
   });
   $("reset-settings").addEventListener("click", async function () {
     if (busy || !batch || !commonSettingsData || currentView !== "session") return;
@@ -2620,6 +2924,7 @@
         encodeURIComponent(commonSettingsData.settings_revision),
         {});
       batch = result.batch;
+      invalidateSettingsLoads();
       renderCommonSettings(result.settings);
       if (result.output) renderOutputSettings(result.output);
       $("default-takes").value = String(batch.default_take_count);
@@ -2669,30 +2974,43 @@
   $("default-takes").addEventListener("change", function () {
     void autoSaveDefaultTakes();
   });
-  $("refresh-batch").addEventListener("click", async function () {
-    if (busy) return;
+  $("retry-connection").addEventListener("click", async function () {
+    if (busy || !sessionId || !token) return;
+    var epoch = connectionEpoch, identity = sessionId, recovered = false;
     setBusy(true);
     try {
-      await refresh();
-      feedback("Batchを更新しました。");
+      var restored = await request("GET", "/api/web/sessions/" +
+        encodeURIComponent(identity));
+      if (epoch !== connectionEpoch || identity !== sessionId) return;
+      recovered = await refresh();
+      if (recovered) {
+        reconcileAudioStart(restored);
+        feedback("再接続しました。");
+        if (currentView === "session") void loadSessionForms();
+      }
     } catch (error) {
-      if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
-      feedback(error.message);
-    } finally { setBusy(false); }
-  });
-  $("disconnect-session").addEventListener("click", function () {
-    if (busy || !guardDraft()) return;
-    resetLocal(true);
+      if (epoch !== connectionEpoch || identity !== sessionId) return;
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
+    } finally {
+      if (epoch === connectionEpoch) setBusy(false);
+    }
+    if (recovered && epoch === connectionEpoch) resumeSessionOperations();
   });
   $("close-session").addEventListener("click", async function () {
-    if (busy || !guardDraft() ||
-        !window.confirm("セッションと未保存のCaptionをすべて破棄しますか？")) return;
+    if (busy || currentView !== "session" || !sessionId) return;
+    var unsavedSettings = commonDirty() || defaultTakesDirty() || outputDirty();
+    var message = (unsavedSettings ? "未保存の設定変更も失われます。\n" : "") +
+      "Mac側のBatchと未保存のTakeが消えます。保存済み音声は残ります。\n作業を終了しますか？";
+    if (!window.confirm(message)) return;
     setBusy(true);
     try {
       await request("DELETE", "/api/web/sessions/" + encodeURIComponent(sessionId));
       resetLocal(true);
-    } catch (error) { feedback(error.message); }
-    finally { setBusy(false); }
+    } catch (error) {
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
+    } finally { setBusy(false); }
   });
 
 
@@ -3826,6 +4144,7 @@
           encodeURIComponent(batch.revision) + "&expected_settings_revision=" +
           encodeURIComponent(commonSettingsData.settings_revision);
         var result = await request("PATCH", url, values);
+        invalidateSettingsLoads();
         renderOutputSettings(result);
         errorRow.hidden = true;
         try {
@@ -3847,16 +4166,26 @@
     void autoSaveOutput();
   });
   ["output-dir", "output-template", "output-encoding"].forEach(function (id) {
-    $(id).addEventListener("change", function () { void autoSaveOutput(); });
+    $(id).addEventListener("input", function () { ++outputSettingsEditSequence; });
+    $(id).addEventListener("change", function () {
+      ++outputSettingsEditSequence;
+      void autoSaveOutput();
+    });
   });
   $("output-template").addEventListener("input", scheduleOutputPreview);
+  $("output-format").addEventListener("input", function () {
+    ++outputSettingsEditSequence;
+  });
   $("output-format").addEventListener("change", function () {
+    ++outputSettingsEditSequence;
     selectOutputEncoding();
     scheduleOutputPreview();
     void autoSaveOutput();
   });
   ["output-text", "output-lab"].forEach(function (id) {
+    $(id).addEventListener("input", function () { ++outputSettingsEditSequence; });
     $(id).addEventListener("change", function () {
+      ++outputSettingsEditSequence;
       $("output-lab-note").hidden = !$("output-lab").checked;
       void autoSaveOutput();
     });
@@ -3871,11 +4200,9 @@
       if (!data || data.status !== "ok" || typeof data.version !== "string") {
         throw new Error("Invalid health response");
       }
-      $("connection-status").textContent = "Webサーバーに接続済み";
       $("server-version").textContent = "Voiceger Editor " + data.version;
     })
     .catch(function () {
-      $("connection-status").textContent = "接続状態を確認できません";
-      $("server-version").textContent = "ページを再読み込みしてください";
+      $("server-version").textContent = "バージョンを確認できません";
     });
 })();

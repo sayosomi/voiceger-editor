@@ -235,167 +235,66 @@ class WebBatchGenerationTests(unittest.TestCase):
         )
         self.assertFalse(previous.exists())
 
+    def test_item_operation_is_available_after_reload_without_restarting_work(self):
+        row = self.add("reconnect")[0]
+        item_id = row["id"]
+        response = self.client.post(
+            self.root + "/batch/items/" + item_id + "/audio/prepare"
+            + "?expected_revision=" + str(self.batch()["revision"]),
+            headers=self.write, json={"rebuild": False},
+        )
+        self.assertEqual(response.status_code, 202, response.text)
+        terminal = self.finish(response)
+        self.assertEqual(terminal["status"], "succeeded")
+        # A freshly authenticated browser reads a new snapshot, not a new POST.
+        recovered = self.client.get(self.root + "/batch", headers=self.read)
+        self.assertEqual(recovered.status_code, 200)
+        state = recovered.json()
+        self.assertIsNone(state["active_operation"])
+        session = self.client.get(self.root, headers=self.read).json()
+        self.assertEqual(session["latest_operation"]["id"], terminal["id"])
+        self.assertEqual(session["latest_operation"]["status"], "succeeded")
+        self.assertEqual(session["latest_operation"]["detail"]["item_id"], item_id)
+        self.assertEqual(len(state["items"]), 1)
+        self.assertTrue(state["items"][0]["is_prepared"])
+        self.assertEqual(self.fakes[0].syntheses, 0)
+        self.assertNotIn(str(self.output), str(session["latest_operation"]))
+
+    def test_explicit_close_preserves_accepted_output_and_blocks_recovery(self):
+        row = self.add("accepted")[0]
+        self.assertEqual(self.finish(self.start())["status"], "succeeded")
+        accept_url = (self.root + "/batch/items/" + row["id"] + "/takes/1/accept"
+                      + "?expected_revision=" + str(self.batch()["revision"]))
+        self.assertEqual(self.finish(self.client.post(
+            accept_url, headers=self.write,
+        ))["status"], "succeeded")
+        before = {p.name: p.read_bytes() for p in self.output.iterdir()}
+        self.assertTrue(before)
+        self.assertEqual(
+            self.client.get(self.root, headers=self.read).status_code, 200
+        )
+        self.assertEqual(
+            self.client.delete(self.root, headers=self.write).status_code, 204
+        )
+        self.assertEqual(
+            self.client.get(self.root, headers=self.read).status_code, 404
+        )
+        self.assertEqual(
+            {p.name: p.read_bytes() for p in self.output.iterdir()}, before
+        )
+
     def test_mobile_batch_progress_cancel_recovery_and_resume(self):
         node = shutil.which("node")
         if not node:
             self.skipTest("Node required for browser behavior")
         from voiceger_editor.web import ASSETS
-        script = r"""
-const fs = require("fs"), assert = require("assert");
-const source = fs.readFileSync(process.argv[1], "utf8");
-
-function segment(start, end) {
-  const a = source.indexOf(start);
-  const b = source.indexOf(end, a);
-  if (a < 0 || b < 0) throw Error("Production source changed");
-  return source.slice(a, b);
-}
-
-const busySrc = segment(
-  "  function setBusy(value) {", "  function pronunciationDirty()");
-const batchSrc = segment(
-  "  function renderBatchProgress(", "  function rememberPronunciationSelection()");
-const handlers = segment(
-  '  $("cancel-batch").addEventListener',
-  '  $("cancel-audio").addEventListener');
-
-const nodes = {
-  "batch-progress-panel": {hidden: true},
-  "batch-progress-total": {textContent: ""},
-  "batch-progress-bar": {value: 0, max: 0},
-  "batch-progress-item": {textContent: ""},
-  "cancel-batch": {
-    disabled: false, dataset: {fixedDisabled: "false"},
-    addEventListener(name, callback) { this.callback = callback; }
-  },
-  "generate-batch": {
-    disabled: false, dataset: {fixedDisabled: "false"},
-    addEventListener(name, callback) { this.callback = callback; }
-  }
-};
-const $ = key => {
-  if (!nodes[key]) throw Error("Unknown UI element: " + key);
-  return nodes[key];
-};
-const document = {
-  querySelectorAll() {
-    return [nodes["cancel-batch"], nodes["generate-batch"]];
-  }
-};
-
-let getCalls = 0, generationPosts = 0, cancelPosts = 0;
-let resumeMode = false;
-let releaseSecondGet;
-const secondGet = new Promise(resolve => releaseSecondGet = resolve);
-const feedbacks = [];
-
-function operation(status, completed, id = "op1") {
-  return {
-    id, kind: "batch-generate", status, completed,
-    total: 4, cancellable: true,
-    detail: {
-      caption_number: 1, caption_total: 2,
-      take_number: Math.max(1, completed), take_total: 4
-    }
-  };
-}
-
-async function request(method, path) {
-  if (method === "POST" && path.includes("/generate?")) {
-    generationPosts++;
-    return operation("running", 0);
-  }
-  if (method === "POST" && path.endsWith("/cancel")) {
-    cancelPosts++;
-    return operation("cancelling", 0);
-  }
-  if (method === "GET" && path.includes("/operations/")) {
-    if (resumeMode) return operation("succeeded", 4, "op2");
-    getCalls++;
-    if (getCalls === 1) throw Error("Temporary network outage");
-    if (getCalls === 2) {
-      await secondGet;
-      return operation("cancelling", 1);
-    }
-    return operation("cancelled", 1);
-  }
-  throw Error("Unexpected request: " + path);
-}
-
-const factory = new Function(
-  "$", "document", "request", "feedback", "refresh",
-  "batchPath", "renderList", "resetLocal", "setTimeout",
-  "let busy=false,batchPolling=false,batchOperation=null," +
-  "reorderMode=false,deleteMode=false,sessionId='sid';" +
-  "let batch={revision:1,items:[{id:'one'}],active_operation:null};" +
-  busySrc + batchSrc + handlers +
-  ";return {startBatchGeneration,resumeBatchOperation," +
-  "read:()=>({busy,batchPolling,batchOperation})," +
-  "setBatch:value=>{batch=value;}};"
-);
-
-const app = factory(
-  $, document, request, message => feedbacks.push(message),
-  async () => {}, () => "/api/web/sessions/sid/batch",
-  () => {}, () => {}, callback => setImmediate(callback)
-);
-
-async function flushUntil(predicate) {
-  for (let attempt = 0; attempt < 60; attempt++) {
-    if (predicate()) return;
-    await new Promise(setImmediate);
-  }
-  throw Error("Timed out waiting for UI state");
-}
-
-(async () => {
-  const work = app.startBatchGeneration();
-  await flushUntil(() => getCalls === 2);
-
-  assert.equal(nodes["batch-progress-panel"].hidden, false);
-  assert.equal(nodes["cancel-batch"].disabled, false);
-  assert.equal(app.read().batchOperation.id, "op1");
-  assert(feedbacks.some(message => message.includes("通信が途切れ")));
-  assert.equal(nodes["batch-progress-total"].textContent, "0 / 4 Take");
-
-  await app.startBatchGeneration();
-  assert.equal(generationPosts, 1, "Duplicate generation started");
-
-  await nodes["cancel-batch"].callback();
-  assert.equal(cancelPosts, 1, "Cancel request missing");
-  assert.equal(nodes["cancel-batch"].disabled, true);
-
-  releaseSecondGet();
-  await work;
-  assert.equal(nodes["batch-progress-panel"].hidden, true);
-  assert.equal(app.read().batchOperation, null);
-  assert.equal(app.read().busy, false);
-  assert(feedbacks.some(message => message.includes("キャンセルしました")));
-
-  resumeMode = true;
-  app.setBatch({
-    revision: 7, items: [{id: "one"}],
-    active_operation: operation("running", 2, "op2")
-  });
-  app.resumeBatchOperation();
-  await flushUntil(() => !app.read().batchPolling);
-
-  assert.equal(generationPosts, 1, "Reconnect started another worker");
-  assert(feedbacks.some(message => message.includes("一括生成が完了")));
-  assert.equal(nodes["batch-progress-panel"].hidden, true);
-
-  console.log("WEB_BATCH_DOM_RECONNECT_CANCEL_PASS");
-})().catch(error => {
-  console.error(error);
-  process.exitCode = 1;
-});
-"""
+        fixture = Path(__file__).parent / "fixtures" / "web_session_batch_reconnect.js"
         result = subprocess.run(
-            [node, "-e", script, str(ASSETS / "app.js")],
+            [node, str(fixture), str(ASSETS / "app.js")],
             capture_output=True, text=True, timeout=15, check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("WEB_BATCH_DOM_RECONNECT_CANCEL_PASS", result.stdout)
+        self.assertIn("WEB_BATCH_RECONNECT_CANCEL_PASS", result.stdout)
 
     def test_dom_and_mobile_action_layout(self):
         from voiceger_editor.web import ASSETS
@@ -407,7 +306,7 @@ async function flushUntil(predicate) {
         self.assertIn('id="batch-progress-panel"', html)
         self.assertIn('id="cancel-batch"', html)
         self.assertIn("function followBatchOperation", js)
-        self.assertIn("function resumeBatchOperation", js)
+        self.assertIn("function resumeSessionOperations", js)
         self.assertIn(".batch-actions", css)
 
 

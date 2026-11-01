@@ -241,7 +241,7 @@ console.log("WEB_SETTINGS_BROWSER_GUARDS_PASS");
 const fs=require("fs"),assert=require("assert").strict;
 const js=fs.readFileSync(process.argv[1],"utf8");
 const start=js.indexOf("  function checkedCommonValues() {");
-const end=js.indexOf('  $("refresh-batch").addEventListener(',start);
+const end=js.indexOf('  $("retry-connection").addEventListener(',start);
 assert(start>=0 && end>start,"settings handlers source not found");
 const listeners={},nodes={},requests=[];
 for(const id of ["common-settings-form","common-style","common-speed",
@@ -265,7 +265,9 @@ const runtime={
 };
 const prefix=`
 var busy=false,batch=runtime.batch,commonSettingsData=runtime.data,
+  commonSettingsEditSequence=0, invalidatedSettingsLoads=0,
   currentView="session",window={confirm:()=>runtime.confirm};
+function invalidateSettingsLoads(){invalidatedSettingsLoads++;}
 function setBusy(v){busy=v;runtime.busy=v;}
 function commonValues(){return {
   style_id:Number($("common-style").value),
