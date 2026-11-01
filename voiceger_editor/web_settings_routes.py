@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, StrictFloat, StrictInt
+from pydantic import BaseModel, StrictBool, StrictFloat, StrictInt, StrictStr
 
 from .web_routes import _translate_error
 from .web_security import require_web_access, require_web_mutation
@@ -14,6 +14,7 @@ from .web_sessions import (
     WebSessionOperations,
 )
 from .web_settings import WebSettingsUnavailable, WebSettingsValidation
+from .web_output import WebOutputValidation
 
 
 Number = Union[StrictFloat, StrictInt]
@@ -32,11 +33,24 @@ class CommonSynthesisPayload(BaseModel):
     temperature: Number
 
 
+class OutputPayload(BaseModel):
+    output_dir: StrictStr
+    filename_template: StrictStr
+    output_format: StrictStr
+    wav_encoding: StrictStr
+    flac_encoding: StrictStr
+    mp3_bitrate: StrictStr
+    save_text: StrictBool
+    save_lab: StrictBool
+
+
 def _call(action):
     try:
         return action()
     except (WebSessionClosed, WebSessionConflict, WebSessionNotFound) as exc:
         raise _translate_error(exc) from None
+    except WebOutputValidation as exc:
+        raise HTTPException(status_code=422, detail={"code": exc.code}) from None
     except WebSettingsValidation:
         raise HTTPException(status_code=422, detail="Invalid or unavailable setting") from None
     except WebSettingsUnavailable:
@@ -61,6 +75,34 @@ def build_web_settings_router(service: WebSessionOperations) -> APIRouter:
         expected_settings_revision: int = Query(..., ge=0),
     ):
         return _call(lambda: service.save_common_synthesis(
+            session_id, expected_revision, expected_settings_revision,
+            **payload.dict(),
+        ))
+
+    @router.get("/{session_id}/settings/output",
+                dependencies=[Depends(require_web_access)])
+    def get_output_settings(session_id: str):
+        return _call(lambda: service.get_web_output_settings(session_id))
+
+    @router.get("/{session_id}/settings/output/preview",
+                dependencies=[Depends(require_web_access)])
+    def preview_filename(
+        session_id: str,
+        template: str = Query(..., max_length=1024),
+        output_format: str = Query(...),
+    ):
+        return _call(lambda: service.preview_web_filename(
+            session_id, template, output_format,
+        ))
+
+    @router.patch("/{session_id}/settings/output",
+                  dependencies=[Depends(require_web_mutation)])
+    def save_output(
+        session_id: str, payload: OutputPayload,
+        expected_revision: int = Query(..., ge=0),
+        expected_settings_revision: int = Query(..., ge=0),
+    ):
+        return _call(lambda: service.save_web_output_settings(
             session_id, expected_revision, expected_settings_revision,
             **payload.dict(),
         ))
