@@ -547,7 +547,6 @@
         revision_conflict: "別の画面で変更されています。最新の一覧を取得してください。",
         settings_revision_conflict: "共通設定が別の画面で変更されています。開き直してください。",
         worker_busy: "Mac側で別の処理を実行中です。完了後に再試行してください。",
-        take_invalidation_confirmation_required: "生成済みTakeを保護するため確認が必要です。",
         terms_required: "Mac側で最新のVoiceger利用規約への承諾が必要です。",
         accepted_take_protected: "採用済みTakeを保護しました。Take数を増やすか採用状態を確認してください。",
         already_accepted: "このTakeはすでに採用済みです。",
