@@ -100,8 +100,18 @@ class WebOutputMixin:
                 )
             if set(changes) != set(OUTPUT_FIELDS):
                 raise WebOutputValidation("invalid_output_format")
+            if not changes["output_dir"].strip():
+                raise WebOutputValidation("invalid_output_dir")
+            try:
+                validate_filename_template(changes["filename_template"])
+            except FilenameTemplateError:
+                raise WebOutputValidation("invalid_filename_template") from None
             if changes["output_format"] not in available_output_formats():
                 raise WebOutputValidation("invalid_output_format")
+            if (changes["wav_encoding"] not in WAV_ENCODINGS or
+                    changes["flac_encoding"] not in FLAC_ENCODINGS or
+                    changes["mp3_bitrate"] not in MP3_BITRATES):
+                raise WebOutputValidation("invalid_output_encoding")
             try:
                 updated = replace(self._recipe_settings(), **changes)
             except (SettingsError, ValueError, TypeError):
