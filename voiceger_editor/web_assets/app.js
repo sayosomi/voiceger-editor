@@ -523,7 +523,8 @@
     if (!enterPronunciation(item, true)) window.history.back();
   });
   window.addEventListener("beforeunload", function (event) {
-    if (!(currentView === "session" && (commonDirty() || defaultTakesDirty())) &&
+    if (!(currentView === "session" &&
+          (commonDirty() || defaultTakesDirty() || outputDirty())) &&
         !pronunciationDirty() && !sectionDirty() &&
         !dictionaryPronunciationDirty() &&
         !((currentView === "dictionary-entry" ||
