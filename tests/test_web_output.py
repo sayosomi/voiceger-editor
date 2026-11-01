@@ -338,9 +338,10 @@ class OutputTests(unittest.TestCase):
 const fs=require("fs"),assert=require("assert").strict;
 const js=fs.readFileSync(process.argv[1],"utf8");
 const first=js.indexOf('  window.addEventListener("beforeunload",');
-const last=js.indexOf("\\n  });",first);
+const delimiter=String.fromCharCode(10)+"  });";
+const last=js.indexOf(delimiter,first);
 assert(first>=0 && last>first,"production unload handler not found");
-const handler=js.slice(first,last+"\n  });".length);
+const handler=js.slice(first,last+delimiter.length);
 function fire(view,outputDirtyValue) {
   let callback=null;
   const win={addEventListener(name,fn){if(name==="beforeunload")callback=fn;}};
