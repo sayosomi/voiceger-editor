@@ -23,6 +23,7 @@
     </header>
     <main>
       <p id="feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+      <button type="button" id="retry-connection" class="item-link" hidden>再試行</button>
 
       <section id="view-connect" class="screen" aria-labelledby="connect-title">
         <div class="screen-heading">
@@ -504,14 +505,14 @@
         </div>
         <div class="setting-section">
           <h3>セッション</h3>
-          <p class="help-text">BatchはMac上のWebサーバーに一時的に保持されます。サーバー再起動時は復元されません。</p>
+          <p class="help-text">切断してもMac側のBatchは残ります。ただし、この端末からは再開できません。サーバー再起動・期限切れでは未保存のTakeを復元できません。</p>
           <div class="button-row">
             <button type="button" id="refresh-batch">Batchを再取得</button>
             <button type="button" id="disconnect-session">切断</button>
           </div>
         </div>
         <div class="danger-zone">
-          <button type="button" id="close-session" class="danger-button">セッションを終了・破棄</button>
+          <button type="button" id="close-session" class="danger-button">セッションを破棄</button>
         </div>
       </section>
       <audio id="phone-player" controls preload="none" hidden aria-label="スマホで音声を再生"></audio>
