@@ -117,8 +117,7 @@ class WebSettingsMixin:
     def save_common_synthesis(
         self, identifier: str, revision: int, settings_revision: int, *,
         style_id: int, speed: float, top_k: int, top_p: float,
-        temperature: float, confirm_take_invalidation: bool = False,
-        preserve_item_voice: bool = False,
+        temperature: float, preserve_item_voice: bool = False,
     ) -> dict[str, Any]:
         from .web_sessions import WebSessionConflict
 
@@ -173,21 +172,6 @@ class WebSettingsMixin:
             if not changed_names and not targets:
                 return self._settings_view(session)
 
-            # The backend sees every active Web session, not just the phone's
-            # visible Batch. A destructive auto-save must never silently
-            # invalidate generated/accepted Takes in another session.
-            if not confirm_take_invalidation and any(
-                (item.session.active_candidate_count
-                 or item.accepted_take_numbers
-                 or item.generation_outcome is not None)
-                for _, item, target in targets
-                if self._changed_synthesis(item.session.settings, target)
-            ):
-                raise WebSessionConflict(
-                    "Changing these settings invalidates temporary Takes",
-                    code="take_invalidation_confirmation_required",
-                )
-
             # Only an accepted save is applied in memory. No temporary Takes
             # are modified if filesystem persistence fails.
             if changed_names:
@@ -200,13 +184,9 @@ class WebSettingsMixin:
 
             affected_sessions: set[str] = set()
             for owned_session, item, target in targets:
-                synthesis_changed = self._changed_synthesis(
-                    item.session.settings, target
-                )
-                item.session.replace_settings(target)
-                if synthesis_changed:
-                    item.clear_acceptance()
-                    item.clear_generation_outcome()
+                # Settings affect future generation. Historical Take WAVs,
+                # acceptance markers and completion state stay intact.
+                item.session.replace_settings(target, preserve_takes=True)
                 owned_session.preview_audio = None
                 affected_sessions.add(owned_session.identifier)
 
@@ -219,7 +199,6 @@ class WebSettingsMixin:
 
     def reset_generation_settings(
         self, identifier: str, revision: int, settings_revision: int, *,
-        confirm_take_invalidation: bool = False,
     ) -> dict[str, Any]:
         """Reset the currently exposed Web generation values, not output paths.
 
@@ -237,8 +216,8 @@ class WebSettingsMixin:
                     code="settings_revision_conflict",
                 )
             defaults = Settings()
-            # The existing reconciliation routine performs the concurrency,
-            # Take invalidation, and persisted-settings transaction checks.
+            # The existing reconciliation routine protects concurrency,
+            # existing Take history, and persisted-settings transactions.
             # Keep the Web Batch's take count separate: it is session-owned.
             self.save_common_synthesis(
                 identifier, revision, settings_revision,
@@ -247,7 +226,6 @@ class WebSettingsMixin:
                 top_k=defaults.top_k,
                 top_p=defaults.top_p,
                 temperature=defaults.temperature,
-                confirm_take_invalidation=confirm_take_invalidation,
                 preserve_item_voice=True,
             )
             if session.batch.default_take_count != defaults.take_count:
