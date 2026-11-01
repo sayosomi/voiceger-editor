@@ -40,7 +40,10 @@ def convert_japanese_section_to_arpabet(
     groups = pronunciation_to_arpabet_groups(parsed)
     phonemes = list(flatten_arpabet_groups(groups))
     boundaries = [
-        EnglishPhonemeGroupBoundary(label=group.label, count=len(group.phonemes))
+        EnglishPhonemeGroupBoundary(
+            label=group.phonemes[0] if group.label in {"。", "、", "？", "！", "…"} else group.label,
+            count=len(group.phonemes),
+        )
         for group in groups
     ]
 
