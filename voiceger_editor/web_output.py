@@ -123,10 +123,14 @@ class WebOutputMixin:
             if not destination.is_absolute():
                 raise WebOutputValidation("invalid_output_dir")
             try:
-                if destination.is_symlink() or (
-                    destination.exists() and not destination.is_dir()
-                ):
-                    raise WebOutputValidation("invalid_output_dir")
+                # Every existing component must be a real directory. A
+                # missing leaf (or nested missing descendants) is permitted,
+                # but a file or symlink parent would make future mkdir unsafe.
+                for component in (destination, *destination.parents):
+                    if component.is_symlink() or (
+                        component.exists() and not component.is_dir()
+                    ):
+                        raise WebOutputValidation("invalid_output_dir")
             except OSError as exc:
                 raise WebSettingsUnavailable("Output directory could not be checked") from exc
 
@@ -134,7 +138,7 @@ class WebOutputMixin:
             if updated == previous:
                 return self._output_settings_view(session)
 
-            targets = []
+            commits = []
             for owned in self._sessions.values():
                 for item in owned.batch.items:
                     scoped = replace(
@@ -142,7 +146,15 @@ class WebOutputMixin:
                         **{key: getattr(updated, key) for key in OUTPUT_FIELDS},
                     )
                     if scoped != item.session.settings:
-                        targets.append((item.session, scoped))
+                        try:
+                            # Validate *every* session before writing the
+                            # config. The returned commit only assigns an
+                            # already-validated frozen Settings object.
+                            commits.append(item.session.stage_output_settings(scoped))
+                        except (TypeError, ValueError, RuntimeError, OSError, AttributeError) as exc:
+                            raise WebSettingsUnavailable(
+                                "Output settings could not be applied"
+                            ) from exc
 
             # Persistence failure does not change any in-memory state, review
             # token, Take candidate or accepted file.
@@ -151,8 +163,8 @@ class WebOutputMixin:
             except (OSError, SettingsError) as exc:
                 raise WebSettingsUnavailable("Output configuration could not be saved") from exc
 
-            for item_session, scoped in targets:
-                item_session.replace_settings(scoped, preserve_takes=True)
+            for commit in commits:
+                commit()
             self._batch_settings = updated
             self._settings_revision += 1
 
