@@ -167,9 +167,11 @@ class VoicegerIntegrationTests(unittest.TestCase):
             japanese_pronunciation(query, segment_index=0),
             segment_index=0,
         )
+        final_ja_notation = japanese_pronunciation(first, segment_index=2)
+        final_ja_items = parse_pronunciation(final_ja_notation).items
         converted = convert_japanese_section_to_arpabet(
             first,
-            japanese_pronunciation(first, segment_index=2),
+            final_ja_notation,
             segment_index=2,
         )
         self.assertEqual(
@@ -183,7 +185,12 @@ class VoicegerIntegrationTests(unittest.TestCase):
             len(converted.voicegerSegments[0].englishGroups), 1,
         )
         self.assertEqual(
-            len(converted.voicegerSegments[2].englishGroups), 2,
+            len(converted.voicegerSegments[2].englishGroups),
+            len(final_ja_items),
+        )
+        self.assertEqual(
+            sum(group.count for group in converted.voicegerSegments[2].englishGroups),
+            len(converted.voicegerSegments[2].phonemes),
         )
         self.assert_full_synthesis_succeeds(converted)
 
