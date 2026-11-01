@@ -30,6 +30,7 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         "dictionary_voicevox_loss_confirmation",
         "delete_confirmation",
         "clear_candidates_confirmation",
+        "convert_confirmation",
     }:
         details: tuple[ConfirmationDetail, ...] = ()
         if editor.kind == "batch_recipe_replace_confirmation":
@@ -94,6 +95,7 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         plain()
         selectable("preview")
         selectable("apply")
+        selectable("convert_arpabet")
         selectable("save_dictionary")
         selectable("dictionary")
         selectable("edit_text")
