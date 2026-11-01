@@ -191,7 +191,7 @@ class WebSettingsMixin:
             return self._settings_view(session)
 
     def reset_generation_settings(
-        self, identifier: str, revision: int, settings_revision: int, *,
+        self, identifier: str, revision: int, settings_revision: int,
     ) -> dict[str, Any]:
         """Reset the currently exposed Web generation values, not output paths.
 
