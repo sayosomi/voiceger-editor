@@ -613,7 +613,7 @@
           conflictCode === "import_io" ? "Macの辞書ファイルを読み書きできませんでした。" :
           conflictCode === "recipe_io" ?
           "Mac側のOutputフォルダまたはファイルを操作できません。" :
-          "Mac側の接続設定を確認してください。") :
+          "Mac側のサービスを利用できません。再試行してください。") :
         response.status === 409 ?
           (conflictMessages[conflictCode] || conflictMessages.conflict) :
         response.status === 404 ? "対象を取得できません。最新の状態を確認してください。" :
@@ -2530,7 +2530,11 @@
           try { await refresh(); }
           catch (error) {
             if (error.code !== 404) throw error;
-            await handleSessionFailure(error);
+            var lost = await handleSessionFailure(error);
+            if (!lost) {
+              $("auth-status").textContent = error.message;
+              $("connect-button").textContent = "再試行";
+            }
             return;
           }
         }
@@ -2879,8 +2883,10 @@
     try {
       await request("DELETE", "/api/web/sessions/" + encodeURIComponent(sessionId));
       resetLocal(true);
-    } catch (error) { feedback(error.message); }
-    finally { setBusy(false); }
+    } catch (error) {
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
+    } finally { setBusy(false); }
   });
 
 
