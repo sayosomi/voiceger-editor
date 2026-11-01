@@ -119,6 +119,46 @@ class JapaneseWebTests(unittest.TestCase):
         self.assertEqual(self.action(
             "POST", "/pronunciation/preview", {"notation": "アメ'"}).status_code, 422)
 
+    def test_arpabet_conversion_replaces_one_pure_japanese_section(self):
+        response = self.action(
+            "POST", "/pronunciation/convert", {"notation": "ズ'ンダモンハ カシコ'イ ノダ'！"}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertTrue(data["changed"])
+        self.assertEqual(data["converted_index"], 0)
+        section = data["batch"]["items"][0]["pronunciation_sections"][0]
+        self.assertEqual(section["language"], "en")
+        self.assertEqual(
+            [entry["label"] for entry in section["groups"]],
+            ["ズンダモンハ", "カシコイ", "ノダ", "!"],
+        )
+        self.assertIsNone(data["batch"]["items"][0]["pronunciation"])
+        self.assertEqual(self.fake.query.voicegerSegments[0].text, "雨")
+        self.assertEqual(self.fake.query.accent_phrases, [])
+
+    def test_arpabet_conversion_failure_and_stale_revision_do_not_mutate(self):
+        before = self.batch()
+        bad = self.action(
+            "POST", "/pronunciation/convert", {"notation": "ア[メ]ノ[ダ]"}
+        )
+        self.assertEqual(bad.status_code, 422)
+        self.assertEqual(bad.json()["detail"]["code"], "invalid_conversion")
+        self.assertEqual(self.batch(), before)
+        stale = self.action(
+            "POST", "/pronunciation/convert", {"notation": "ア'メ"},
+            revision=before["revision"] + 1,
+        )
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(self.batch(), before)
+
+    def test_arpabet_conversion_requires_authentication(self):
+        response = self.action(
+            "POST", "/pronunciation/convert",
+            {"notation": "ア'メ"}, headers={},
+        )
+        self.assertIn(response.status_code, (401, 403))
+
     def test_draft_preview_never_commits_or_clears_takes(self):
         self.finish(self.action("POST", "/takes/generate"))
         before = self.batch()
