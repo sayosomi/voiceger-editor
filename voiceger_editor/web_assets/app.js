@@ -16,6 +16,9 @@
   var audioOperation = null;
   var batchOperation = null;
   var batchPolling = false;
+  var audioPolling = false;
+  var connectionEpoch = 0, refreshSequence = 0;
+  var expiredSession = false;
   var recipeMode = "";
   var batchMenuOpen = false;
   var playingUrl = "";
@@ -83,9 +86,13 @@
       else window.sessionStorage.removeItem(SESSION_KEY);
     } catch (_ignored) { /* Storage may be unavailable. */ }
   }
-  function feedback(text) {
+  function feedback(text, retry) {
     $("feedback").textContent = text;
     $("feedback").hidden = !text;
+    $("retry-connection").hidden = !retry || !sessionId || !token;
+  }
+  function retryable(error) {
+    return error.code === 0 || (error.code === 503 && !error.conflictCode);
   }
   function setBusy(value) {
     busy = value;
@@ -537,11 +544,18 @@
     var headers = { Authorization: "Bearer " + token };
     if (method !== "GET") headers["X-Voiceger-Web-Request"] = "1";
     if (payload !== undefined) headers["Content-Type"] = "application/json";
-    var response = await fetch(path, {
-      method: method, headers: headers, cache: "no-store",
-      credentials: "same-origin",
-      body: payload === undefined ? undefined : JSON.stringify(payload)
-    });
+    var response;
+    try {
+      response = await fetch(path, {
+        method: method, headers: headers, cache: "no-store",
+        credentials: "same-origin",
+        body: payload === undefined ? undefined : JSON.stringify(payload)
+      });
+    } catch (_networkError) {
+      var offline = new Error("Macに接続できません。再試行してください。");
+      offline.code = 0;
+      throw offline;
+    }
     if (!response.ok) {
       var conflictCode = "";
       var problemIndex = null;
@@ -591,6 +605,7 @@
       };
       var error = new Error(
         response.status === 401 ? "認証できません。トークンを確認してください。" :
+        response.status === 403 ? "接続が拒否されました。接続設定を確認してください。" :
         response.status === 503 ? (conflictCode === "settings_io" ?
           "Mac側の設定を保存できませんでした。保存先のアクセス権を確認してください。" :
           conflictCode === "dictionary_io" ? "Mac側の辞書を保存できませんでした。" :
@@ -600,7 +615,7 @@
           "Mac側の接続設定を確認してください。") :
         response.status === 409 ?
           (conflictMessages[conflictCode] || conflictMessages.conflict) :
-        response.status === 404 ? "セッションが見つかりません。再接続してください。" :
+        response.status === 404 ? "対象を取得できません。最新の状態を確認してください。" :
         response.status === 422 ?
           (invalidPronunciation[conflictCode] || "入力内容を確認してください。") :
         "操作を完了できませんでした。"
@@ -1203,6 +1218,11 @@
     }
   }
   function resetLocal(clearSessionId) {
+    ++connectionEpoch;
+    ++refreshSequence;
+    expiredSession = false;
+    batchPolling = false;
+    audioPolling = false;
     clearPlayer();
     audioOperation = null;
     batchOperation = null;
@@ -1254,21 +1274,66 @@
     $("web-token").value = "";
     $("new-captions").value = "";
     $("auth-status").textContent = "未接続";
+    $("connect-button").textContent = "接続する";
     if (clearSessionId) remember("");
     showView("connect", true);
   }
+  function markExpired() {
+    var inMemoryToken = token;
+    resetLocal(true);
+    token = inMemoryToken;
+    expiredSession = true;
+    $("connect-button").textContent = "新しいセッションを開始";
+    $("auth-status").textContent =
+      "前回のセッションは終了または期限切れです。未保存のTakeは復元できません。保存済み音声は残っています。";
+  }
+  async function handleSessionFailure(error) {
+    if (error.code === 401 || error.code === 403) {
+      resetLocal(false);
+      $("auth-status").textContent = error.message;
+      return true;
+    }
+    if (error.code !== 404 || !sessionId) return false;
+    // An individual item/operation 404 is not a missing session.
+    var checkingId = sessionId, checkingEpoch = connectionEpoch;
+    try {
+      await request("GET", "/api/web/sessions/" + encodeURIComponent(checkingId));
+    } catch (checkError) {
+      if (checkingEpoch !== connectionEpoch || checkingId !== sessionId) return true;
+      if (checkError.code === 404) {
+        markExpired();
+        return true;
+      }
+      if (checkError.code === 401 || checkError.code === 403) {
+        resetLocal(false);
+        $("auth-status").textContent = checkError.message;
+        return true;
+      }
+      feedback(checkError.message, retryable(checkError));
+      return true;
+    }
+    return false;
+  }
   async function refresh() {
-    batch = await request("GET", batchPath());
+    var identity = sessionId, epoch = connectionEpoch, sequence = ++refreshSequence;
+    var latest = await request("GET", batchPath());
+    if (epoch !== connectionEpoch || identity !== sessionId ||
+        sequence !== refreshSequence) return false;
+    batch = latest;
     renderList();
     if (currentView === "item") renderItem(true);
+    return true;
   }
   async function mutate(method, suffix, payload, success, options) {
     if (busy || !batch) return false;
+    var epoch = connectionEpoch;
     setBusy(true);
     try {
       var path = batchPath() + suffix + "?expected_revision=" +
         encodeURIComponent(batch.revision);
-      batch = await request(method, path, payload);
+      var updatedBatch = await request(method, path, payload);
+      if (epoch !== connectionEpoch) return false;
+      batch = updatedBatch;
       if (options && options.saveCaption) captionEditMode = false;
       if (options && options.saveCount) takeCountEditMode = false;
       renderList();
@@ -1276,21 +1341,25 @@
       feedback(success);
       return true;
     } catch (error) {
+      if (epoch !== connectionEpoch) return false;
       if (error.conflictCode === "revision_conflict") {
         // A stale deletion selection must not be applied to a refreshed Batch.
         if (deleteMode) selectedForDelete.clear();
         try { await refresh(); } catch (_ignored) { /* Keep conflict feedback. */ }
       }
-      if (error.code === 404 || error.code === 401) {
-        resetLocal(error.code === 404);
-      } else if (batch) {
-        // Restore server-owned values for controls such as the include checkbox.
-        renderList();
-        if (selectedId) renderItem(true);
+      var handled = await handleSessionFailure(error);
+      if (!handled) {
+        if (batch) {
+          // Restore the server-owned values for controls such as inclusion.
+          renderList();
+          if (selectedId) renderItem(true);
+        }
+        feedback(error.message, retryable(error));
       }
-      feedback(error.message);
       return false;
-    } finally { setBusy(false); }
+    } finally {
+      if (epoch === connectionEpoch) setBusy(false);
+    }
   }
 
 
