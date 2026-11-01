@@ -123,11 +123,14 @@ class WebOutputMixin:
             if not destination.is_absolute():
                 raise WebOutputValidation("invalid_output_dir")
             try:
-                # Every existing component must be a real directory. A
-                # missing leaf (or nested missing descendants) is permitted,
-                # but a file or symlink parent would make future mkdir unsafe.
+                # A missing leaf is valid. Reject non-directory ancestors,
+                # broken symlinks and a symlink at the selected root. macOS
+                # has legitimate parent aliases (e.g. /var -> /private/var);
+                # a symlinked parent resolving to a directory is permitted.
+                if destination.is_symlink():
+                    raise WebOutputValidation("invalid_output_dir")
                 for component in (destination, *destination.parents):
-                    if component.is_symlink() or (
+                    if (component.is_symlink() and not component.is_dir()) or (
                         component.exists() and not component.is_dir()
                     ):
                         raise WebOutputValidation("invalid_output_dir")
