@@ -34,7 +34,7 @@ class JapaneseArpabetQueryTests(unittest.TestCase):
         self.assertEqual(segment.text, "ずんだもんはかしこいのだ！")
         self.assertEqual(
             [label for label, _phones in bound_english_groups(segment)],
-            ["ズンダモンハ", "カシコイ", "ノダ", "！"],
+            ["ズンダモンハ", "カシコイ", "ノダ", "!"],
         )
         self.assertEqual(
             build_mixed_synthesis_plan(converted).english_overrides[0][1],
