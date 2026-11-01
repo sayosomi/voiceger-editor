@@ -59,16 +59,6 @@ def _export_payloads(
         prefix=".voiceger-dictionary-", dir=output_dir,
     ) as staging_dir:
         with ExitStack() as opened:
-            staged = []
-            for index, (_stem, payload) in enumerate(payloads):
-                source = Path(staging_dir) / f"{index}.tmp"
-                fd = os.open(source, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-                handle = opened.enter_context(os.fdopen(fd, "wb"))
-                handle.write(payload)
-                handle.flush()
-                os.fsync(handle.fileno())
-                staged.append((source, handle, os.fstat(handle.fileno())))
-
             stage_fd = None
             if os.name == "posix":
                 stage_fd = os.open(
@@ -76,7 +66,25 @@ def _export_payloads(
                     | getattr(os, "O_NOFOLLOW", 0),
                 )
                 opened.callback(os.close, stage_fd)
-            else:
+
+            staged = []
+            for index, (_stem, payload) in enumerate(payloads):
+                source = Path(staging_dir) / f"{index}.tmp"
+                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                if stage_fd is not None:
+                    fd = os.open(
+                        source.name, flags | getattr(os, "O_NOFOLLOW", 0),
+                        0o600, dir_fd=stage_fd,
+                    )
+                else:
+                    fd = os.open(source, flags, 0o600)
+                handle = opened.enter_context(os.fdopen(fd, "wb"))
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+                staged.append((source, handle, os.fstat(handle.fileno())))
+
+            if stage_fd is None:
                 # Preserve Windows hard-link compatibility with closed handles.
                 for _source, handle, _info in staged:
                     handle.close()
