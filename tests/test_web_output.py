@@ -258,6 +258,29 @@ class OutputTests(unittest.TestCase):
             output_dir=str(good)).status_code, 200)
         self.assertFalse(good.exists())
 
+    def test_output_write_probe_rejects_permission_and_readonly_errors(self):
+        import errno
+        output = Path(self.tmp.name) / "new-subfolder" / "nested"
+        original = self.get_output()
+        before_batch = self.batch()
+        for code in (errno.EACCES, errno.EROFS, errno.ENOSPC):
+            with self.subTest(errno=code), patch(
+                "voiceger_editor.web_output.tempfile.TemporaryDirectory",
+                side_effect=OSError(code, "private Mac volume"),
+            ):
+                result = self.patch_output(output_dir=str(output))
+                self.assertEqual(result.status_code, 422, result.text)
+                self.assertNotIn("private Mac volume", result.text)
+                self.assertEqual(self.get_output(), original)
+                self.assertEqual(self.batch(), before_batch)
+        self.save.assert_not_called()
+        good = self.patch_output(output_dir=str(output))
+        self.assertEqual(good.status_code, 200, good.text)
+        self.assertFalse(output.exists())
+        self.assertEqual(
+            list(Path(self.tmp.name).glob(".voiceger-editor-probe-*")), [],
+        )
+
     def test_preflight_failure_keeps_disk_settings_and_other_sessions(self):
         first = self.add()
         other_sid = self.client.post(
