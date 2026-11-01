@@ -157,9 +157,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .setting-section .check-row { display: flex; align-items: center; gap: 12px; min-height: 44px; }
 .check-row input { width: 22px; height: 22px; accent-color: #23675a; flex: none; }
 .setting-section button { justify-self: start; }
-.setting-section .primary-button {
-  background: #23675a; border-color: #23675a; color: #fff;
-}
 .button-row { display: flex; gap: 10px; flex-wrap: wrap; }
 .item-navigation { display: flex; justify-content: space-between; gap: 10px; padding: 22px 0 8px; }
 .danger-zone { padding: 20px 0 8px; }
