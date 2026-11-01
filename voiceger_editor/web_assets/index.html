@@ -500,19 +500,11 @@
         </form>
         <div class="setting-section">
           <p class="field-title">Webサーバー</p>
-          <p id="connection-status" class="connection-status" role="status" aria-live="polite">接続状態を確認中…</p>
           <p id="server-version" class="help-text">Voiceger Editor Web</p>
         </div>
-        <div class="setting-section">
-          <h3>セッション</h3>
-          <p class="help-text">切断してもMac側のBatchは残ります。ただし、この端末からは再開できません。サーバー再起動・期限切れでは未保存のTakeを復元できません。</p>
-          <div class="button-row">
-            <button type="button" id="refresh-batch">Batchを再取得</button>
-            <button type="button" id="disconnect-session">切断</button>
-          </div>
-        </div>
         <div class="danger-zone">
-          <button type="button" id="close-session" class="danger-button">セッションを破棄</button>
+          <p class="help-text">作業を終了すると、Mac側のBatchと未保存のTakeは消えます。保存済み音声は残ります。</p>
+          <button type="button" id="close-session" class="danger-button">作業を終了</button>
         </div>
       </section>
       <audio id="phone-player" controls preload="none" hidden aria-label="スマホで音声を再生"></audio>
