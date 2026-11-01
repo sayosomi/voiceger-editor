@@ -279,6 +279,27 @@ class UtteranceSession:
 
         self.prepare_from_caption()
 
+    def stage_output_settings(self, settings: Settings):
+        """Validate an Output-only change and stage a no-fail memory commit.
+
+        Output format/path/sidecars do not change the synthesis query, Style,
+        Take generation or historical candidates. In particular, they must
+        not revalidate a reference WAV that may disappear after generation.
+        The caller persists the configuration before invoking the commit.
+        """
+        _validate_settings(settings)
+        synthesis_fields = (
+            "style_id", "speed", "top_k", "top_p", "temperature", "take_count",
+        )
+        if any(getattr(settings, key) != getattr(self._settings, key)
+               for key in synthesis_fields):
+            raise ValueError("Output update cannot change synthesis settings")
+
+        def commit() -> None:
+            self._settings = settings
+
+        return commit
+
     def replace_settings(self, settings: Settings, *, preserve_takes: bool = False) -> None:
         """Apply settings; optionally retain historical candidates for item voice edits."""
 
