@@ -643,6 +643,7 @@
     $("common-top-p").value = numericField(data.values.top_p);
     $("common-temperature").value = numericField(data.values.temperature);
     $("common-settings-error").hidden = true;
+    updateCommonApply();
   }
   async function loadWebSettings() {
     var originalSession = sessionId;
@@ -2466,7 +2467,15 @@
     element.textContent = message;
     element.hidden = !message;
   }
-  async function autoSaveCommon() {
+  function updateCommonApply() {
+    var changed = commonDirty();
+    $("apply-common-settings").hidden = !changed;
+    if (changed) {
+      $("common-settings-error").hidden = true;
+      settingsStatus("common-settings-status", "未反映");
+    }
+  }
+  async function applyCommonSettings() {
     if (busy || !batch || !commonSettingsData || currentView !== "session") return;
     var errorRow = $("common-settings-error");
     var statusId = "common-settings-status";
@@ -2515,11 +2524,13 @@
   }
   $("common-settings-form").addEventListener("submit", function (event) {
     event.preventDefault();
-    void autoSaveCommon();
+    void applyCommonSettings();
   });
   ["common-style", "common-speed", "common-top-k",
     "common-top-p", "common-temperature"].forEach(function (id) {
-    $(id).addEventListener("change", function () { void autoSaveCommon(); });
+    ["input", "change"].forEach(function (type) {
+      $(id).addEventListener(type, updateCommonApply);
+    });
   });
   $("reset-settings").addEventListener("click", async function () {
     if (busy || !batch || !commonSettingsData || currentView !== "session") return;
