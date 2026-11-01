@@ -683,7 +683,7 @@ class TuiPronunciationEditorOwnerTests(EditorControllerTestCase):
                 self.assertEqual(editor.payload["opening_draft"], opening)
                 self.assertEqual(query.model_dump(), canonical_before)
 
-                controller.move_selection(1)
+                controller.move_selection(2 if kind == "japanese" else 1)
                 backed = controller.handle_key(
                     "\n",
                     settings=self.settings(),
