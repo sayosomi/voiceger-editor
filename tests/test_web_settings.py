@@ -415,6 +415,7 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
                             sampling_rate=16000, style_name="Sweet")
         )
         item.mark_accepted(1)
+        item.set_generation_outcome("completed")
         result = self.reset()
         self.assertEqual(result.status_code, 200, result.text)
         payload = result.json()
@@ -430,6 +431,7 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
         self.assertEqual(saved_output.read_bytes(), b"accepted-audio-placeholder")
         self.assertEqual(len(item.session.candidates), 1)
         self.assertEqual(item.accepted_take_numbers, frozenset({1}))
+        self.assertEqual(item.generation_outcome, "completed")
         current = self.service._batch_settings
         self.assertEqual(current.output_dir, custom.output_dir)
         self.assertEqual(current.filename_template, custom.filename_template)
@@ -560,6 +562,7 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
                                 sampling_rate=16000, style_name="Neutral")
             )
             entry.mark_accepted(1)
+            entry.set_generation_outcome("completed")
         result = self.common(top_k=30)
         self.assertEqual(result.status_code, 200, result.text)
         self.assertEqual(item.session.settings.style_id, 1)
@@ -569,6 +572,7 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
         for entry in (item, other):
             self.assertEqual(len(entry.session.candidates), 1)
             self.assertEqual(entry.accepted_take_numbers, frozenset({1}))
+            self.assertEqual(entry.generation_outcome, "completed")
         self.assertEqual(self.save_mock.call_count, 1)
         self.assertEqual(self.common(style_id=1, top_k=30).status_code, 200)
         self.assertEqual(other.session.settings.style_id, 1)
