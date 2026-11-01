@@ -241,7 +241,7 @@ console.log("WEB_SETTINGS_BROWSER_GUARDS_PASS");
 const fs=require("fs"),assert=require("assert").strict;
 const js=fs.readFileSync(process.argv[1],"utf8");
 const start=js.indexOf("  function checkedCommonValues() {");
-const end=js.indexOf('  $("refresh-batch").addEventListener(',start);
+const end=js.indexOf('  $("retry-connection").addEventListener(',start);
 assert(start>=0 && end>start,"settings handlers source not found");
 const listeners={},nodes={},requests=[];
 for(const id of ["common-settings-form","common-style","common-speed",
