@@ -41,48 +41,55 @@ def _remove_owned_paths(paths: Iterable[Path]) -> None:
             pass
 
 
-def _write_payload(path: Path, payload: bytes) -> None:
-    path.write_bytes(payload)
-
-
 def _export_payloads(
     *,
     output_dir: Path,
     timestamp: datetime | None,
     payloads: tuple[tuple[str, bytes], ...],
 ) -> DictionaryExportResult:
+    """Stage complete JSON files, then publish by exclusive hard link.
+
+    Never reopen a reserved public filename for writing: a concurrent rename
+    or symlink swap must not redirect the write outside the Output directory.
+    """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    prefix = _timestamp_prefix(timestamp)
-    collision_number = 1
+    staged: list[Path] = []
+    try:
+        for _stem, payload in payloads:
+            with tempfile.NamedTemporaryFile(
+                prefix=".voiceger-dictionary-", suffix=".tmp",
+                dir=output_dir, delete=False,
+            ) as temporary:
+                staged.append(Path(temporary.name))
+                temporary.write(payload)
+                temporary.flush()
+                os.fsync(temporary.fileno())
 
-    while True:
-        suffix = "" if collision_number == 1 else f"-{collision_number}"
-        paths = tuple(
-            output_dir / f"{prefix}_{stem}{suffix}.json"
-            for stem, _payload in payloads
-        )
-        reserved: list[Path] = []
-        try:
-            for path in paths:
-                with path.open("xb"):
-                    pass
-                reserved.append(path)
-        except FileExistsError:
-            _remove_owned_paths(reserved)
-            collision_number += 1
-            continue
-        except BaseException:
-            _remove_owned_paths(reserved)
-            raise
-
-        try:
-            for path, (_stem, payload) in zip(paths, payloads):
-                _write_payload(path, payload)
-        except BaseException:
-            _remove_owned_paths(paths)
-            raise
-        return DictionaryExportResult(paths=paths)
+        prefix = _timestamp_prefix(timestamp)
+        collision_number = 1
+        while True:
+            suffix = "" if collision_number == 1 else f"-{collision_number}"
+            paths = tuple(
+                output_dir / f"{prefix}_{stem}{suffix}.json"
+                for stem, _payload in payloads
+            )
+            published: list[Path] = []
+            try:
+                for staged_path, path in zip(staged, paths):
+                    # Existing files, including symlinks, cause a collision.
+                    os.link(staged_path, path)
+                    published.append(path)
+            except FileExistsError:
+                _remove_owned_paths(published)
+                collision_number += 1
+                continue
+            except BaseException:
+                _remove_owned_paths(published)
+                raise
+            return DictionaryExportResult(paths=paths)
+    finally:
+        _remove_owned_paths(staged)
 
 
 def export_voiceger_editor_dictionaries(
