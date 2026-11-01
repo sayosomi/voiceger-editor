@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, StrictBool, StrictFloat, StrictInt
+from pydantic import BaseModel, StrictFloat, StrictInt
 
 from .web_routes import _translate_error
 from .web_security import require_web_access, require_web_mutation
@@ -30,11 +30,6 @@ class CommonSynthesisPayload(BaseModel):
     top_k: StrictInt
     top_p: Number
     temperature: Number
-    confirm_take_invalidation: StrictBool = False
-
-
-class ResetSettingsPayload(BaseModel):
-    confirm_take_invalidation: StrictBool = False
 
 
 def _call(action):
@@ -73,13 +68,12 @@ def build_web_settings_router(service: WebSessionOperations) -> APIRouter:
     @router.post("/{session_id}/settings/reset",
                  dependencies=[Depends(require_web_mutation)])
     def reset_generation_settings(
-        session_id: str, payload: ResetSettingsPayload,
+        session_id: str,
         expected_revision: int = Query(..., ge=0),
         expected_settings_revision: int = Query(..., ge=0),
     ):
         return _call(lambda: service.reset_generation_settings(
             session_id, expected_revision, expected_settings_revision,
-            confirm_take_invalidation=payload.confirm_take_invalidation,
         ))
 
     @router.patch("/{session_id}/batch/items/{item_id}/voice",
