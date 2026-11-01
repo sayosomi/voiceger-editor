@@ -111,6 +111,52 @@ class WebSessionRouteTests(unittest.TestCase):
         self.assertEqual(self.client.get(url, headers=self.read_headers).status_code, 404)
         self.assertEqual(self.client.delete(url, headers=self.write_headers).status_code, 404)
 
+    def test_creation_retry_is_idempotent_and_does_not_consume_capacity(self):
+        key = "0" * 48
+        with patch.object(self.service, "_max_sessions", 1):
+            first = self.client.post(
+                "/api/web/sessions", headers=self.write_headers,
+                json={"idempotency_key": key},
+            )
+            self.assertEqual(first.status_code, 201, first.text)
+            # The Mac created the session but the browser lost the response.
+            replay = self.client.post(
+                "/api/web/sessions", headers=self.write_headers,
+                json={"idempotency_key": key},
+            )
+            self.assertEqual(replay.status_code, 201, replay.text)
+            self.assertEqual(replay.json()["id"], first.json()["id"])
+            self.assertEqual(len(self.service._sessions), 1)
+            self.assertNotIn("idempotency_key", replay.text)
+            different = self.client.post(
+                "/api/web/sessions", headers=self.write_headers,
+                json={"idempotency_key": "1" * 48},
+            )
+            self.assertEqual(different.status_code, 429)
+            self.assertEqual(self.client.post(
+                "/api/web/sessions", headers=self.write_headers,
+                json={"idempotency_key": "short"},
+            ).status_code, 422)
+            self.assertEqual(self.client.post(
+                "/api/web/sessions",
+                headers={**self.write_headers, "Origin": "https://evil.example"},
+                json={"idempotency_key": key},
+            ).status_code, 403)
+            self.assertEqual(self.client.post(
+                "/api/web/sessions", headers=self.write_headers,
+                json={"idempotency_key": key, "unexpected": "ignored"},
+            ).status_code, 201)
+            self.assertEqual(self.client.delete(
+                "/api/web/sessions/" + first.json()["id"],
+                headers=self.write_headers,
+            ).status_code, 204)
+            new = self.client.post(
+                "/api/web/sessions", headers=self.write_headers,
+                json={"idempotency_key": key},
+            )
+            self.assertEqual(new.status_code, 201)
+            self.assertNotEqual(new.json()["id"], first.json()["id"])
+
     def test_restart_does_not_recover_session(self):
         session_id = self.create_session()["id"]
         other = TestClient(
