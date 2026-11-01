@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 import tempfile
@@ -167,6 +168,58 @@ class DictionaryExportTests(unittest.TestCase):
             japanese = json.loads(result.paths[0].read_text(encoding="utf-8"))
             self.assertEqual(list(japanese), list(core.japanese))
             self.assertIn("part_of_speech", next(iter(japanese.values())))
+
+
+    def test_voicevox_symlink_race_cannot_write_outside_output(self):
+        core = FakeDictionaryCore()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "output"
+            output.mkdir()
+            outside = root / "private.json"
+            outside.write_bytes(b"do not overwrite")
+            first = output / "202610060102_voicevox_user_dict.json"
+            real_link = os.link
+            swapped = False
+
+            def race_before_publish(source, destination):
+                nonlocal swapped
+                if Path(destination) == first and not swapped:
+                    first.symlink_to(outside)
+                    swapped = True
+                return real_link(source, destination)
+
+            with patch(
+                "voiceger_editor.dictionary_export.os.link",
+                side_effect=race_before_publish,
+            ):
+                result = export_voicevox_dictionary(
+                    core, output, timestamp=self.timestamp,
+                )
+            self.assertTrue(swapped)
+            self.assertEqual(outside.read_bytes(), b"do not overwrite")
+            self.assertTrue(first.is_symlink())
+            self.assertEqual(
+                result.paths[0].name,
+                "202610060102_voicevox_user_dict-2.json",
+            )
+            self.assertEqual(
+                sorted(path.name for path in output.iterdir()),
+                sorted((first.name, result.paths[0].name)),
+            )
+
+    def test_voicevox_failed_publication_leaves_no_partial_json(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            with patch(
+                "voiceger_editor.dictionary_export.os.link",
+                side_effect=OSError("disk full"),
+            ):
+                with self.assertRaisesRegex(OSError, "disk full"):
+                    export_voicevox_dictionary(
+                        FakeDictionaryCore(), output, timestamp=self.timestamp,
+                    )
+            self.assertEqual(list(output.iterdir()), [])
 
 
 if __name__ == "__main__":
