@@ -13,13 +13,14 @@ class FakeSession:
         self.events = events
         self.replace_settings_calls = []
 
-    def replace_settings(self, settings):
+    def replace_settings(self, settings, *, preserve_takes=False):
         if self.events is not None:
             self.events.append("settings")
         if self.error is not None:
             raise self.error
         self.replace_settings_calls.append(settings)
         self.settings = settings
+        self.preserve_takes = preserve_takes
 
 
 class TuiSettingsControllerTests(unittest.TestCase):
@@ -128,7 +129,7 @@ class TuiSettingsControllerTests(unittest.TestCase):
         save.assert_not_called()
         self.assertEqual(status["value"], conflict)
 
-    def test_synthesis_change_stops_before_session_replacement_and_clears_after(self):
+    def test_synthesis_change_preserves_takes_and_playback(self):
         events = []
         controller, session, operations, _save, status, _batch = (
             self.make_controller(events=events)
@@ -136,16 +137,17 @@ class TuiSettingsControllerTests(unittest.TestCase):
 
         controller.change(speed=0.9)
 
-        self.assertEqual(events, ["stop", "settings", "outcomes", "clear"])
+        self.assertEqual(events, ["settings"])
         self.assertEqual(session.settings.speed, 0.9)
-        operations.stop_playback.assert_called_once_with()
-        operations.clear_current_take.assert_called_once_with()
+        self.assertTrue(session.preserve_takes)
+        operations.stop_playback.assert_not_called()
+        operations.clear_current_take.assert_not_called()
         self.assertEqual(
             status["value"],
-            "Settings saved. Existing temporary takes were cleared.",
+            "Settings saved. Existing temporary takes were preserved.",
         )
 
-    def test_apply_save_failure_retry_does_not_reapply_runtime_or_clear_twice(self):
+    def test_apply_save_failure_retry_does_not_reapply_or_clear_takes(self):
         opening = Settings()
         target = Settings(speed=1.25)
         attempts = []
@@ -169,16 +171,16 @@ class TuiSettingsControllerTests(unittest.TestCase):
         self.assertEqual(controller.settings, target)
         self.assertEqual(controller.persisted_settings, opening)
         self.assertEqual(session.replace_settings_calls, [target])
-        operations.stop_playback.assert_called_once_with()
-        operations.clear_current_take.assert_called_once_with()
+        operations.stop_playback.assert_not_called()
+        operations.clear_current_take.assert_not_called()
 
         second = controller.apply_target(target)
 
         self.assertIsNone(second.error_status)
         self.assertEqual(attempts, ["save", "save"])
         self.assertEqual(session.replace_settings_calls, [target])
-        operations.stop_playback.assert_called_once_with()
-        operations.clear_current_take.assert_called_once_with()
+        operations.stop_playback.assert_not_called()
+        operations.clear_current_take.assert_not_called()
         self.assertEqual(controller.persisted_settings, target)
         self.assertEqual(status["value"], "Settings saved.")
 
@@ -219,7 +221,7 @@ class TuiSettingsControllerTests(unittest.TestCase):
         self.assertEqual(controller.settings, opening)
         self.assertEqual(controller.persisted_settings, opening)
         self.assertEqual(batch["value"], opening.take_count)
-        operations.stop_playback.assert_called_once_with()
+        operations.stop_playback.assert_not_called()
         operations.clear_current_take.assert_not_called()
         save.assert_not_called()
         self.assertIn("unsupported style", status["value"])
@@ -306,7 +308,7 @@ class TuiSettingsIntegrationTests(TuiAppTestCase):
             self.assertTrue(saved["save_text"])
             self.assertTrue(saved["save_lab"])
 
-    def test_sampling_draft_only_applies_and_invalidates_candidates_on_apply(self):
+    def test_sampling_draft_applies_and_preserves_candidates(self):
         with tempfile.TemporaryDirectory() as directory:
             app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
             app.config_path = Path(directory) / "config.json"
@@ -327,15 +329,15 @@ class TuiSettingsIntegrationTests(TuiAppTestCase):
 
             self.assertEqual(app.settings.top_p, 0.95)
             self.assertEqual(app.session.replace_settings_calls[-1].top_p, 0.95)
-            self.assertEqual(app.session.candidates, ())
-            self.assertIsNone(app._operations.current_take)
+            self.assertEqual(app.session.candidates, (candidate(1),))
+            self.assertEqual(app._operations.current_take, 1)
             self.assertEqual(
                 json.loads(app.config_path.read_text())["top_p"],
                 0.95,
             )
-            app._operations.stop_playback.assert_called_once_with()
+            app._operations.stop_playback.assert_not_called()
 
-    def test_settings_apply_reconciles_session_state_before_candidate_invalidation(self):
+    def test_settings_apply_reconciles_state_without_candidate_invalidation(self):
         app = self.make_app(query=mixed_query(), candidates=(candidate(1),))
         target = Settings(
             top_p=0.95,
@@ -352,9 +354,9 @@ class TuiSettingsIntegrationTests(TuiAppTestCase):
 
         save.assert_called_once_with(target, app.config_path)
         self.assertEqual(app.session.replace_settings_calls, [target])
-        self.assertEqual(app.session.candidates, ())
-        self.assertIsNone(app._operations.current_take)
-        app._operations.stop_playback.assert_called_once_with()
+        self.assertEqual(app.session.candidates, (candidate(1),))
+        self.assertEqual(app._operations.current_take, 1)
+        app._operations.stop_playback.assert_not_called()
 
     def test_explicit_settings_save_persists_entire_cli_effective_target(self):
         with tempfile.TemporaryDirectory() as directory:
