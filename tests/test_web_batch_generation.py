@@ -251,13 +251,14 @@ class WebBatchGenerationTests(unittest.TestCase):
         self.assertEqual(recovered.status_code, 200)
         state = recovered.json()
         self.assertIsNone(state["active_operation"])
-        self.assertEqual(state["latest_operation"]["id"], terminal["id"])
-        self.assertEqual(state["latest_operation"]["status"], "succeeded")
-        self.assertEqual(state["latest_operation"]["detail"]["item_id"], item_id)
+        session = self.client.get(self.root, headers=self.read).json()
+        self.assertEqual(session["latest_operation"]["id"], terminal["id"])
+        self.assertEqual(session["latest_operation"]["status"], "succeeded")
+        self.assertEqual(session["latest_operation"]["detail"]["item_id"], item_id)
         self.assertEqual(len(state["items"]), 1)
         self.assertTrue(state["items"][0]["is_prepared"])
         self.assertEqual(self.fakes[0].syntheses, 0)
-        self.assertNotIn(str(self.output), str(state["latest_operation"]))
+        self.assertNotIn(str(self.output), str(session["latest_operation"]))
 
     def test_explicit_close_preserves_accepted_output_and_blocks_recovery(self):
         row = self.add("accepted")[0]
