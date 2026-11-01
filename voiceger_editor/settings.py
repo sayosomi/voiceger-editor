@@ -8,6 +8,7 @@ import math
 import os
 from pathlib import Path
 import sys
+import tempfile
 from typing import Any
 
 from .filename import (
@@ -294,5 +295,23 @@ def save_settings(
         allow_nan=False,
     )
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes((serialized + "\n").encode("utf-8"))
+    # Keep the previous config intact until all new bytes reach the temp file.
+    # A sibling temp file makes os.replace atomic on the same filesystem.
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+            delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write((serialized + "\n").encode("utf-8"))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return path
