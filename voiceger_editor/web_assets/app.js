@@ -6,6 +6,7 @@
   var token = "";
   var sessionId = "";
   var batch = null;
+  var latestSessionOperation = null;
   var selectedId = "";
   var currentView = "connect";
   var busy = false;
@@ -1272,6 +1273,7 @@
     token = "";
     sessionId = "";
     batch = null;
+    latestSessionOperation = null;
     selectedId = "";
     $("web-token").value = "";
     $("new-captions").value = "";
@@ -1899,7 +1901,7 @@
     if (!batch || !sessionId || !token) return;
     // The server is the authority, including an operation that completed
     // during navigation or an offline interval. Never POST to resume.
-    var op = batch.active_operation || batch.latest_operation;
+    var op = batch.active_operation || latestSessionOperation;
     if (!op) return;
     if (op.kind === "batch-generate") {
       if (op.status === "running" || op.status === "cancelling") {
@@ -2527,7 +2529,12 @@
         var existing = sessionId || savedSession();
         if (existing) {
           sessionId = existing;
-          try { await refresh(); }
+          try {
+            var restored = await request("GET", "/api/web/sessions/" +
+              encodeURIComponent(existing));
+            latestSessionOperation = restored.latest_operation || null;
+            await refresh();
+          }
           catch (error) {
             if (error.code !== 404) throw error;
             var lost = await handleSessionFailure(error);
@@ -2543,6 +2550,7 @@
         // Creation is the user's initial Connect or explicit New Session.
         var created = await request("POST", "/api/web/sessions");
         sessionId = created.id;
+        latestSessionOperation = created.latest_operation || null;
         remember(sessionId);
         await refresh();
       }
@@ -2859,8 +2867,10 @@
     var epoch = connectionEpoch, identity = sessionId, recovered = false;
     setBusy(true);
     try {
-      await request("GET", "/api/web/sessions/" + encodeURIComponent(identity));
+      var restored = await request("GET", "/api/web/sessions/" +
+        encodeURIComponent(identity));
       if (epoch !== connectionEpoch || identity !== sessionId) return;
+      latestSessionOperation = restored.latest_operation || null;
       recovered = await refresh();
       if (recovered) feedback("再接続しました。");
     } catch (error) {
