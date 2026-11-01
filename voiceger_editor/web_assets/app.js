@@ -69,6 +69,9 @@
   var settingsHistoryDestination = null;
   var commonSettingsData = null;
   var outputSettingsData = null;
+  // A same-session retry must invalidate older, still-pending settings GETs.
+  var commonSettingsLoadSequence = 0, outputSettingsLoadSequence = 0;
+  var sessionFormsLoadSequence = 0;
   var outputPreviewSequence = 0, outputPreviewTimer = null;
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
@@ -294,14 +297,17 @@
   // Keep the settings screen usable after a recoverable connection failure.
   function loadSessionForms() {
     var identity = sessionId, epoch = connectionEpoch;
+    var sequence = ++sessionFormsLoadSequence;
     return Promise.all([loadWebSettings(), loadWebOutputSettings()]).then(function () {
-      if (epoch !== connectionEpoch || identity !== sessionId ||
+      if (sequence !== sessionFormsLoadSequence ||
+          epoch !== connectionEpoch || identity !== sessionId ||
           currentView !== "session") return;
       $("common-settings-form").hidden = false;
       $("output-settings-form").hidden = false;
       $("reset-settings").disabled = false;
     }).catch(function (error) {
-      if (epoch !== connectionEpoch || identity !== sessionId ||
+      if (sequence !== sessionFormsLoadSequence ||
+          epoch !== connectionEpoch || identity !== sessionId ||
           currentView !== "session") return;
       feedback(error.message, retryable(error));
     });
@@ -741,9 +747,11 @@
     scheduleOutputPreview();
   }
   async function loadWebOutputSettings() {
-    var originalSession = sessionId;
+    var originalSession = sessionId, epoch = connectionEpoch;
+    var sequence = ++outputSettingsLoadSequence;
     var data = await request("GET", settingsPath() + "/output");
-    if (!sessionId || originalSession !== sessionId) return;
+    if (!sessionId || originalSession !== sessionId ||
+        epoch !== connectionEpoch || sequence !== outputSettingsLoadSequence) return;
     renderOutputSettings(data);
   }
   function scheduleOutputPreview() {
@@ -768,8 +776,10 @@
   }
   async function loadWebSettings() {
     var originalSession = sessionId, epoch = connectionEpoch;
+    var sequence = ++commonSettingsLoadSequence;
     var data = await request("GET", settingsPath());
-    if (!sessionId || originalSession !== sessionId || epoch !== connectionEpoch) return;
+    if (!sessionId || originalSession !== sessionId ||
+        epoch !== connectionEpoch || sequence !== commonSettingsLoadSequence) return;
     renderCommonSettings(data);
     if (currentView === "item") {
       var item = batch && batch.items.find(function (entry) { return entry.id === selectedId; });
