@@ -235,6 +235,53 @@ class WebBatchGenerationTests(unittest.TestCase):
         )
         self.assertFalse(previous.exists())
 
+    def test_item_operation_is_available_after_reload_without_restarting_work(self):
+        row = self.add("reconnect")[0]
+        item_id = row["id"]
+        response = self.client.post(
+            self.root + "/batch/items/" + item_id + "/audio/prepare"
+            + "?expected_revision=" + str(self.batch()["revision"]),
+            headers=self.write, json={"rebuild": False},
+        )
+        self.assertEqual(response.status_code, 202, response.text)
+        terminal = self.finish(response)
+        self.assertEqual(terminal["status"], "succeeded")
+        # A freshly authenticated browser reads a new snapshot, not a new POST.
+        recovered = self.client.get(self.root + "/batch", headers=self.read)
+        self.assertEqual(recovered.status_code, 200)
+        state = recovered.json()
+        self.assertIsNone(state["active_operation"])
+        self.assertEqual(state["latest_operation"]["id"], terminal["id"])
+        self.assertEqual(state["latest_operation"]["status"], "succeeded")
+        self.assertEqual(state["latest_operation"]["detail"]["item_id"], item_id)
+        self.assertEqual(len(state["items"]), 1)
+        self.assertTrue(state["items"][0]["is_prepared"])
+        self.assertEqual(self.fakes[0].syntheses, 0)
+        self.assertNotIn(str(self.output), str(state["latest_operation"]))
+
+    def test_explicit_close_preserves_accepted_output_and_blocks_recovery(self):
+        row = self.add("accepted")[0]
+        self.assertEqual(self.finish(self.start())["status"], "succeeded")
+        accept_url = (self.root + "/batch/items/" + row["id"] + "/takes/1/accept"
+                      + "?expected_revision=" + str(self.batch()["revision"]))
+        self.assertEqual(self.finish(self.client.post(
+            accept_url, headers=self.write,
+        ))["status"], "succeeded")
+        before = {p.name: p.read_bytes() for p in self.output.iterdir()}
+        self.assertTrue(before)
+        self.assertEqual(
+            self.client.get(self.root, headers=self.read).status_code, 200
+        )
+        self.assertEqual(
+            self.client.delete(self.root, headers=self.write).status_code, 204
+        )
+        self.assertEqual(
+            self.client.get(self.root, headers=self.read).status_code, 404
+        )
+        self.assertEqual(
+            {p.name: p.read_bytes() for p in self.output.iterdir()}, before
+        )
+
     def test_mobile_batch_progress_cancel_recovery_and_resume(self):
         node = shutil.which("node")
         if not node:
