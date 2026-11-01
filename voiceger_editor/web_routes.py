@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel, Field, StrictStr
+from typing import Optional
 
 from .web_security import require_web_access, require_web_mutation
 from .web_sessions import (
@@ -35,7 +36,7 @@ def build_web_session_router(service: WebSessionOperations) -> APIRouter:
     router = APIRouter(prefix="/api/web", include_in_schema=False)
 
     @router.post("/sessions", status_code=201, dependencies=[Depends(require_web_mutation)])
-    def create_session(payload: SessionCreationRequest | None = Body(default=None)):
+    def create_session(payload: Optional[SessionCreationRequest] = Body(default=None)):
         try:
             return service.create(
                 request_id=payload.idempotency_key if payload is not None else None,
