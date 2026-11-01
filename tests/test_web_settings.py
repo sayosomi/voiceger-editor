@@ -156,7 +156,7 @@ class WebSynthesisSettingsTests(unittest.TestCase):
         self.assertIn('id="item-speed" type="number" inputmode="decimal" min="0" step="0.01"', html)
         self.assertIn('id="common-speed" type="number" inputmode="decimal" min="0" step="0.01"', html)
         self.assertIn('class="sampling-settings-group"', html)
-        self.assertIn('class="settings-screen-heading"', html)
+        self.assertIn('class="screen-heading settings-screen-heading"', html)
         self.assertIn('id="reset-settings">設定値を初期化</button>', html)
         self.assertNotIn('id="reset-sampling"', html)
         self.assertIn('id="common-settings-status"', html)
