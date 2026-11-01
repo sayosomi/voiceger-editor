@@ -436,9 +436,13 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
         current = self.service._batch_settings
         self.assertEqual(current.output_dir, custom.output_dir)
         self.assertEqual(current.filename_template, custom.filename_template)
-        self.assertEqual(current.output_format, "mp3")
-        self.assertTrue(current.save_text)
-        self.assertTrue(current.save_lab)
+        self.assertEqual(current.output_format, "wav")
+        self.assertEqual(current.wav_encoding, "source")
+        self.assertEqual(current.flac_encoding, "pcm16")
+        self.assertEqual(current.mp3_bitrate, "192k")
+        self.assertFalse(current.save_text)
+        self.assertFalse(current.save_lab)
+        self.assertEqual(payload["output"]["values"]["output_format"], "wav")
         self.assertEqual(self.save_mock.call_count, 1)
 
     def test_reset_rolls_back_on_save_failure(self):
