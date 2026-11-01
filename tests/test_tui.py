@@ -1490,15 +1490,18 @@ class TuiTests(TuiAppTestCase):
         app._apply_session_query(app.session.query.model_copy(deep=True))
         self.assertEqual(events, ["stop", "query"])
 
-    def test_playback_stops_before_settings_invalidation(self):
+    def test_settings_change_keeps_active_playback_and_takes(self):
         with tempfile.TemporaryDirectory() as directory:
             app = self.make_app()
             app.config_path = Path(directory) / "config.json"
             events = []
             app._operations.stop_playback = Mock(side_effect=lambda: events.append("stop"))
-            app.session.replace_settings = Mock(side_effect=lambda settings: events.append("settings"))
+            app.session.replace_settings = Mock(
+                side_effect=lambda settings, *, preserve_takes=False:
+                    events.append(("settings", preserve_takes))
+            )
             app._change_settings(speed=0.9)
-        self.assertEqual(events, ["stop", "settings"])
+        self.assertEqual(events, [("settings", True)])
 
     def test_caption_replacement_does_not_stop_playback_or_clear_grouping(self):
         app = self.make_app(query=mixed_query())
