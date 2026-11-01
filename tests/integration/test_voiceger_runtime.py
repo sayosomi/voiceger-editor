@@ -10,6 +10,7 @@ from voiceger_editor.mixed_language import (
     build_mixed_audio_query,
 )
 from voiceger_editor.pronunciation import PitchEvent, parse_pronunciation
+from voiceger_editor.query_ja_arpabet import convert_japanese_section_to_arpabet
 from voiceger_editor.query_editing import (
     append_english_section,
     delete_utterance_section,
@@ -137,6 +138,54 @@ class VoicegerIntegrationTests(unittest.TestCase):
                 self.assertTrue(session.query.accent_phrases)
                 self.assertEqual(session.synthesis_source_text, caption)
                 self.assert_full_synthesis_succeeds(session.query)
+
+    def test_japanese_to_arpabet_real_pure_japanese_query(self):
+        original = build_audio_query(
+            pronunciation=parse_pronunciation("ア'メ。")
+        )
+        converted = convert_japanese_section_to_arpabet(
+            original, "ズ'ンダモンハ/カシコ'イ/ノダ'！",
+            pure_japanese_utterance_text="ずんだもんはかしこいのだ！",
+        )
+        self.assertEqual(converted.voicegerSegments[0].language, "en")
+        self.assertEqual(len(converted.voicegerSegments[0].englishGroups), 4)
+        self.assert_full_synthesis_succeeds(converted)
+
+    def test_japanese_to_arpabet_real_mixed_and_two_converted_sections(self):
+        caption = "今日はhelloなのだ。"
+        query = build_mixed_audio_query(
+            caption,
+            segments=(
+                DetectedSegment("ja", "今日は"),
+                DetectedSegment("en", "hello"),
+                DetectedSegment("ja", "なのだ。"),
+            ),
+            english_g2p=self.adapter.english_phonemes,
+        )
+        first = convert_japanese_section_to_arpabet(
+            query,
+            japanese_pronunciation(query, segment_index=0),
+            segment_index=0,
+        )
+        converted = convert_japanese_section_to_arpabet(
+            first,
+            japanese_pronunciation(first, segment_index=2),
+            segment_index=2,
+        )
+        self.assertEqual(
+            [s.language for s in converted.voicegerSegments],
+            ["en", "en", "en"],
+        )
+        self.assertEqual(
+            "".join(s.text for s in converted.voicegerSegments), caption,
+        )
+        self.assertEqual(
+            len(converted.voicegerSegments[0].englishGroups), 1,
+        )
+        self.assertEqual(
+            len(converted.voicegerSegments[2].englishGroups), 2,
+        )
+        self.assert_full_synthesis_succeeds(converted)
 
     def test_deterministic_japanese_english_override_consumption(self):
         for caption in ("今日はhelloと言うよ。", "Version 2なのだ"):
