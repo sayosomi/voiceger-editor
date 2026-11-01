@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from dataclasses import dataclass
 import hashlib
 import json
 import os
+import stat
 import tempfile
 from zipfile import ZIP_DEFLATED, ZipFile
 from datetime import datetime
@@ -47,49 +49,74 @@ def _export_payloads(
     timestamp: datetime | None,
     payloads: tuple[tuple[str, bytes], ...],
 ) -> DictionaryExportResult:
-    """Stage complete JSON files, then publish by exclusive hard link.
-
-    Never reopen a reserved public filename for writing: a concurrent rename
-    or symlink swap must not redirect the write outside the Output directory.
-    """
+    """Publish complete JSON using private, pinned staging and exclusive links."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    staged: list[Path] = []
-    try:
-        for _stem, payload in payloads:
-            with tempfile.NamedTemporaryFile(
-                prefix=".voiceger-dictionary-", suffix=".tmp",
-                dir=output_dir, delete=False,
-            ) as temporary:
-                staged.append(Path(temporary.name))
-                temporary.write(payload)
-                temporary.flush()
-                os.fsync(temporary.fileno())
+    # A writer allowed to modify Output must not be able to replace source
+    # entries in this mode-0700 directory. Keep its fd and source fds open
+    # while publishing; a rename of the directory pathname cannot retarget it.
+    with tempfile.TemporaryDirectory(
+        prefix=".voiceger-dictionary-", dir=output_dir,
+    ) as staging_dir:
+        with ExitStack() as opened:
+            staged = []
+            for index, (_stem, payload) in enumerate(payloads):
+                source = Path(staging_dir) / f"{index}.tmp"
+                fd = os.open(source, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                handle = opened.enter_context(os.fdopen(fd, "wb"))
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+                staged.append((source, handle, os.fstat(handle.fileno())))
 
-        prefix = _timestamp_prefix(timestamp)
-        collision_number = 1
-        while True:
-            suffix = "" if collision_number == 1 else f"-{collision_number}"
-            paths = tuple(
-                output_dir / f"{prefix}_{stem}{suffix}.json"
-                for stem, _payload in payloads
-            )
-            published: list[Path] = []
-            try:
-                for staged_path, path in zip(staged, paths):
-                    # Existing files, including symlinks, cause a collision.
-                    os.link(staged_path, path)
-                    published.append(path)
-            except FileExistsError:
-                _remove_owned_paths(published)
-                collision_number += 1
-                continue
-            except BaseException:
-                _remove_owned_paths(published)
-                raise
-            return DictionaryExportResult(paths=paths)
-    finally:
-        _remove_owned_paths(staged)
+            stage_fd = None
+            if os.name == "posix":
+                stage_fd = os.open(
+                    staging_dir, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+                    | getattr(os, "O_NOFOLLOW", 0),
+                )
+                opened.callback(os.close, stage_fd)
+            else:
+                # Preserve Windows hard-link compatibility with closed handles.
+                for _source, handle, _info in staged:
+                    handle.close()
+
+            prefix = _timestamp_prefix(timestamp)
+            collision_number = 1
+            while True:
+                suffix = "" if collision_number == 1 else f"-{collision_number}"
+                paths = tuple(
+                    output_dir / f"{prefix}_{stem}{suffix}.json"
+                    for stem, _payload in payloads
+                )
+                published: list[Path] = []
+                try:
+                    for (source, _handle, source_info), destination in zip(staged, paths):
+                        if stage_fd is not None:
+                            # linkat() with AT_SYMLINK_FOLLOW disabled. Even a
+                            # forcibly replaced source symlink is not followed.
+                            os.link(
+                                source.name, destination, src_dir_fd=stage_fd,
+                                follow_symlinks=False,
+                            )
+                        else:
+                            os.link(source, destination)
+                        published.append(destination)
+                        linked = destination.lstat()
+                        if (
+                            not stat.S_ISREG(linked.st_mode)
+                            or (linked.st_dev, linked.st_ino)
+                            != (source_info.st_dev, source_info.st_ino)
+                        ):
+                            raise OSError("Dictionary staging source changed")
+                except FileExistsError:
+                    _remove_owned_paths(published)
+                    collision_number += 1
+                    continue
+                except BaseException:
+                    _remove_owned_paths(published)
+                    raise
+                return DictionaryExportResult(paths=paths)
 
 
 def export_voiceger_editor_dictionaries(
