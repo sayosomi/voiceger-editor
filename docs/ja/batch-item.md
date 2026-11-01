@@ -262,7 +262,7 @@ Take数だけを変更しても、その時点では既存の候補は削除さ�
 | `Add section` / `Delete section` | クリア |
 | `Build pronunciation` | クリア |
 | BATCH ITEMでStyle・Speedを変更 | 維持 |
-| 共通SettingsでStyle・Speed・サンプリング値を変更 | クリア |
+| 共通SettingsでStyle・Speed・サンプリング値を変更 | 維持（以降の生成・再生成に新設定を使用） |
 | Take数のみを変更 | 維持 |
 
 Takeの再生・採用の基本操作は [はじめての音声生成](tui.md) を参照してください。
