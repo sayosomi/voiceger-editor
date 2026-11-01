@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
+import errno
 import hashlib
 import json
 import os
@@ -12,7 +13,7 @@ import tempfile
 from zipfile import ZIP_DEFLATED, ZipFile
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Iterator
 
 from .japanese_pitch_metadata import serialize_pitch_metadata
 
@@ -43,6 +44,67 @@ def _remove_owned_paths(paths: Iterable[Path]) -> None:
             pass
 
 
+def _stage_is_original(path: Path, expected: os.stat_result) -> bool:
+    """Only touch the directory name if it still denotes our staging inode."""
+    try:
+        current = path.lstat()
+    except FileNotFoundError:
+        return False
+    return (
+        stat.S_ISDIR(current.st_mode)
+        and (current.st_dev, current.st_ino) == (expected.st_dev, expected.st_ino)
+    )
+
+
+@contextmanager
+def _pinned_staging(
+    output_dir: Path, filenames: tuple[str, ...],
+) -> Iterator[tuple[Path, int | None]]:
+    """Clean only our known files; never recurse through a replaced dir name."""
+    directory = Path(tempfile.mkdtemp(
+        prefix=".voiceger-dictionary-", dir=output_dir,
+    ))
+    directory_fd = None
+    original = directory.lstat()
+    try:
+        if os.name == "posix":
+            directory_fd = os.open(
+                directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0),
+            )
+            original = os.fstat(directory_fd)
+        yield directory, directory_fd
+    finally:
+        try:
+            if directory_fd is not None:
+                # A rename of the staging directory cannot retarget these
+                # unlink calls to another directory in Output.
+                for name in filenames:
+                    try:
+                        os.unlink(name, dir_fd=directory_fd)
+                    except FileNotFoundError:
+                        pass
+            elif _stage_is_original(directory, original):
+                # Windows has no POSIX dirfd operations: fail closed if the
+                # directory name no longer refers to the staging directory.
+                for name in filenames:
+                    (directory / name).unlink(missing_ok=True)
+
+            if _stage_is_original(directory, original):
+                try:
+                    directory.rmdir()
+                except OSError as error:
+                    # Unexpected entries are not ours to remove. A concurrent
+                    # writer may also have moved or replaced this path.
+                    if error.errno not in (
+                        errno.ENOENT, errno.ENOTEMPTY, errno.EEXIST, errno.ENOTDIR,
+                    ):
+                        raise
+        finally:
+            if directory_fd is not None:
+                os.close(directory_fd)
+
+
 def _export_payloads(
     *,
     output_dir: Path,
@@ -55,18 +117,9 @@ def _export_payloads(
     # A writer allowed to modify Output must not be able to replace source
     # entries in this mode-0700 directory. Keep its fd and source fds open
     # while publishing; a rename of the directory pathname cannot retarget it.
-    with tempfile.TemporaryDirectory(
-        prefix=".voiceger-dictionary-", dir=output_dir,
-    ) as staging_dir:
+    stage_names = tuple(f"{index}.tmp" for index in range(len(payloads)))
+    with _pinned_staging(output_dir, stage_names) as (staging_dir, stage_fd):
         with ExitStack() as opened:
-            stage_fd = None
-            if os.name == "posix":
-                stage_fd = os.open(
-                    staging_dir, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-                    | getattr(os, "O_NOFOLLOW", 0),
-                )
-                opened.callback(os.close, stage_fd)
-
             staged = []
             for index, (_stem, payload) in enumerate(payloads):
                 source = Path(staging_dir) / f"{index}.tmp"
@@ -167,18 +220,8 @@ def export_voiceger_editor_dictionaries(
     output_dir.mkdir(parents=True, exist_ok=True)
     # Keep the ZIP source inside a private directory, pinned by a directory
     # descriptor on POSIX. A concurrent Output writer cannot replace it.
-    with tempfile.TemporaryDirectory(
-        prefix=".voiceger-dictionary-", dir=output_dir,
-    ) as staging_dir:
+    with _pinned_staging(output_dir, ("backup.tmp",)) as (staging_dir, stage_fd):
         with ExitStack() as opened:
-            stage_fd = None
-            if os.name == "posix":
-                stage_fd = os.open(
-                    staging_dir, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-                    | getattr(os, "O_NOFOLLOW", 0),
-                )
-                opened.callback(os.close, stage_fd)
-
             source = Path(staging_dir) / "backup.tmp"
             flags = os.O_RDWR | os.O_CREAT | os.O_EXCL
             if stage_fd is not None:
