@@ -1,5 +1,7 @@
 import hashlib
 import json
+import os
+import stat
 from datetime import datetime
 from pathlib import Path
 import tempfile
@@ -150,6 +152,108 @@ class DictionaryExportTests(unittest.TestCase):
                     )
             self.assertEqual(list(output.iterdir()), [])
 
+    @unittest.skipUnless(os.name == "posix", "POSIX dirfd/linkat required")
+    def test_native_zip_staging_source_symlink_swap_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "output"
+            output.mkdir()
+            outside = root / "private.zip"
+            outside.write_bytes(b"private data")
+            original = outside.stat()
+            real_link = os.link
+            swapped = False
+
+            def substitute_source_before_link(source, destination, **kwargs):
+                nonlocal swapped
+                source_fd = kwargs.get("src_dir_fd")
+                self.assertIsNotNone(source_fd)
+                self.assertIs(kwargs.get("follow_symlinks"), False)
+                if not swapped:
+                    # Unlink the name while its original fd remains open;
+                    # avoid creating any unrelated staging entries.
+                    os.unlink(source, dir_fd=source_fd)
+                    os.symlink(outside, source, dir_fd=source_fd)
+                    swapped = True
+                result = real_link(source, destination, **kwargs)
+                # Inspect the link immediately, not only after rollback:
+                # an unsafe implementation could briefly expose the target.
+                linked = Path(destination).lstat()
+                self.assertTrue(stat.S_ISLNK(linked.st_mode))
+                self.assertNotEqual(
+                    (linked.st_dev, linked.st_ino),
+                    (original.st_dev, original.st_ino),
+                )
+                return result
+
+            with patch(
+                "voiceger_editor.dictionary_export.os.link",
+                side_effect=substitute_source_before_link,
+            ):
+                with self.assertRaisesRegex(OSError, "ZIP staging source changed"):
+                    export_voiceger_editor_dictionaries(
+                        FakeDictionaryCore(), output, timestamp=self.timestamp,
+                    )
+            self.assertTrue(swapped)
+            self.assertEqual(outside.read_bytes(), b"private data")
+            self.assertEqual(outside.stat().st_nlink, original.st_nlink)
+            self.assertEqual(list(output.iterdir()), [])
+
+    @unittest.skipUnless(os.name == "posix", "POSIX dirfd required")
+    def test_replaced_stage_directory_never_recursively_deletes_decoy(self):
+        exporters = (export_voiceger_editor_dictionaries, export_voicevox_dictionary)
+        for exporter in exporters:
+            with self.subTest(exporter=exporter.__name__):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    output = root / "output"
+                    output.mkdir()
+                    displaced = root / "original-stage-moved"
+                    decoy = None
+                    real_link = os.link
+
+                    def rename_stage_before_publication(source, destination, **kwargs):
+                        nonlocal decoy
+                        self.assertIsNotNone(kwargs.get("src_dir_fd"))
+                        if decoy is None:
+                            staging = next(
+                                path for path in output.iterdir()
+                                if path.name.startswith(".voiceger-dictionary-")
+                                and path.is_dir()
+                            )
+                            staging.rename(displaced)
+                            staging.mkdir()
+                            (staging / "do-not-delete.txt").write_text(
+                                "unrelated data", encoding="utf-8",
+                            )
+                            decoy = staging
+                        return real_link(source, destination, **kwargs)
+
+                    with patch(
+                        "voiceger_editor.dictionary_export.os.link",
+                        side_effect=rename_stage_before_publication,
+                    ):
+                        result = exporter(
+                            FakeDictionaryCore(), output, timestamp=self.timestamp,
+                        )
+                    self.assertIsNotNone(decoy)
+                    self.assertEqual(
+                        (decoy / "do-not-delete.txt").read_text(encoding="utf-8"),
+                        "unrelated data",
+                    )
+                    self.assertTrue(decoy.is_dir())
+                    self.assertTrue(displaced.is_dir())
+                    self.assertEqual(list(displaced.iterdir()), [])
+                    self.assertEqual(len(result.paths), 1)
+                    if exporter is export_voiceger_editor_dictionaries:
+                        with ZipFile(result.paths[0]) as archive:
+                            self.assertIn("manifest.json", archive.namelist())
+                    else:
+                        self.assertIn(
+                            "22222222-2222-4222-8222-222222222222",
+                            json.loads(result.paths[0].read_text(encoding="utf-8")),
+                        )
+
     def test_voicevox_export_is_still_japanese_json_and_collision_safe(self):
         core = FakeDictionaryCore()
         with tempfile.TemporaryDirectory() as directory:
@@ -167,6 +271,95 @@ class DictionaryExportTests(unittest.TestCase):
             japanese = json.loads(result.paths[0].read_text(encoding="utf-8"))
             self.assertEqual(list(japanese), list(core.japanese))
             self.assertIn("part_of_speech", next(iter(japanese.values())))
+
+
+    def test_voicevox_symlink_race_cannot_write_outside_output(self):
+        core = FakeDictionaryCore()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "output"
+            output.mkdir()
+            outside = root / "private.json"
+            outside.write_bytes(b"do not overwrite")
+            first = output / "202610060102_voicevox_user_dict.json"
+            real_link = os.link
+            swapped = False
+
+            def race_before_publish(source, destination, **kwargs):
+                nonlocal swapped
+                if Path(destination) == first and not swapped:
+                    first.symlink_to(outside)
+                    swapped = True
+                return real_link(source, destination, **kwargs)
+
+            with patch(
+                "voiceger_editor.dictionary_export.os.link",
+                side_effect=race_before_publish,
+            ):
+                result = export_voicevox_dictionary(
+                    core, output, timestamp=self.timestamp,
+                )
+            self.assertTrue(swapped)
+            self.assertEqual(outside.read_bytes(), b"do not overwrite")
+            self.assertTrue(first.is_symlink())
+            self.assertEqual(
+                result.paths[0].name,
+                "202610060102_voicevox_user_dict-2.json",
+            )
+            self.assertEqual(
+                sorted(path.name for path in output.iterdir()),
+                sorted((first.name, result.paths[0].name)),
+            )
+
+    @unittest.skipUnless(os.name == "posix", "POSIX dirfd/linkat required")
+    def test_voicevox_staging_source_symlink_swap_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "output"
+            output.mkdir()
+            outside = root / "private.json"
+            outside.write_bytes(b"private bytes")
+            real_link = os.link
+            swapped = False
+
+            def substitute_source_before_link(source, destination, **kwargs):
+                nonlocal swapped
+                source_fd = kwargs.get("src_dir_fd")
+                if source_fd is not None and not swapped:
+                    # Force a source-path race even though the real temporary
+                    # directory is owner-only. The opened original stays pinned.
+                    # Unlink the name while its original fd remains open;
+                    # avoid creating any unrelated staging entries.
+                    os.unlink(source, dir_fd=source_fd)
+                    os.symlink(outside, source, dir_fd=source_fd)
+                    swapped = True
+                return real_link(source, destination, **kwargs)
+
+            with patch(
+                "voiceger_editor.dictionary_export.os.link",
+                side_effect=substitute_source_before_link,
+            ):
+                with self.assertRaisesRegex(OSError, "staging source changed"):
+                    export_voicevox_dictionary(
+                        FakeDictionaryCore(), output, timestamp=self.timestamp,
+                    )
+            self.assertTrue(swapped)
+            self.assertEqual(outside.read_bytes(), b"private bytes")
+            self.assertEqual(outside.stat().st_nlink, 1)
+            self.assertEqual(list(output.iterdir()), [])
+
+    def test_voicevox_failed_publication_leaves_no_partial_json(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            with patch(
+                "voiceger_editor.dictionary_export.os.link",
+                side_effect=OSError("disk full"),
+            ):
+                with self.assertRaisesRegex(OSError, "disk full"):
+                    export_voicevox_dictionary(
+                        FakeDictionaryCore(), output, timestamp=self.timestamp,
+                    )
+            self.assertEqual(list(output.iterdir()), [])
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from ._version import __version__
@@ -23,6 +23,7 @@ from .web_settings_routes import build_web_settings_router
 
 
 ASSETS = Path(__file__).resolve().parent / "web_assets"
+_MAX_MUTATION_BODY_BYTES = 1024 * 1024
 
 _CONTENT_SECURITY_POLICY = (
     "default-src 'none'; "
@@ -63,7 +64,38 @@ def create_web_app(*, service: WebSessionOperations | None = None) -> FastAPI:
 
     @web_app.middleware("http")
     async def add_security_headers(request, call_next):
-        response = await call_next(request)
+        response = None
+        if (request.url.path.startswith("/api/web/") and
+                request.method in {"POST", "PUT", "PATCH", "DELETE"}):
+            # Pydantic field limits run only AFTER the HTTP body is buffered.
+            # Bound total bytes for both Content-Length and streamed requests.
+            declared = request.headers.get("content-length")
+            if declared is not None:
+                try:
+                    invalid_length = not 0 <= int(declared) <= _MAX_MUTATION_BODY_BYTES
+                except ValueError:
+                    invalid_length = True
+                if invalid_length:
+                    response = JSONResponse(
+                        status_code=413, content={"detail": "Request body too large"},
+                    )
+            if response is None:
+                chunks = []
+                total = 0
+                async for chunk in request.stream():
+                    total += len(chunk)
+                    if total > _MAX_MUTATION_BODY_BYTES:
+                        response = JSONResponse(
+                            status_code=413, content={"detail": "Request body too large"},
+                        )
+                        break
+                    chunks.append(chunk)
+                if response is None:
+                    # Starlette replays the cached body to the route after
+                    # this middleware; never buffer more than the limit.
+                    request._body = b"".join(chunks)
+        if response is None:
+            response = await call_next(request)
         response.headers["Content-Security-Policy"] = _CONTENT_SECURITY_POLICY
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"

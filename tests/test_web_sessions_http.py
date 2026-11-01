@@ -76,6 +76,32 @@ class WebSessionRouteTests(unittest.TestCase):
                 503,
             )
 
+    def test_mutation_body_size_is_bounded_before_json_parsing(self):
+        path = "/api/web/sessions"
+        valid = {"idempotency_key": "a" * 48}
+        # Pydantic ignores unknown JSON fields: a field limit alone cannot
+        # prevent an oversized request from reaching the JSON parser.
+        oversized = {**valid, "padding": "x" * (1024 * 1024)}
+        response = self.client.post(path, json=oversized, headers=self.write_headers)
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.json()["detail"], "Request body too large")
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertIn("default-src 'none'", response.headers["content-security-policy"])
+
+        # A streaming/chunked body must not bypass the Content-Length gate.
+        import json
+        raw = json.dumps(oversized).encode("utf-8")
+        chunks = iter((raw[:512], raw[512:]))
+        response = self.client.post(
+            path, content=chunks,
+            headers={**self.write_headers, "content-type": "application/json"},
+        )
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(
+            self.client.post(path, json=valid, headers=self.write_headers).status_code,
+            201,
+        )
+
     def test_mutation_header_and_origin_protection(self):
         self.assertEqual(
             self.client.post("/api/web/sessions", headers=self.read_headers).status_code,
