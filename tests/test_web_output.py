@@ -1,5 +1,6 @@
 """Web Slice 10b Output setting regression tests."""
 
+from dataclasses import replace
 from pathlib import Path
 import os
 import shutil
@@ -347,6 +348,53 @@ class OutputTests(unittest.TestCase):
             other_base + "/batch", headers=self.read,
         ).json()["revision"]
         self.assertEqual(after_other, previous_other + 1)
+
+    def test_utterance_output_preflight_does_not_reload_missing_style(self):
+        from voiceger_editor.session import UtteranceSession
+
+        adapter = SimpleNamespace(voiceger_root=Path(self.tmp.name))
+        with patch("voiceger_editor.session.get_style", return_value=STYLES[0]):
+            session = UtteranceSession(
+                adapter=adapter, caption="こんにちは", query=None,
+                settings=self.initial,
+            )
+        replacement = replace(self.initial, save_text=True)
+        with patch("voiceger_editor.session.get_style",
+                   side_effect=ValueError("reference audio disappeared")):
+            commit = session.stage_output_settings(replacement)
+            self.assertEqual(session.settings, self.initial)
+            commit()
+        self.assertEqual(session.settings, replacement)
+        with self.assertRaises(ValueError):
+            session.stage_output_settings(replace(replacement, speed=1.2))
+
+    def test_web_output_values_reach_audio_saver_and_preserve_collisions(self):
+        from voiceger_editor.output import save_output_audio
+
+        item = self.add()
+        destination = Path(self.tmp.name) / "accepted"
+        response = self.patch_output(
+            output_dir=str(destination), filename_template="{style}_{caption}",
+            output_format="wav", wav_encoding="source", save_text=True,
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        source = Path(self.tmp.name) / "candidate.wav"
+        source.write_bytes(b"kept original generated candidate")
+        settings = item.session.settings
+        options = dict(
+            wav_source=source, source_text="こんにちは", style_name="Neutral",
+            output_dir=settings.output_dir, output_format=settings.output_format,
+            output_encoding=settings.wav_encoding,
+            filename_template=settings.filename_template,
+            save_text=settings.save_text,
+        )
+        first = save_output_audio(**options)
+        second = save_output_audio(**options)
+        self.assertEqual(first.audio_path.name, "Neutral_こんにちは.wav")
+        self.assertEqual(second.audio_path.name, "Neutral_こんにちは-2.wav")
+        self.assertEqual(first.audio_path.read_bytes(), source.read_bytes())
+        self.assertEqual(first.text_path.read_text(encoding="utf-8"), "こんにちは")
+        self.assertEqual(second.text_path.read_text(encoding="utf-8"), "こんにちは")
 
     def test_real_browser_beforeunload_output_draft_guard(self):
         node = shutil.which("node")
