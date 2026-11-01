@@ -396,6 +396,63 @@ class OutputTests(unittest.TestCase):
         self.assertEqual(first.text_path.read_text(encoding="utf-8"), "こんにちは")
         self.assertEqual(second.text_path.read_text(encoding="utf-8"), "こんにちは")
 
+    def test_web_format_values_reach_flac_and_mp3_encoders(self):
+        import sys
+        from types import ModuleType
+        from voiceger_editor.output import save_output_audio
+
+        item = self.add()
+        source = Path(self.tmp.name) / "source.wav"
+        source.write_bytes(b"generated take is retained")
+        target = Path(self.tmp.name) / "formatted"
+        flac = self.patch_output(
+            output_dir=str(target), output_format="flac",
+            flac_encoding="pcm24", save_text=True,
+        )
+        self.assertEqual(flac.status_code, 200, flac.text)
+        fake_soundfile = ModuleType("soundfile")
+        fake_soundfile.read = lambda path: ([0.0, 0.5], 32000)
+        recorded = []
+
+        def fake_write(path, audio, sample_rate, *, format, subtype):
+            recorded.append((format, subtype, sample_rate))
+            Path(path).write_bytes(b"flac encoded")
+
+        fake_soundfile.write = fake_write
+        current = item.session.settings
+        with patch.dict(sys.modules, {"soundfile": fake_soundfile}):
+            first = save_output_audio(
+                wav_source=source, source_text="FLAC", style_name="Neutral",
+                output_dir=current.output_dir, output_format=current.output_format,
+                output_encoding=current.flac_encoding, save_text=current.save_text,
+                filename_template=current.filename_template,
+            )
+        self.assertEqual(first.audio_path.suffix, ".flac")
+        self.assertEqual(recorded, [("FLAC", "PCM_24", 32000)])
+        self.assertEqual(first.text_path.read_text(encoding="utf-8"), "FLAC")
+
+        mp3 = self.patch_output(output_format="mp3", mp3_bitrate="320k")
+        self.assertEqual(mp3.status_code, 200, mp3.text)
+        current = item.session.settings
+        self.assertEqual(current.mp3_bitrate, "320k")
+        conversions = []
+
+        def fake_mp3(**kwargs):
+            conversions.append(kwargs["bitrate"])
+            Path(kwargs["destination"]).write_bytes(b"mp3 encoded")
+
+        with patch("voiceger_editor.output._write_mp3", side_effect=fake_mp3):
+            second = save_output_audio(
+                wav_source=source, source_text="MP3", style_name="Neutral",
+                output_dir=current.output_dir, output_format=current.output_format,
+                output_encoding=current.mp3_bitrate, save_text=current.save_text,
+                filename_template=current.filename_template,
+            )
+        self.assertEqual(second.audio_path.suffix, ".mp3")
+        self.assertEqual(conversions, ["320k"])
+        self.assertEqual(second.text_path.read_text(encoding="utf-8"), "MP3")
+        self.assertEqual(source.read_bytes(), b"generated take is retained")
+
     def test_real_browser_beforeunload_output_draft_guard(self):
         node = shutil.which("node")
         if not node:
