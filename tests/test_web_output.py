@@ -232,8 +232,18 @@ class OutputTests(unittest.TestCase):
         link = directory / "link"
         link.symlink_to(directory, target_is_directory=True)
         self.assertEqual(self.patch_output(output_dir=str(link)).status_code, 422)
+        # macOS uses symlinked parent aliases such as /var. A parent
+        # symlink to a directory remains usable; an invalid parent does not.
         self.assertEqual(self.patch_output(
-            output_dir=str(link / "nested")).status_code, 422)
+            output_dir=str(link / "nested")).status_code, 200)
+        broken = directory / "broken-parent"
+        broken.symlink_to(directory / "does-not-exist", target_is_directory=True)
+        self.assertEqual(self.patch_output(
+            output_dir=str(broken / "nested")).status_code, 422)
+        link_to_file = directory / "link-file"
+        link_to_file.symlink_to(regular_file)
+        self.assertEqual(self.patch_output(
+            output_dir=str(link_to_file / "nested")).status_code, 422)
         good = directory / "not-created" / "nested"
         self.assertEqual(self.patch_output(
             output_dir=str(good)).status_code, 200)
