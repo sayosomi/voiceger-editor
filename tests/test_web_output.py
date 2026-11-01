@@ -154,6 +154,14 @@ class OutputTests(unittest.TestCase):
         self.assertEqual(result.status_code, 200, result.text)
         self.assertNotEqual(old_root, self.service._recipe_root())
         old_review.dispose.assert_called_once()
+        stale = self.client.post(
+            self.base + "/batch/recipes/save/commit?expected_revision=" +
+            str(self.batch()["revision"]),
+            json={"token": "stale-before-retarget",
+                  "confirmed_overwrite": True},
+            headers=self.write,
+        )
+        self.assertEqual(stale.status_code, 409, stale.text)
         self.assertIsNone(state.pending_recipe)
         self.assertIsNone(state.pending_dictionary_export)
         self.assertIsNone(state.pending_dictionary_import)
