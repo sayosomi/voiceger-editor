@@ -57,6 +57,8 @@ class OutputTests(unittest.TestCase):
         self.formats.start()
         self.writer = patch("voiceger_editor.web_output.save_settings")
         self.save = self.writer.start()
+        self.reset_writer = patch("voiceger_editor.web_settings.save_settings")
+        self.reset_save = self.reset_writer.start()
         self.service = WebSessionOperations(
             caption_factory=lambda caption: FakeSpeech(caption, self.initial)
         )
@@ -73,6 +75,7 @@ class OutputTests(unittest.TestCase):
         self.service.shutdown()
         self.client.close()
         self.writer.stop()
+        self.reset_writer.stop()
         self.formats.stop()
         self.auth.stop()
         self.tmp.cleanup()
