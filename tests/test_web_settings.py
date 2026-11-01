@@ -48,6 +48,12 @@ class FakeSpeech:
     def replace_caption(self, caption):
         self.caption = caption
 
+    def stage_generation_settings(self, settings):
+        """Test double for a prevalidated, no-fail commit."""
+        def commit():
+            self.replace_settings(settings, preserve_takes=True)
+        return commit
+
     def replace_settings(self, settings, *, preserve_takes=False):
         old = self.settings
         changed = any(
