@@ -2816,15 +2816,37 @@
   });
   $("refresh-batch").addEventListener("click", async function () {
     if (busy) return;
+    var epoch = connectionEpoch, recovered = false;
     setBusy(true);
     try {
-      await refresh();
-      feedback("Batchを更新しました。");
-      resumeSessionOperations();
+      recovered = await refresh();
+      if (recovered) feedback("Batchを更新しました。");
     } catch (error) {
+      if (epoch !== connectionEpoch) return;
       var handled = await handleSessionFailure(error);
       if (!handled) feedback(error.message, retryable(error));
-    } finally { setBusy(false); }
+    } finally {
+      if (epoch === connectionEpoch) setBusy(false);
+    }
+    if (recovered && epoch === connectionEpoch) resumeSessionOperations();
+  });
+  $("retry-connection").addEventListener("click", async function () {
+    if (busy || !sessionId || !token) return;
+    var epoch = connectionEpoch, identity = sessionId, recovered = false;
+    setBusy(true);
+    try {
+      await request("GET", "/api/web/sessions/" + encodeURIComponent(identity));
+      if (epoch !== connectionEpoch || identity !== sessionId) return;
+      recovered = await refresh();
+      if (recovered) feedback("再接続しました。");
+    } catch (error) {
+      if (epoch !== connectionEpoch || identity !== sessionId) return;
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
+    } finally {
+      if (epoch === connectionEpoch) setBusy(false);
+    }
+    if (recovered && epoch === connectionEpoch) resumeSessionOperations();
   });
   $("disconnect-session").addEventListener("click", function () {
     if (busy || !guardDraft()) return;
