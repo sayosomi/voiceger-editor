@@ -1677,7 +1677,8 @@
       await refresh();
       if (op.status === "succeeded") {
         feedback(op.kind === "accept" ?
-          "保存しました: " + op.result.audio_name :
+          "保存しました: " + op.result.audio_name +
+          (op.result.lab_warning ? "（LABは生成できませんでした。依存ツールと発音を確認してください）" : "") :
           (op.kind === "preview" || op.kind === "pronunciation-preview") ?
           "Previewを生成しました。" : "音声操作が完了しました。");
       } else {
