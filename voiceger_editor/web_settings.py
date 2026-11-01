@@ -56,13 +56,6 @@ class WebSettingsMixin:
             session = self._session(identifier)
             return self._settings_view(session)
 
-    @staticmethod
-    def _changed_synthesis(before: Settings, after: Settings) -> bool:
-        return any(
-            getattr(before, field) != getattr(after, field)
-            for field in _SHARED_FIELDS
-        )
-
     def _require_available_style(self, style_id: int) -> None:
         if style_id not in {style.id for style in self._styles()}:
             raise WebSettingsValidation("Selected Style is not available on the Mac")
