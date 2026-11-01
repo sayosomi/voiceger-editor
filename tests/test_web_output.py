@@ -181,6 +181,15 @@ class OutputTests(unittest.TestCase):
         self.assertEqual(output["output_format"], "wav")
         self.assertFalse(output["save_text"])
 
+    def test_android_launcher_targets_actual_issue_branch(self):
+        launcher = (ASSETS.parents[1] / "scripts" /
+                    "run_web_e2e_329.py").read_text(encoding="utf-8")
+        self.assertIn(
+            'BRANCH = "sayosomi/issue-329-web-output"', launcher,
+        )
+        self.assertIn('SCRATCH = REPOSITORY / "scratch" / "issue329-e2e"',
+                      launcher)
+
     def test_static_mobile_screen_contract(self):
         html = (ASSETS / "index.html").read_text(encoding="utf-8")
         js = (ASSETS / "app.js").read_text(encoding="utf-8")
