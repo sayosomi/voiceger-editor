@@ -57,6 +57,7 @@ const harness=new Function("$","request","setTimeout","feedback",
   "batchPolling=false,audioPolling=false,detachedPolling=false," +
   "audioOperation=null,latestSessionOperation=null,audioUnconfirmed=null," +
   "commonSettingsData=null,commonSettingsLoadSequence=0," +
+  "commonSettingsEditSequence=0," +
   "pronunciationStale=false,sectionStale=false," +
   "takeMenuOpen=false,generationUnconfirmed=false;" +
   "const autoPrepareFailures=new Set();" +
