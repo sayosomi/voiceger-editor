@@ -125,6 +125,18 @@ class FakeTakeBatch:
             raise RuntimeError("take batch is closed")
         return self.initial_iterator
 
+    def stage_generation(self, synthesize_one, *, style_name, query):
+        if self.closed:
+            raise RuntimeError("take batch closed")
+        prepared = query.model_copy(deep=True)
+
+        def commit():
+            self.kwargs["synthesize_one"] = synthesize_one
+            self.kwargs["style_name"] = style_name
+            self.kwargs["query"] = prepared
+
+        return commit
+
     def set_generation(self, synthesize_one, *, style_name, query):
         self.kwargs["synthesize_one"] = synthesize_one
         self.kwargs["style_name"] = style_name
