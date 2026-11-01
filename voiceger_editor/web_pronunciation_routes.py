@@ -59,6 +59,14 @@ def build_web_pronunciation_router(service: WebSessionOperations) -> APIRouter:
             session_id, item_id, expected_revision, payload.notation, segment_index,
         ))
 
+    @router.post(path + "/convert", dependencies=[Depends(require_web_mutation)])
+    def convert_to_arpabet(session_id: str, item_id: str, payload: PronunciationPayload,
+                           expected_revision: int = Query(..., ge=0),
+                           segment_index: Optional[int] = Query(None, ge=0)):
+        return _call(lambda: service.convert_japanese_to_arpabet(
+            session_id, item_id, expected_revision, payload.notation, segment_index,
+        ))
+
     english = path + "/english/{segment_index}/{group_index}"
 
     @router.post(english + "/preview", status_code=202,

@@ -131,7 +131,12 @@ _MENU_DEFINITIONS: dict[str, tuple[MenuItem, ...]] = {
         ),
         MenuItem("clear", "Clear", "c", "action", "activate"),
         MenuItem("reset", "Reset", "r", "action", "activate"),
+        MenuItem("convert_arpabet", "Convert to ARPAbet", "v", "action", "activate"),
         _escape_action("back", "Back"),
+    ),
+    "convert_confirmation": (
+        MenuItem("convert", "Convert; clear old Takes", "v", "action", "activate"),
+        _escape_action("cancel", "Cancel"),
     ),
     "english_word": (
         MenuItem(

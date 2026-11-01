@@ -15,6 +15,7 @@ from voiceger_editor.voicevox_api_models import (
     Mora,
     PronunciationPunctuation,
     VoicegerSegment,
+    EnglishPhonemeGroupBoundary,
 )
 
 
@@ -60,6 +61,69 @@ class SynthesisTests(unittest.TestCase):
             name="Test",
             filename="reference.wav",
             prompt_text="style prompt",
+        )
+
+    def test_multiple_ja_origin_en_sections_combine_overrides_atomically(self):
+        self.adapter.synthesize_mixed_audio.return_value = {
+            "audio": object(), "sampling_rate": 32000,
+        }
+        query = AudioQuery(
+            accent_phrases=[],
+            voicegerSegments=[
+                VoicegerSegment(
+                    language="en", text="今日は",
+                    phonemes=["K", "IY1"],
+                    englishGroups=[
+                        EnglishPhonemeGroupBoundary(label="キョウ", count=2),
+                    ],
+                ),
+                VoicegerSegment(
+                    language="en", text="hello",
+                    phonemes=["HH", "AH0", "L", "OW1"],
+                ),
+                VoicegerSegment(
+                    language="en", text="なのだ。",
+                    phonemes=["N", "AA1", "."],
+                    englishGroups=[
+                        EnglishPhonemeGroupBoundary(label="ナノダ", count=2),
+                        EnglishPhonemeGroupBoundary(label=".", count=1),
+                    ],
+                ),
+            ],
+        )
+        synthesize_audio_query(adapter=self.adapter, query=query, style=self.style)
+        kwargs = self.adapter.synthesize_mixed_audio.call_args.kwargs
+        self.assertEqual(kwargs["text_language"], "English")
+        self.assertEqual(kwargs["text"], "今日はhelloなのだ。")
+        self.assertEqual(kwargs["language_segments"], (("en", "今日はhelloなのだ。"),))
+        self.assertEqual(kwargs["english_overrides"], [(
+            "今日はhelloなのだ。",
+            ["K", "IY1", "HH", "AH0", "L", "OW1", "N", "AA1", "."],
+        )])
+
+    def test_single_ja_origin_en_section_uses_existing_pinned_runtime_path(self):
+        self.adapter.synthesize_mixed_audio.return_value = {
+            "audio": object(), "sampling_rate": 32000,
+        }
+        query = AudioQuery(
+            accent_phrases=[],
+            voicegerSegments=[
+                VoicegerSegment(
+                    language="en", text="ずんだもんはかしこいのだ！",
+                    phonemes=["Z", "UW1", "N", "!"],
+                    englishGroups=[
+                        EnglishPhonemeGroupBoundary(label="ズンダモン", count=3),
+                        EnglishPhonemeGroupBoundary(label="!", count=1),
+                    ],
+                ),
+            ],
+        )
+        synthesize_audio_query(adapter=self.adapter, query=query, style=self.style)
+        kwargs = self.adapter.synthesize_mixed_audio.call_args.kwargs
+        self.assertNotIn("language_segments", kwargs)
+        self.assertEqual(
+            kwargs["english_overrides"],
+            [("ずんだもんはかしこいのだ！", ["Z", "UW1", "N", "!"])],
         )
 
     def test_unchanged_default_query_controls_are_accepted(self):

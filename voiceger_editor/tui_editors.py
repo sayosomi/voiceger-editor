@@ -291,6 +291,7 @@ class TuiEditorController:
             "build_confirmation",
             "delete_confirmation",
             "clear_candidates_confirmation",
+            "convert_confirmation",
         }:
             interaction = handle_confirmation_key(
                 editor.kind,
@@ -372,6 +373,9 @@ class TuiEditorController:
         if editor.kind in {"settings", "audio_output_settings"}:
             return self._settings.activate_selection(settings, current_caption)
         selected = editor.selection
+        if editor.kind == "convert_confirmation":
+            return self._pronunciation.confirm_arpabet_conversion()
+
         if editor.kind == "build_confirmation":
             if selected == "rebuild":
                 return (BuildPronunciationIntent(),)
@@ -537,6 +541,11 @@ class TuiEditorController:
                 intent.grouping_index
             ] = intent.accepted_grouping
 
+        if intent.converted_english_index is not None and editor is not None:
+            opened = self._pronunciation.open_converted_english(
+                intent.query, intent.converted_english_index, editor.origin,
+            )
+            return (UpdateStatusIntent(intent.success_status), *opened)
         if not intent.close_editor:
             return (UpdateStatusIntent(intent.success_status),)
         if editor is None:

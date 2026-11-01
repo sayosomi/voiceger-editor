@@ -37,6 +37,7 @@ class ReplaceQueryIntent:
     accepted_grouping: EnglishGroupingCache | None = None
     deleted_segment_index: int | None = None
     pure_japanese_utterance_text: str | None = None
+    converted_english_index: int | None = None
     close_editor: bool = True
 
     def __post_init__(self) -> None:

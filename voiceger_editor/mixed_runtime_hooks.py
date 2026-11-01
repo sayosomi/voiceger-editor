@@ -46,6 +46,8 @@ def scoped_mixed_runtime_hooks(
                 resolved = expected
             elif value == source + "。":
                 resolved = (*expected[:-1], (expected[-1][0], expected[-1][1] + "。"))
+            elif len(expected) == 1 and expected[0][0] == "en" and value == source + ".":
+                resolved = (("en", source + "."),)
             else:
                 raise ValueError(
                     "Voiceger altered the mixed Caption before pronunciation "

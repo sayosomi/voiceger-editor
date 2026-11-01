@@ -619,6 +619,7 @@
         invalid_pronunciation: "発音形式が正しくありません。各アクセント句に ' または正しい [ ] を指定し、句の区切りには空白を使ってください。",
         unsupported_pronunciation: "選択した発音は編集できません。最新のBatchを取得してください。",
         invalid_english_pronunciation: "ARPAbetの音素・強勢数字（0/1/2）を確認してください。",
+        invalid_conversion: "この日本語発音はARPAbetへ変換できません。対応していないカナ・連続記号・[ ] の高低記号を確認してください。",
         grouping_unavailable: "英語の単語区切りを確認できません。Mac側で発音を再準備してください。",
         stale_pronunciation: "編集対象の発音が更新されています。編集画面を開き直してください。",
         invalid_section: "選択したセクションは操作できません。現在の内容を確認してください。",
@@ -2253,6 +2254,7 @@
     $("pronunciation-title").textContent = target.language === "en" ? "英語発音編集" : "発音編集";
     $("pronunciation-field-label").textContent = target.language === "en" ? "ARPAbet" : "発音";
     $("pronunciation-assists").hidden = target.language === "en";
+    $("convert-arpabet").hidden = target.language !== "ja";
     $("pronunciation-text").value = opening;
     $("pronunciation-caption").textContent = context;
     setFixed("apply-pronunciation", false);
@@ -2324,6 +2326,59 @@
       if (error.conflictCode === "revision_conflict") {
         pronunciationStale = true;
         try { await refresh(); } catch (_ignored) { /* Keep conflict feedback. */ }
+        feedback("別の画面で変更されています。編集をキャンセルし、最新の発音を開き直してください。");
+        setFixed("apply-pronunciation", true);
+      } else {
+        var handled = await handleSessionFailure(error);
+        if (!handled) feedback(error.message, retryable(error));
+      }
+    } finally { setBusy(false); }
+  }
+  async function convertPronunciationToArpabet() {
+    if (busy || pronunciationStale || currentView !== "pronunciation" ||
+        !batch || !selectedId || selectedId !== pronunciationItemId ||
+        !pronunciationTarget || pronunciationTarget.language !== "ja") return;
+    var item = batch.items.find(function (row) { return row.id === selectedId; });
+    if (!item) return;
+    if (item.candidate_count > 0 && !window.confirm(
+      "日本語の発音を英語ARPAbetへ置き換えます。Take候補と採用状態はクリアされます。保存済み音声は残ります。変換しますか？"
+    )) return;
+    var previousTarget = pronunciationTarget;
+    setBusy(true);
+    try {
+      var suffix = "/pronunciation/convert";
+      if (previousTarget.segmentIndex !== null &&
+          previousTarget.segmentIndex !== undefined) {
+        suffix += "?segment_index=" + encodeURIComponent(previousTarget.segmentIndex);
+      }
+      suffix += (suffix.includes("?") ? "&" : "?") +
+        "expected_revision=" + encodeURIComponent(batch.revision);
+      var response = await request("POST", itemAudioPath(selectedId) + suffix,
+        { notation: $("pronunciation-text").value });
+      clearPlayer();
+      batch = response.batch;
+      renderList();
+      var nextItem = batch.items.find(function (row) { return row.id === selectedId; });
+      pronunciationTarget = {
+        language: "en", segmentIndex: response.converted_index, groupIndex: 0
+      };
+      var priorReturnView = pronunciationReturnView;
+      if (!nextItem || !enterPronunciation(nextItem, true)) {
+        pronunciationHistoryActive = false;
+        showView("item", true);
+        feedback("変換しました。発音一覧からARPAbetを開き直してください。");
+      } else {
+        pronunciationReturnView = priorReturnView;
+        if (pronunciationHistoryActive) {
+          try { window.history.replaceState(pronunciationHistoryState(), ""); }
+          catch (_ignored) { /* Runtime editor remains usable. */ }
+        }
+        feedback("ARPAbetへ変換しました。音素と強勢を調整できます。");
+      }
+    } catch (error) {
+      if (error.conflictCode === "revision_conflict") {
+        pronunciationStale = true;
+        try { await refresh(); } catch (_ignored) {}
         feedback("別の画面で変更されています。編集をキャンセルし、最新の発音を開き直してください。");
         setFixed("apply-pronunciation", true);
       } else {
@@ -2559,6 +2614,9 @@
     startAudio(selectedId, endpoint.suffix, endpoint.payload);
   });
   $("pronunciation-form").addEventListener("submit", applyPronunciation);
+  $("convert-arpabet").addEventListener("click", function () {
+    void convertPronunciationToArpabet();
+  });
 
   $("prepare-retry").addEventListener("click", function () {
     if (!selectedId) return;

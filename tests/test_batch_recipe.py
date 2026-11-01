@@ -13,6 +13,8 @@ from voiceger_editor.batch_recipe import (
     write_batch_recipe,
 )
 from voiceger_editor.caption_batch import CaptionBatch, CaptionBatchItem
+from voiceger_editor.query_ja_arpabet import convert_japanese_section_to_arpabet
+from voiceger_editor.english_group_boundaries import bound_english_groups
 from voiceger_editor.session import UtteranceSession
 from voiceger_editor.settings import Settings
 from voiceger_editor.styles import PRESET_PROMPT_TEXT
@@ -352,6 +354,60 @@ class BatchRecipeTests(unittest.TestCase):
             json.loads(serialize_batch_recipe(loaded)),
             json.loads(serialize_batch_recipe(batch)),
         )
+
+    def test_converted_japanese_arpabet_phrase_groups_survive_recipe_roundtrip(self):
+        original = _japanese_query()
+        converted = convert_japanese_section_to_arpabet(
+            original,
+            "ズ'ンダ/ノダ'！",
+            pure_japanese_utterance_text="ずんだもんはかしこいのだ！",
+        )
+        batch = CaptionBatch(
+            default_take_count=2,
+            items=(CaptionBatchItem(
+                self._session(
+                    caption="字幕はそのまま",
+                    query=converted,
+                ), item_id="ja-to-en",
+            ),),
+        )
+        data = json.loads(serialize_batch_recipe(batch))
+        self.assertEqual(
+            [group["label"] for group in data["items"][0]["sections"][0]["english_groups"]],
+            ["ズンダ", "ノダ", "!"],
+        )
+        target = self.root / "converted.voiceger.json"
+        write_batch_recipe(target, batch)
+        loaded = read_batch_recipe(
+            target, adapter=self.adapter, runtime_settings=self.runtime_settings,
+        )
+        restored = loaded.items[0].session.query.voicegerSegments[0]
+        original_segment = converted.voicegerSegments[0]
+        self.assertEqual(restored.phonemes, original_segment.phonemes)
+        self.assertEqual(bound_english_groups(restored), bound_english_groups(original_segment))
+        self.assertEqual(loaded.items[0].session.caption, "字幕はそのまま")
+        self.assertEqual(restored.text, "ずんだもんはかしこいのだ！")
+
+    def test_reject_invalid_converted_recipe_group_offsets(self):
+        converted = convert_japanese_section_to_arpabet(
+            _japanese_query(),
+            "ズ'ンダ/ノダ'！",
+            pure_japanese_utterance_text="ずんだもんはかしこいのだ！",
+        )
+        batch = CaptionBatch(
+            default_take_count=2,
+            items=(CaptionBatchItem(
+                self._session(caption="字幕", query=converted), item_id="ja-en",
+            ),),
+        )
+        data = json.loads(serialize_batch_recipe(batch))
+        data["items"][0]["sections"][0]["english_groups"][0]["count"] += 1
+        path = self.root / "invalid-groups.voiceger.json"
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        with self.assertRaisesRegex(BatchRecipeError, "counts must cover all phonemes"):
+            read_batch_recipe(
+                path, adapter=self.adapter, runtime_settings=self.runtime_settings,
+            )
 
     def test_write_uses_readable_japanese_and_excludes_runtime_preferences(self):
         batch = self._roundtrip_batch()

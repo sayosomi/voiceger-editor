@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Callable, Sequence
 
+from .english_group_boundaries import bound_english_groups
 from .english_stress import (
     editor_state_to_english_phonemes,
     english_phonemes_to_editor_state,
@@ -93,7 +94,9 @@ class TuiEnglishEditorOwner(EditorOwnerBase):
             return cached
         self.grouping_cache.pop(segment_index, None)
 
-        raw_groups = self._english_word_groups(segment.text)
+        raw_groups = bound_english_groups(segment)
+        if raw_groups is None:
+            raw_groups = self._english_word_groups(segment.text)
         groups = tuple(
             EnglishWordGroup(
                 label=label,

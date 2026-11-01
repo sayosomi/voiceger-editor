@@ -10,13 +10,16 @@ import tempfile
 from typing import Any, Mapping, Sequence, TYPE_CHECKING
 
 from .caption_batch import CaptionBatch, CaptionBatchItem
+from .english_group_boundaries import bound_english_groups
 from .english_stress import normalize_english_phonemes
 from .mixed_language import resolve_japanese_segment_terminator
 from .pronunciation import format_pronunciation, parse_pronunciation
 from .session import UtteranceSession
 from .settings import Settings, SettingsError
 from .styles import VoicegerStyle, get_style
-from .voicevox_api_models import AudioQuery, VoicegerSegment
+from .voicevox_api_models import (
+    AudioQuery, EnglishPhonemeGroupBoundary, VoicegerSegment,
+)
 from .voicevox_query import (
     accent_phrases_to_pronunciation,
     build_audio_query,
@@ -60,6 +63,7 @@ class _SectionRecipe:
     text: str
     pronunciation: str | None = None
     phonemes: tuple[str, ...] | None = None
+    english_groups: tuple[tuple[str, int], ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -235,7 +239,10 @@ def _parse_section(value: Any, path: str) -> _SectionRecipe:
         _require_exact_keys(
             obj,
             path=path,
-            required=("language", "text", "phonemes"),
+            required=(
+                "language", "text", "phonemes",
+                *(("english_groups",) if "english_groups" in obj else ()),
+            ),
         )
         text = _require_string(obj["text"], f"{path}.text", single_line=True)
         raw_phonemes = obj["phonemes"]
@@ -245,10 +252,29 @@ def _parse_section(value: Any, path: str) -> _SectionRecipe:
             phonemes = tuple(normalize_english_phonemes(raw_phonemes))
         except (TypeError, ValueError) as exc:
             raise _fail(f"{path}.phonemes", str(exc)) from exc
+        english_groups = None
+        if "english_groups" in obj:
+            raw_groups = obj["english_groups"]
+            if not isinstance(raw_groups, list) or not raw_groups:
+                raise _fail(f"{path}.english_groups", "must be a nonempty JSON array")
+            checked = []
+            for group_index, raw_group in enumerate(raw_groups):
+                group_path = f"{path}.english_groups[{group_index}]"
+                entry = _require_object(raw_group, group_path)
+                _require_exact_keys(entry, path=group_path, required=("label", "count"))
+                label = _require_string(entry["label"], f"{group_path}.label", single_line=True)
+                count = entry["count"]
+                if not label.strip() or type(count) is not int or count <= 0:
+                    raise _fail(group_path, "label must be nonempty and count positive")
+                checked.append((label, count))
+            if sum(count for _label, count in checked) != len(phonemes):
+                raise _fail(f"{path}.english_groups", "counts must cover all phonemes")
+            english_groups = tuple(checked)
         return _SectionRecipe(
             language="en",
             text=text,
             phonemes=phonemes,
+            english_groups=english_groups,
         )
 
     _require_exact_keys(
@@ -460,13 +486,18 @@ def _sections_from_session(session: UtteranceSession) -> list[dict[str, Any]]:
                 raise BatchRecipeError(
                     f"section {section_index}: invalid English phonemes: {exc}"
                 ) from exc
-            sections.append(
-                {
-                    "language": "en",
-                    "text": segment.text,
-                    "phonemes": phonemes,
-                }
-            )
+            payload = {
+                "language": "en",
+                "text": segment.text,
+                "phonemes": phonemes,
+            }
+            durable = bound_english_groups(segment)
+            if durable is not None:
+                payload["english_groups"] = [
+                    {"label": label, "count": len(tokens)}
+                    for label, tokens in durable
+                ]
+            sections.append(payload)
             continue
 
         if segment.phonemes is not None:
@@ -701,6 +732,13 @@ def _build_query(
                     language="en",
                     text=section.text,
                     phonemes=list(section.phonemes),
+                    englishGroups=(
+                        [
+                            EnglishPhonemeGroupBoundary(label=label, count=count)
+                            for label, count in section.english_groups
+                        ]
+                        if section.english_groups is not None else None
+                    ),
                 )
             )
         else:

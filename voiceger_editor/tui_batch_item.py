@@ -750,6 +750,7 @@ class TuiBatchItemController:
                 pronunciation_index,
                 origin=("pronunciation", pronunciation_index),
                 busy=False,
+                has_takes=bool(getattr(session, "candidates", ())),
             )
         )
 

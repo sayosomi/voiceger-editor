@@ -258,7 +258,7 @@ class GeneralEditorRenderingDocumentTests(RenderingTestCase):
         self.assertIn("'", visible)
         self.assertNotIn("[Enter: Edit]", visible)
         self.assertEqual(
-            [line for line, _key in document[-8:]],
+            [line for line, _key in document[-9:]],
             [
                 "  [P] Preview",
                 "  [A] Apply",
@@ -267,6 +267,7 @@ class GeneralEditorRenderingDocumentTests(RenderingTestCase):
                 "  [E] Edit text",
                 "  [C] Clear",
                 "  [R] Reset",
+                "  [V] Convert to ARPAbet",
                 "  [Esc] Back",
             ],
         )

@@ -17,6 +17,7 @@ from .pronunciation import (
     canonicalize_punctuation,
     parse_pronunciation,
 )
+from .query_ja_arpabet import convert_japanese_section_to_arpabet
 from .query_editing import (
     english_word_preview_query,
     japanese_pronunciation,
@@ -285,6 +286,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
         *,
         origin: tuple[str, int | None],
         busy: bool,
+        has_takes: bool = False,
     ) -> tuple[EditorIntent, ...]:
         if busy or not 0 <= index < len(rows):
             return ()
@@ -319,6 +321,7 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                         if segment_index is not None else row.source_text
                     ),
                     "can_delete": can_delete,
+                    "has_takes": has_takes,
                     "canonical_pronunciation": canonical,
                     "opening_draft": canonical.replace("/", " "),
                     "segment_index": segment_index,
@@ -370,6 +373,95 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                 error_status(f"Pronunciation editing is not available for {row.language!r}.")
             ),
         )
+
+    def convert_to_arpabet(
+        self, query: AudioQuery | None,
+    ) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        if editor is None or editor.kind != "japanese":
+            return ()
+        try:
+            if query is None:
+                raise ValueError("There is no active utterance")
+            if "/" in editor.input_value:
+                raise ValueError("Use spaces between Japanese accent phrases")
+            segment_index = editor.payload["segment_index"]
+            converted_index = 0 if segment_index is None else segment_index
+            updated = convert_japanese_section_to_arpabet(
+                query,
+                editor.input_value.replace("　", "/").replace(" ", "/"),
+                segment_index=segment_index,
+                pure_japanese_utterance_text=(
+                    editor.payload["section_text"] if segment_index is None else None
+                ),
+            )
+        except Exception as exc:
+            editor.error = error_status(f"Cannot convert to ARPAbet: {exc}")
+            return ()
+        if editor.payload.get("has_takes"):
+            self.editor = EditorState(
+                kind="convert_confirmation",
+                title="CONVERT TO ARPABET",
+                origin=editor.origin,
+                selection="cancel",
+                payload={
+                    "warning": (
+                        "Replace this Japanese pronunciation with English "
+                        "ARPAbet? Old Takes and their acceptance state will "
+                        "be cleared. Saved audio files stay intact."
+                    ),
+                    "original_editor": editor,
+                    "replacement_query": updated,
+                    "converted_index": converted_index,
+                },
+            )
+            return (UpdateStatusIntent(""),)
+        return (ReplaceQueryIntent(
+            query=updated,
+            editor_kind="japanese",
+            converted_english_index=converted_index,
+            success_status="Converted to ARPAbet; old Takes cleared.",
+        ),)
+
+    def confirm_arpabet_conversion(self) -> tuple[EditorIntent, ...]:
+        editor = self.editor
+        if editor is None or editor.kind != "convert_confirmation":
+            return ()
+        if editor.selection == "cancel":
+            self.editor = editor.payload["original_editor"]
+            return (UpdateStatusIntent("Conversion cancelled."),)
+        if editor.selection != "convert":
+            return ()
+        return (ReplaceQueryIntent(
+            query=editor.payload["replacement_query"],
+            editor_kind="japanese",
+            converted_english_index=editor.payload["converted_index"],
+            success_status="Converted to ARPAbet; old Takes cleared.",
+        ),)
+
+    def open_converted_english(
+        self, query: AudioQuery, segment_index: int, origin: tuple[str, int | None],
+    ) -> tuple[EditorIntent, ...]:
+        try:
+            grouping = self._host.english_grouping(query, segment_index)
+            if not grouping.groups:
+                raise ValueError("converted English grouping is empty")
+            row = PronunciationRow(
+                language="en",
+                source_text=grouping.source_text,
+                source_segment_index=segment_index,
+                model_segment_index=segment_index,
+                first_in_segment=True,
+                group_index=0,
+                grouping=grouping,
+            )
+            return self.open_pronunciation_item(
+                query, (row,), 0, origin=origin, busy=False,
+            )
+        except Exception as exc:
+            return (UpdateStatusIntent(
+                error_status(f"Converted, but cannot open ARPAbet editor: {exc}")
+            ),)
 
     def adjust_pronunciation(
         self,
@@ -575,6 +667,8 @@ class TuiPronunciationEditorOwner(EditorOwnerBase):
                 return self.preview(query)
             if selected == "apply":
                 return self.apply_pronunciation(query)
+            if selected == "convert_arpabet":
+                return self.convert_to_arpabet(query)
             if selected == "save_dictionary":
                 return (
                     SaveToDictionaryIntent(

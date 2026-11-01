@@ -30,6 +30,7 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         "dictionary_voicevox_loss_confirmation",
         "delete_confirmation",
         "clear_candidates_confirmation",
+        "convert_confirmation",
     }:
         details: tuple[ConfirmationDetail, ...] = ()
         if editor.kind == "batch_recipe_replace_confirmation":
@@ -101,6 +102,7 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
             selectable("delete_section")
         selectable("clear")
         selectable("reset")
+        selectable("convert_arpabet")
         selectable("back")
     elif editor.kind in {"english_word", "english_punctuation"}:
         punctuation = editor.kind == "english_punctuation"
