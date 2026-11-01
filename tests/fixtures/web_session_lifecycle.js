@@ -7,14 +7,19 @@ function part(a,b){const i=js.indexOf(a),j=js.indexOf(b,i);
 const core=part("  function savedSession() {","  function setBusy(value) {");
 const requestCode=part("  async function request(method, path, payload) {","  function batchPath() {");
 const lifecycle=part("  function resetLocal(clearSessionId) {","  async function mutate(");
+const settingsLoader=part("  function loadSessionForms() {","  function pronunciationHistoryState() {");
 const auth=part('  $("auth-form").addEventListener("submit"',
                 '  $("open-batch-menu").addEventListener');
-const retry=part('  $("refresh-batch").addEventListener("click"',
-                 '  $("disconnect-session").addEventListener');
-const actions=part('  $("disconnect-session").addEventListener("click"',
+const retry=part('  $("retry-connection").addEventListener("click"',
+                 '  $("close-session").addEventListener("click"');
+const actions=part('  $("close-session").addEventListener("click"',
                    '  var dictionarySortModes');
 assert(html.includes('id="retry-connection"'));
 assert(html.includes('id="close-session"'));
+assert(html.includes('>作業を終了</button>'));
+assert(!html.includes('id="refresh-batch"'));
+assert(!html.includes('id="disconnect-session"'));
+assert(!html.includes('id="connection-status"'));
 const storage={data:new Map(),getItem(k){return this.data.get(k)||null;},
   setItem(k,v){this.data.set(k,v);},removeItem(k){this.data.delete(k);}};
 const TOKEN="test-token-at-least-thirty-two-characters";
@@ -66,7 +71,10 @@ function boot(){
       addEventListener(event,fn){this.listeners[event]=fn;}
     };
   }
-  const win={sessionStorage:storage,confirm(){return true;},
+  const confirmations=[];
+  let confirmAllowed=true;
+  const win={sessionStorage:storage,confirm(message){
+    confirmations.push(message);return confirmAllowed;},
     crypto:{getRandomValues(bytes){const seed=++nonceCounter;
       bytes.forEach((_,i)=>{bytes[i]=(seed+i)%256;});return bytes;}}
   };
@@ -77,6 +85,12 @@ function boot(){
     'var audioOperation=null,batchOperation=null,batchPolling=false,audioPolling=false;',
     'var outputPreviewSequence=0,outputPreviewTimer=null;',
     'var autoPrepareFailures=new Set(),SESSION_KEY="voiceger-web-session-id";',
+    'var settingsLoads=0;',
+    'function commonDirty(){return false;} function defaultTakesDirty(){return false;}',
+    'function outputDirty(){return false;}',
+    'async function loadWebSettings(){settingsLoads++;',
+    '  if(getMode()==="offline")throw Object.assign(new Error("Macに接続できません。再試行してください。"),{code:0});}',
+    'async function loadWebOutputSettings(){}',
     'function setBusy(v){busy=v;}',
     'function clearPlayer(){} function closeBatchMenu(){} function endDeleteMode(){}',
     'function renderList(){} function renderItem(){}',
@@ -85,15 +99,18 @@ function boot(){
     'function batchPath(){return "/api/web/sessions/"+encodeURIComponent(sessionId)+"/batch";}',
     'var resumed=0;function resumeSessionOperations(){resumed++;}',
     'function reconcileAudioStart(s){latestSessionOperation=s.latest_operation||null;audioUnconfirmed=null;}',
-    core,requestCode,lifecycle,auth,retry,actions,
-    'return {state:()=>({token,sessionId,batch,currentView,busy,expiredSession,resumed}),',
+    core,requestCode,lifecycle,settingsLoader,auth,retry,actions,
+    'return {state:()=>({token,sessionId,batch,currentView,busy,expiredSession,resumed,settingsLoads}),',
     'submit:()=> $("auth-form").listeners.submit({preventDefault(){}}),',
-    'disconnect:()=> $("disconnect-session").listeners.click(),',
+    'openSettings:()=>{currentView="session"; $("common-settings-form").hidden=true;',
+    '  $("output-settings-form").hidden=true;return loadSessionForms();},',
+    'setConfirmAllowed:value=>{confirmAllowed=value;},',
+    'confirmations:confirmations,',
     'close:()=> $("close-session").listeners.click(),',
     'retry:()=> $("retry-connection").listeners.click(),',
     'refresh,reset:()=>resetLocal(true),check:handleSessionFailure};'
   ].join("\n");
-  const app=new Function("$","window","fetch",body)($,win,server);
+  const app=new Function("$","window","fetch","getMode",body)($,win,server,()=>mode);
   return {app,$};
 }
 async function run(){
@@ -120,13 +137,9 @@ async function run(){
   // An expired operation (404) must not be mistaken for session deletion.
   assert.equal(await two.app.check(Object.assign(Error("missing op"),{code:404})),false);
   assert.equal(two.app.state().sessionId,sid);
-  // Explicit disconnect discards only browser references, without DELETE.
-  two.app.disconnect();
-  assert.equal(two.app.state().token,"");
-  assert.equal(storage.getItem("voiceger-web-session-id"),null);
   assert(sessions.has(sid));
   // Reuse the old id for a separate reload after a genuine Mac restart.
-  storage.setItem("voiceger-web-session-id",sid);sessions.delete(sid);
+  sessions.delete(sid);
   const three=boot();three.$("web-token").value=TOKEN;
   await three.app.submit();
   assert.equal(three.app.state().expiredSession,true);
@@ -145,6 +158,16 @@ async function run(){
   mode="normal";await four.app.submit();
   assert.equal(counter,created+1);
   assert.equal(four.app.state().currentView,"list");
+  // A settings-load outage offers retry; retry restores the settings forms.
+  mode="offline";await four.app.openSettings();
+  assert.equal(four.$("retry-connection").hidden,false);
+  assert.equal(four.$("common-settings-form").hidden,true);
+  mode="normal";await four.app.retry();
+  await new Promise(setImmediate);
+  assert.equal(four.$("retry-connection").hidden,true);
+  assert.equal(four.$("common-settings-form").hidden,false);
+  assert.equal(four.$("output-settings-form").hidden,false);
+  assert(four.app.state().settingsLoads>=2);
   // 401 and 403 fail closed but retain the session identifier for re-auth.
   for(const rejected of ["unauthorized","forbidden"]){
     const page=boot();mode=rejected;page.$("web-token").value=TOKEN;
@@ -161,12 +184,19 @@ async function run(){
   await pending;
   assert.equal(five.app.state().batch,null);
   assert.equal(five.app.state().sessionId,"");
-  // Explicit close deletes the server session, not merely the browser ref.
+  // The sole end-work button has one destructive confirmation.
   const six=boot();six.$("web-token").value=TOKEN;await six.app.submit();
+  await six.app.openSettings();
   const closing=six.app.state().sessionId;
+  six.app.setConfirmAllowed(false);
+  await six.app.close();
+  assert(sessions.has(closing),"Cancelling the end-work prompt must keep the session");
+  six.app.setConfirmAllowed(true);
   await six.app.close();
   assert(!sessions.has(closing));
   assert.equal(storage.getItem("voiceger-web-session-id"),null);
+  assert.equal(six.app.confirmations.length,2);
+  assert(six.app.confirmations[1].includes("保存済み音声は残ります"));
   // A server-committed creation with lost response is replayed with the
   // original one-time key and never consumes a second bounded slot.
   const beforeLoss=counter;
