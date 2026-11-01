@@ -62,7 +62,7 @@ The IDs match the corresponding VOICEVOX Zundamon style IDs:
 
 Only styles whose reference WAVs exist in the local Voiceger installation are selectable.
 
-Applying a Style change clears existing candidate Takes.
+Changing Style keeps already-generated candidate Takes and their acceptance markers. The new Style applies to subsequent generation or regeneration.
 
 ## Speed
 
@@ -78,7 +78,7 @@ Left / Right changes it in small steps.
 
 The value must be greater than zero.
 
-Applying a Speed change clears existing candidate Takes.
+Changing Speed preserves existing candidate Takes and acceptance markers. Future generation or regeneration uses the new Speed.
 
 ## Takes
 
@@ -179,7 +179,7 @@ If you do not have a reason to change them, keep the defaults.
 
 Changing any of these settings can change pronunciation details, rhythm, intonation, and variation between Takes.
 
-Applying a sampling change clears existing candidate Takes.
+Changing sampling values does not discard already-generated candidate Takes or their acceptance markers. Subsequent generation or regeneration uses the new values.
 
 ### Top K
 
@@ -260,6 +260,14 @@ This resets only:
 - Temperature.
 
 Select `Apply and save` afterward to persist the reset values.
+
+## Settings changes and existing Takes
+
+Changing shared Style, Speed, Top K, Top P, or Temperature preserves completed candidate WAVs, accepted Take markers, and previously saved outputs. The updated settings are used for **future generation and regeneration**, not retroactively applied to audio already generated. Different Takes for one Caption may therefore use different synthesis settings.
+
+Accepted Takes remain protected from regeneration. Changing Take count, output format, output directory, TXT, or LAB also does not discard existing candidates; output settings take effect when a Take is accepted.
+
+Changes to the underlying spoken material—such as pronunciation, accents, or source sections—remain separate and can invalidate existing candidate Takes and their acceptance markers. See the [TUI guide](tui.md) for these operations.
 
 ## Settings file
 
