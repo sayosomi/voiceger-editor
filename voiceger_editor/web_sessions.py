@@ -19,6 +19,7 @@ from .web_recipe import WebRecipeMixin
 from .web_batch_generation import WebBatchGenerationMixin
 from .web_takes import WebTakeMixin
 from .web_settings import WebSettingsMixin
+from .web_output import WebOutputMixin
 from .web_dictionary import WebDictionaryMixin
 from .web_dictionary_export import WebDictionaryExportMixin
 from .web_dictionary_import import WebDictionaryImportMixin
@@ -105,7 +106,7 @@ class _WebSession:
         }
 
 
-class WebSessionOperations(WebSettingsMixin, WebDictionaryImportMixin, WebDictionaryExportMixin, WebDictionaryMixin, WebBatchMixin, WebRecipeMixin, WebBatchGenerationMixin, WebEnglishMixin, WebSectionMixin, WebPronunciationMixin, WebTakeMixin):
+class WebSessionOperations(WebSettingsMixin, WebOutputMixin, WebDictionaryImportMixin, WebDictionaryExportMixin, WebDictionaryMixin, WebBatchMixin, WebRecipeMixin, WebBatchGenerationMixin, WebEnglishMixin, WebSectionMixin, WebPronunciationMixin, WebTakeMixin):
     """Thread-safe, in-process session registry with one worker across sessions."""
 
     def __init__(

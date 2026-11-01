@@ -154,6 +154,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   color: #295d51; font-size: 12px; font-weight: 700;
 }
 .settings-status { font-size: 12px; color: #456358; margin: 0; }
+.output-settings-section h3 { margin: 0; }
+.output-settings-section > label { min-width: 0; }
+.output-settings-section input[type="text"] { width: 100%; min-width: 0; }
+.output-template-header { display: flex; justify-content: space-between; align-items: start;
+  flex-wrap: wrap; gap: 8px; }
+.output-template-help { font-size: 12px; color: #345d52; max-width: 100%; }
+.output-template-help summary { cursor: pointer; min-height: 44px; display: flex;
+  align-items: center; justify-content: flex-end; }
+.output-template-help p { margin: 0 0 4px; overflow-wrap: anywhere; }
+.output-preview { display: grid; gap: 5px; padding: 10px; border-radius: 10px;
+  background: #f0f4f1; font-size: 12px; color: #465e53; min-width: 0; }
+.output-preview output { font-weight: 650; overflow-wrap: anywhere; color: #213d33; }
+.output-sidecars { display: flex; flex-wrap: wrap; column-gap: 24px; }
+.output-settings-section select { min-height: 44px; min-width: 0; width: 100%; }
 .setting-section .check-row { display: flex; align-items: center; gap: 12px; min-height: 44px; }
 .check-row input { width: 22px; height: 22px; accent-color: #23675a; flex: none; }
 .setting-section button { justify-self: start; }

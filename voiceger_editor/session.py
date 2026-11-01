@@ -279,6 +279,56 @@ class UtteranceSession:
 
         self.prepare_from_caption()
 
+    def stage_output_settings(self, settings: Settings):
+        """Validate an Output-only change and stage a no-fail memory commit.
+
+        Output format/path/sidecars do not change the synthesis query, Style,
+        Take generation or historical candidates. In particular, they must
+        not revalidate a reference WAV that may disappear after generation.
+        The caller persists the configuration before invoking the commit.
+        """
+        _validate_settings(settings)
+        synthesis_fields = (
+            "style_id", "speed", "top_k", "top_p", "temperature", "take_count",
+        )
+        if any(getattr(settings, key) != getattr(self._settings, key)
+               for key in synthesis_fields):
+            raise ValueError("Output update cannot change synthesis settings")
+
+        def commit() -> None:
+            self._settings = settings
+
+        return commit
+
+    def stage_generation_settings(self, settings: Settings):
+        """Preflight synthesis changes before disk persistence."""
+        _validate_settings(settings)
+        style = get_style(self._adapter.voiceger_root, settings.style_id)
+        query = deepcopy(self._query) if self._query is not None else None
+        if query is not None:
+            query.speedScale = settings.speed
+        changed = any(
+            getattr(settings, key) != getattr(self._settings, key)
+            for key in ("style_id", "speed", "top_k", "top_p", "temperature")
+        )
+        batch_commit = None
+        if changed and self._active_batch is not None:
+            if query is None:
+                raise RuntimeError("pronunciation/query is not prepared")
+            synthesizer = self._take_synthesizer(query, style, settings)
+            batch_commit = self._active_batch.stage_generation(
+                synthesizer, style_name=style.name, query=query,
+            )
+
+        def commit():
+            if batch_commit is not None:
+                batch_commit()
+            self._settings = settings
+            self._style = style
+            self._query = query
+
+        return commit
+
     def replace_settings(self, settings: Settings, *, preserve_takes: bool = False) -> None:
         """Apply settings; optionally retain historical candidates for item voice edits."""
 

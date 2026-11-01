@@ -180,6 +180,29 @@ class TakeBatch:
 
         return generate()
 
+    def stage_generation(
+        self,
+        synthesize_one: Callable[[], Mapping[str, Any]],
+        *,
+        style_name: str,
+        query: AudioQuery,
+    ) -> Callable[[], None]:
+        """Prepare a future-generation change without touching existing Takes.
+
+        Copy and validate the query before the caller persists settings.
+        The commit closure only installs prepared values and cannot fail due
+        to style lookups, query deepcopy, or an already-closed batch.
+        """
+        self._ensure_open()
+        prepared_query = deepcopy(query)
+
+        def commit() -> None:
+            self.synthesize_one = synthesize_one
+            self._style_name = style_name
+            self._query = prepared_query
+
+        return commit
+
     def set_generation(
         self,
         synthesize_one: Callable[[], Mapping[str, Any]],

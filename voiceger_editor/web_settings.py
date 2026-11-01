@@ -23,6 +23,10 @@ class WebSettingsUnavailable(RuntimeError):
 
 
 _SHARED_FIELDS = ("style_id", "speed", "top_k", "top_p", "temperature")
+_RESET_OUTPUT_FIELDS = (
+    "output_format", "wav_encoding", "flac_encoding", "mp3_bitrate",
+    "save_text", "save_lab",
+)
 
 
 class WebSettingsMixin:
@@ -111,6 +115,7 @@ class WebSettingsMixin:
         self, identifier: str, revision: int, settings_revision: int, *,
         style_id: int, speed: float, top_k: int, top_p: float,
         temperature: float, preserve_item_voice: bool = False,
+        reset_output: bool = False,
     ) -> dict[str, Any]:
         from .web_sessions import WebSessionConflict
 
@@ -123,9 +128,13 @@ class WebSettingsMixin:
                 )
             previous = self._recipe_settings()
             try:
+                output_defaults = Settings() if reset_output else None
                 updated = replace(
                     previous, style_id=style_id, speed=speed,
                     top_k=top_k, top_p=top_p, temperature=temperature,
+                    **({key: getattr(output_defaults, key)
+                        for key in _RESET_OUTPUT_FIELDS}
+                       if output_defaults is not None else {}),
                 )
             except (SettingsError, TypeError, ValueError) as exc:
                 raise WebSettingsValidation("Invalid synthesis settings") from exc
@@ -134,13 +143,17 @@ class WebSettingsMixin:
                 name for name in _SHARED_FIELDS
                 if getattr(previous, name) != getattr(updated, name)
             }
+            output_changed = {
+                key for key in _RESET_OUTPUT_FIELDS
+                if reset_output and getattr(previous, key) != getattr(updated, key)
+            }
             if "style_id" in changed_names:
                 self._require_available_style(style_id)
 
             # TUI full Apply reconciles shared sampling values even for
             # imported recipe items with older values. Item Style/Speed are
             # retained unless that particular global field was changed.
-            targets = []
+            staged = []
             for owned_session in self._sessions.values():
                 for item in owned_session.batch.items:
                     original = item.session.settings
@@ -150,24 +163,26 @@ class WebSettingsMixin:
                         if name not in {"style_id", "speed"}
                         or (name in changed_names and not preserve_item_voice)
                     }
+                    if reset_output:
+                        changes.update({
+                            key: getattr(updated, key) for key in _RESET_OUTPUT_FIELDS
+                        })
                     target = replace(original, **changes)
                     if target != original:
-                        adapter = getattr(item.session, "_adapter", None)
-                        if adapter is not None:
-                            try:
-                                get_style(adapter.voiceger_root, target.style_id)
-                            except (ValueError, OSError, AttributeError) as exc:
-                                raise WebSettingsValidation(
-                                    "An item's Style is unavailable on the Mac"
-                                ) from exc
-                        targets.append((owned_session, item, target))
+                        try:
+                            commit = item.session.stage_generation_settings(target)
+                        except (ValueError, RuntimeError, TypeError, OSError, AttributeError) as exc:
+                            raise WebSettingsValidation(
+                                "An item's generation settings are unavailable on the Mac"
+                            ) from exc
+                        staged.append((owned_session, commit))
 
-            if not changed_names and not targets:
+            if not changed_names and not output_changed and not staged:
                 return self._settings_view(session)
 
             # Only an accepted save is applied in memory. No temporary Takes
             # are modified if filesystem persistence fails.
-            if changed_names:
+            if changed_names or output_changed:
                 try:
                     save_settings(updated)
                 except (OSError, SettingsError) as exc:
@@ -176,17 +191,17 @@ class WebSettingsMixin:
                     ) from exc
 
             affected_sessions: set[str] = set()
-            for owned_session, item, target in targets:
-                # Settings affect future generation. Historical Take WAVs,
-                # acceptance markers and completion state stay intact.
-                item.session.replace_settings(target, preserve_takes=True)
+            for owned_session, commit in staged:
+                # Every failure-prone operation completed before persistence.
+                # Prepared commits preserve historical Takes and acceptance.
+                commit()
                 owned_session.preview_audio = None
                 affected_sessions.add(owned_session.identifier)
 
             self._batch_settings = updated
             self._settings_revision += 1
             for owned_session in self._sessions.values():
-                if changed_names or owned_session.identifier in affected_sessions:
+                if changed_names or output_changed or owned_session.identifier in affected_sessions:
                     owned_session.revision += 1
             return self._settings_view(session)
 
@@ -220,6 +235,7 @@ class WebSettingsMixin:
                 top_p=defaults.top_p,
                 temperature=defaults.temperature,
                 preserve_item_voice=True,
+                reset_output=True,
             )
             if session.batch.default_take_count != defaults.take_count:
                 session.batch.default_take_count = defaults.take_count
@@ -227,4 +243,5 @@ class WebSettingsMixin:
             return {
                 "settings": self._settings_view(session),
                 "batch": self._batch_snapshot(session),
+                "output": self._output_settings_view(session),
             }

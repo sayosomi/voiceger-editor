@@ -125,6 +125,18 @@ class FakeTakeBatch:
             raise RuntimeError("take batch is closed")
         return self.initial_iterator
 
+    def stage_generation(self, synthesize_one, *, style_name, query):
+        if self.closed:
+            raise RuntimeError("take batch closed")
+        prepared = query.model_copy(deep=True)
+
+        def commit():
+            self.kwargs["synthesize_one"] = synthesize_one
+            self.kwargs["style_name"] = style_name
+            self.kwargs["query"] = prepared
+
+        return commit
+
     def set_generation(self, synthesize_one, *, style_name, query):
         self.kwargs["synthesize_one"] = synthesize_one
         self.kwargs["style_name"] = style_name
@@ -753,6 +765,26 @@ class UtteranceSessionTests(unittest.TestCase):
                 self.assertTrue(batch.closed)
                 self.assertFalse(session.has_active_batch)
                 self.assertEqual(session.candidates, ())
+
+    def test_staged_generation_commit_survives_later_missing_reference(self):
+        session = self.make_session()
+        batch = self.activate_batch(session)
+        candidate = next(batch.initial_iterator)
+        proposed = replace(self.settings, speed=1.5, top_k=24, save_lab=True)
+        with patch("voiceger_editor.session.get_style", return_value=self.style):
+            commit = session.stage_generation_settings(proposed)
+        self.assertEqual(session.settings, self.settings)
+        self.assertEqual(session.query.speedScale, self.settings.speed)
+        self.assertEqual(batch.candidates, (candidate,))
+        with patch("voiceger_editor.session.get_style",
+                   side_effect=ValueError("missing WAV")):
+            commit()
+        self.assertEqual(session.settings, proposed)
+        self.assertEqual(session.query.speedScale, 1.5)
+        self.assertEqual(batch.candidates, (candidate,))
+        self.assertFalse(batch.closed)
+        self.assertEqual(batch.kwargs["query"].speedScale, 1.5)
+        self.assertEqual(batch.kwargs["style_name"], "Neutral")
 
     def test_synthesis_settings_change_preserves_existing_takes_and_updates_future_recipe(self):
         session = self.make_session()

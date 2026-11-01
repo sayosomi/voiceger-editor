@@ -48,6 +48,12 @@ class FakeSpeech:
     def replace_caption(self, caption):
         self.caption = caption
 
+    def stage_generation_settings(self, settings):
+        """Test double for a prevalidated, no-fail commit."""
+        def commit():
+            self.replace_settings(settings, preserve_takes=True)
+        return commit
+
     def replace_settings(self, settings, *, preserve_takes=False):
         old = self.settings
         changed = any(
@@ -436,9 +442,13 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
         current = self.service._batch_settings
         self.assertEqual(current.output_dir, custom.output_dir)
         self.assertEqual(current.filename_template, custom.filename_template)
-        self.assertEqual(current.output_format, "mp3")
-        self.assertTrue(current.save_text)
-        self.assertTrue(current.save_lab)
+        self.assertEqual(current.output_format, "wav")
+        self.assertEqual(current.wav_encoding, "source")
+        self.assertEqual(current.flac_encoding, "pcm16")
+        self.assertEqual(current.mp3_bitrate, "192k")
+        self.assertFalse(current.save_text)
+        self.assertFalse(current.save_lab)
+        self.assertEqual(payload["output"]["values"]["output_format"], "wav")
         self.assertEqual(self.save_mock.call_count, 1)
 
     def test_reset_rolls_back_on_save_failure(self):
@@ -549,6 +559,54 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
         self.assertEqual(persisted.filename_template, original.filename_template)
         self.assertTrue(persisted.save_text)
         self.assertTrue(persisted.save_lab)
+
+    def test_reset_staging_failure_does_not_change_any_live_session(self):
+        configured = Settings(
+            output_dir=Path(self.temp.name) / "existing",
+            filename_template="{style}_{caption}",
+            speed=1.35, top_k=40, save_text=True, save_lab=True,
+        )
+        self.config = configured
+        self.service._batch_settings = configured
+        first = self.add("こんにちは")
+        second_sid = self.client.post(
+            "/api/web/sessions", headers=self.write_headers,
+        ).json()["id"]
+        second_base = "/api/web/sessions/" + second_sid
+        result = self.client.post(
+            second_base + "/batch/items?expected_revision=0",
+            json={"text": "おはよう"}, headers=self.write_headers,
+        )
+        self.assertEqual(result.status_code, 200, result.text)
+        second = self.service._sessions[second_sid].batch.items[0]
+        first.session.candidates.append(
+            SimpleNamespace(number=1, frame_count=20, sampling_rate=16000,
+                            style_name="Neutral")
+        )
+        first.mark_accepted(1)
+        before_settings = self.settings()
+        before_batch = self.batch()
+        before_other = self.client.get(
+            second_base + "/batch", headers=self.read_headers,
+        ).json()
+        from unittest.mock import Mock
+        second.session.stage_generation_settings = Mock(
+            side_effect=RuntimeError("missing reference WAV"),
+        )
+        response = self.reset()
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertNotIn("missing reference WAV", response.text)
+        self.assertEqual(self.settings(), before_settings)
+        self.assertEqual(self.batch(), before_batch)
+        self.assertEqual(self.client.get(
+            second_base + "/batch", headers=self.read_headers,
+        ).json(), before_other)
+        self.assertEqual(first.session.settings, configured)
+        self.assertEqual(second.session.settings, configured)
+        self.assertEqual(first.accepted_take_numbers, frozenset({1}))
+        self.assertEqual(len(first.session.candidates), 1)
+        self.assertEqual(self.service._batch_settings, configured)
+        self.save_mock.assert_not_called()
 
     def test_reset_take_count_only_does_not_modify_shared_settings(self):
         self.assertEqual(self.service.set_default_take_count(
