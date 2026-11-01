@@ -182,12 +182,12 @@ class DictionaryExportTests(unittest.TestCase):
             real_link = os.link
             swapped = False
 
-            def race_before_publish(source, destination):
+            def race_before_publish(source, destination, **kwargs):
                 nonlocal swapped
                 if Path(destination) == first and not swapped:
                     first.symlink_to(outside)
                     swapped = True
-                return real_link(source, destination)
+                return real_link(source, destination, **kwargs)
 
             with patch(
                 "voiceger_editor.dictionary_export.os.link",
@@ -207,6 +207,44 @@ class DictionaryExportTests(unittest.TestCase):
                 sorted(path.name for path in output.iterdir()),
                 sorted((first.name, result.paths[0].name)),
             )
+
+    @unittest.skipUnless(os.name == "posix", "POSIX dirfd/linkat required")
+    def test_voicevox_staging_source_symlink_swap_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "output"
+            output.mkdir()
+            outside = root / "private.json"
+            outside.write_bytes(b"private bytes")
+            real_link = os.link
+            swapped = False
+
+            def substitute_source_before_link(source, destination, **kwargs):
+                nonlocal swapped
+                source_fd = kwargs.get("src_dir_fd")
+                if source_fd is not None and not swapped:
+                    # Force a source-path race even though the real temporary
+                    # directory is owner-only. The opened original stays pinned.
+                    os.rename(
+                        source, source + ".saved",
+                        src_dir_fd=source_fd, dst_dir_fd=source_fd,
+                    )
+                    os.symlink(outside, source, dir_fd=source_fd)
+                    swapped = True
+                return real_link(source, destination, **kwargs)
+
+            with patch(
+                "voiceger_editor.dictionary_export.os.link",
+                side_effect=substitute_source_before_link,
+            ):
+                with self.assertRaisesRegex(OSError, "staging source changed"):
+                    export_voicevox_dictionary(
+                        FakeDictionaryCore(), output, timestamp=self.timestamp,
+                    )
+            self.assertTrue(swapped)
+            self.assertEqual(outside.read_bytes(), b"private bytes")
+            self.assertEqual(outside.stat().st_nlink, 1)
+            self.assertEqual(list(output.iterdir()), [])
 
     def test_voicevox_failed_publication_leaves_no_partial_json(self):
         with tempfile.TemporaryDirectory() as directory:
