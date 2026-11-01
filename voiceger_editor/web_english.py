@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .english_group_boundaries import bound_english_groups
 from .english_stress import normalize_english_phonemes
 from .query_editing import (
     english_word_preview_query, japanese_pronunciation,
@@ -46,6 +47,11 @@ class WebEnglishMixin:
         if cached is not None and cached.source_text == segment.text and cached.flattened == canonical:
             return cached
         session.english_groupings.pop(key, None)
+        durable = bound_english_groups(segment)
+        if durable is not None:
+            grouping = EnglishGroups(segment.text, durable)
+            session.english_groupings[key] = grouping
+            return grouping
         provider = self._english_group_provider
         if provider is None:
             adapter = getattr(item.session, "_adapter", None) or self._batch_adapter
