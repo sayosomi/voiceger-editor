@@ -2,6 +2,8 @@
 
 from pathlib import Path
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -327,6 +329,44 @@ class OutputTests(unittest.TestCase):
             other_base + "/batch", headers=self.read,
         ).json()["revision"]
         self.assertEqual(after_other, previous_other + 1)
+
+    def test_real_browser_beforeunload_output_draft_guard(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node is required for browser unload regression")
+        source = r"""
+const fs=require("fs"),assert=require("assert").strict;
+const js=fs.readFileSync(process.argv[1],"utf8");
+const first=js.indexOf('  window.addEventListener("beforeunload",');
+const last=js.indexOf("\\n  });",first);
+assert(first>=0 && last>first,"production unload handler not found");
+const handler=js.slice(first,last+"\n  });".length);
+function fire(view,outputDirtyValue) {
+  let callback=null;
+  const win={addEventListener(name,fn){if(name==="beforeunload")callback=fn;}};
+  new Function("window","currentView","commonDirty","defaultTakesDirty",
+    "outputDirty","pronunciationDirty","sectionDirty",
+    "dictionaryPronunciationDirty","dictionaryEntryDirty",handler)(
+    win,view,()=>false,()=>false,()=>outputDirtyValue,
+    ()=>false,()=>false,()=>false,()=>false);
+  assert.equal(typeof callback,"function");
+  let prevented=0;
+  const e={returnValue:null,preventDefault(){prevented++;}};
+  callback(e);
+  return {prevented,returnValue:e.returnValue};
+}
+assert.deepEqual(fire("session",true),{prevented:1,returnValue:""});
+assert.deepEqual(fire("session",false),{prevented:0,returnValue:null});
+assert.deepEqual(fire("list",true),{prevented:0,returnValue:null});
+console.log("OUTPUT_BEFOREUNLOAD_GUARD_PASS");
+"""
+        result = subprocess.run(
+            [node, "-e", source, str(ASSETS / "app.js")],
+            capture_output=True, text=True, timeout=20, check=False,
+        )
+        self.assertEqual(result.returncode, 0,
+                         result.stdout + "\n" + result.stderr)
+        self.assertIn("OUTPUT_BEFOREUNLOAD_GUARD_PASS", result.stdout)
 
     def test_android_launcher_targets_actual_issue_branch(self):
         launcher = (ASSETS.parents[1] / "scripts" /
