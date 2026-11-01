@@ -300,7 +300,7 @@ Candidate clearing is not available while synthesis is actively running.
 
 ## Changes that preserve or clear Takes
 
-Changing Style, Speed, Top K, Top P, or Temperature—either in shared Settings or for an individual Caption—**preserves existing candidate Takes and their acceptance markers**. Future generation and regeneration use the new settings. Previous Takes keep their original audio and generation-time properties; accepted Takes remain protected.
+Changing shared Style, Speed, Top K, Top P, or Temperature, or changing a Caption's individual Style/Speed, **preserves existing candidate Takes and their acceptance markers**. Future generation and regeneration use the new settings. Previous Takes keep their original audio and generation-time properties; accepted Takes remain protected.
 
 Changing the configured Take count or output settings also preserves existing candidates. Output settings apply when a Take is accepted.
 
