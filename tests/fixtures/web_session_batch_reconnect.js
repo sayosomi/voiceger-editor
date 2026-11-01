@@ -45,13 +45,14 @@ async function request(method,path){
 const factory=new Function("$","document","request","feedback","refresh",
   "batchPath","renderList","resetLocal","setTimeout","handleSessionFailure",
   "retryable","renderItem","showView","followAudioOperation",
-  "let busy=false,batchPolling=false,audioPolling=false,batchOperation=null,"+
+  "let busy=false,batchPolling=false,audioPolling=false,detachedPolling=false,batchOperation=null,"+
   "connectionEpoch=0,generationUnconfirmed=false,sessionId='sid',token='token',"+
   "reorderMode=false,deleteMode=false,selectedId='';"+
   "let batch={revision:1,items:[{id:'one'}],active_operation:null,latest_operation:null};"+
   busySrc+operationSrc+startSrc+handlers+
   ";return {startBatchGeneration,resumeSessionOperations,"+
-  "read:()=>({busy,batchPolling,batchOperation,batch})};");
+  "read:()=>({busy,batchPolling,detachedPolling,batchOperation,batch}),"+
+  "setActive:op=>{batch.active_operation=op;}};");
 const ui=factory($,document,request,m=>messages.push(m),
   async()=>{},()=>"/api/web/sessions/sid/batch",()=>{},()=>{},
   fn=>setImmediate(fn),async()=>false,e=>e.code===0,()=>{},()=>{},async()=>{});
@@ -81,5 +82,11 @@ async function until(fn){
   assert.equal(ui.read().busy,false);
   assert.equal(posts,1);
   assert(messages.some(m=>m.includes("キャンセル")));
+  ui.setActive({id:"dictionary1",kind:"dictionary-generate",
+    status:"running",completed:0,total:1});
+  ui.resumeSessionOperations();
+  ui.resumeSessionOperations();
+  await until(()=>!ui.read().detachedPolling);
+  assert.equal(posts,1,"Detached dictionary work must not be reposted");
   console.log("WEB_BATCH_RECONNECT_CANCEL_PASS");
 })().catch(e=>{console.error(e);process.exitCode=1;});
