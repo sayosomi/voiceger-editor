@@ -460,6 +460,43 @@
           <p id="default-takes-error" class="field-error" role="alert" hidden></p>
           <p id="default-takes-status" class="settings-status" role="status" aria-live="polite" hidden></p>
         </form>
+        <form id="output-settings-form" class="setting-section output-settings-section" novalidate hidden>
+          <h3>出力</h3>
+          <label for="output-dir">保存先（Mac）
+            <input id="output-dir" type="text" autocomplete="off" autocapitalize="off"
+              spellcheck="false" required>
+          </label>
+          <div class="output-template-header">
+            <label for="output-template">ファイル名</label>
+            <details class="output-template-help">
+              <summary>使える変数</summary>
+              <p>{caption} {style} {YYYYMMDDHHmm} {ss}（年月日時分秒）</p>
+            </details>
+          </div>
+          <input id="output-template" type="text" maxlength="1024" autocomplete="off"
+            autocapitalize="off" spellcheck="false" required>
+          <div class="output-preview" aria-live="polite">
+            <span>プレビュー</span>
+            <output id="output-filename-preview" for="output-template output-format"></output>
+          </div>
+          <div class="setting-two-columns">
+            <label for="output-format">形式
+              <select id="output-format" required></select>
+            </label>
+            <label for="output-encoding"><span id="output-encoding-label">エンコード</span>
+              <select id="output-encoding" required></select>
+            </label>
+          </div>
+          <p id="output-ffmpeg-note" class="help-text" hidden>MP3にはMac側のFFmpegが必要です。</p>
+          <p class="field-title">付随ファイル</p>
+          <div class="output-sidecars">
+            <label class="check-row" for="output-text"><input type="checkbox" id="output-text">TXT</label>
+            <label class="check-row" for="output-lab"><input type="checkbox" id="output-lab">LAB</label>
+          </div>
+          <p id="output-lab-note" class="help-text" hidden>日英混在のLABは、ONにしてからTakeを生成してください。</p>
+          <p id="output-settings-error" class="field-error" role="alert" hidden></p>
+          <p id="output-settings-status" class="settings-status" role="status" aria-live="polite" hidden></p>
+        </form>
         <div class="setting-section">
           <p class="field-title">Webサーバー</p>
           <p id="connection-status" class="connection-status" role="status" aria-live="polite">接続状態を確認中…</p>
