@@ -160,6 +160,33 @@ class JapaneseWebTests(unittest.TestCase):
             len(new_draft.split()),
         )
 
+    def test_converted_english_section_text_can_change_word_group_count(self):
+        converted = self.action(
+            "POST", "/pronunciation/convert",
+            {"notation": "ズ'ンダモンハ カシコ'イ ノダ'！"},
+        )
+        self.assertEqual(converted.status_code, 200, converted.text)
+        self.assertEqual(
+            len(self.fake.query.voicegerSegments[0].englishGroups), 4,
+        )
+        self.service._english_group_provider = (
+            lambda text: (("hello", ("HH", "AH0", "L", "OW1")),)
+            if text == "hello" else ()
+        )
+
+        changed = self.action(
+            "PATCH", "/sections/text",
+            {"language": "en", "index": 0, "opening": "雨", "text": "hello"},
+        )
+        self.assertEqual(changed.status_code, 200, changed.text)
+        self.assertTrue(changed.json()["changed"])
+        section = changed.json()["batch"]["items"][0]["pronunciation_sections"][0]
+        self.assertEqual(section["text"], "hello")
+        self.assertEqual(len(section["groups"]), 1)
+        self.assertEqual(section["groups"][0]["label"], "hello")
+        self.assertIsNone(self.fake.query.voicegerSegments[0].englishGroups)
+        self.assertEqual(self.fake.caption, "雨")
+
     def test_conversion_clears_takes_but_preserves_accepted_saved_audio(self):
         self.finish(self.action("POST", "/takes/generate"))
         self.finish(self.action("POST", "/takes/1/accept"))
