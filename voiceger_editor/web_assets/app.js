@@ -1715,38 +1715,39 @@
       $("cancel-pronunciation-audio").disabled = op.status !== "running";
     }
   }
-  async function startAudio(itemId, suffix, payload, automaticPrepare) {
-    if (busy || !batch || !selectedId || itemId !== selectedId) return;
-    var item = batch.items.find(function (entry) { return entry.id === itemId; });
-    if (!item) return;
-    if ($("edit-caption").value !== item.caption) {
-      feedback("未保存のCaptionを先に保存してください。");
-      return;
-    }
-    clearPlayer();
-    takeMenuOpen = false;
-    $("take-menu").hidden = true;
+  // Exactly one item-operation poll is active per page and session generation.
+  async function followAudioOperation(op, itemId) {
+    if (audioPolling || !op || !itemId) return;
+    var identity = sessionId, epoch = connectionEpoch;
+    audioPolling = true;
     setBusy(true);
     try {
-      var op = await request("POST", itemAudioPath(itemId) + suffix +
-        (suffix.includes("?") ? "&" : "?") +
-        "expected_revision=" + batch.revision, payload);
       audioOperation = op;
       displayAudioProgress(op);
       while (op.status === "running" || op.status === "cancelling") {
         await new Promise(function (resolve) { setTimeout(resolve, 650); });
-        op = await request("GET", "/api/web/sessions/" +
-          encodeURIComponent(sessionId) + "/operations/" + encodeURIComponent(op.id));
+        if (identity !== sessionId || epoch !== connectionEpoch) return;
+        var latest = await request("GET", "/api/web/sessions/" +
+          encodeURIComponent(identity) + "/operations/" + encodeURIComponent(op.id));
+        if (identity !== sessionId || epoch !== connectionEpoch) return;
+        // A late running response cannot undo an acknowledged cancellation.
+        if (audioOperation && audioOperation.id === latest.id &&
+            audioOperation.status === "cancelling" && latest.status === "running") {
+          latest = audioOperation;
+        }
+        op = latest;
         audioOperation = op;
         displayAudioProgress(op);
       }
-      if (suffix === "/audio/prepare") {
+      if (identity !== sessionId || epoch !== connectionEpoch) return;
+      if (op.kind === "prepare") {
         if (op.status === "succeeded") autoPrepareFailures.delete(itemId);
         else autoPrepareFailures.add(itemId);
       }
       await refresh();
+      if (identity !== sessionId || epoch !== connectionEpoch) return;
       if (op.status === "succeeded") {
-        feedback(op.kind === "accept" ?
+        feedback(op.kind === "accept" && op.result && op.result.audio_name ?
           "保存しました: " + op.result.audio_name +
           (op.result.lab_warning ? "（LABは生成できませんでした。依存ツールと発音を確認してください）" : "") :
           (op.kind === "preview" || op.kind === "pronunciation-preview") ?
@@ -1758,13 +1759,13 @@
       }
       if (op.status === "succeeded" &&
           (op.kind === "preview" || op.kind === "pronunciation-preview") &&
-          op.result && op.result.preview_id) {
+          op.result && op.result.preview_id && selectedId === itemId) {
         setBusy(false);
         await playAudio(itemAudioPath(itemId) + "/audio/preview/" +
           encodeURIComponent(op.result.preview_id), itemId, "preview");
       }
     } catch (error) {
-      if (suffix === "/audio/prepare") autoPrepareFailures.add(itemId);
+      if (identity !== sessionId || epoch !== connectionEpoch) return;
       if (error.conflictCode === "revision_conflict") {
         if (currentView === "pronunciation") {
           pronunciationStale = true;
@@ -1774,23 +1775,55 @@
           sectionStale = true;
           setFixed("apply-section", true);
         }
-        try { await refresh(); } catch (_ignored) { /* Preserve original error. */ }
+        try { await refresh(); } catch (_ignored) {}
       }
-      if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
-      feedback(error.conflictCode === "revision_conflict" && pronunciationStale ?
-        "別の画面で変更されています。編集をキャンセルし、最新の発音を開き直してください。" :
-        error.message);
+      if (identity !== sessionId || epoch !== connectionEpoch) return;
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
     } finally {
-      audioOperation = null;
-      $("operation-panel").hidden = true;
-      $("pronunciation-operation-panel").hidden = true;
-      $("section-operation-panel").hidden = true;
-      setBusy(false);
-      if (batch && currentView === "item") renderItem(true);
-      updatePlaybackUI();
+      if (identity === sessionId && epoch === connectionEpoch) {
+        audioPolling = false;
+        audioOperation = null;
+        $("operation-panel").hidden = true;
+        $("pronunciation-operation-panel").hidden = true;
+        $("section-operation-panel").hidden = true;
+        setBusy(false);
+        if (batch && currentView === "item") renderItem(true);
+        updatePlaybackUI();
+      }
     }
   }
-
+  async function startAudio(itemId, suffix, payload, automaticPrepare) {
+    if (busy || !batch || !selectedId || itemId !== selectedId) return;
+    var item = batch.items.find(function (entry) { return entry.id === itemId; });
+    if (!item) return;
+    if ($("edit-caption").value !== item.caption) {
+      feedback("未保存のCaptionを先に保存してください。");
+      return;
+    }
+    clearPlayer();
+    takeMenuOpen = false;
+    $("take-menu").hidden = true;
+    var epoch = connectionEpoch;
+    setBusy(true);
+    try {
+      var op = await request("POST", itemAudioPath(itemId) + suffix +
+        (suffix.includes("?") ? "&" : "?") +
+        "expected_revision=" + batch.revision, payload);
+      if (epoch !== connectionEpoch) return;
+      await followAudioOperation(op, itemId);
+    } catch (error) {
+      if (epoch !== connectionEpoch) return;
+      if (error.conflictCode === "revision_conflict") {
+        try { await refresh(); } catch (_ignored) {}
+      }
+      if (epoch !== connectionEpoch) return;
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
+    } finally {
+      if (epoch === connectionEpoch && !audioPolling) setBusy(false);
+    }
+  }
 
   function renderBatchProgress(op) {
     batchOperation = op;
@@ -1811,32 +1844,29 @@
 
   async function followBatchOperation(op) {
     if (batchPolling || !op || op.kind !== "batch-generate") return;
+    var identity = sessionId, epoch = connectionEpoch;
     batchPolling = true;
     setBusy(true);
     try {
       while (op.status === "running" || op.status === "cancelling") {
         renderBatchProgress(op);
         await new Promise(function (resolve) { setTimeout(resolve, 650); });
-        try {
-          op = await request("GET", "/api/web/sessions/" +
-            encodeURIComponent(sessionId) + "/operations/" + encodeURIComponent(op.id));
-          await refresh();
-          feedback("");
-        } catch (error) {
-          if (error.code === 401 || error.code === 404) throw error;
-          feedback("通信が途切れています。進捗を再取得します。");
+        if (identity !== sessionId || epoch !== connectionEpoch) return;
+        var latest = await request("GET", "/api/web/sessions/" +
+          encodeURIComponent(identity) + "/operations/" + encodeURIComponent(op.id));
+        if (identity !== sessionId || epoch !== connectionEpoch) return;
+        if (batchOperation && batchOperation.id === latest.id &&
+            batchOperation.status === "cancelling" && latest.status === "running") {
+          latest = batchOperation;
         }
-      }
-      var refreshed = true;
-      try {
+        op = latest;
         await refresh();
-      } catch (error) {
-        if (error.code === 401 || error.code === 404) throw error;
-        refreshed = false;
+        if (identity !== sessionId || epoch !== connectionEpoch) return;
+        feedback("");
       }
-      if (!refreshed) {
-        feedback("生成は終了しましたが、一覧を更新できません。再接続してください。");
-      } else if (op.status === "succeeded") {
+      await refresh();
+      if (identity !== sessionId || epoch !== connectionEpoch) return;
+      if (op.status === "succeeded") {
         feedback("一括生成が完了しました。");
       } else {
         feedback(op.status === "cancelled" ?
@@ -1844,20 +1874,51 @@
           (op.error || "一括生成に失敗しました。"));
       }
     } catch (error) {
-      if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
-      feedback(error.message);
+      if (identity !== sessionId || epoch !== connectionEpoch) return;
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
     } finally {
-      batchPolling = false;
-      batchOperation = null;
-      $("batch-progress-panel").hidden = true;
-      setBusy(false);
-      if (batch) renderList();
+      if (identity === sessionId && epoch === connectionEpoch) {
+        batchPolling = false;
+        batchOperation = null;
+        $("batch-progress-panel").hidden = true;
+        setBusy(false);
+        if (batch) renderList();
+      }
     }
   }
 
-  function resumeBatchOperation() {
-    if (batch && batch.active_operation && !batchPolling) {
-      followBatchOperation(batch.active_operation);
+  function resumeSessionOperations() {
+    if (!batch || !sessionId || !token) return;
+    // The server is the authority, including an operation that completed
+    // during navigation or an offline interval. Never POST to resume.
+    var op = batch.active_operation || batch.latest_operation;
+    if (!op) return;
+    if (op.kind === "batch-generate") {
+      if (op.status === "running" || op.status === "cancelling") {
+        if (!batchPolling) void followBatchOperation(op);
+      } else {
+        feedback(op.status === "succeeded" ? "一括生成が完了しました。" :
+          op.status === "cancelled" ? "一括生成をキャンセルしました。" :
+          "前回の一括生成は完了していません。");
+      }
+      return;
+    }
+    var kinds = ["prepare", "preview", "pronunciation-preview",
+      "generate", "regenerate-one", "regenerate-all", "accept"];
+    if (!kinds.includes(op.kind) || !op.detail || !op.detail.item_id) return;
+    var itemId = op.detail.item_id;
+    if (!batch.items.some(function (item) { return item.id === itemId; })) return;
+    if (op.status === "running" || op.status === "cancelling") {
+      if (audioPolling) return;
+      selectedId = itemId;
+      renderItem(false);
+      showView("item", true);
+      void followAudioOperation(op, itemId);
+    } else {
+      feedback(op.status === "succeeded" ? "前回の音声操作は完了しています。" :
+        op.status === "cancelled" ? "前回の音声操作はキャンセルされました。" :
+        "前回の音声操作は完了していません。");
     }
   }
 
