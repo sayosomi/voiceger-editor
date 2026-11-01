@@ -495,6 +495,8 @@ def replace_english_section_text(
     )
     assert updated.voicegerSegments is not None
     updated.voicegerSegments[segment_index].text = text
+    # A new spoken text/G2P result no longer has Japanese-origin phrase labels.
+    updated.voicegerSegments[segment_index].englishGroups = None
     return updated
 
 
@@ -877,11 +879,24 @@ def replace_english_phoneme_groups(
         flattened.extend(group)
 
     replacement_state = english_phonemes_to_editor_state(flattened)
-    return replace_english_editor_state(
+    existing = query.voicegerSegments[segment_index]
+    if existing.englishGroups is not None:
+        if len(phoneme_groups) != len(existing.englishGroups):
+            raise ValueError("converted English group count must remain stable")
+        if any(not group for group in phoneme_groups):
+            raise ValueError("converted English groups must not become empty")
+    updated = replace_english_editor_state(
         query,
         segment_index=segment_index,
         state=replacement_state,
     )
+    if existing.englishGroups is not None:
+        assert updated.voicegerSegments is not None
+        updated.voicegerSegments[segment_index].englishGroups = [
+            entry.model_copy(update={"count": len(group)}, deep=True)
+            for entry, group in zip(existing.englishGroups, phoneme_groups)
+        ]
+    return updated
 
 
 def english_word_preview_query(
