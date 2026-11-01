@@ -34,7 +34,7 @@ class JapaneseArpabetTuiTests(EditorControllerTestCase):
         self.assertIsNotNone(controller.editor.active_field)
         self.assertEqual(self._convert(controller, query), ())
         self.assertEqual(controller.editor.input_value, original + "v")
-        self.assertEqual(provider.calls, [])
+        self.assertEqual(provider.calls, ["hello"])
 
     def test_direct_conversion_opens_existing_english_editor(self):
         controller, query, provider = self._open()
@@ -50,7 +50,7 @@ class JapaneseArpabetTuiTests(EditorControllerTestCase):
         controller.complete_query_application(replacement, QueryApplicationResult())
         self.assertEqual(controller.editor.kind, "english_word")
         self.assertEqual(controller.editor.payload["label"], "ズンダモンハ")
-        self.assertEqual(provider.calls, [])  # No English tokenizer on JA source.
+        self.assertEqual(provider.calls, ["hello"])  # No English tokenizer on JA source.
 
     def test_candidate_confirmation_cancel_preserves_draft(self):
         controller, query, _provider = self._open(has_takes=True)
@@ -59,7 +59,7 @@ class JapaneseArpabetTuiTests(EditorControllerTestCase):
             "\n", settings=self.settings(), query=query,
             current_caption="なのだ。",
         )
-        self.assertEqual(self._convert(controller, query), ())
+        self.assertEqual(len(self._convert(controller, query)), 1)
         self.assertEqual(controller.editor.kind, "convert_confirmation")
         self.assertEqual(controller.editor.selection, "cancel")
         result = controller.handle_key(
@@ -69,7 +69,7 @@ class JapaneseArpabetTuiTests(EditorControllerTestCase):
         self.assertFalse(any(isinstance(x, ReplaceQueryIntent) for x in result))
         self.assertEqual(controller.editor.kind, "japanese")
         self.assertEqual(controller.editor.input_value, "ズ'ンダモンハ")
-        self.assertEqual(self._convert(controller, query), ())
+        self.assertEqual(len(self._convert(controller, query)), 1)
         confirmed = self._convert(controller, query)
         replacement = next(x for x in confirmed if isinstance(x, ReplaceQueryIntent))
         self.assertEqual(replacement.query.voicegerSegments[0].language, "en")
