@@ -476,7 +476,7 @@ class TuiPronunciationEditorOwnerTests(EditorControllerTestCase):
                 direct_japanese_query(),
                 (("hello", ("HH", "AH1")),),
                 0,
-                ["pronunciation", "preview", "apply", "save_dictionary", "dictionary", "edit_text", "delete_section", "clear", "reset", "back"],
+                ["pronunciation", "preview", "apply", "save_dictionary", "dictionary", "edit_text", "delete_section", "clear", "reset", "convert_arpabet", "back"],
                 "ナ' ノダ'！",
                 "pronunciation",
             ),
