@@ -191,6 +191,8 @@ class WebTakeMixin:
                 return {"prepared": True}
 
             return self._start_take_work(
+                # Restore item-local progress after browser reload/re-auth.
+                detail={"item_id": item_id},
                 session_id, session, kind="prepare", total=1, run=work,
                 cancellable=False,
             )
@@ -217,6 +219,8 @@ class WebTakeMixin:
                 return {"preview_id": handle}
 
             return self._start_take_work(
+                # Restore item-local progress after browser reload/re-auth.
+                detail={"item_id": item_id},
                 session_id, session, kind="preview", total=1, run=work,
             )
 
@@ -253,6 +257,8 @@ class WebTakeMixin:
                 }[status])
 
             return self._start_take_work(
+                # Restore item-local progress after browser reload/re-auth.
+                detail={"item_id": item_id},
                 session_id, session, kind="generate", total=count, run=work,
                 on_terminal=record_terminal,
             )
@@ -309,6 +315,8 @@ class WebTakeMixin:
 
                 kind = "regenerate-all"
             return self._start_take_work(
+                # Restore item-local progress after browser reload/re-auth.
+                detail={"item_id": item_id},
                 session_id, session, kind=kind, total=count, run=work,
             )
 
@@ -341,6 +349,8 @@ class WebTakeMixin:
                 }
 
             return self._start_take_work(
+                # Restore item-local progress after browser reload/re-auth.
+                detail={"item_id": item_id},
                 session_id, session, kind="accept", total=1, run=work,
                 cancellable=False,
             )
