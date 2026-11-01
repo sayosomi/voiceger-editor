@@ -18,8 +18,8 @@ assert(html.includes('id="close-session"'));
 const storage={data:new Map(),getItem(k){return this.data.get(k)||null;},
   setItem(k,v){this.data.set(k,v);},removeItem(k){this.data.delete(k);}};
 const TOKEN="test-token-at-least-thirty-two-characters";
-const sessions=new Map(),calls=[];
-let counter=0,mode="normal",delayed=null;
+const sessions=new Map(),creationKeys=new Map(),calls=[];
+let counter=0,nonceCounter=0,mode="normal",delayed=null;
 function success(data,status=200){return {ok:true,status,json:async()=>data};}
 function failure(status){return {ok:false,status,json:async()=>({detail:"private"})};}
 async function server(path,options){
@@ -30,9 +30,19 @@ async function server(path,options){
   if(mode==="unauthorized")return failure(401);
   if(mode==="forbidden")return failure(403);
   if(path==="/api/web/sessions"&&method==="POST"){
-    const id="sid-"+(++counter);
-    sessions.set(id,{revision:1,items:[{id:"caption-1"}],
-      active_operation:null,latest_operation:null});
+    const key=JSON.parse(options.body).idempotency_key;
+    assert.match(key,/^[0-9a-f]{48}$/);
+    let id=creationKeys.get(key);
+    if(!id || !sessions.has(id)){
+      id="sid-"+(++counter);
+      creationKeys.set(key,id);
+      sessions.set(id,{revision:1,items:[{id:"caption-1"}],
+        active_operation:null,latest_operation:null});
+    }
+    if(mode==="lost-create-response"){
+      mode="normal";
+      throw TypeError("response lost after Mac committed creation");
+    }
     return success({id},201);
   }
   const parts=path.match(/^\/api\/web\/sessions\/([^/]+)(\/batch)?$/);
@@ -41,7 +51,8 @@ async function server(path,options){
   if(!sessions.has(sid))return failure(404);
   if(method==="DELETE"&&!parts[2]){sessions.delete(sid);return {ok:true,status:204};}
   if(method!=="GET")return failure(405);
-  if(!parts[2])return success({id:sid,ephemeral:true,restart_recovery:false});
+  if(!parts[2])return success({id:sid,ephemeral:true,restart_recovery:false,
+    latest_operation:sessions.get(sid).latest_operation});
   if(mode==="defer-batch"){
     return await new Promise(resolve=>{delayed=()=>resolve(success(sessions.get(sid)));});
   }
@@ -55,10 +66,14 @@ function boot(){
       addEventListener(event,fn){this.listeners[event]=fn;}
     };
   }
-  const win={sessionStorage:storage,confirm(){return true;}};
+  const win={sessionStorage:storage,confirm(){return true;},
+    crypto:{getRandomValues(bytes){const seed=++nonceCounter;
+      bytes.forEach((_,i)=>{bytes[i]=(seed+i)%256;});return bytes;}}
+  };
   const body=[
     'var token="",sessionId="",batch=null,selectedId="",currentView="connect",busy=false;',
     'var connectionEpoch=0,refreshSequence=0,expiredSession=false,generationUnconfirmed=false;',
+    'var audioUnconfirmed=null,creationRequestId="",latestSessionOperation=null;',
     'var audioOperation=null,batchOperation=null,batchPolling=false,audioPolling=false;',
     'var outputPreviewSequence=0,outputPreviewTimer=null;',
     'var autoPrepareFailures=new Set(),SESSION_KEY="voiceger-web-session-id";',
@@ -151,6 +166,21 @@ async function run(){
   await six.app.close();
   assert(!sessions.has(closing));
   assert.equal(storage.getItem("voiceger-web-session-id"),null);
+  // A server-committed creation with lost response is replayed with the
+  // original one-time key and never consumes a second bounded slot.
+  const beforeLoss=counter;
+  storage.removeItem("voiceger-web-session-id");
+  const seven=boot();seven.$("web-token").value=TOKEN;
+  mode="lost-create-response";
+  await seven.app.submit();
+  assert.equal(counter,beforeLoss+1);
+  assert.equal(seven.app.state().sessionId,"");
+  assert.equal(storage.getItem("voiceger-web-session-id"),null);
+  assert.equal(seven.$("connect-button").textContent,"再試行");
+  await seven.app.submit();
+  assert.equal(counter,beforeLoss+1,"Ambiguous creation POST must use same key");
+  assert.equal(seven.app.state().currentView,"list");
+  assert.equal(storage.data.size,1,"Only the session id is stored");
   console.log("WEB_SESSION_LIFECYCLE_BROWSER_PASS");
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});
