@@ -95,7 +95,6 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
         plain()
         selectable("preview")
         selectable("apply")
-        selectable("convert_arpabet")
         selectable("save_dictionary")
         selectable("dictionary")
         selectable("edit_text")
@@ -103,6 +102,7 @@ def build_document(builder: EditorDocumentBuilder) -> bool:
             selectable("delete_section")
         selectable("clear")
         selectable("reset")
+        selectable("convert_arpabet")
         selectable("back")
     elif editor.kind in {"english_word", "english_punctuation"}:
         punctuation = editor.kind == "english_punctuation"
