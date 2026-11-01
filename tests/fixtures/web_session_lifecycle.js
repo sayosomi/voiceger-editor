@@ -84,6 +84,7 @@ function boot(){
     'function guardDraft(){return true;}',
     'function batchPath(){return "/api/web/sessions/"+encodeURIComponent(sessionId)+"/batch";}',
     'var resumed=0;function resumeSessionOperations(){resumed++;}',
+    'function reconcileAudioStart(s){latestSessionOperation=s.latest_operation||null;audioUnconfirmed=null;}',
     core,requestCode,lifecycle,auth,retry,actions,
     'return {state:()=>({token,sessionId,batch,currentView,busy,expiredSession,resumed}),',
     'submit:()=> $("auth-form").listeners.submit({preventDefault(){}}),',
