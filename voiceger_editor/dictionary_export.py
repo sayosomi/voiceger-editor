@@ -165,39 +165,74 @@ def export_voiceger_editor_dictionaries(
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    temporary_name: str | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            prefix=".voiceger-dictionary-",
-            suffix=".tmp",
-            dir=output_dir,
-            delete=False,
-        ) as temporary:
-            temporary_name = temporary.name
+    # Keep the ZIP source inside a private directory, pinned by a directory
+    # descriptor on POSIX. A concurrent Output writer cannot replace it.
+    with tempfile.TemporaryDirectory(
+        prefix=".voiceger-dictionary-", dir=output_dir,
+    ) as staging_dir:
+        with ExitStack() as opened:
+            stage_fd = None
+            if os.name == "posix":
+                stage_fd = os.open(
+                    staging_dir, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+                    | getattr(os, "O_NOFOLLOW", 0),
+                )
+                opened.callback(os.close, stage_fd)
+
+            source = Path(staging_dir) / "backup.tmp"
+            flags = os.O_RDWR | os.O_CREAT | os.O_EXCL
+            if stage_fd is not None:
+                fd = os.open(
+                    source.name, flags | getattr(os, "O_NOFOLLOW", 0),
+                    0o600, dir_fd=stage_fd,
+                )
+            else:
+                fd = os.open(source, flags, 0o600)
+            temporary = opened.enter_context(os.fdopen(fd, "w+b"))
             with ZipFile(temporary, "w", compression=ZIP_DEFLATED) as archive:
                 archive.writestr("manifest.json", manifest_bytes)
                 for name, data in members.items():
                     archive.writestr(name, data)
             temporary.flush()
             os.fsync(temporary.fileno())
+            source_info = os.fstat(temporary.fileno())
+            if stage_fd is None:
+                # Windows cannot publish a file with this writable handle open.
+                temporary.close()
 
-        prefix = _timestamp_prefix(timestamp)
-        collision = 1
-        while True:
-            suffix = "" if collision == 1 else f"-{collision}"
-            destination = (
-                output_dir / f"{prefix}_voiceger_editor_dictionary{suffix}.zip"
-            )
-            try:
-                # Same-filesystem hard link publishes only a complete archive;
-                # an already-existing destination can never be overwritten.
-                os.link(temporary_name, destination)
+            prefix = _timestamp_prefix(timestamp)
+            collision = 1
+            while True:
+                suffix = "" if collision == 1 else f"-{collision}"
+                destination = (
+                    output_dir / f"{prefix}_voiceger_editor_dictionary{suffix}.zip"
+                )
+                try:
+                    # Exclusive destination. POSIX must never follow a
+                    # substituted staging source symlink during publication.
+                    if stage_fd is not None:
+                        os.link(
+                            source.name, destination, src_dir_fd=stage_fd,
+                            follow_symlinks=False,
+                        )
+                    else:
+                        os.link(source, destination)
+                except FileExistsError:
+                    collision += 1
+                    continue
+
+                try:
+                    linked = destination.lstat()
+                    if (
+                        not stat.S_ISREG(linked.st_mode)
+                        or (linked.st_dev, linked.st_ino)
+                        != (source_info.st_dev, source_info.st_ino)
+                    ):
+                        raise OSError("Dictionary ZIP staging source changed")
+                except BaseException:
+                    destination.unlink(missing_ok=True)
+                    raise
                 return DictionaryExportResult(paths=(destination,))
-            except FileExistsError:
-                collision += 1
-    finally:
-        if temporary_name is not None:
-            Path(temporary_name).unlink(missing_ok=True)
 
 
 def export_voicevox_dictionary(
