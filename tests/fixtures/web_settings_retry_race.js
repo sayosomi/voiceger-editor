@@ -71,15 +71,16 @@ const app=factory($,document,request,(message,retry)=>messages.push({message,ret
 async function settle(){for(let i=0;i<4;i++)await Promise.resolve();}
 function failure(){return Object.assign(new Error("Macに接続できません"),{code:0});}
 async function run(){
+  // Both forms are hidden while a first settings load is in progress.
+  $("common-settings-form").hidden=true;
+  $("output-settings-form").hidden=true;
   // First form request: Output errors, old Common remains in flight.
   const oldCommon=deferred();
   queue(oldCommon.promise,Promise.reject(failure()));
   await app.loadSessionForms();
   assert.equal(messages.at(-1).retry,true);
-  assert.equal($("common-settings-form").hidden,false); // loader only opens after success
-  // Match the app's on-entry state (forms are initially hidden).
-  $("common-settings-form").hidden=true;
-  $("output-settings-form").hidden=true;
+  assert.equal($("common-settings-form").hidden,true);
+  assert.equal($("output-settings-form").hidden,true);
   queue(Promise.resolve(common(1.25,2)),Promise.resolve(output("/new",2)));
   await app.loadSessionForms();
   assert.equal($("common-settings-form").hidden,false);
