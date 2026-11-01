@@ -19,6 +19,7 @@
   var audioPolling = false;
   var connectionEpoch = 0, refreshSequence = 0;
   var expiredSession = false;
+  var generationUnconfirmed = false;
   var recipeMode = "";
   var batchMenuOpen = false;
   var playingUrl = "";
@@ -1221,6 +1222,7 @@
     ++connectionEpoch;
     ++refreshSequence;
     expiredSession = false;
+    generationUnconfirmed = false;
     batchPolling = false;
     audioPolling = false;
     clearPlayer();
@@ -1322,6 +1324,7 @@
     if (epoch !== connectionEpoch || identity !== sessionId ||
         sequence !== refreshSequence) return false;
     batch = latest;
+    generationUnconfirmed = false;
     renderList();
     if (currentView === "item") renderItem(true);
     return true;
@@ -2036,21 +2039,30 @@
 
   async function startBatchGeneration() {
     if (busy || !batch || reorderMode || deleteMode) return;
+    if (generationUnconfirmed || (batch.active_operation &&
+        ["running", "cancelling"].includes(batch.active_operation.status))) {
+      feedback("Mac側の生成状態を再取得してください。", true);
+      return;
+    }
     var epoch = connectionEpoch;
+    generationUnconfirmed = true;
     setBusy(true);
     try {
       var result = await request("POST", batchPath() + "/generate?expected_revision=" +
         encodeURIComponent(batch.revision));
       if (epoch !== connectionEpoch) return;
+      generationUnconfirmed = false;
       if (result.status === "no-op") {
         feedback(result.reason === "empty_selection" ?
           "生成対象のCaptionをチェックしてください。" :
           "対象のTakeはすべて採用済みです。");
         return;
       }
+      batch.active_operation = result;
       await followBatchOperation(result);
     } catch (error) {
       if (epoch !== connectionEpoch) return;
+      if (!retryable(error)) generationUnconfirmed = false;
       if (error.conflictCode === "revision_conflict") {
         try { await refresh(); } catch (_ignored) {}
       }
