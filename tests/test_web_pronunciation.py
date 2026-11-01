@@ -131,7 +131,7 @@ class JapaneseWebTests(unittest.TestCase):
         self.assertEqual(section["language"], "en")
         self.assertEqual(
             [entry["label"] for entry in section["groups"]],
-            ["ズンダモンハ", "カシコイ", "ノダ", "!"],
+            ["ズンダモンハ", "カシコイ", "ノダ", "！"],
         )
         self.assertIsNone(data["batch"]["items"][0]["pronunciation"])
         self.assertEqual(self.fake.query.voicegerSegments[0].text, "雨")
