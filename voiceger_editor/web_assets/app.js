@@ -284,20 +284,27 @@
       $("common-settings-form").hidden = true;
       $("output-settings-form").hidden = true;
       $("reset-settings").disabled = true;
-      void Promise.all([loadWebSettings(), loadWebOutputSettings()]).then(function () {
-        if (currentView === "session") {
-          $("common-settings-form").hidden = false;
-          $("output-settings-form").hidden = false;
-          $("reset-settings").disabled = false;
-        }
-      }).catch(function (error) {
-        if (currentView === "session") feedback(error.message);
-      });
+      void loadSessionForms();
     }
     window.scrollTo(0, 0);
     var title = $("view-" + name).querySelector("h2");
     if (title) title.focus({ preventScroll: true });
     return true;
+  }
+  // Keep the settings screen usable after a recoverable connection failure.
+  function loadSessionForms() {
+    var identity = sessionId, epoch = connectionEpoch;
+    return Promise.all([loadWebSettings(), loadWebOutputSettings()]).then(function () {
+      if (epoch !== connectionEpoch || identity !== sessionId ||
+          currentView !== "session") return;
+      $("common-settings-form").hidden = false;
+      $("output-settings-form").hidden = false;
+      $("reset-settings").disabled = false;
+    }).catch(function (error) {
+      if (epoch !== connectionEpoch || identity !== sessionId ||
+          currentView !== "session") return;
+      feedback(error.message, retryable(error));
+    });
   }
   function pronunciationHistoryState() {
     return {
@@ -2937,22 +2944,6 @@
   $("default-takes").addEventListener("change", function () {
     void autoSaveDefaultTakes();
   });
-  $("refresh-batch").addEventListener("click", async function () {
-    if (busy) return;
-    var epoch = connectionEpoch, recovered = false;
-    setBusy(true);
-    try {
-      recovered = await refresh();
-      if (recovered) feedback("Batchを更新しました。");
-    } catch (error) {
-      if (epoch !== connectionEpoch) return;
-      var handled = await handleSessionFailure(error);
-      if (!handled) feedback(error.message, retryable(error));
-    } finally {
-      if (epoch === connectionEpoch) setBusy(false);
-    }
-    if (recovered && epoch === connectionEpoch) resumeSessionOperations();
-  });
   $("retry-connection").addEventListener("click", async function () {
     if (busy || !sessionId || !token) return;
     var epoch = connectionEpoch, identity = sessionId, recovered = false;
@@ -2965,6 +2956,7 @@
       if (recovered) {
         reconcileAudioStart(restored);
         feedback("再接続しました。");
+        if (currentView === "session") void loadSessionForms();
       }
     } catch (error) {
       if (epoch !== connectionEpoch || identity !== sessionId) return;
@@ -2975,13 +2967,12 @@
     }
     if (recovered && epoch === connectionEpoch) resumeSessionOperations();
   });
-  $("disconnect-session").addEventListener("click", function () {
-    if (busy || !guardDraft()) return;
-    resetLocal(true);
-  });
   $("close-session").addEventListener("click", async function () {
-    if (busy || !guardDraft() ||
-        !window.confirm("Mac側のBatchと未保存のTakeを破棄しますか？ 保存済み音声は削除されません。")) return;
+    if (busy || currentView !== "session" || !sessionId) return;
+    var unsavedSettings = commonDirty() || defaultTakesDirty() || outputDirty();
+    var message = (unsavedSettings ? "未保存の設定変更も失われます。\n" : "") +
+      "Mac側のBatchと未保存のTakeが消えます。保存済み音声は残ります。\n作業を終了しますか？";
+    if (!window.confirm(message)) return;
     setBusy(true);
     try {
       await request("DELETE", "/api/web/sessions/" + encodeURIComponent(sessionId));
@@ -4168,11 +4159,9 @@
       if (!data || data.status !== "ok" || typeof data.version !== "string") {
         throw new Error("Invalid health response");
       }
-      $("connection-status").textContent = "Webサーバーに接続済み";
       $("server-version").textContent = "Voiceger Editor " + data.version;
     })
     .catch(function () {
-      $("connection-status").textContent = "接続状態を確認できません";
-      $("server-version").textContent = "ページを再読み込みしてください";
+      $("server-version").textContent = "バージョンを確認できません";
     });
 })();
