@@ -137,6 +137,47 @@ class JapaneseWebTests(unittest.TestCase):
         self.assertEqual(self.fake.query.voicegerSegments[0].text, "雨")
         self.assertEqual(self.fake.query.accent_phrases, [])
 
+    def test_converted_english_phoneme_edit_keeps_durable_group_boundaries(self):
+        response = self.action(
+            "POST", "/pronunciation/convert",
+            {"notation": "ズ'ンダモンハ カシコ'イ ノダ'！"},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        section = response.json()["batch"]["items"][0]["pronunciation_sections"][0]
+        first = section["groups"][0]
+        new_draft = first["notation"] + " R AA0"
+        edited = self.action(
+            "PATCH", "/pronunciation/english/0/0",
+            {"opening": first["notation"], "notation": new_draft},
+        )
+        self.assertEqual(edited.status_code, 200, edited.text)
+        groups = edited.json()["batch"]["items"][0]["pronunciation_sections"][0]["groups"]
+        self.assertEqual(groups[0]["notation"], new_draft)
+        self.assertEqual(groups[0]["label"], "ズンダモンハ")
+        self.assertEqual(groups[-1]["notation"], "!")
+        self.assertEqual(
+            self.fake.query.voicegerSegments[0].englishGroups[0].count,
+            len(new_draft.split()),
+        )
+
+    def test_conversion_clears_takes_but_preserves_accepted_saved_audio(self):
+        self.finish(self.action("POST", "/takes/generate"))
+        self.finish(self.action("POST", "/takes/1/accept"))
+        original_files = {
+            p.name: p.read_bytes() for p in self.output.iterdir()
+        }
+        self.assertTrue(original_files)
+        response = self.action(
+            "POST", "/pronunciation/convert", {"notation": "ズ'ンダ！"},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        item = response.json()["batch"]["items"][0]
+        self.assertEqual(item["candidate_count"], 0)
+        self.assertEqual(
+            {p.name: p.read_bytes() for p in self.output.iterdir()},
+            original_files,
+        )
+
     def test_arpabet_conversion_failure_and_stale_revision_do_not_mutate(self):
         before = self.batch()
         bad = self.action(
