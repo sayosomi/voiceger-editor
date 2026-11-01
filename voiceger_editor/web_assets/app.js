@@ -60,6 +60,8 @@
   var settingsReturnView = "list", settingsHistoryActive = false;
   var settingsHistoryDestination = null;
   var commonSettingsData = null;
+  var outputSettingsData = null;
+  var outputPreviewSequence = 0, outputPreviewTimer = null;
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
   var viewNames = ["connect", "list", "recipe", "add", "item", "pronunciation", "section", "session", "dictionary", "dictionary-management", "dictionary-import-review", "dictionary-entry", "dictionary-pron"];
@@ -133,12 +135,19 @@
         current[field] !== commonSettingsData.values[field];
     });
   }
+  function outputDirty() {
+    if (!outputSettingsData) return false;
+    var current = outputValues();
+    return Object.keys(current).some(function (key) {
+      return current[key] !== outputSettingsData.values[key];
+    });
+  }
   function defaultTakesDirty() {
     return Boolean(batch) && ($("default-takes").value.trim() === "" ||
       Number($("default-takes").value) !== batch.default_take_count);
   }
   function guardDraft() {
-    if (currentView === "session" && (commonDirty() || defaultTakesDirty()))
+    if (currentView === "session" && (commonDirty() || defaultTakesDirty() || outputDirty()))
       return window.confirm("保存されていない設定変更を破棄して移動しますか？");
     if (currentView === "dictionary-pron") {
       var pronChanged = dictionaryPronunciationDirty();
@@ -261,10 +270,12 @@
       $("default-takes-error").hidden = true;
       $("default-takes-status").hidden = true;
       $("common-settings-form").hidden = true;
+      $("output-settings-form").hidden = true;
       $("reset-settings").disabled = true;
-      void loadWebSettings().then(function () {
+      void Promise.all([loadWebSettings(), loadWebOutputSettings()]).then(function () {
         if (currentView === "session") {
           $("common-settings-form").hidden = false;
+          $("output-settings-form").hidden = false;
           $("reset-settings").disabled = false;
         }
       }).catch(function (error) {
@@ -560,6 +571,10 @@
       var invalidPronunciation = {
         invalid_import: "辞書ファイルの形式・内容を確認してください。ZIP・辞書JSONのみ利用できます。",
         invalid_filename: "ファイル名は .voiceger.json で終わる単一の名前を指定してください。",
+        invalid_output_dir: "Macの保存先を絶対パスで指定してください。既存のファイルやシンボリックリンクは選択できません。",
+        invalid_filename_template: "ファイル名の変数や文字を確認してください。",
+        invalid_output_format: "この音声形式はMac側で利用できません。MP3にはFFmpegが必要です。",
+        invalid_output_encoding: "この形式のエンコード設定を選び直してください。",
         invalid_pronunciation: "発音形式が正しくありません。各アクセント句に ' または正しい [ ] を指定し、句の区切りには空白を使ってください。",
         unsupported_pronunciation: "選択した発音は編集できません。最新のBatchを取得してください。",
         invalid_english_pronunciation: "ARPAbetの音素・強勢数字（0/1/2）を確認してください。",
@@ -642,6 +657,86 @@
     $("common-top-p").value = numericField(data.values.top_p);
     $("common-temperature").value = numericField(data.values.temperature);
     $("common-settings-error").hidden = true;
+  }
+  function outputValues() {
+    var values = Object.assign({}, outputSettingsData.values);
+    values.output_dir = $("output-dir").value.trim();
+    values.filename_template = $("output-template").value;
+    values.output_format = $("output-format").value;
+    var key = values.output_format === "wav" ? "wav_encoding" :
+      values.output_format === "flac" ? "flac_encoding" : "mp3_bitrate";
+    values[key] = $("output-encoding").value;
+    values.save_text = $("output-text").checked;
+    values.save_lab = $("output-lab").checked;
+    return values;
+  }
+  function selectOutputEncoding() {
+    if (!outputSettingsData) return;
+    var format = $("output-format").value;
+    var field = format === "wav" ? "wav_encoding" :
+      format === "flac" ? "flac_encoding" : "mp3_bitrate";
+    $("output-encoding-label").textContent =
+      format === "mp3" ? "ビットレート" : "エンコード";
+    $("output-encoding").replaceChildren();
+    (outputSettingsData.encodings[format] || []).forEach(function (value) {
+      var choice = document.createElement("option");
+      choice.value = value;
+      choice.textContent = value === "source" ? "Source" :
+        value === "float32" ? "Float 32-bit" :
+        value === "pcm16" ? "PCM 16-bit" :
+        value === "pcm24" ? "PCM 24-bit" : value.replace("k", " kbps");
+      $("output-encoding").append(choice);
+    });
+    $("output-encoding").value = outputSettingsData.values[field];
+  }
+  function renderOutputSettings(data) {
+    outputSettingsData = data;
+    if (commonSettingsData)
+      commonSettingsData.settings_revision = data.settings_revision;
+    $("output-dir").value = data.values.output_dir;
+    $("output-template").value = data.values.filename_template;
+    $("output-format").replaceChildren();
+    ["wav", "flac", "mp3"].forEach(function (format) {
+      var choice = document.createElement("option");
+      choice.value = format;
+      choice.textContent = format.toUpperCase();
+      choice.disabled = !data.formats.includes(format);
+      $("output-format").append(choice);
+    });
+    $("output-format").value = data.values.output_format;
+    selectOutputEncoding();
+    $("output-text").checked = data.values.save_text;
+    $("output-lab").checked = data.values.save_lab;
+    $("output-lab-note").hidden = !data.values.save_lab;
+    $("output-ffmpeg-note").hidden = data.formats.includes("mp3");
+    $("output-settings-error").hidden = true;
+    scheduleOutputPreview();
+  }
+  async function loadWebOutputSettings() {
+    var originalSession = sessionId;
+    var data = await request("GET", settingsPath() + "/output");
+    if (!sessionId || originalSession !== sessionId) return;
+    renderOutputSettings(data);
+  }
+  function scheduleOutputPreview() {
+    if (outputPreviewTimer !== null) clearTimeout(outputPreviewTimer);
+    var sequence = ++outputPreviewSequence;
+    var template = $("output-template").value;
+    var format = $("output-format").value;
+    $("output-filename-preview").textContent = "確認中…";
+    outputPreviewTimer = setTimeout(async function () {
+      outputPreviewTimer = null;
+      try {
+        var result = await request("GET", settingsPath() +
+          "/output/preview?template=" + encodeURIComponent(template) +
+          "&output_format=" + encodeURIComponent(format));
+        if (sequence === outputPreviewSequence)
+          $("output-filename-preview").textContent = result.filename;
+      } catch (_error) {
+        if (sequence === outputPreviewSequence)
+          $("output-filename-preview").textContent = "ファイル名を確認してください";
+      }
+    }, 160);
   }
   async function loadWebSettings() {
     var originalSession = sessionId;
@@ -1138,6 +1233,10 @@
     settingsHistoryActive = false;
     settingsHistoryDestination = null;
     commonSettingsData = null;
+    outputSettingsData = null;
+    ++outputPreviewSequence;
+    if (outputPreviewTimer !== null) clearTimeout(outputPreviewTimer);
+    outputPreviewTimer = null;
     $("common-settings-error").hidden = true;
     $("item-voice-error").hidden = true;
     dictEntry = null;
@@ -2509,7 +2608,7 @@
   $("reset-settings").addEventListener("click", async function () {
     if (busy || !batch || !commonSettingsData || currentView !== "session") return;
     if (!window.confirm(
-      "Style・Speed・Top K・Top P・Temperature・標準Take数を初期化します。既存のTakeと採用状態、保存済み音声、Output保存先、ファイル名、Captionの個別設定は維持します。実行しますか？"
+      "音声生成・サンプリング・標準Take数・出力形式を初期値に戻します。Output保存先とファイル名、既存のTakeと採用状態は維持します。初期化しますか？"
     )) return;
     setBusy(true);
     settingsStatus("common-settings-status", "初期化中…");
@@ -2520,6 +2619,7 @@
         {});
       batch = result.batch;
       renderCommonSettings(result.settings);
+      if (result.output) renderOutputSettings(result.output);
       $("default-takes").value = String(batch.default_take_count);
       $("default-takes-error").hidden = true;
       renderList();
@@ -3700,6 +3800,64 @@
   });
   $("dictionary-export-voicevox").addEventListener("click", function () {
     void exportDictionary("voicevox");
+  });
+
+  async function autoSaveOutput() {
+    if (busy || !batch || !commonSettingsData || !outputSettingsData ||
+        currentView !== "session") return;
+    var errorRow = $("output-settings-error");
+    var statusId = "output-settings-status";
+    try {
+      var values = outputValues();
+      if (!values.output_dir || !values.filename_template)
+        throw new Error("保存先とファイル名を入力してください。");
+      if (!outputSettingsData.formats.includes(values.output_format))
+        throw new Error("この音声形式はMacで使用できません。");
+      if (!outputDirty()) {
+        errorRow.hidden = true;
+        return;
+      }
+      setBusy(true);
+      settingsStatus(statusId, "保存中…");
+      try {
+        var url = settingsPath() + "/output?expected_revision=" +
+          encodeURIComponent(batch.revision) + "&expected_settings_revision=" +
+          encodeURIComponent(commonSettingsData.settings_revision);
+        var result = await request("PATCH", url, values);
+        renderOutputSettings(result);
+        errorRow.hidden = true;
+        try {
+          await refresh();
+          settingsStatus(statusId, "保存済み");
+        } catch (error) {
+          settingsStatus(statusId, "保存済み（Batchの再取得に失敗）");
+          feedback(error.message);
+        }
+      } finally { setBusy(false); }
+    } catch (error) {
+      errorRow.textContent = error.message;
+      errorRow.hidden = false;
+      settingsStatus(statusId, "保存失敗");
+    }
+  }
+  $("output-settings-form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    void autoSaveOutput();
+  });
+  ["output-dir", "output-template", "output-encoding"].forEach(function (id) {
+    $(id).addEventListener("change", function () { void autoSaveOutput(); });
+  });
+  $("output-template").addEventListener("input", scheduleOutputPreview);
+  $("output-format").addEventListener("change", function () {
+    selectOutputEncoding();
+    scheduleOutputPreview();
+    void autoSaveOutput();
+  });
+  ["output-text", "output-lab"].forEach(function (id) {
+    $(id).addEventListener("change", function () {
+      $("output-lab-note").hidden = !$("output-lab").checked;
+      void autoSaveOutput();
+    });
   });
 
   fetch("/api/web/health", { method: "GET", cache: "no-store" })
