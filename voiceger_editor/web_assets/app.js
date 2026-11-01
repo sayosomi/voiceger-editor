@@ -71,7 +71,15 @@
   var outputSettingsData = null;
   // A same-session retry must invalidate older, still-pending settings GETs.
   var commonSettingsLoadSequence = 0, outputSettingsLoadSequence = 0;
+  var commonSettingsEditSequence = 0, outputSettingsEditSequence = 0;
   var sessionFormsLoadSequence = 0;
+  function invalidateSettingsLoads() {
+    // Both settings endpoints share a server settings_revision. A PATCH in
+    // either section makes every older settings snapshot unsafe to render.
+    ++commonSettingsLoadSequence;
+    ++outputSettingsLoadSequence;
+    ++sessionFormsLoadSequence;
+  }
   var outputPreviewSequence = 0, outputPreviewTimer = null;
   var SESSION_KEY = "voiceger-web-session-id";
   var $ = function (id) { return document.getElementById(id); };
@@ -749,9 +757,12 @@
   async function loadWebOutputSettings() {
     var originalSession = sessionId, epoch = connectionEpoch;
     var sequence = ++outputSettingsLoadSequence;
+    var editSequence = outputSettingsEditSequence;
     var data = await request("GET", settingsPath() + "/output");
     if (!sessionId || originalSession !== sessionId ||
-        epoch !== connectionEpoch || sequence !== outputSettingsLoadSequence) return;
+        epoch !== connectionEpoch || sequence !== outputSettingsLoadSequence ||
+        editSequence !== outputSettingsEditSequence ||
+        (currentView === "session" && outputDirty())) return;
     renderOutputSettings(data);
   }
   function scheduleOutputPreview() {
@@ -777,9 +788,12 @@
   async function loadWebSettings() {
     var originalSession = sessionId, epoch = connectionEpoch;
     var sequence = ++commonSettingsLoadSequence;
+    var editSequence = commonSettingsEditSequence;
     var data = await request("GET", settingsPath());
     if (!sessionId || originalSession !== sessionId ||
-        epoch !== connectionEpoch || sequence !== commonSettingsLoadSequence) return;
+        epoch !== connectionEpoch || sequence !== commonSettingsLoadSequence ||
+        editSequence !== commonSettingsEditSequence ||
+        (currentView === "session" && commonDirty())) return;
     renderCommonSettings(data);
     if (currentView === "item") {
       var item = batch && batch.items.find(function (entry) { return entry.id === selectedId; });
@@ -2868,6 +2882,7 @@
           encodeURIComponent(batch.revision) + "&expected_settings_revision=" +
           encodeURIComponent(commonSettingsData.settings_revision);
         var result = await request("PATCH", address, values);
+        invalidateSettingsLoads();
         renderCommonSettings(result);
         errorRow.hidden = true;
         try {
@@ -2890,7 +2905,11 @@
   });
   ["common-style", "common-speed", "common-top-k",
     "common-top-p", "common-temperature"].forEach(function (id) {
-    $(id).addEventListener("change", function () { void autoSaveCommon(); });
+    $(id).addEventListener("input", function () { ++commonSettingsEditSequence; });
+    $(id).addEventListener("change", function () {
+      ++commonSettingsEditSequence;
+      void autoSaveCommon();
+    });
   });
   $("reset-settings").addEventListener("click", async function () {
     if (busy || !batch || !commonSettingsData || currentView !== "session") return;
@@ -2905,6 +2924,7 @@
         encodeURIComponent(commonSettingsData.settings_revision),
         {});
       batch = result.batch;
+      invalidateSettingsLoads();
       renderCommonSettings(result.settings);
       if (result.output) renderOutputSettings(result.output);
       $("default-takes").value = String(batch.default_take_count);
@@ -4124,6 +4144,7 @@
           encodeURIComponent(batch.revision) + "&expected_settings_revision=" +
           encodeURIComponent(commonSettingsData.settings_revision);
         var result = await request("PATCH", url, values);
+        invalidateSettingsLoads();
         renderOutputSettings(result);
         errorRow.hidden = true;
         try {
@@ -4145,16 +4166,26 @@
     void autoSaveOutput();
   });
   ["output-dir", "output-template", "output-encoding"].forEach(function (id) {
-    $(id).addEventListener("change", function () { void autoSaveOutput(); });
+    $(id).addEventListener("input", function () { ++outputSettingsEditSequence; });
+    $(id).addEventListener("change", function () {
+      ++outputSettingsEditSequence;
+      void autoSaveOutput();
+    });
   });
   $("output-template").addEventListener("input", scheduleOutputPreview);
+  $("output-format").addEventListener("input", function () {
+    ++outputSettingsEditSequence;
+  });
   $("output-format").addEventListener("change", function () {
+    ++outputSettingsEditSequence;
     selectOutputEncoding();
     scheduleOutputPreview();
     void autoSaveOutput();
   });
   ["output-text", "output-lab"].forEach(function (id) {
+    $(id).addEventListener("input", function () { ++outputSettingsEditSequence; });
     $(id).addEventListener("change", function () {
+      ++outputSettingsEditSequence;
       $("output-lab-note").hidden = !$("output-lab").checked;
       void autoSaveOutput();
     });
