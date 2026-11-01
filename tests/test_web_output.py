@@ -37,6 +37,13 @@ class FakeSpeech:
     def replace_caption(self, caption):
         self.caption = caption
 
+    def stage_output_settings(self, settings):
+        if any(getattr(settings, key) != getattr(self.settings, key)
+               for key in ("style_id", "speed", "top_k", "top_p",
+                           "temperature", "take_count")):
+            raise ValueError("Output preflight changed synthesis values")
+        return lambda: setattr(self, "settings", settings)
+
     def replace_settings(self, settings, *, preserve_takes=False):
         self.settings = settings
         if not preserve_takes:
