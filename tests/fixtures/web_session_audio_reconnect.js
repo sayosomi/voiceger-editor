@@ -56,7 +56,8 @@ const harness=new Function("$","request","setTimeout","feedback",
   "connectionEpoch=0,refreshSequence=0,selectedId='row1',currentView='item'," +
   "batchPolling=false,audioPolling=false,detachedPolling=false," +
   "audioOperation=null,latestSessionOperation=null,audioUnconfirmed=null," +
-  "commonSettingsData=null,pronunciationStale=false,sectionStale=false," +
+  "commonSettingsData=null,commonSettingsLoadSequence=0," +
+  "pronunciationStale=false,sectionStale=false," +
   "takeMenuOpen=false,generationUnconfirmed=false;" +
   "const autoPrepareFailures=new Set();" +
   "let batch={revision:3,items:[{id:'row1',caption:'hello'}],active_operation:null};" +
