@@ -6,7 +6,10 @@ from voiceger_editor.english_group_boundaries import bound_english_groups
 from voiceger_editor.mixed_language import build_mixed_synthesis_plan
 from voiceger_editor.pronunciation import parse_pronunciation
 from voiceger_editor.query_ja_arpabet import convert_japanese_section_to_arpabet
-from voiceger_editor.query_editing import replace_english_phoneme_groups
+from voiceger_editor.query_editing import (
+    replace_english_phoneme_groups,
+    replace_english_section_text,
+)
 from voiceger_editor.voicevox_api_models import VoicegerSegment
 from voiceger_editor.voicevox_query import (
     build_audio_query,
@@ -144,6 +147,28 @@ class JapaneseArpabetQueryTests(unittest.TestCase):
         self.assertEqual(
             updated.voicegerSegments[0].text, segment.text,
         )
+
+    def test_spoken_text_rebuild_discards_old_ja_origin_group_boundaries(self):
+        original = build_audio_query(pronunciation=parse_pronunciation("ア'メ。"))
+        converted = convert_japanese_section_to_arpabet(
+            original, "ズ'ンダモンハ/カシコ'イ/ノダ'！",
+            pure_japanese_utterance_text="ずんだもんはかしこいのだ！",
+        )
+        self.assertEqual(len(converted.voicegerSegments[0].englishGroups), 4)
+        before = converted.model_dump()
+
+        rebuilt = replace_english_section_text(
+            converted,
+            segment_index=0,
+            text="hello",
+            phoneme_groups=(("hello", ("HH", "AH0", "L", "OW1")),),
+        )
+        self.assertEqual(converted.model_dump(), before)
+        self.assertEqual(rebuilt.voicegerSegments[0].text, "hello")
+        self.assertEqual(
+            rebuilt.voicegerSegments[0].phonemes, ["HH", "AH0", "L", "OW1"],
+        )
+        self.assertIsNone(rebuilt.voicegerSegments[0].englishGroups)
 
     def test_no_empty_group_or_group_count_change_after_conversion(self):
         query = convert_japanese_section_to_arpabet(
