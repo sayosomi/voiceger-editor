@@ -170,10 +170,9 @@ class DictionaryExportTests(unittest.TestCase):
                 self.assertIsNotNone(source_fd)
                 self.assertIs(kwargs.get("follow_symlinks"), False)
                 if not swapped:
-                    os.rename(
-                        source, source + ".saved",
-                        src_dir_fd=source_fd, dst_dir_fd=source_fd,
-                    )
+                    # Unlink the name while its original fd remains open;
+                    # avoid creating any unrelated staging entries.
+                    os.unlink(source, dir_fd=source_fd)
                     os.symlink(outside, source, dir_fd=source_fd)
                     swapped = True
                 result = real_link(source, destination, **kwargs)
@@ -199,6 +198,61 @@ class DictionaryExportTests(unittest.TestCase):
             self.assertEqual(outside.read_bytes(), b"private data")
             self.assertEqual(outside.stat().st_nlink, original.st_nlink)
             self.assertEqual(list(output.iterdir()), [])
+
+    @unittest.skipUnless(os.name == "posix", "POSIX dirfd required")
+    def test_replaced_stage_directory_never_recursively_deletes_decoy(self):
+        exporters = (export_voiceger_editor_dictionaries, export_voicevox_dictionary)
+        for exporter in exporters:
+            with self.subTest(exporter=exporter.__name__):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    output = root / "output"
+                    output.mkdir()
+                    displaced = root / "original-stage-moved"
+                    decoy = None
+                    real_link = os.link
+
+                    def rename_stage_before_publication(source, destination, **kwargs):
+                        nonlocal decoy
+                        self.assertIsNotNone(kwargs.get("src_dir_fd"))
+                        if decoy is None:
+                            staging = next(
+                                path for path in output.iterdir()
+                                if path.name.startswith(".voiceger-dictionary-")
+                                and path.is_dir()
+                            )
+                            staging.rename(displaced)
+                            staging.mkdir()
+                            (staging / "do-not-delete.txt").write_text(
+                                "unrelated data", encoding="utf-8",
+                            )
+                            decoy = staging
+                        return real_link(source, destination, **kwargs)
+
+                    with patch(
+                        "voiceger_editor.dictionary_export.os.link",
+                        side_effect=rename_stage_before_publication,
+                    ):
+                        result = exporter(
+                            FakeDictionaryCore(), output, timestamp=self.timestamp,
+                        )
+                    self.assertIsNotNone(decoy)
+                    self.assertEqual(
+                        (decoy / "do-not-delete.txt").read_text(encoding="utf-8"),
+                        "unrelated data",
+                    )
+                    self.assertTrue(decoy.is_dir())
+                    self.assertTrue(displaced.is_dir())
+                    self.assertEqual(list(displaced.iterdir()), [])
+                    self.assertEqual(len(result.paths), 1)
+                    if exporter is export_voiceger_editor_dictionaries:
+                        with ZipFile(result.paths[0]) as archive:
+                            self.assertIn("manifest.json", archive.namelist())
+                    else:
+                        self.assertIn(
+                            "22222222-2222-4222-8222-222222222222",
+                            json.loads(result.paths[0].read_text(encoding="utf-8")),
+                        )
 
     def test_voicevox_export_is_still_japanese_json_and_collision_safe(self):
         core = FakeDictionaryCore()
@@ -274,10 +328,9 @@ class DictionaryExportTests(unittest.TestCase):
                 if source_fd is not None and not swapped:
                     # Force a source-path race even though the real temporary
                     # directory is owner-only. The opened original stays pinned.
-                    os.rename(
-                        source, source + ".saved",
-                        src_dir_fd=source_fd, dst_dir_fd=source_fd,
-                    )
+                    # Unlink the name while its original fd remains open;
+                    # avoid creating any unrelated staging entries.
+                    os.unlink(source, dir_fd=source_fd)
                     os.symlink(outside, source, dir_fd=source_fd)
                     swapped = True
                 return real_link(source, destination, **kwargs)
