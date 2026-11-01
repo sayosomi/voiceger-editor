@@ -97,12 +97,16 @@ class _WebSession:
     pending_dictionary_import: Any = None
 
     def snapshot(self) -> dict[str, Any]:
+        latest_id = next(reversed(self.operations), None)
+        latest = self.operations.get(latest_id) if latest_id is not None else None
         return {
             "id": self.identifier,
             "ephemeral": True,
             "restart_recovery": False,
             "item_count": len(self.batch),
             "default_take_count": self.batch.default_take_count,
+            # Operation history is separate from immutable Batch snapshots.
+            "latest_operation": latest.snapshot() if latest is not None else None,
         }
 
 
