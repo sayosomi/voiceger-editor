@@ -30,12 +30,19 @@ def _probe_output_writable(destination: Path) -> None:
     while not nearest.exists():
         nearest = nearest.parent
     try:
-        # mkdir and file creation are both required by accepted-output saves.
-        # Probe only a disposable sibling/child, leaving Output untouched.
-        with tempfile.TemporaryDirectory(
-            prefix=".voiceger-editor-probe-", dir=nearest,
-        ) as temporary:
-            (Path(temporary) / "write-check").write_bytes(b"ok")
+        if destination.exists():
+            # Existing Output only needs new files, not new directories.
+            with tempfile.NamedTemporaryFile(
+                prefix=".voiceger-editor-probe-", dir=destination,
+            ) as stream:
+                stream.write(b"ok")
+                stream.flush()
+        else:
+            # A new Output folder must be creatable from its nearest parent.
+            with tempfile.TemporaryDirectory(
+                prefix=".voiceger-editor-probe-", dir=nearest,
+            ) as temporary:
+                (Path(temporary) / "write-check").write_bytes(b"ok")
     except OSError:
         raise WebOutputValidation("invalid_output_dir") from None
 
