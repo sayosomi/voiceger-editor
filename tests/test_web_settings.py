@@ -124,7 +124,7 @@ class WebSynthesisSettingsTests(unittest.TestCase):
         )
 
     def common(self, *, style_id=3, speed=1.0, top_k=20,
-               top_p=1.0, temperature=1.0, confirmed=False,
+               top_p=1.0, temperature=1.0,
                revision=None, settings_revision=None):
         data = self.settings()
         rev = data["revision"] if revision is None else revision
@@ -139,7 +139,6 @@ class WebSynthesisSettingsTests(unittest.TestCase):
             json={
                 "style_id": style_id, "speed": speed, "top_k": top_k,
                 "top_p": top_p, "temperature": temperature,
-                "confirm_take_invalidation": confirmed,
             },
         )
 
@@ -160,7 +159,7 @@ class WebSynthesisSettingsTests(unittest.TestCase):
         self.assertIn('id="reset-settings">設定値を初期化</button>', html)
         self.assertNotIn('id="reset-sampling"', html)
         self.assertIn('id="common-settings-status"', html)
-        self.assertIn('id="apply-common-settings" class="primary-button" hidden>変更を反映</button>', html)
+        self.assertNotIn('id="apply-common-settings"', html)
         self.assertIn('id="default-takes-status"', html)
         self.assertNotIn('id="reset-common-draft"', html)
         self.assertNotIn('<button type="submit">保存</button>\n        </form>\n        <div class="setting-section">\n          <h3>セッション', html)
@@ -408,7 +407,7 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
         self.assertEqual(result.returncode, 0, result.stdout + "\n" + result.stderr)
         self.assertIn("WEB_SETTINGS_MANUAL_APPLY_PASS", result.stdout)
 
-    def reset(self, *, confirmed=False, revision=None, settings_revision=None):
+    def reset(self, *, revision=None, settings_revision=None):
         data = self.settings()
         return self.client.post(
             self.base + "/settings/reset?expected_revision=" +
@@ -417,7 +416,6 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
             str(data["settings_revision"] if settings_revision is None
                 else settings_revision),
             headers=self.write_headers,
-            json={"confirm_take_invalidation": confirmed},
         )
 
     def test_reset_generation_defaults_preserves_user_output_and_item_voice(self):
@@ -443,17 +441,7 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
                             sampling_rate=16000, style_name="Sweet")
         )
         item.mark_accepted(1)
-        before = self.settings()
-        unconfirmed = self.reset()
-        self.assertEqual(unconfirmed.status_code, 409, unconfirmed.text)
-        self.assertEqual(unconfirmed.json()["detail"]["code"],
-                         "take_invalidation_confirmation_required")
-        self.assertEqual(self.batch()["default_take_count"], 7)
-        self.assertEqual(self.settings()["settings_revision"],
-                         before["settings_revision"])
-        self.save_mock.assert_not_called()
-
-        result = self.reset(confirmed=True)
+        result = self.reset()
         self.assertEqual(result.status_code, 200, result.text)
         payload = result.json()
         self.assertEqual(payload["settings"]["values"], {
@@ -466,8 +454,8 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
         self.assertEqual(item.session.settings.speed, 1.4)
         self.assertEqual(item.take_count_override, 9)
         self.assertEqual(saved_output.read_bytes(), b"accepted-audio-placeholder")
-        self.assertEqual(item.session.candidates, [])
-        self.assertEqual(item.accepted_take_numbers, frozenset())
+        self.assertEqual(len(item.session.candidates), 1)
+        self.assertEqual(item.accepted_take_numbers, frozenset({1}))
         current = self.service._batch_settings
         self.assertEqual(current.output_dir, custom.output_dir)
         self.assertEqual(current.filename_template, custom.filename_template)
@@ -485,7 +473,7 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
         )["default_take_count"], 7)
         self.save_mock.side_effect = PermissionError("private Mac path")
         before = self.settings()
-        response = self.reset(confirmed=True)
+        response = self.reset()
         self.assertEqual(response.status_code, 503, response.text)
         self.assertEqual(self.batch()["default_take_count"], 7)
         self.assertEqual(self.settings()["settings_revision"],
@@ -498,7 +486,7 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
             self.sid, self.batch()["revision"], 8
         )["default_take_count"], 8)
         before = self.settings()
-        response = self.reset(confirmed=True)
+        response = self.reset()
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["batch"]["default_take_count"], 4)
         self.assertEqual(self.settings()["settings_revision"],
@@ -511,7 +499,6 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
         stale = self.reset(
             revision=self.batch()["revision"],
             settings_revision=previous["settings_revision"],
-            confirmed=True,
         )
         self.assertEqual(stale.status_code, 409, stale.text)
         self.assertEqual(stale.json()["detail"]["code"], "settings_revision_conflict")
@@ -520,17 +507,15 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
             str(self.batch()["revision"]) + "&expected_settings_revision=" +
             str(self.settings()["settings_revision"]),
             headers=self.read_headers,
-            json={"confirm_take_invalidation": True},
         )
         self.assertEqual(unauthorized.status_code, 403)
-        wrong_type = self.client.post(
-            self.base + "/settings/reset?expected_revision=" +
-            str(self.batch()["revision"]) + "&expected_settings_revision=" +
+        invalid_query = self.client.post(
+            self.base + "/settings/reset?expected_revision=-1" +
+            "&expected_settings_revision=" +
             str(self.settings()["settings_revision"]),
             headers=self.write_headers,
-            json={"confirm_take_invalidation": "yes"},
         )
-        self.assertEqual(wrong_type.status_code, 422)
+        self.assertEqual(invalid_query.status_code, 422)
 
     def test_authenticated_values_and_style_catalog(self):
         data = self.settings()
@@ -591,7 +576,7 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
         self.save_mock.assert_not_called()
         self.assertEqual(self.service._batch_settings, precise)
 
-    def test_common_sampling_clears_candidates_and_keeps_local_style(self):
+    def test_common_sampling_preserves_candidates_acceptance_and_local_style(self):
         item = self.add()
         other = self.add("ふたつめ")
         self.assertEqual(self.item_voice(item).status_code, 200)
@@ -601,27 +586,20 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
                                 sampling_rate=16000, style_name="Neutral")
             )
             entry.mark_accepted(1)
-        refused = self.common(top_k=30)
-        self.assertEqual(refused.status_code, 409, refused.text)
-        self.assertEqual(
-            refused.json()["detail"]["code"], "take_invalidation_confirmation_required"
-        )
-        self.assertEqual(len(item.session.candidates), 1)
-        self.save_mock.assert_not_called()
-        result = self.common(top_k=30, confirmed=True)
+        result = self.common(top_k=30)
         self.assertEqual(result.status_code, 200, result.text)
         self.assertEqual(item.session.settings.style_id, 1)
         self.assertEqual(item.session.settings.speed, 1.25)
         self.assertEqual(other.session.settings.style_id, 3)
         self.assertEqual(item.session.settings.top_k, 30)
         for entry in (item, other):
-            self.assertEqual(entry.session.candidates, [])
-            self.assertEqual(entry.accepted_take_numbers, frozenset())
+            self.assertEqual(len(entry.session.candidates), 1)
+            self.assertEqual(entry.accepted_take_numbers, frozenset({1}))
         self.assertEqual(self.save_mock.call_count, 1)
         self.assertEqual(self.common(style_id=1, top_k=30).status_code, 200)
         self.assertEqual(other.session.settings.style_id, 1)
 
-    def test_confirmation_covers_other_web_sessions(self):
+    def test_preservation_covers_other_web_sessions(self):
         other_sid = self.client.post(
             "/api/web/sessions", headers=self.write_headers
         ).json()["id"]
@@ -631,27 +609,11 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
             SimpleNamespace(number=1, frame_count=16000,
                             sampling_rate=16000, style_name="Neutral")
         )
-        revision = self.settings()["settings_revision"]
         response = self.common(top_p=0.8)
-        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(len(other.session.candidates), 1)
-        self.assertEqual(self.settings()["settings_revision"], revision)
-        self.save_mock.assert_not_called()
-        confirmed = self.common(top_p=0.8, confirmed=True)
-        self.assertEqual(confirmed.status_code, 200, confirmed.text)
-        self.assertEqual(other.session.candidates, [])
-
-    def test_nonboolean_confirmation_is_rejected(self):
-        response = self.client.patch(
-            self.base + "/settings?expected_revision=" +
-            str(self.batch()["revision"]) + "&expected_settings_revision=0",
-            headers=self.write_headers,
-            json={"style_id": 3, "speed": 1, "top_k": 20,
-                  "top_p": 1, "temperature": 1,
-                  "confirm_take_invalidation": "yes"},
-        )
-        self.assertEqual(response.status_code, 422)
-        self.save_mock.assert_not_called()
+        self.assertEqual(other.session.settings.top_p, 0.8)
+        self.assertEqual(self.save_mock.call_count, 1)
 
     def test_failed_save_and_busy_worker_do_not_mutate(self):
         item = self.add()
@@ -660,7 +622,7 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
                             sampling_rate=16000, style_name="Neutral")
         )
         self.save_mock.side_effect = PermissionError("private Mac path")
-        response = self.common(top_k=30, confirmed=True)
+        response = self.common(top_k=30)
         self.assertEqual(response.status_code, 503, response.text)
         self.assertNotIn("private Mac path", response.text)
         self.assertEqual(self.service._batch_settings.top_k, 20)
