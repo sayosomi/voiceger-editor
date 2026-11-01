@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .filename import (
-    FilenameTemplateError, render_output_basename,
+    FilenameTemplateError, render_output_basename, validate_filename_template,
 )
 from .output import (
     FLAC_ENCODINGS, MP3_BITRATES, WAV_ENCODINGS,
