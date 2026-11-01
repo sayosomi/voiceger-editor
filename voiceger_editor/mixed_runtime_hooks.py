@@ -44,9 +44,10 @@ def scoped_mixed_runtime_hooks(
             # Voiceger may append a Japanese period immediately before G2P.
             if value == source:
                 resolved = expected
-            elif value == source + ("." if expected[-1][0] == "en" else "。"):
-                suffix = "." if expected[-1][0] == "en" else "。"
-                resolved = (*expected[:-1], (expected[-1][0], expected[-1][1] + suffix))
+            elif value == source + "。":
+                resolved = (*expected[:-1], (expected[-1][0], expected[-1][1] + "。"))
+            elif len(expected) == 1 and expected[0][0] == "en" and value == source + ".":
+                resolved = (("en", source + "."),)
             else:
                 raise ValueError(
                     "Voiceger altered the mixed Caption before pronunciation "
