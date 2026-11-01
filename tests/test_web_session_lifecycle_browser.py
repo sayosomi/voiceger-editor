@@ -37,6 +37,21 @@ class WebSessionLifecycleBrowserTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("WEB_AUDIO_RECONNECT_GUARDS_PASS", result.stdout)
 
+    def test_settings_retry_does_not_restore_superseded_get_values(self):
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("Node is required for Web settings retry tests")
+        root = Path(__file__).resolve().parents[1]
+        fixture = root / "tests" / "fixtures" / "web_settings_retry_race.js"
+        app = root / "voiceger_editor" / "web_assets" / "app.js"
+        result = subprocess.run(
+            [node, str(fixture), str(app)],
+            capture_output=True, text=True, timeout=15, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("WEB_SETTINGS_RETRY_STALE_RESPONSE_PASS", result.stdout)
+
+
 
 
 if __name__ == "__main__":
