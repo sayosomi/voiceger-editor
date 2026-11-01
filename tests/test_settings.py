@@ -1,3 +1,4 @@
+import errno
 import json
 import os
 from pathlib import Path
@@ -87,6 +88,72 @@ class SettingsTests(unittest.TestCase):
                 },
             )
             self.assertTrue(first_contents.endswith(b"\n"))
+
+    def test_partial_temp_write_failure_keeps_previous_file_and_cleans_temp(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            previous = Settings(
+                output_dir=Path(directory) / "preserved-output",
+                filename_template="{YYYYMMDDHHmm}_{caption}",
+                speed=1.25,
+            )
+            save_settings(previous, path)
+            previous_bytes = path.read_bytes()
+            native_tempfile = tempfile.NamedTemporaryFile
+
+            class PartialWrite:
+                def __init__(self, stream):
+                    self.stream = stream
+                    self.name = stream.name
+
+                def __enter__(self):
+                    self.stream.__enter__()
+                    return self
+
+                def __exit__(self, *args):
+                    return self.stream.__exit__(*args)
+
+                def write(self, data):
+                    self.stream.write(data[:max(1, len(data) // 2)])
+                    raise OSError(errno.ENOSPC, "injected disk-full during write")
+
+            def partial_file(*args, **kwargs):
+                return PartialWrite(native_tempfile(*args, **kwargs))
+
+            with patch(
+                "voiceger_editor.settings.tempfile.NamedTemporaryFile",
+                side_effect=partial_file,
+            ):
+                with self.assertRaises(OSError):
+                    save_settings(Settings(speed=0.9), path)
+
+            self.assertEqual(path.read_bytes(), previous_bytes)
+            self.assertEqual(load_settings(path), previous)
+            self.assertEqual(list(path.parent.glob(".config.json.*.tmp")), [])
+
+    def test_fsync_and_replace_failures_preserve_previous_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            previous = Settings(
+                output_dir=Path(directory) / "my-audio",
+                filename_template="{YYYYMMDDHHmm}_{caption}",
+                save_text=True,
+            )
+            save_settings(previous, path)
+            before = path.read_bytes()
+
+            for syscall in ("fsync", "replace"):
+                with self.subTest(failure=syscall):
+                    with patch(
+                        "voiceger_editor.settings.os." + syscall,
+                        side_effect=OSError(errno.EIO, "injected filesystem failure"),
+                    ):
+                        with self.assertRaises(OSError):
+                            save_settings(Settings(speed=1.7), path)
+
+                    self.assertEqual(path.read_bytes(), before)
+                    self.assertEqual(load_settings(path), previous)
+                    self.assertEqual(list(path.parent.glob(".config.json.*.tmp")), [])
 
     def test_legacy_config_without_sampling_keys_uses_voiceger_defaults(self):
         with tempfile.TemporaryDirectory() as directory:
