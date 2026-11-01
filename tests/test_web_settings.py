@@ -560,6 +560,53 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
         self.assertTrue(persisted.save_text)
         self.assertTrue(persisted.save_lab)
 
+    def test_reset_staging_failure_does_not_change_any_live_session(self):
+        configured = Settings(
+            output_dir=Path(self.temp.name) / "existing",
+            filename_template="{style}_{caption}",
+            speed=1.35, top_k=40, save_text=True, save_lab=True,
+        )
+        self.config = configured
+        self.service._batch_settings = configured
+        first = self.add("こんにちは")
+        second_sid = self.client.post(
+            "/api/web/sessions", headers=self.write_headers,
+        ).json()["id"]
+        second_base = "/api/web/sessions/" + second_sid
+        result = self.client.post(
+            second_base + "/batch/items?expected_revision=0",
+            json={"text": "おはよう"}, headers=self.write_headers,
+        )
+        self.assertEqual(result.status_code, 200, result.text)
+        second = self.service._sessions[second_sid].batch.items[0]
+        first.session.candidates.append(
+            SimpleNamespace(number=1, frame_count=20, sampling_rate=16000)
+        )
+        first.mark_accepted(1)
+        before_settings = self.settings()
+        before_batch = self.batch()
+        before_other = self.client.get(
+            second_base + "/batch", headers=self.read_headers,
+        ).json()
+        from unittest.mock import Mock
+        second.session.stage_generation_settings = Mock(
+            side_effect=RuntimeError("missing reference WAV"),
+        )
+        response = self.reset()
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertNotIn("missing reference WAV", response.text)
+        self.assertEqual(self.settings(), before_settings)
+        self.assertEqual(self.batch(), before_batch)
+        self.assertEqual(self.client.get(
+            second_base + "/batch", headers=self.read_headers,
+        ).json(), before_other)
+        self.assertEqual(first.session.settings, configured)
+        self.assertEqual(second.session.settings, configured)
+        self.assertEqual(first.accepted_take_numbers, frozenset({1}))
+        self.assertEqual(len(first.session.candidates), 1)
+        self.assertEqual(self.service._batch_settings, configured)
+        self.save_mock.assert_not_called()
+
     def test_reset_take_count_only_does_not_modify_shared_settings(self):
         self.assertEqual(self.service.set_default_take_count(
             self.sid, self.batch()["revision"], 8
