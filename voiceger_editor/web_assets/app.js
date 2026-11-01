@@ -1825,7 +1825,19 @@
       await followAudioOperation(op, itemId);
     } catch (error) {
       if (epoch !== connectionEpoch) return;
+      // A definitive failed auto-prepare should not silently retry on open.
+      // Transport failures are ambiguous: the Mac worker may still be running.
+      if (suffix === "/audio/prepare" && !retryable(error))
+        autoPrepareFailures.add(itemId);
       if (error.conflictCode === "revision_conflict") {
+        if (currentView === "pronunciation") {
+          pronunciationStale = true;
+          setFixed("apply-pronunciation", true);
+        }
+        if (currentView === "section") {
+          sectionStale = true;
+          setFixed("apply-section", true);
+        }
         try { await refresh(); } catch (_ignored) {}
       }
       if (epoch !== connectionEpoch) return;
