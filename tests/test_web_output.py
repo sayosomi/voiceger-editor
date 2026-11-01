@@ -118,6 +118,7 @@ class OutputTests(unittest.TestCase):
         self.assertEqual(response.json()["filename"], "Neutral_サンプル.flac")
         self.assertEqual(self.patch_output(output_dir="relative").status_code, 422)
         self.assertEqual(self.patch_output(filename_template="{bad}").status_code, 422)
+        self.assertEqual(self.patch_output(filename_template="///").status_code, 422)
         self.assertEqual(self.patch_output(wav_encoding="invalid").status_code, 422)
         with patch("voiceger_editor.web_output.available_output_formats",
                    return_value=("wav", "flac")):
