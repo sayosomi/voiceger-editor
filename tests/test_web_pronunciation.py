@@ -38,9 +38,11 @@ class JapaneseUtterance(FakeUtterance):
         self._spoken_text = self.caption
         self.is_prepared = True
 
-    def replace_query(self, query):
+    def replace_query(self, query, *, pure_japanese_utterance_text=None):
         self.discard_takes()
         self._query = deepcopy(query)
+        if query.voicegerSegments is None and pure_japanese_utterance_text is not None:
+            self._spoken_text = pure_japanese_utterance_text
 
     def preview_synthesis(self, query):
         self.preview_notations.append(japanese_pronunciation(query))
