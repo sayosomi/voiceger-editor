@@ -265,7 +265,9 @@ const runtime={
 };
 const prefix=`
 var busy=false,batch=runtime.batch,commonSettingsData=runtime.data,
+  commonSettingsEditSequence=0, invalidatedSettingsLoads=0,
   currentView="session",window={confirm:()=>runtime.confirm};
+function invalidateSettingsLoads(){invalidatedSettingsLoads++;}
 function setBusy(v){busy=v;runtime.busy=v;}
 function commonValues(){return {
   style_id:Number($("common-style").value),
