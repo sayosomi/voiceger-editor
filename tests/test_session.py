@@ -754,7 +754,7 @@ class UtteranceSessionTests(unittest.TestCase):
                 self.assertFalse(session.has_active_batch)
                 self.assertEqual(session.candidates, ())
 
-    def test_local_voice_change_preserves_existing_takes_and_updates_future_recipe(self):
+    def test_synthesis_settings_change_preserves_existing_takes_and_updates_future_recipe(self):
         session = self.make_session()
         batch = self.activate_batch(session)
         previous = _candidate(1, "/tmp/original-take.wav")
@@ -766,7 +766,10 @@ class UtteranceSessionTests(unittest.TestCase):
             "voiceger_editor.session.get_style", return_value=self.other_style
         ):
             session.replace_settings(
-                replace(session.settings, style_id=1, speed=0.85),
+                replace(
+                    session.settings, style_id=1, speed=0.85,
+                    top_k=37, top_p=0.6, temperature=0.7,
+                ),
                 preserve_takes=True,
             )
 
@@ -784,6 +787,9 @@ class UtteranceSessionTests(unittest.TestCase):
             batch.kwargs["synthesize_one"]()
         self.assertIs(synthesize.call_args.kwargs["style"], self.other_style)
         self.assertEqual(synthesize.call_args.kwargs["query"].speedScale, 0.85)
+        self.assertEqual(synthesize.call_args.kwargs["top_k"], 37)
+        self.assertEqual(synthesize.call_args.kwargs["top_p"], 0.6)
+        self.assertEqual(synthesize.call_args.kwargs["temperature"], 0.7)
 
     def test_output_text_preference_and_take_count_changes_preserve_batch(self):
         session = self.make_session()

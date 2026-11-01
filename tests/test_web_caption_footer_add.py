@@ -44,7 +44,7 @@ function makeRows() {
   const setup = [
     'let batch={items:makeRows()},selectedId="0",busy=false;',
     'let captionEditMode=false,takeCountEditMode=false,currentView="item";',
-    'function renderTakes(){}',
+    'function renderTakes(){} function renderItemVoice(){}',
     cut('  function renderItem(keepCaptionDraft) {','  function openItem(id) {'),
     'return {renderItem, select:id=>selectedId=id,',
     'setRows:rows=>batch.items=rows, setBusy:v=>busy=v};'
@@ -75,6 +75,7 @@ function makeRows() {
   const setup = [
     'let batch={items:rows},selectedId="2",currentView="item",busy=false;',
     'let addFromItemId="",captionEditMode=false,takeCountEditMode=false;',
+    'let commonSettingsData=null;',
     'function pronunciationDirty(){return false;} function sectionDirty(){return false;}',
     cut('  function takeCountDirty(item) {','  function showView(name, bypassDraftGuard) {'),
     'function showView(name){if(busy||!guardDraft())return false;currentView=name;',

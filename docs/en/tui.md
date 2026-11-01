@@ -298,23 +298,20 @@ The TUI asks for confirmation before deleting the current candidate set.
 
 Candidate clearing is not available while synthesis is actively running.
 
-## Changes that clear Takes
+## Changes that preserve or clear Takes
 
-Applying a synthesis-affecting change clears existing candidate Takes and any acceptance state that depended on them.
+Changing shared Style, Speed, Top K, Top P, or Temperature, or changing a Caption's individual Style/Speed, **preserves existing candidate Takes and their acceptance markers**. Future generation and regeneration use the new settings. Previous Takes keep their original audio and generation-time properties; accepted Takes remain protected.
 
-This includes:
+Changing the configured Take count or output settings also preserves existing candidates. Output settings apply when a Take is accepted.
+
+Changes to the spoken content still clear candidates and associated acceptance state where required. These include:
 
 - Japanese pronunciation or accent;
 - English phonemes or stress;
-- section text;
-- rebuilt pronunciation;
-- Style;
-- Speed;
-- Top K;
-- Top P;
-- Temperature.
+- section text or section structure;
+- rebuilt pronunciation.
 
-Changing the configured Take count does not change the synthesis parameters of Takes that already exist.
+Explicitly clearing candidates or deleting a Caption also removes its temporary candidate state; already saved output files are not deleted.
 
 ## Batch List shortcuts
 

@@ -19,6 +19,7 @@ from .web_dictionary_routes import build_web_dictionary_router
 from .web_dictionary_export_routes import build_web_dictionary_export_router
 from .web_dictionary_import_routes import build_web_dictionary_import_router
 from .web_sessions import WebSessionOperations
+from .web_settings_routes import build_web_settings_router
 
 
 ASSETS = Path(__file__).resolve().parent / "web_assets"
@@ -51,6 +52,7 @@ def create_web_app(*, service: WebSessionOperations | None = None) -> FastAPI:
     web_app.mount("/assets", StaticFiles(directory=str(ASSETS)), name="web-assets")
     web_app.include_router(build_web_session_router(session_service))
     web_app.include_router(build_web_batch_router(session_service))
+    web_app.include_router(build_web_settings_router(session_service))
     web_app.include_router(build_web_recipe_router(session_service))
     web_app.include_router(build_web_take_router(session_service))
     web_app.include_router(build_web_pronunciation_router(session_service))

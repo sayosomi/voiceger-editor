@@ -73,10 +73,6 @@ class TuiSettingsController:
 
         try:
             updated = replace(self.settings, **changes)
-            synthesis_changed = self._synthesis_changed(
-                updated,
-                self.settings,
-            )
             changed_names = tuple(
                 name
                 for name in changes
@@ -88,17 +84,12 @@ class TuiSettingsController:
             if conflict is not None:
                 self._set_status(conflict)
                 return False
-            if synthesis_changed:
-                self._operations.stop_playback()
             for session in self._sessions():
                 scoped = replace(
                     session.settings,
                     **{name: getattr(updated, name) for name in changed_names},
                 )
-                session.replace_settings(scoped)
-            if synthesis_changed:
-                self._clear_generation_outcomes()
-                self._clear_acceptances()
+                session.replace_settings(scoped, preserve_takes=True)
         except (SettingsError, ValueError) as exc:
             self._set_status(error_status(f"Settings were not changed: {exc}"))
             return False
@@ -118,9 +109,6 @@ class TuiSettingsController:
             return False
 
         self.persisted_settings = persisted
-        if synthesis_changed:
-            self._operations.clear_current_take()
-
         try:
             self._save(persisted, self.config_path)
         except OSError as exc:
@@ -133,13 +121,9 @@ class TuiSettingsController:
             return False
         else:
             if report_success:
-                self._set_status(
-                    info_status(
-                        "Settings saved. Existing temporary takes were cleared."
-                        if synthesis_changed
-                        else "Settings saved. Existing temporary takes were preserved."
-                    )
-                )
+                self._set_status(info_status(
+                    "Settings saved. Existing temporary takes were preserved."
+                ))
         return True
 
     def apply_target(self, target: Settings) -> SettingsApplicationResult:
@@ -168,10 +152,6 @@ class TuiSettingsController:
         runtime_changed = bool(global_changes) or any(
             updated != session.settings for session, updated in updated_sessions
         )
-        synthesis_changed = self._synthesis_changed(target, baseline) or any(
-            self._synthesis_changed(updated, session.settings)
-            for session, updated in updated_sessions
-        )
         changed_names = tuple(
             name
             for name in _OPERATION_RELEVANT_SETTING_NAMES
@@ -190,13 +170,8 @@ class TuiSettingsController:
 
         if runtime_changed:
             try:
-                if synthesis_changed:
-                    self._operations.stop_playback()
                 for owned_session, scoped in updated_sessions:
-                    owned_session.replace_settings(scoped)
-                if synthesis_changed:
-                    self._clear_generation_outcomes()
-                    self._clear_acceptances()
+                    owned_session.replace_settings(scoped, preserve_takes=True)
             except (SettingsError, ValueError) as exc:
                 status = error_status(f"Settings were not changed: {exc}")
                 self._set_status(status)
@@ -204,8 +179,6 @@ class TuiSettingsController:
 
             self.settings = target
             self._set_batch_take_count(target.take_count)
-            if synthesis_changed:
-                self._operations.clear_current_take()
 
         try:
             self._save(target, self.config_path)
