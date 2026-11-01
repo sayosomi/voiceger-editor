@@ -189,6 +189,145 @@ class OutputTests(unittest.TestCase):
         self.assertEqual(output["output_format"], "wav")
         self.assertFalse(output["save_text"])
 
+    def test_output_noop_does_not_persist_or_advance_revisions(self):
+        before = self.get_output()
+        batch = self.batch()
+        response = self.patch_output()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.get_output(), before)
+        self.assertEqual(self.batch(), batch)
+        self.save.assert_not_called()
+
+    def test_output_security_and_stale_revisions(self):
+        before = self.get_output()
+        path = (self.base + "/settings/output?expected_revision=" +
+                str(self.batch()["revision"]) + "&expected_settings_revision=" +
+                str(before["settings_revision"]))
+        values = {**before["values"], "save_text": True}
+        for headers in (
+            {}, self.read,
+            {**self.write, "Origin": "https://outside.example"},
+        ):
+            response = self.client.patch(path, headers=headers, json=values)
+            self.assertIn(response.status_code, (401, 403))
+        self.assertEqual(self.get_output(), before)
+        valid = self.client.patch(path, headers=self.write, json=values)
+        self.assertEqual(valid.status_code, 200, valid.text)
+        stale = self.client.patch(path, headers=self.write, json=values)
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(self.get_output()["settings_revision"],
+                         before["settings_revision"] + 1)
+        self.assertEqual(self.save.call_count, 1)
+
+    def test_reject_non_directory_ancestors_and_symlinks(self):
+        directory = Path(self.tmp.name)
+        regular_file = directory / "file-parent"
+        regular_file.write_text("not a folder", encoding="utf-8")
+        self.assertEqual(self.patch_output(
+            output_dir=str(regular_file / "nested")).status_code, 422)
+        self.assertEqual(self.patch_output(
+            output_dir=str(regular_file)).status_code, 422)
+        link = directory / "link"
+        link.symlink_to(directory, target_is_directory=True)
+        self.assertEqual(self.patch_output(output_dir=str(link)).status_code, 422)
+        self.assertEqual(self.patch_output(
+            output_dir=str(link / "nested")).status_code, 422)
+        good = directory / "not-created" / "nested"
+        self.assertEqual(self.patch_output(
+            output_dir=str(good)).status_code, 200)
+        self.assertFalse(good.exists())
+
+    def test_preflight_failure_keeps_disk_settings_and_other_sessions(self):
+        first = self.add()
+        other_sid = self.client.post(
+            "/api/web/sessions", headers=self.write,
+        ).json()["id"]
+        other_base = "/api/web/sessions/" + other_sid
+        second = self.client.post(
+            other_base + "/batch/items?expected_revision=0",
+            json={"text": "さようなら"}, headers=self.write,
+        )
+        self.assertEqual(second.status_code, 200, second.text)
+        second_item = self.service._sessions[other_sid].batch.items[0]
+        before_first = self.batch()
+        before_other = self.client.get(
+            other_base + "/batch", headers=self.read,
+        ).json()
+        before_output = self.get_output()
+        second_item.session.stage_output_settings = Mock(
+            side_effect=ValueError("reference WAV was removed"),
+        )
+        response = self.patch_output(save_lab=True)
+        self.assertEqual(response.status_code, 503, response.text)
+        self.assertNotIn("reference WAV", response.text)
+        self.save.assert_not_called()
+        self.assertEqual(first.session.settings, self.initial)
+        self.assertEqual(second_item.session.settings, self.initial)
+        self.assertEqual(self.batch(), before_first)
+        self.assertEqual(self.client.get(
+            other_base + "/batch", headers=self.read,
+        ).json(), before_other)
+        self.assertEqual(self.get_output(), before_output)
+
+    def test_real_partial_file_write_failure_rolls_back_output(self):
+        from voiceger_editor.settings import save_settings as real_save_settings
+
+        config = Path(self.tmp.name) / "settings" / "config.json"
+        real_save_settings(self.initial, config_path=config)
+        original_bytes = config.read_bytes()
+        item = self.add()
+        item.session.candidates.append(SimpleNamespace(
+            number=1, frame_count=42, sampling_rate=16000,
+            style_name="Neutral",
+        ))
+        item.mark_accepted(1)
+        before_output = self.get_output()
+        before_batch = self.batch()
+        self.save.side_effect = lambda value: real_save_settings(
+            value, config_path=config,
+        )
+        with patch("voiceger_editor.settings.os.fsync",
+                   side_effect=OSError("simulated partial write")):
+            response = self.patch_output(save_text=True)
+        self.assertEqual(response.status_code, 503, response.text)
+        self.assertNotIn("simulated partial write", response.text)
+        self.assertEqual(config.read_bytes(), original_bytes)
+        self.assertEqual(list(config.parent.glob("*.tmp")), [])
+        self.assertEqual(self.get_output(), before_output)
+        self.assertEqual(self.batch(), before_batch)
+        self.assertEqual(item.accepted_take_numbers, frozenset({1}))
+        self.assertEqual(len(item.session.candidates), 1)
+
+    def test_output_changes_propagate_to_multiple_live_sessions(self):
+        first = self.add()
+        other_sid = self.client.post(
+            "/api/web/sessions", headers=self.write,
+        ).json()["id"]
+        other_base = "/api/web/sessions/" + other_sid
+        response = self.client.post(
+            other_base + "/batch/items?expected_revision=0",
+            json={"text": "またね"}, headers=self.write,
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        second = self.service._sessions[other_sid].batch.items[0]
+        previous_other = self.client.get(
+            other_base + "/batch", headers=self.read,
+        ).json()["revision"]
+        result = self.patch_output(
+            output_format="flac", flac_encoding="pcm24",
+            save_text=True, save_lab=True,
+        )
+        self.assertEqual(result.status_code, 200, result.text)
+        for item in (first, second):
+            self.assertEqual(item.session.settings.output_format, "flac")
+            self.assertEqual(item.session.settings.flac_encoding, "pcm24")
+            self.assertTrue(item.session.settings.save_text)
+            self.assertTrue(item.session.settings.save_lab)
+        after_other = self.client.get(
+            other_base + "/batch", headers=self.read,
+        ).json()["revision"]
+        self.assertEqual(after_other, previous_other + 1)
+
     def test_android_launcher_targets_actual_issue_branch(self):
         launcher = (ASSETS.parents[1] / "scripts" /
                     "run_web_e2e_329.py").read_text(encoding="utf-8")
