@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import stat
 from datetime import datetime
 from pathlib import Path
 import tempfile
@@ -149,6 +150,54 @@ class DictionaryExportTests(unittest.TestCase):
                     export_voiceger_editor_dictionaries(
                         FakeDictionaryCore(), output, timestamp=self.timestamp
                     )
+            self.assertEqual(list(output.iterdir()), [])
+
+    @unittest.skipUnless(os.name == "posix", "POSIX dirfd/linkat required")
+    def test_native_zip_staging_source_symlink_swap_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "output"
+            output.mkdir()
+            outside = root / "private.zip"
+            outside.write_bytes(b"private data")
+            original = outside.stat()
+            real_link = os.link
+            swapped = False
+
+            def substitute_source_before_link(source, destination, **kwargs):
+                nonlocal swapped
+                source_fd = kwargs.get("src_dir_fd")
+                self.assertIsNotNone(source_fd)
+                self.assertIs(kwargs.get("follow_symlinks"), False)
+                if not swapped:
+                    os.rename(
+                        source, source + ".saved",
+                        src_dir_fd=source_fd, dst_dir_fd=source_fd,
+                    )
+                    os.symlink(outside, source, dir_fd=source_fd)
+                    swapped = True
+                result = real_link(source, destination, **kwargs)
+                # Inspect the link immediately, not only after rollback:
+                # an unsafe implementation could briefly expose the target.
+                linked = Path(destination).lstat()
+                self.assertTrue(stat.S_ISLNK(linked.st_mode))
+                self.assertNotEqual(
+                    (linked.st_dev, linked.st_ino),
+                    (original.st_dev, original.st_ino),
+                )
+                return result
+
+            with patch(
+                "voiceger_editor.dictionary_export.os.link",
+                side_effect=substitute_source_before_link,
+            ):
+                with self.assertRaisesRegex(OSError, "ZIP staging source changed"):
+                    export_voiceger_editor_dictionaries(
+                        FakeDictionaryCore(), output, timestamp=self.timestamp,
+                    )
+            self.assertTrue(swapped)
+            self.assertEqual(outside.read_bytes(), b"private data")
+            self.assertEqual(outside.stat().st_nlink, original.st_nlink)
             self.assertEqual(list(output.iterdir()), [])
 
     def test_voicevox_export_is_still_japanese_json_and_collision_safe(self):
