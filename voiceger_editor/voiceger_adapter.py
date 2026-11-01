@@ -498,11 +498,16 @@ class VoicegerAdapter:
 
         require_current_acceptance()
         synthesis_text = _ensure_single_utterance(text)
-        if language_segments is not None and (
-            text_language != "Japanese-English Mixed"
-            or "".join(value for _, value in language_segments) != synthesis_text
-        ):
-            raise ValueError("JA/EN runtime segments must match the source Caption")
+        if language_segments is not None:
+            if "".join(value for _, value in language_segments) != synthesis_text:
+                raise ValueError("JA/EN runtime segments must match the source Caption")
+            if text_language == "English":
+                if len(language_segments) != 1 or language_segments[0] != (
+                    "en", synthesis_text
+                ):
+                    raise ValueError("English runtime override must cover the whole text")
+            elif text_language != "Japanese-English Mixed":
+                raise ValueError("JA/EN runtime segments require a supported language")
 
         selected_ref_wav = Path(
             ref_wav_path or self.default_ref_wav
