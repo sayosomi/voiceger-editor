@@ -160,6 +160,7 @@ class WebSynthesisSettingsTests(unittest.TestCase):
         self.assertIn('id="reset-settings">設定値を初期化</button>', html)
         self.assertNotIn('id="reset-sampling"', html)
         self.assertIn('id="common-settings-status"', html)
+        self.assertIn('id="apply-common-settings" class="primary-button" hidden>変更を反映</button>', html)
         self.assertIn('id="default-takes-status"', html)
         self.assertNotIn('id="reset-common-draft"', html)
         self.assertNotIn('<button type="submit">保存</button>\n        </form>\n        <div class="setting-section">\n          <h3>セッション', html)
@@ -226,19 +227,20 @@ console.log("WEB_SETTINGS_BROWSER_GUARDS_PASS");
         self.assertEqual(result.returncode, 0, result.stdout + "\n" + result.stderr)
         self.assertIn("WEB_SETTINGS_BROWSER_GUARDS_PASS", result.stdout)
 
-    def test_browser_auto_save_confirmation_and_reset(self):
+    def test_browser_manual_common_apply_default_autosave_and_reset(self):
         node = shutil.which("node")
         if not node:
-            self.skipTest("Node required for browser auto-save verification")
+            self.skipTest("Node required for browser settings verification")
         source = r"""
 const fs=require("fs"),assert=require("assert").strict;
 const js=fs.readFileSync(process.argv[1],"utf8");
 const start=js.indexOf("  function checkedCommonValues() {");
 const end=js.indexOf('  $("refresh-batch").addEventListener(',start);
-assert(start>=0 && end>start,"auto-save source not found");
+assert(start>=0 && end>start,"settings handlers source not found");
 const listeners={},nodes={},requests=[];
 for(const id of ["common-settings-form","common-style","common-speed",
   "common-top-k","common-top-p","common-temperature","reset-settings",
+  "apply-common-settings",
   "common-settings-error","common-settings-status","default-takes",
   "default-takes-form","default-takes-error","default-takes-status"]){
   nodes[id]={value:"",hidden:true,textContent:"",
@@ -290,6 +292,7 @@ function renderCommonSettings(result){
   for(const [key,value] of Object.entries(commonSettingsData.values))
     $(key==="style_id"?"common-style":"common-"+key.replace("_","-")).value=String(value);
   $("common-settings-error").hidden=true;
+  updateCommonApply();
 }
 async function request(method,path,payload){
   requests.push({method,path,payload});
@@ -322,32 +325,46 @@ async function request(method,path,payload){
 }
 `;
 const make=new Function("$","runtime","requests","listeners",
-  prefix+js.slice(start,end)+"return {autoSaveCommon,autoSaveDefaultTakes};");
+  prefix+js.slice(start,end)+"return {applyCommonSettings,autoSaveDefaultTakes};");
 const controls=make(id=>nodes[id],runtime,requests,listeners);
 (async()=>{
+  // Input/change/blur must never persist synthesis settings.
+  assert.equal(nodes["apply-common-settings"].hidden,true);
   nodes["common-speed"].value="1.23";
-  await controls.autoSaveCommon();
+  listeners["common-speed:input"]();
+  listeners["common-speed:change"]();
+  assert.equal(requests.length,0,"Speed change must remain a draft");
+  assert.equal(nodes["apply-common-settings"].hidden,false);
+  assert.equal(nodes["common-settings-status"].textContent,"未反映");
+  await controls.applyCommonSettings();
   assert.equal(requests.length,1);
   assert.equal(requests[0].payload.speed,1.23);
   assert.equal(nodes["common-settings-status"].textContent,"保存済み");
+  assert.equal(nodes["apply-common-settings"].hidden,true);
   runtime.shouldWarn=true;runtime.confirm=false;
   nodes["common-top-k"].value="21";
-  await controls.autoSaveCommon();
+  listeners["common-top-k:change"]();
+  assert.equal(requests.length,1,"Top K change must remain a draft");
+  await controls.applyCommonSettings();
   assert.equal(requests.length,2);
   assert.equal(runtime.data.values.top_k,20,"cancel does not apply");
   assert.equal(nodes["common-top-k"].value,"20","cancel restores field");
   runtime.confirm=true;
   nodes["common-top-k"].value="22";
-  await controls.autoSaveCommon();
+  listeners["common-top-k:input"]();
+  assert.equal(requests.length,2);
+  await controls.applyCommonSettings();
   assert.equal(requests.length,4);
   assert.equal(requests[3].payload.confirm_take_invalidation,true);
   assert.equal(runtime.data.values.top_k,22);
   runtime.shouldWarn=false;
   nodes["common-top-p"].value="0.5";
+  listeners["common-top-p:change"]();
+  assert.equal(requests.length,4,"Top P change must remain a draft");
   runtime.failSave=true;
-  await controls.autoSaveCommon();
+  await controls.applyCommonSettings();
   assert.equal(runtime.data.values.top_p,1);
-  assert.equal(nodes["common-top-p"].value,"0.5","failed save retains input");
+  assert.equal(nodes["common-top-p"].value,"0.5","failed apply retains input");
   assert.equal(nodes["common-settings-status"].textContent,"保存失敗");
   runtime.failSave=false;
   nodes["default-takes"].value="5";
@@ -372,7 +389,7 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
   assert.equal(runtime.data.values.speed,1);
   assert.equal(runtime.batch.default_take_count,4);
   assert.equal(nodes["default-takes"].value,"4");
-  console.log("WEB_SETTINGS_AUTOSAVE_PASS");
+  console.log("WEB_SETTINGS_MANUAL_APPLY_PASS");
 })().catch(error=>{console.error(error);process.exitCode=1;});
 """
         result = subprocess.run(
@@ -380,7 +397,7 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
             capture_output=True, text=True, timeout=20, check=False,
         )
         self.assertEqual(result.returncode, 0, result.stdout + "\n" + result.stderr)
-        self.assertIn("WEB_SETTINGS_AUTOSAVE_PASS", result.stdout)
+        self.assertIn("WEB_SETTINGS_MANUAL_APPLY_PASS", result.stdout)
 
     def reset(self, *, confirmed=False, revision=None, settings_revision=None):
         data = self.settings()
