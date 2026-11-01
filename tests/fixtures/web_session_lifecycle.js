@@ -73,8 +73,9 @@ function boot(){
   }
   const confirmations=[];
   let confirmAllowed=true;
-  const win={sessionStorage:storage,confirm(message){
-    confirmations.push(message);return confirmAllowed;},
+  const win={sessionStorage:storage,confirmations:confirmations,
+    confirm(message){confirmations.push(message);return confirmAllowed;},
+    setConfirmAllowed(value){confirmAllowed=value;},
     crypto:{getRandomValues(bytes){const seed=++nonceCounter;
       bytes.forEach((_,i)=>{bytes[i]=(seed+i)%256;});return bytes;}}
   };
@@ -104,8 +105,8 @@ function boot(){
     'submit:()=> $("auth-form").listeners.submit({preventDefault(){}}),',
     'openSettings:()=>{currentView="session"; $("common-settings-form").hidden=true;',
     '  $("output-settings-form").hidden=true;return loadSessionForms();},',
-    'setConfirmAllowed:value=>{confirmAllowed=value;},',
-    'confirmations:confirmations,',
+    'setConfirmAllowed:value=>window.setConfirmAllowed(value),',
+    'confirmations:window.confirmations,',
     'close:()=> $("close-session").listeners.click(),',
     'retry:()=> $("retry-connection").listeners.click(),',
     'refresh,reset:()=>resetLocal(true),check:handleSessionFailure};'
