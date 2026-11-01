@@ -1277,6 +1277,8 @@
     $("connect-button").textContent = "接続する";
     if (clearSessionId) remember("");
     showView("connect", true);
+    // A discarded in-flight operation must not leave the login controls locked.
+    setBusy(false);
   }
   function markExpired() {
     var inMemoryToken = token;
@@ -2034,10 +2036,12 @@
 
   async function startBatchGeneration() {
     if (busy || !batch || reorderMode || deleteMode) return;
+    var epoch = connectionEpoch;
     setBusy(true);
     try {
       var result = await request("POST", batchPath() + "/generate?expected_revision=" +
         encodeURIComponent(batch.revision));
+      if (epoch !== connectionEpoch) return;
       if (result.status === "no-op") {
         feedback(result.reason === "empty_selection" ?
           "生成対象のCaptionをチェックしてください。" :
@@ -2046,13 +2050,15 @@
       }
       await followBatchOperation(result);
     } catch (error) {
+      if (epoch !== connectionEpoch) return;
       if (error.conflictCode === "revision_conflict") {
         try { await refresh(); } catch (_ignored) {}
       }
+      if (epoch !== connectionEpoch) return;
       var handled = await handleSessionFailure(error);
       if (!handled) feedback(error.message, retryable(error));
     } finally {
-      if (!batchPolling) setBusy(false);
+      if (epoch === connectionEpoch && !batchPolling) setBusy(false);
     }
   }
 
