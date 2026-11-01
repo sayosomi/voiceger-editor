@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+import tempfile
 from typing import Any
 
 from .filename import (
@@ -21,6 +22,22 @@ OUTPUT_FIELDS = (
     "output_dir", "filename_template", "output_format", "wav_encoding",
     "flac_encoding", "mp3_bitrate", "save_text", "save_lab",
 )
+
+
+def _probe_output_writable(destination: Path) -> None:
+    """Best-effort Mac write probe without creating the requested Output path."""
+    nearest = destination
+    while not nearest.exists():
+        nearest = nearest.parent
+    try:
+        # mkdir and file creation are both required by accepted-output saves.
+        # Probe only a disposable sibling/child, leaving Output untouched.
+        with tempfile.TemporaryDirectory(
+            prefix=".voiceger-editor-probe-", dir=nearest,
+        ) as temporary:
+            (Path(temporary) / "write-check").write_bytes(b"ok")
+    except OSError:
+        raise WebOutputValidation("invalid_output_dir") from None
 
 
 class WebOutputValidation(ValueError):
@@ -140,6 +157,7 @@ class WebOutputMixin:
             previous = self._recipe_settings()
             if updated == previous:
                 return self._output_settings_view(session)
+            _probe_output_writable(destination)
 
             commits = []
             for owned in self._sessions.values():
