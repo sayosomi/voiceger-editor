@@ -16,7 +16,7 @@ import sys
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-BRANCH = "sayosomi/issue-329-web-slice-10a"
+BRANCH = "sayosomi/issue-329-web-output"
 ORIGINS = frozenset({
     "https://github.com/sayosomi/voiceger-editor",
     "https://github.com/sayosomi/voiceger-editor.git",
