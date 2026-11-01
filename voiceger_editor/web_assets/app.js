@@ -643,7 +643,6 @@
     $("common-top-p").value = numericField(data.values.top_p);
     $("common-temperature").value = numericField(data.values.temperature);
     $("common-settings-error").hidden = true;
-    updateCommonApply();
   }
   async function loadWebSettings() {
     var originalSession = sessionId;
@@ -2467,15 +2466,7 @@
     element.textContent = message;
     element.hidden = !message;
   }
-  function updateCommonApply() {
-    var changed = commonDirty();
-    $("apply-common-settings").hidden = !changed;
-    if (changed) {
-      $("common-settings-error").hidden = true;
-      settingsStatus("common-settings-status", "未反映");
-    }
-  }
-  async function applyCommonSettings() {
+  async function autoSaveCommon() {
     if (busy || !batch || !commonSettingsData || currentView !== "session") return;
     var errorRow = $("common-settings-error");
     var statusId = "common-settings-status";
@@ -2491,21 +2482,7 @@
         var address = settingsPath() + "?expected_revision=" +
           encodeURIComponent(batch.revision) + "&expected_settings_revision=" +
           encodeURIComponent(commonSettingsData.settings_revision);
-        var result;
-        try {
-          result = await request("PATCH", address, values);
-        } catch (error) {
-          if (error.conflictCode !== "take_invalidation_confirmation_required") throw error;
-          if (!window.confirm(
-            "この変更で生成済みTakeや採用状態がリセットされます。保存済みの音声ファイルは残ります。変更しますか？"
-          )) {
-            renderCommonSettings(commonSettingsData);
-            settingsStatus(statusId, "変更を取り消しました");
-            return;
-          }
-          result = await request("PATCH", address,
-            Object.assign({}, values, { confirm_take_invalidation: true }));
-        }
+        var result = await request("PATCH", address, values);
         renderCommonSettings(result);
         errorRow.hidden = true;
         try {
@@ -2524,18 +2501,16 @@
   }
   $("common-settings-form").addEventListener("submit", function (event) {
     event.preventDefault();
-    void applyCommonSettings();
+    void autoSaveCommon();
   });
   ["common-style", "common-speed", "common-top-k",
     "common-top-p", "common-temperature"].forEach(function (id) {
-    ["input", "change"].forEach(function (type) {
-      $(id).addEventListener(type, updateCommonApply);
-    });
+    $(id).addEventListener("change", function () { void autoSaveCommon(); });
   });
   $("reset-settings").addEventListener("click", async function () {
     if (busy || !batch || !commonSettingsData || currentView !== "session") return;
     if (!window.confirm(
-      "Style・Speed・Top K・Top P・Temperature・標準Take数を初期化します。生成済みTakeや採用状態はリセットされる場合があります。保存済み音声、Output保存先、ファイル名、Captionの個別設定は維持します。実行しますか？"
+      "Style・Speed・Top K・Top P・Temperature・標準Take数を初期化します。既存のTakeと採用状態、保存済み音声、Output保存先、ファイル名、Captionの個別設定は維持します。実行しますか？"
     )) return;
     setBusy(true);
     settingsStatus("common-settings-status", "初期化中…");
@@ -2543,7 +2518,7 @@
       var result = await request("POST", settingsPath() + "/reset?expected_revision=" +
         encodeURIComponent(batch.revision) + "&expected_settings_revision=" +
         encodeURIComponent(commonSettingsData.settings_revision),
-        { confirm_take_invalidation: true });
+        {});
       batch = result.batch;
       renderCommonSettings(result.settings);
       $("default-takes").value = String(batch.default_take_count);
