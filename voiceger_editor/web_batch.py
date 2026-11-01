@@ -94,13 +94,8 @@ class WebBatchMixin:
             session.operations.get(active[1])
             if active is not None and active[0] == session.identifier else None
         )
-        latest_id = next(reversed(session.operations), None)
-        latest = session.operations.get(latest_id) if latest_id is not None else None
         return {
             "revision": session.revision,
-            # An already completed operation is also observable after re-auth.
-            # This is bounded in-memory history, never a Take checkpoint.
-            "latest_operation": latest.snapshot() if latest is not None else None,
             "active_operation": operation.snapshot() if operation is not None else None,
             "default_take_count": batch.default_take_count,
             "items": [_row(batch, item, self._pronunciation_sections(session, item))
