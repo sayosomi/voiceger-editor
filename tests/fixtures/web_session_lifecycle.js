@@ -86,7 +86,7 @@ function boot(){
     'var audioOperation=null,batchOperation=null,batchPolling=false,audioPolling=false;',
     'var outputPreviewSequence=0,outputPreviewTimer=null;',
     'var autoPrepareFailures=new Set(),SESSION_KEY="voiceger-web-session-id";',
-    'var settingsLoads=0;',
+    'var settingsLoads=0,sessionFormsLoadSequence=0;',
     'function commonDirty(){return false;} function defaultTakesDirty(){return false;}',
     'function outputDirty(){return false;}',
     'async function loadWebSettings(){settingsLoads++;',
