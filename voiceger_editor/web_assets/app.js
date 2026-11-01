@@ -2047,8 +2047,8 @@
       if (error.conflictCode === "revision_conflict") {
         try { await refresh(); } catch (_ignored) {}
       }
-      if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
-      feedback(error.message);
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
     } finally {
       if (!batchPolling) setBusy(false);
     }
@@ -2192,8 +2192,8 @@
         feedback("別の画面で変更されています。編集をキャンセルし、最新の発音を開き直してください。");
         setFixed("apply-pronunciation", true);
       } else {
-        if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
-        feedback(error.message);
+        var handled = await handleSessionFailure(error);
+        if (!handled) feedback(error.message, retryable(error));
       }
     } finally { setBusy(false); }
   }
@@ -2283,8 +2283,8 @@
         setFixed("delete-section", true);
         try { await refresh(); } catch (_ignored) { /* Preserve original error. */ }
       }
-      if (error.code === 401 || error.code === 404) resetLocal(error.code === 404);
-      feedback(error.message);
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
     } finally {
       setBusy(false);
     }
@@ -2364,8 +2364,8 @@
         setFixed("apply-section", true);
         try { await refresh(); } catch (_ignored) {}
       }
-      if (error.code === 401 || error.code === 404) resetLocal(error.code === 404);
-      feedback(error.message);
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
     } finally { setBusy(false); }
   });
   $("open-pronunciation").addEventListener("click", openPronunciation);
@@ -2489,43 +2489,58 @@
   $("auth-form").addEventListener("submit", async function (event) {
     event.preventDefault();
     if (busy) return;
-    var candidate = $("web-token").value;
+    // A failed request may retry with the in-memory credential; reload never can.
+    var candidate = $("web-token").value || token;
     if (candidate.length < 32) {
       $("auth-status").textContent = "32文字以上のトークンが必要です。";
       return;
     }
+    var explicitlyNew = expiredSession;
     token = candidate;
     $("web-token").value = "";
     setBusy(true);
     try {
-      var existing = savedSession();
-      if (existing) {
-        sessionId = existing;
-        try { await refresh(); }
-        catch (error) {
-          if (error.code !== 404) throw error;
-          sessionId = "";
-          remember("");
+      if (explicitlyNew) {
+        expiredSession = false;
+        sessionId = "";
+      } else {
+        var existing = sessionId || savedSession();
+        if (existing) {
+          sessionId = existing;
+          try { await refresh(); }
+          catch (error) {
+            if (error.code !== 404) throw error;
+            await handleSessionFailure(error);
+            return;
+          }
         }
       }
       if (!sessionId) {
+        // Creation is the user's initial Connect or explicit New Session.
         var created = await request("POST", "/api/web/sessions");
         sessionId = created.id;
         remember(sessionId);
         await refresh();
       }
       $("auth-status").textContent = "接続済み";
+      $("connect-button").textContent = "接続する";
     } catch (error) {
-      token = "";
-      sessionId = "";
-      batch = null;
+      if (error.code === 404 && sessionId) {
+        if (await handleSessionFailure(error)) return;
+      }
+      if (error.code === 401 || error.code === 403) {
+        token = "";
+        sessionId = "";
+        batch = null;
+      }
       $("auth-status").textContent = error.message;
+      $("connect-button").textContent = token ? "再試行" : "接続する";
       return;
     } finally {
       setBusy(false);
     }
     showView("list", true);
-    resumeBatchOperation();
+    resumeSessionOperations();
   });
   $("open-batch-menu").addEventListener("click", function () {
     if (busy || reorderMode || deleteMode) return;
@@ -2805,9 +2820,10 @@
     try {
       await refresh();
       feedback("Batchを更新しました。");
+      resumeSessionOperations();
     } catch (error) {
-      if (error.code === 404 || error.code === 401) resetLocal(error.code === 404);
-      feedback(error.message);
+      var handled = await handleSessionFailure(error);
+      if (!handled) feedback(error.message, retryable(error));
     } finally { setBusy(false); }
   });
   $("disconnect-session").addEventListener("click", function () {
@@ -2816,7 +2832,7 @@
   });
   $("close-session").addEventListener("click", async function () {
     if (busy || !guardDraft() ||
-        !window.confirm("セッションと未保存のCaptionをすべて破棄しますか？")) return;
+        !window.confirm("Mac側のBatchと未保存のTakeを破棄しますか？ 保存済み音声は削除されません。")) return;
     setBusy(true);
     try {
       await request("DELETE", "/api/web/sessions/" + encodeURIComponent(sessionId));
