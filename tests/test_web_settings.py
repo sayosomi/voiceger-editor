@@ -580,7 +580,8 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
         self.assertEqual(result.status_code, 200, result.text)
         second = self.service._sessions[second_sid].batch.items[0]
         first.session.candidates.append(
-            SimpleNamespace(number=1, frame_count=20, sampling_rate=16000)
+            SimpleNamespace(number=1, frame_count=20, sampling_rate=16000,
+                            style_name="Neutral")
         )
         first.mark_accepted(1)
         before_settings = self.settings()
