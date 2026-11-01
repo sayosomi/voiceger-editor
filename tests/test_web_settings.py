@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import os
 from pathlib import Path
 import shutil
@@ -13,7 +14,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from voiceger_editor.settings import Settings
+from voiceger_editor.settings import Settings, load_settings, save_settings as real_save_settings
 from voiceger_editor.styles import VoicegerStyle
 from voiceger_editor.web import ASSETS, create_web_app
 from voiceger_editor.web_sessions import WebSessionOperations
@@ -456,6 +457,98 @@ const controls=make(id=>nodes[id],runtime,requests,listeners);
                          before["settings_revision"])
         self.assertEqual(self.service._batch_settings.speed, 1.35)
         self.assertNotIn("private Mac path", response.text)
+
+    def test_real_partial_disk_write_failure_preserves_web_and_output_state(self):
+        config_path = Path(self.temp.name) / "config.json"
+        original = Settings(
+            output_dir=Path(self.temp.name) / "my-output",
+            filename_template="{YYYYMMDDHHmm}_{caption}",
+            speed=1.35, top_k=24, take_count=7,
+            save_text=True, save_lab=True,
+        )
+        self.config = original
+        self.service._batch_settings = original
+        real_save_settings(original, config_path)
+        original_bytes = config_path.read_bytes()
+
+        item = self.add()
+        item.session.candidates.append(
+            SimpleNamespace(number=1, frame_count=16000,
+                            sampling_rate=16000, style_name="Neutral")
+        )
+        item.mark_accepted(1)
+        item.set_generation_outcome("completed")
+        self.assertEqual(
+            self.service.set_default_take_count(
+                self.sid, self.batch()["revision"], 7,
+            )["default_take_count"],
+            7,
+        )
+        accepted_wav = original.output_dir / "accepted.wav"
+        accepted_wav.parent.mkdir(parents=True)
+        accepted_wav.write_bytes(b"previously accepted audio")
+        previous_settings = self.settings()
+        previous_batch = self.batch()
+
+        native_tempfile = tempfile.NamedTemporaryFile
+
+        class PartialWrite:
+            def __init__(self, stream):
+                self.stream = stream
+                self.name = stream.name
+
+            def __enter__(self):
+                self.stream.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self.stream.__exit__(*args)
+
+            def write(self, data):
+                self.stream.write(data[:max(1, len(data) // 2)])
+                raise OSError(errno.ENOSPC, "private partial-write failure")
+
+        def partial_file(*args, **kwargs):
+            return PartialWrite(native_tempfile(*args, **kwargs))
+
+        with patch(
+            "voiceger_editor.web_settings.save_settings",
+            side_effect=real_save_settings,
+        ), patch(
+            "voiceger_editor.settings.default_config_path",
+            return_value=config_path,
+        ), patch(
+            "voiceger_editor.settings.tempfile.NamedTemporaryFile",
+            side_effect=partial_file,
+        ):
+            for operation in ("auto-save", "reset"):
+                with self.subTest(operation=operation):
+                    response = (
+                        self.common(
+                            style_id=3, speed=1.35, top_k=30,
+                        )
+                        if operation == "auto-save" else self.reset()
+                    )
+                    self.assertEqual(response.status_code, 503, response.text)
+                    self.assertNotIn("private partial-write failure", response.text)
+                    self.assertEqual(self.settings(), previous_settings)
+                    self.assertEqual(self.batch(), previous_batch)
+                    self.assertEqual(self.service._batch_settings, original)
+                    self.assertEqual(len(item.session.candidates), 1)
+                    self.assertEqual(item.accepted_take_numbers, frozenset({1}))
+                    self.assertEqual(item.generation_outcome, "completed")
+                    self.assertEqual(accepted_wav.read_bytes(),
+                                     b"previously accepted audio")
+                    self.assertEqual(config_path.read_bytes(), original_bytes)
+                    self.assertEqual(list(config_path.parent.glob(
+                        ".config.json.*.tmp"
+                    )), [])
+
+        persisted = load_settings(config_path)
+        self.assertEqual(persisted.output_dir, original.output_dir)
+        self.assertEqual(persisted.filename_template, original.filename_template)
+        self.assertTrue(persisted.save_text)
+        self.assertTrue(persisted.save_lab)
 
     def test_reset_take_count_only_does_not_modify_shared_settings(self):
         self.assertEqual(self.service.set_default_take_count(
