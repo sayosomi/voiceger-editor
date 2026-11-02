@@ -819,3 +819,96 @@ body { background: #fafaf6; }
 @media (prefers-reduced-motion: reduce) {
   #view-item #generate-audio { transition: none; }
 }
+
+/* Issue #338 Human visual review: notification breathing room and one shared
+   button palette across connection, Batch, pronunciation, dictionary, settings.
+   Primary = muted violet; secondary = pale violet; navigation = green;
+   destructive = soft red. No behavior or control size changes. */
+:root {
+  --zp-control-subtle: #f5f3f8;
+  --zp-control-border: #dcd7e5;
+  --zp-control-text: #625c7d;
+  --zp-danger-text: #96524a;
+  --zp-danger-surface: #fff4f2;
+  --zp-danger-border: #eacbc5;
+}
+
+/* The flash message sits under the sticky header on every screen. */
+#feedback:not([hidden]) {
+  margin-top: 12px;
+  background: #edf3e9;
+  color: #3c6432;
+  border: 1px solid var(--zp-line);
+  border-radius: 6px;
+}
+
+/* Consistent primary actions; only the Take-generation CTA is pill-shaped. */
+.screen button.primary-button,
+#view-list .batch-actions > #generate-batch {
+  background: var(--zp-violet);
+  border: 1px solid var(--zp-violet);
+  color: #fff;
+  border-radius: 6px;
+}
+#view-item #generate-audio { border-radius: 999px; }
+
+/* Standard secondary buttons, including nested edit and tool screens. */
+.screen button.item-link,
+.screen button.reorder-toggle,
+.screen .button-row button:not(.primary-button):not(.danger-button),
+.screen .pronunciation-assists button,
+.screen .pronunciation-actions-secondary button:not(#delete-section),
+.screen .section-secondary-actions button:not(#delete-section),
+.screen .item-take-menu button:not(#clear-takes),
+.screen .dictionary-export-actions button,
+.screen .recipe-files button,
+.screen .dictionary-tabs button:not([aria-pressed="true"]),
+#view-session #reset-settings,
+#view-item #cancel-audio,
+#view-pronunciation #cancel-pronunciation-audio,
+#view-section #cancel-section-audio,
+#view-dictionary-pron #dictionary-preview,
+#view-pronunciation #preview-pronunciation,
+#view-section #preview-section,
+#view-pronunciation #dictionary-quick-generate,
+#view-pronunciation #dictionary-quick-preview,
+#view-pronunciation #dictionary-quick-cancel,
+#view-list .batch-menu button {
+  color: var(--zp-control-text);
+  background: var(--zp-control-subtle);
+  border: 1px solid var(--zp-control-border);
+  border-radius: 6px;
+}
+
+/* Selected language tabs must match other primary actions. */
+.screen .dictionary-tabs button[aria-pressed="true"] {
+  color: #fff;
+  background: var(--zp-violet);
+  border: 1px solid var(--zp-violet);
+  border-radius: 6px;
+}
+
+/* Keep link-like controls light, as approved in the Batch Item mockup. */
+#view-item .item-titlebar .item-link,
+#view-item .pronunciation-header-actions .item-link,
+#view-item #open-pronunciation,
+#view-item #edit-take-count,
+#view-item .item-navigation button,
+#view-list .batch-add-action {
+  color: var(--zp-link);
+  background: transparent;
+  border-color: transparent;
+}
+#view-list .batch-add-action { border-bottom: 2px solid #ed9dbc; }
+
+/* Destructive actions always retain a distinct warning color. */
+.screen button.danger-button,
+#view-list #delete-selected.danger-button,
+#view-item #clear-takes,
+#view-section #delete-section {
+  color: var(--zp-danger-text);
+  background: var(--zp-danger-surface);
+  border: 1px solid var(--zp-danger-border);
+  border-radius: 6px;
+}
+.screen button:focus-visible { outline-color: #8278a5; }
