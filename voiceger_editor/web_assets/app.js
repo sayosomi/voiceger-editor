@@ -1582,10 +1582,14 @@
     var prepared = Boolean(item.is_prepared);
     var takes = item.takes || [];
     $("preview-audio").hidden = !prepared;
-    $("generate-audio").hidden = !prepared || takes.length !== 0;
+    $("generate-audio").hidden = !prepared;
+    // The bottom action remains visible with Takes; safely reuse the existing
+    // unaccepted-only regeneration route rather than replacing accepted Takes.
+    setFixed("generate-audio", !prepared ||
+      (takes.length > 0 && takes.every(function (take) { return take.accepted; })));
     $("generate-audio").textContent = "Takeを生成";
-    $("generate-audio").setAttribute("aria-label",
-      item.effective_take_count + "本のTakeを生成");
+    $("generate-audio").setAttribute("aria-label", takes.length ?
+      "未採用Takeを再生成" : item.effective_take_count + "本のTakeを生成");
     $("prepare-retry").hidden = prepared || !autoPrepareFailures.has(item.id);
     $("take-count-label").textContent = "Take数 " + item.effective_take_count;
     $("open-take-menu").hidden = !prepared;
@@ -2650,7 +2654,10 @@
     if (!togglePlayback("preview", selectedId)) startAudio(selectedId, "/audio/preview");
   });
   $("generate-audio").addEventListener("click", function () {
-    startAudio(selectedId, "/takes/generate");
+    var item = batch && batch.items.find(function (entry) { return entry.id === selectedId; });
+    if (!item) return;
+    startAudio(selectedId, item.takes && item.takes.length ?
+      "/takes/regenerate" : "/takes/generate");
   });
   $("regenerate-unaccepted").addEventListener("click", function () {
     startAudio(selectedId, "/takes/regenerate");
