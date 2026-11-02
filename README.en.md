@@ -4,7 +4,7 @@
 
 Voiceger Editor is a pronunciation and speech synthesis editor for [Voiceger](https://github.com/zunzun999/voiceger_v2).
 
-It provides a keyboard-first terminal interface (TUI) and a browser-based Web UI. The Web UI runs on a Mac and can also be accessed from Android through Tailscale.
+It provides a keyboard-first terminal interface (TUI) and a browser-based Web UI. The Web server runs on a computer with Voiceger installed and can be accessed from other PCs and mobile devices through Tailscale.
 
 You can edit Japanese pronunciation and pitch accent, English ARPAbet phonemes and stress, generate and compare multiple Takes, and save your preferred audio. Japanese, English, and mixed Japanese-English text are supported.
 
