@@ -1,6 +1,6 @@
 # User Documentation
 
-This is the English user documentation for the Voiceger Editor 0.1 series. It describes the v0.1.1 product behavior.
+This is the English user documentation for Voiceger Editor. It covers the TUI, Web UI, and HTTP API.
 
 Voiceger Editor adds pronunciation editing, Take generation, and a VOICEVOX-style API to a local Voiceger installation.
 
@@ -25,8 +25,12 @@ Install Voiceger
 → start the TUI
 ```
 
+For browser-based operation, see [Web UI Setup](web-setup.md) and [Using the Web UI](web.md).
+
 ## Guides
 
+- [Web UI Setup](web-setup.md) — installation, server startup, and remote access.
+- [Using the Web UI](web.md) — Captions, pronunciation, Takes, dictionaries, and settings.
 - [Setup](setup.md) — install from PyPI, configure Voiceger, run diagnostics, and complete first use.
 - [TUI](tui.md) — keyboard navigation, editing, Take generation, playback, and saving.
 - [Pronunciation](pronunciation.md) — Japanese pronunciation and pitch accent, plus English ARPAbet and stress.
