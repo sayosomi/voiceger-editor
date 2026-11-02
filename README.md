@@ -4,7 +4,7 @@
 
 Voiceger Editorは、[Voiceger](https://github.com/zunzun999/voiceger_v2)に追加して使う発音・音声合成エディターです。
 
-キーボードで操作するTUIと、ブラウザで操作するWeb UIを利用できます。Web UIはMac上で動作し、Tailscaleを経由してAndroidからも操作できます。
+キーボードで操作するTUIと、ブラウザで操作するWeb UIを利用できます。Web UIはVoicegerをインストールしたコンピューターで動作し、Tailscaleを経由して別のPCやスマートフォンからも操作できます。
 
 日本語の読みやアクセント、英語のARPAbet発音記号や強勢を調整しながら、複数のTakeを生成・比較して、気に入った音声を保存できます。日本語・英語・日英混在の文章に対応しています。
 
