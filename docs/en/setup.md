@@ -335,6 +335,8 @@ http://127.0.0.1:8001/docs
 
 See [HTTP API](api.md).
 
+For browser-based editing and operation from another device, see [Web UI Setup](web-setup.md). The Web UI uses the [web] extra and runs separately from the TUI and compatibility API.
+
 ## Updating Voiceger Editor
 
 Upgrade the published package with:
