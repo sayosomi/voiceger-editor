@@ -578,7 +578,7 @@
         body: payload === undefined ? undefined : JSON.stringify(payload)
       });
     } catch (_networkError) {
-      var offline = new Error("Macに接続できません。再試行してください。");
+      var offline = new Error("サーバーに接続できません。再試行してください。");
       offline.code = 0;
       throw offline;
     }
@@ -598,28 +598,28 @@
       var conflictMessages = {
         revision_conflict: "別の画面で変更されています。最新の一覧を取得してください。",
         settings_revision_conflict: "共通設定が別の画面で変更されています。開き直してください。",
-        worker_busy: "Mac側で別の処理を実行中です。完了後に再試行してください。",
-        terms_required: "Mac側で最新のVoiceger利用規約への承諾が必要です。",
+        worker_busy: "別の処理を実行中です。完了後に再試行してください。",
+        terms_required: "サーバー上で最新のVoiceger利用規約への同意が必要です。",
         accepted_take_protected: "採用済みTakeを保護しました。Take数を増やすか採用状態を確認してください。",
         already_accepted: "このTakeはすでに採用済みです。",
         conflict: "この操作は現在実行できません。状態を確認してください。",
-        recipe_changed: "Mac側のファイルが変更・削除されました。選び直してください。",
+        recipe_changed: "ファイルが変更・削除されました。選び直してください。",
         dictionary_changed: "辞書が別の画面で変更されました。最新の一覧を取得してください。",
         review_expired: "確認が古くなりました。最初から操作してください。",
-        source_changed: "Macのファイルまたは辞書が変更されました。ファイルを選び直してください。",
+        source_changed: "ファイルまたは辞書が変更されました。ファイルを選び直してください。",
         confirmation_required: "取り込み対象を選び、確認してから実行してください。"
       };
       var invalidPronunciation = {
         invalid_import: "辞書ファイルの形式・内容を確認してください。ZIP・辞書JSONのみ利用できます。",
         invalid_filename: "ファイル名は .voiceger.json で終わる単一の名前を指定してください。",
-        invalid_output_dir: "Macの保存先を絶対パスで指定してください。既存のファイルやシンボリックリンクは選択できません。",
+        invalid_output_dir: "保存先を絶対パスで指定してください。既存のファイルやシンボリックリンクは選択できません。",
         invalid_filename_template: "ファイル名の変数や文字を確認してください。",
-        invalid_output_format: "この音声形式はMac側で利用できません。MP3にはFFmpegが必要です。",
+        invalid_output_format: "この音声形式は利用できません。MP3にはサーバー側のFFmpegが必要です。",
         invalid_output_encoding: "この形式のエンコード設定を選び直してください。",
         invalid_pronunciation: "発音形式が正しくありません。各アクセント句に ' または正しい [ ] を指定し、句の区切りには空白を使ってください。",
         unsupported_pronunciation: "選択した発音は編集できません。最新のBatchを取得してください。",
         invalid_english_pronunciation: "ARPAbetの音素・強勢数字（0/1/2）を確認してください。",
-        grouping_unavailable: "英語の単語区切りを確認できません。Mac側で発音を再準備してください。",
+        grouping_unavailable: "英語の単語区切りを確認できません。発音を再準備してください。",
         stale_pronunciation: "編集対象の発音が更新されています。編集画面を開き直してください。",
         invalid_section: "選択したセクションは操作できません。現在の内容を確認してください。",
         invalid_section_text: "文章を確認してください。空欄・改行は使用できません。",
@@ -633,12 +633,12 @@
         response.status === 401 ? "認証できません。トークンを確認してください。" :
         response.status === 403 ? "接続が拒否されました。接続設定を確認してください。" :
         response.status === 503 ? (conflictCode === "settings_io" ?
-          "Mac側の設定を保存できませんでした。保存先のアクセス権を確認してください。" :
-          conflictCode === "dictionary_io" ? "Mac側の辞書を保存できませんでした。" :
-          conflictCode === "import_io" ? "Macの辞書ファイルを読み書きできませんでした。" :
+          "設定を保存できませんでした。保存先のアクセス権を確認してください。" :
+          conflictCode === "dictionary_io" ? "辞書を保存できませんでした。" :
+          conflictCode === "import_io" ? "辞書ファイルを読み書きできませんでした。" :
           conflictCode === "recipe_io" ?
-          "Mac側のOutputフォルダまたはファイルを操作できません。" :
-          "Mac側のサービスを利用できません。再試行してください。") :
+          "Outputフォルダまたはファイルを操作できません。" :
+          "サーバーのサービスを利用できません。再試行してください。") :
         response.status === 409 ?
           (conflictMessages[conflictCode] || conflictMessages.conflict) :
         response.status === 404 ? "対象を取得できません。最新の状態を確認してください。" :
@@ -650,7 +650,7 @@
         error.message = "Caption " + problemIndex + " の発音を準備してください（除外中も対象）。";
       }
       if (conflictCode === "invalid_filename" && path.includes("/dictionary/import")) {
-        error.message = "MacのOutputフォルダ内のZIP・JSONファイルを選び直してください。";
+        error.message = "Outputフォルダ内のZIP・JSONファイルを選び直してください。";
       }
       error.code = response.status;
       error.conflictCode = conflictCode;
@@ -825,7 +825,7 @@
       var values = { style_id: Number($("item-style").value),
         speed: validSpeed($("item-speed").value) };
       if (!commonSettingsData.styles.some(function (style) { return style.id === values.style_id; }))
-        throw new Error("選択したStyleはMacで使用できません。");
+        throw new Error("選択したStyleは使用できません。");
       if (values.style_id === item.style_id && values.speed === item.speed) {
         errorRow.hidden = true;
         return;
@@ -1182,7 +1182,7 @@
       } else {
         var error = document.createElement("p");
         error.className = "help-text";
-        error.textContent = "このセクションの発音を表示できません。Mac側で発音を再準備してください。";
+        error.textContent = "このセクションの発音を表示できません。発音を再準備してください。";
         panel.appendChild(error);
       }
       host.appendChild(panel);
@@ -1842,7 +1842,7 @@
   async function startAudio(itemId, suffix, payload, automaticPrepare) {
     if (busy || !batch || !selectedId || itemId !== selectedId) return;
     if (audioUnconfirmed) {
-      feedback("Mac側の音声操作を再取得してください。", true);
+      feedback("音声操作の状態を再取得してください。", true);
       return;
     }
     var item = batch.items.find(function (entry) { return entry.id === itemId; });
@@ -1960,7 +1960,7 @@
     if (detachedPolling || batchPolling || audioPolling) return;
     var identity = sessionId, epoch = connectionEpoch;
     detachedPolling = true;
-    feedback("Mac側で処理を継続中です。");
+    feedback("処理を継続中です。");
     try {
       while (op.status === "running" || op.status === "cancelling") {
         await new Promise(function (resolve) { setTimeout(resolve, 650); });
@@ -1972,9 +1972,9 @@
       await refresh();
       if (epoch !== connectionEpoch || identity !== sessionId) return;
       feedback(op.status === "succeeded" ?
-        "Mac側の処理が完了しました。必要なら画面を開き直してください。" :
-        op.status === "cancelled" ? "Mac側の処理はキャンセルされました。" :
-        "Mac側の処理を完了できませんでした。");
+        "処理が完了しました。必要なら画面を開き直してください。" :
+        op.status === "cancelled" ? "処理はキャンセルされました。" :
+        "処理を完了できませんでした。");
     } catch (error) {
       if (epoch !== connectionEpoch || identity !== sessionId) return;
       var handled = await handleSessionFailure(error);
@@ -2062,7 +2062,7 @@
     if (busy || !batch || reorderMode || deleteMode || !showView("recipe")) return;
     closeBatchMenu();
     recipeMode = mode;
-    $("recipe-title").textContent = mode === "read" ? "Macから読み込む" : "Batchを保存";
+    $("recipe-title").textContent = mode === "read" ? "読み込む" : "Batchを保存";
     $("recipe-read-panel").hidden = mode !== "read";
     $("recipe-save-form").hidden = mode !== "save";
     if (mode !== "read") {
@@ -2099,7 +2099,7 @@
       if (reviewed.replace_required && !window.confirm(
         "現在のBatchとメモリ上の生成済みTake・採用状態を置き換えますか？\\n" +
         "レシピにはTake音声や採用状態は含まれず、復元されません。\\n" +
-        "Mac上に保存済みの音声ファイルは削除されません。"
+        "保存済みの音声ファイルは削除されません。"
       )) {
         await cancelRecipeReview();
         feedback("読み込みをキャンセルしました。Batchは変更されていません。");
@@ -2134,7 +2134,7 @@
       var reviewed = await request("POST", recipeRevisionPath("/save/review"),
         { filename: filename });
       if (reviewed.exists && !window.confirm(
-        filename + " はMacのOutputフォルダに存在します。上書きしますか？"
+        filename + " はOutputフォルダに存在します。上書きしますか？"
       )) {
         await cancelRecipeReview();
         feedback("保存をキャンセルしました。ファイルは変更されていません。");
@@ -2143,7 +2143,7 @@
       await request("POST", recipeRevisionPath("/save/commit"),
         { token: reviewed.token, confirmed_overwrite: reviewed.exists });
       showView("list", true);
-      feedback(filename + " をMacのOutputフォルダに保存しました。");
+      feedback(filename + " をOutputフォルダに保存しました。");
     } catch (error) {
       if (error.conflictCode === "revision_conflict") {
         try { await refresh(); } catch (_ignored) {}
@@ -2156,7 +2156,7 @@
     if (busy || !batch || reorderMode || deleteMode) return;
     if (generationUnconfirmed || (batch.active_operation &&
         ["running", "cancelling"].includes(batch.active_operation.status))) {
-      feedback("Mac側の生成状態を再取得してください。", true);
+      feedback("生成状態を再取得してください。", true);
       return;
     }
     var epoch = connectionEpoch;
@@ -2857,7 +2857,7 @@
     values.speed = validSpeed($("common-speed").value);
     validSampling(values);
     if (!commonSettingsData.styles.some(function (style) { return style.id === values.style_id; }))
-      throw new Error("選択したStyleはMacで使用できません。");
+      throw new Error("選択したStyleは使用できません。");
     return values;
   }
   function settingsStatus(id, message) {
@@ -3001,7 +3001,7 @@
     if (busy || currentView !== "session" || !sessionId) return;
     var unsavedSettings = commonDirty() || defaultTakesDirty() || outputDirty();
     var message = (unsavedSettings ? "未保存の設定変更も失われます。\n" : "") +
-      "Mac側のBatchと未保存のTakeが消えます。保存済み音声は残ります。\n作業を終了しますか？";
+      "Batchと未保存のTakeが消えます。保存済み音声は残ります。\n作業を終了しますか？";
     if (!window.confirm(message)) return;
     setBusy(true);
     try {
@@ -3080,7 +3080,7 @@
       });
       tokenForCancel = "";
       dictionaryExportNotice(
-        saved.filename + " をMacのOutputフォルダに保存しました。", false);
+        saved.filename + " をOutputフォルダに保存しました。", false);
     } catch (error) {
       // Cancel any outstanding review. Never retry a failed commit blindly.
       if (tokenForCancel) {
@@ -3088,7 +3088,7 @@
           { token: tokenForCancel }); } catch (_ignored) {}
       }
       dictionaryExportNotice(error.conflictCode === "export_io" ?
-        "MacのOutputフォルダへ書き込めませんでした。保存先と空き容量を確認してください。" :
+        "Outputフォルダへ書き込めませんでした。保存先と空き容量を確認してください。" :
         error.message, true);
     } finally { setBusy(false); }
   }
@@ -3134,7 +3134,7 @@
     var filename = $("dictionary-import-file").value;
     if (!filename) {
       dictionaryImportNotice("dictionary-import-message",
-        "MacのOutputフォルダに対象ファイルがありません。", true);
+        "Outputフォルダに対象ファイルがありません。", true);
       return;
     }
     setBusy(true);
@@ -4132,7 +4132,7 @@
       if (!values.output_dir || !values.filename_template)
         throw new Error("保存先とファイル名を入力してください。");
       if (!outputSettingsData.formats.includes(values.output_format))
-        throw new Error("この音声形式はMacで使用できません。");
+        throw new Error("この音声形式は利用できません。");
       if (!outputDirty()) {
         errorRow.hidden = true;
         return;
