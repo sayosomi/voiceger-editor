@@ -4279,7 +4279,7 @@
       if (!data || data.status !== "ok" || typeof data.version !== "string") {
         throw new Error("Invalid health response");
       }
-      $("server-version").textContent = "Voiceger Editor " + data.version;
+      $("server-version").textContent = "Voiceger Editor Web v" + data.version;
     })
     .catch(function () {
       $("server-version").textContent = "バージョンを確認できません";

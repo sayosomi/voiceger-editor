@@ -47,6 +47,19 @@ class WebFoundationTests(unittest.TestCase):
         self.assertIn('id="auth-form"', response.text)
         self.assertIn('id="caption-list"', response.text)
 
+    def test_settings_version_links_to_repository(self):
+        html = self.client.get("/").text
+        self.assertIn(
+            '<a id="server-version" href="https://github.com/sayosomi/voiceger-editor" '
+            'target="_blank" rel="noopener noreferrer">Voiceger Editor Web</a>',
+            html,
+        )
+        js = self.client.get("/assets/app.js").text
+        self.assertIn(
+            '$("server-version").textContent = "Voiceger Editor Web v" + data.version;',
+            js,
+        )
+
     def test_static_assets_have_correct_types(self):
         css = self.client.get("/assets/app.css")
         js = self.client.get("/assets/app.js")
