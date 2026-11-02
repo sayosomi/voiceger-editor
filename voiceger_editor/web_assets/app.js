@@ -1587,9 +1587,13 @@
     // unaccepted-only regeneration route rather than replacing accepted Takes.
     setFixed("generate-audio", !prepared ||
       (takes.length > 0 && takes.every(function (take) { return take.accepted; })));
-    $("generate-audio").textContent = "Takeを生成";
-    $("generate-audio").setAttribute("aria-label", takes.length ?
-      "未採用Takeを再生成" : item.effective_take_count + "本のTakeを生成");
+    var allAccepted = takes.length > 0 &&
+      takes.every(function (take) { return take.accepted; });
+    $("generate-audio").textContent = allAccepted ? "すべて採用済み" :
+      takes.length ? "未採用Takeを再生成" : "Takeを生成";
+    $("generate-audio").setAttribute("aria-label",
+      takes.length ? (allAccepted ? "すべてのTakeが採用済み" : "未採用Takeを再生成") :
+      item.effective_take_count + "本のTakeを生成");
     $("prepare-retry").hidden = prepared || !autoPrepareFailures.has(item.id);
     $("take-count-label").textContent = "Take数 " + item.effective_take_count;
     $("open-take-menu").hidden = !prepared;
