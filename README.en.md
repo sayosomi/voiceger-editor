@@ -128,6 +128,8 @@ See [HTTP API](docs/en/api.md).
 
 ## Documentation
 
+For browser-based operation, see [Web UI Setup](docs/en/web-setup.md) and [Using the Web UI](docs/en/web.md).
+
 - [Setup](docs/en/setup.md)
 - [TUI](docs/en/tui.md)
 - [Pronunciation](docs/en/pronunciation.md)
