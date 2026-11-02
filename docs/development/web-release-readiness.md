@@ -1,22 +1,22 @@
 # Issue #335 — Web final acceptance and release-readiness record
 
 **Status: NOT READY TO RELEASE** (2026-11-02 JST; initial inventory only).
-This is a development checklist and an **unapproved draft** of release notes, not publication instructions. The user-facing v0.1.1 guides and published release are unchanged.
+This is an internal acceptance checklist, **not user-facing release notes** or publication instructions. No proposed Japanese/English release-note prose is recorded here before Human text approval. The published v0.1.1 guides and release remain unchanged.
 
 ## Grounded baseline
 
 - Repository: `sayosomi/voiceger-editor`
-- Current base `main`: `a5b38a5be945f281a0464fcbca906e53d99b9764`.
+- Refreshed GitHub remote `main` (2026-11-02 JST): `1ab38a439ff29b270537078efa867e8b486bfdde`. Existing Draft PR #336 has its own branch ancestry and must incorporate current main before final exact-head acceptance.
 - Published latest release (GitHub): `v0.1.1` (2026-10-28 UTC); its release text describes the TUI and compatibility API. Do not silently rewrite those published statements.
 - Source package version: `voiceger_editor/_version.py` = `0.1.1`; `pyproject.toml` reads this dynamically. **No next release version has been selected.**
-- Difference from `v0.1.1` to base main: GitHub compare reports **24 commits ahead / 0 behind**. The substantive additions include the Web frontend, session/batch/pronunciation/Take/dictionary/settings/output routes and frontend assets; additional TUI/dictionary and shared core changes also exist.
-- Baseline GitHub Actions `CI` run [41319648352](https://github.com/sayosomi/voiceger-editor/actions/runs/41319648352) SUCCESS at this exact main. The CI workflow includes Python 3.9 unit tests, Windows startup boundary, and Linux wheel/sdist clean-install smoke; the package smoke checks presence of the three Web static assets. This is **not** real Mac Voiceger synthesis or Android/Tailscale acceptance.
+- Compared with published `v0.1.1`, current main includes the Web frontend, batch/pronunciation/Take/dictionary/settings/output workflows, TUI/shared-core changes, and merged #322 JA-pronunciation-to-ARPAbet conversion for both TUI and Web. Recompute exact tag-to-release-HEAD comparison when the release target is chosen.
+- Previous main checkpoint `a5b38a5...` passed [CI 41319648352](https://github.com/sayosomi/voiceger-editor/actions/runs/41319648352). Merged #322 PR #337 implementation HEAD `5c990c850fdb7891db96238db345614b28264c2b` passed [CI 41331395649](https://github.com/sayosomi/voiceger-editor/actions/runs/41331395649). **These are not CI at the current main `1ab38a4...` or at the final release commit.** CI includes Python 3.9 unit tests, Windows startup boundary, and Linux wheel/sdist clean-install smoke, but does not certify Mac Tailscale configuration or physical Windows synthesis.
 
 ## Checklist (check only on direct evidence at intended release HEAD)
 
 - [x] Baseline latest published release/tag verified: `v0.1.1`.
 - [x] Current source version and optional dependencies inspected: `[tui]`, `[api]`, `[web]`, `[lab]`; Python `==3.9.*` in `pyproject.toml`.
-- [x] Baseline CI packages Web HTML/CSS/JS in the wheel and smoke-installs `[api,tui,lab,web]`; Windows startup CI is a **limited** startup check only.
+- [x] Reviewed prior CI packages Web HTML/CSS/JS in the wheel and smoke-installs `[api,tui,lab,web]`; Windows startup CI is a **limited** startup check only. Recheck at final release HEAD.
 - [x] Initial internal [TUI↔Web matrix](tui-web-parity-matrix.md) inventoried with explicit unverified gates.
 - [ ] Independent accuracy/semantic review of the matrix, resolve all known gaps.
 - [ ] Explicit Human approval of **exact JA and EN user-facing text**, before any user-doc write.
@@ -30,28 +30,19 @@ This is a development checklist and an **unapproved draft** of release notes, no
 - [ ] Review user-guide claims against exact intended release commit; any unresolved restrictions remain explicit.
 - [ ] After all gates, return to parent Issue #297; **do not publish or tag automatically**.
 
-## Provisional change summary compared with v0.1.1
+## Release-note coverage checklist (internal, not prose)
 
-Draft content below is **NOT APPROVED**, **NOT COMPLETE**, and must not be presented as a released feature set until tested against the exact release commit.
+Before writing any Japanese or English release-note text, verify against the intended release HEAD:
 
-### Draft Japanese release-notes topics
+- [ ] Web frontend, Mac-local startup and its separation from the TUI / compatibility API.
+- [ ] Batch / pronunciation / Take / dictionary / settings / output workflows and any important limits.
+- [ ] JA pronunciation → grouped ARPAbet in-place conversion (#322), supported inputs, lossy approximation and guarded rejection cases.
+- [ ] Preview, transient Takes, persistent accepted files and restart/reconnect boundaries.
+- [ ] Tailnet-only Android access, authentication model and non-public-hosting boundary.
+- [ ] TUI/API changes and compatibility limits from the exact latest published tag.
+- [ ] Human-approved exact JA/EN wording, version number and publication procedure.
 
-- Macでローカル起動するWeb画面を追加。既存のTUI、VOICEVOX形式のHTTP APIとは別の画面・API。
-- Batch ListとBatch Itemの編集、生成、Takeの再生・採用、発音の直接編集、日本語・英語辞書をWebから操作可能。
-- 発音のPreview/反映、採用済み音声の保持、未採用Takeの再生成、Batchレシピの保存・読込に対応。
-- 音声合成設定・保存先・ファイル名・出力形式をWebから調整可能。設定保存とリセットは個別仕様に従う。
-- WebはBearer token、Origin検証、セッションと生成候補の一時保存を採用。再起動・セッション終了からのTake復旧は保証しない。
-- AndroidでのアクセスはMacローカルサーバーへのTailscale Serveを使う限定構成。一般公開やFunnelは対象外。
-- 今後の承認事項: 実機動作・文面・バージョン・リリース手続き。TUI/HTTP APIの変更点は実際の差分を再点検する。
-
-### Draft English release-notes topics
-
-- Add a Mac-local browser frontend alongside, not in place of, the existing TUI and partial VOICEVOX-style HTTP API.
-- Web workflows cover Batch management, direct JA/EN pronunciation, Takes and acceptance, user dictionaries, shared synthesis and output settings.
-- Preserve saved audio when temporary session candidates are invalidated; distinguish noncommitting previews from generated and accepted Takes.
-- Web authentication uses a local bearer token and browser request guards. Session IDs and temporary Takes are not restart-safe recovery checkpoints.
-- Android access uses a Mac-hosted localhost service through tailnet-only Tailscale Serve; this is not public hosting.
-- Final scope/support statements remain conditional on the exact-head automated, manual-device, documentation and release approvals.
+This checklist intentionally contains no proposed user-facing release-note paragraphs.
 
 ## Release commands and safety
 
