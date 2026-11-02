@@ -172,6 +172,8 @@ WAV音声
 
 操作方法を詳しく説明したユーザードキュメントを用意しています。
 
+ブラウザから操作する場合は、[Web UIのセットアップ](docs/ja/web-setup.md)と[Web UIの使い方](docs/ja/web.md)を参照してください。
+
 - [日本語ドキュメント](docs/ja/README.md) — スクリーンショット付きの操作ガイド
 - [English Documentation](docs/en/README.md) — 英語版ユーザーガイド
 
