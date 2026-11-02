@@ -2,13 +2,13 @@
 
 **日本語** | [English](README.en.md)
 
-Voiceger Editorは、[Voiceger](https://github.com/zunzun999/voiceger_v2)に追加して使うTUIの発音・音声合成エディターです。
+Voiceger Editorは、[Voiceger](https://github.com/zunzun999/voiceger_v2)に追加して使う発音・音声合成エディターです。
 
-日本語の読みやアクセント、英語の発音や強勢を調整しながら、複数の音声を生成して聴き比べて気に入ったTakeを保存できます。
+キーボードで操作するTUIと、ブラウザで操作するWeb UIを利用できます。Web UIはMac上で動作し、Tailscaleを経由してAndroidからも操作できます。
 
-日本語・英語・日英混在の文章に対応しています。
+日本語の読みやアクセント、英語のARPAbet発音記号や強勢を調整しながら、複数のTakeを生成・比較して、気に入った音声を保存できます。日本語・英語・日英混在の文章に対応しています。
 
-Voiceger本体、モデル、参照音声はVoiceger Editorに含まれていません。Voicegerを別途インストールする必要があります。
+Voiceger本体、モデル、参照音声は含まれていません。Voicegerを別途インストールする必要があります。
 
 > **重要：生成音声の利用規約**
 >
