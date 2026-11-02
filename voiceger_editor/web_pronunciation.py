@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 
+from .query_ja_arpabet import convert_japanese_section_to_arpabet
 from .query_editing import (
     japanese_preview_query,
     japanese_pronunciation,
@@ -20,7 +21,7 @@ class WebPronunciationValidation(WebTakeValidation):
     """An invalid or unsupported, client-provided pronunciation draft."""
 
     def __init__(self, code: str) -> None:
-        if code not in {"invalid_pronunciation", "unsupported_pronunciation", "invalid_english_pronunciation", "grouping_unavailable", "stale_pronunciation", "invalid_section", "invalid_section_text", "stale_section"}:
+        if code not in {"invalid_pronunciation", "unsupported_pronunciation", "invalid_english_pronunciation", "grouping_unavailable", "stale_pronunciation", "invalid_section", "invalid_section_text", "stale_section", "invalid_conversion"}:
             raise ValueError("Unknown pronunciation validation code")
         self.code = code
         super().__init__(code)
@@ -127,3 +128,40 @@ class WebPronunciationMixin:
             session.preview_audio = None
             session.revision += 1
             return {"changed": True, "batch": self._batch_snapshot(session)}
+
+    def convert_japanese_to_arpabet(
+        self, session_id: str, item_id: str, revision: int, notation: str,
+        segment_index: int | None = None,
+    ) -> dict:
+        """Atomically replace one Japanese pronunciation section with EN groups."""
+        with self._lock:
+            session, item = self._take_guard(session_id, item_id, revision)
+            current, _validated_draft = _draft_query(item, notation, segment_index)
+            source_text = (
+                getattr(item.session, "pure_japanese_utterance_text", None)
+                or getattr(item.session, "synthesis_source_text", None)
+                or item.caption
+            ) if segment_index is None else None
+            try:
+                converted = convert_japanese_section_to_arpabet(
+                    current, notation.replace("　", "/").replace(" ", "/"),
+                    segment_index=segment_index,
+                    pure_japanese_utterance_text=source_text,
+                )
+            except (ValueError, TypeError):
+                raise WebPronunciationValidation("invalid_conversion") from None
+            item.session.replace_query(converted)
+            item.clear_acceptance()
+            item.clear_generation_outcome()
+            session.preview_audio = None
+            session.english_groupings = {
+                key: value
+                for key, value in session.english_groupings.items()
+                if key[0] != item_id
+            }
+            session.revision += 1
+            return {
+                "changed": True,
+                "converted_index": 0 if segment_index is None else segment_index,
+                "batch": self._batch_snapshot(session),
+            }

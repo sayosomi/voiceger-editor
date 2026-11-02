@@ -38,9 +38,11 @@ class JapaneseUtterance(FakeUtterance):
         self._spoken_text = self.caption
         self.is_prepared = True
 
-    def replace_query(self, query):
+    def replace_query(self, query, *, pure_japanese_utterance_text=None):
         self.discard_takes()
         self._query = deepcopy(query)
+        if query.voicegerSegments is None and pure_japanese_utterance_text is not None:
+            self._spoken_text = pure_japanese_utterance_text
 
     def preview_synthesis(self, query):
         self.preview_notations.append(japanese_pronunciation(query))
@@ -118,6 +120,114 @@ class JapaneseWebTests(unittest.TestCase):
                          422)
         self.assertEqual(self.action(
             "POST", "/pronunciation/preview", {"notation": "アメ'"}).status_code, 422)
+
+    def test_arpabet_conversion_replaces_one_pure_japanese_section(self):
+        response = self.action(
+            "POST", "/pronunciation/convert", {"notation": "ズ'ンダモンハ カシコ'イ ノダ'！"}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertTrue(data["changed"])
+        self.assertEqual(data["converted_index"], 0)
+        section = data["batch"]["items"][0]["pronunciation_sections"][0]
+        self.assertEqual(section["language"], "en")
+        self.assertEqual(
+            [entry["label"] for entry in section["groups"]],
+            ["ズンダモンハ", "カシコイ", "ノダ", "!"],
+        )
+        self.assertIsNone(data["batch"]["items"][0]["pronunciation"])
+        self.assertEqual(self.fake.query.voicegerSegments[0].text, "雨")
+        self.assertEqual(self.fake.query.accent_phrases, [])
+
+    def test_converted_english_phoneme_edit_keeps_durable_group_boundaries(self):
+        response = self.action(
+            "POST", "/pronunciation/convert",
+            {"notation": "ズ'ンダモンハ カシコ'イ ノダ'！"},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        section = response.json()["batch"]["items"][0]["pronunciation_sections"][0]
+        first = section["groups"][0]
+        new_draft = first["notation"] + " R AA0"
+        edited = self.action(
+            "PATCH", "/pronunciation/english/0/0",
+            {"opening": first["notation"], "notation": new_draft},
+        )
+        self.assertEqual(edited.status_code, 200, edited.text)
+        groups = edited.json()["batch"]["items"][0]["pronunciation_sections"][0]["groups"]
+        self.assertEqual(groups[0]["notation"], new_draft)
+        self.assertEqual(groups[0]["label"], "ズンダモンハ")
+        self.assertEqual(groups[-1]["notation"], "!")
+        self.assertEqual(
+            self.fake.query.voicegerSegments[0].englishGroups[0].count,
+            len(new_draft.split()),
+        )
+
+    def test_converted_english_section_text_can_change_word_group_count(self):
+        converted = self.action(
+            "POST", "/pronunciation/convert",
+            {"notation": "ズ'ンダモンハ カシコ'イ ノダ'！"},
+        )
+        self.assertEqual(converted.status_code, 200, converted.text)
+        self.assertEqual(
+            len(self.fake.query.voicegerSegments[0].englishGroups), 4,
+        )
+        self.service._english_group_provider = (
+            lambda text: (("hello", ("HH", "AH0", "L", "OW1")),)
+            if text == "hello" else ()
+        )
+
+        changed = self.action(
+            "PATCH", "/sections/text",
+            {"language": "en", "index": 0, "opening": "雨", "text": "hello"},
+        )
+        self.assertEqual(changed.status_code, 200, changed.text)
+        self.assertTrue(changed.json()["changed"])
+        section = changed.json()["batch"]["items"][0]["pronunciation_sections"][0]
+        self.assertEqual(section["text"], "hello")
+        self.assertEqual(len(section["groups"]), 1)
+        self.assertEqual(section["groups"][0]["label"], "hello")
+        self.assertIsNone(self.fake.query.voicegerSegments[0].englishGroups)
+        self.assertEqual(self.fake.caption, "雨")
+
+    def test_conversion_clears_takes_but_preserves_accepted_saved_audio(self):
+        self.finish(self.action("POST", "/takes/generate"))
+        self.finish(self.action("POST", "/takes/1/accept"))
+        original_files = {
+            p.name: p.read_bytes() for p in self.output.iterdir()
+        }
+        self.assertTrue(original_files)
+        response = self.action(
+            "POST", "/pronunciation/convert", {"notation": "ズ'ンダ！"},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        item = response.json()["batch"]["items"][0]
+        self.assertEqual(item["candidate_count"], 0)
+        self.assertEqual(
+            {p.name: p.read_bytes() for p in self.output.iterdir()},
+            original_files,
+        )
+
+    def test_arpabet_conversion_failure_and_stale_revision_do_not_mutate(self):
+        before = self.batch()
+        bad = self.action(
+            "POST", "/pronunciation/convert", {"notation": "ア[メ]ノ[ダ]"}
+        )
+        self.assertEqual(bad.status_code, 422)
+        self.assertEqual(bad.json()["detail"]["code"], "invalid_conversion")
+        self.assertEqual(self.batch(), before)
+        stale = self.action(
+            "POST", "/pronunciation/convert", {"notation": "ア'メ"},
+            revision=before["revision"] + 1,
+        )
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(self.batch(), before)
+
+    def test_arpabet_conversion_requires_authentication(self):
+        response = self.action(
+            "POST", "/pronunciation/convert",
+            {"notation": "ア'メ"}, headers={},
+        )
+        self.assertIn(response.status_code, (401, 403))
 
     def test_draft_preview_never_commits_or_clears_takes(self):
         self.finish(self.action("POST", "/takes/generate"))

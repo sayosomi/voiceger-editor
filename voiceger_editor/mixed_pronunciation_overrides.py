@@ -41,6 +41,14 @@ class MixedPronunciationOverrides:
                     "consumed": False,
                 }
             )
+        self._english_collisions = {
+            entry["canonical"]
+            for entry in self._english_entries
+            if sum(
+                other["canonical"] == entry["canonical"]
+                for other in self._english_entries
+            ) > 1
+        }
 
     def _canonical_japanese(self, value: str) -> str:
         normalized = self._japanese.text_normalize(value).strip()
@@ -73,7 +81,10 @@ class MixedPronunciationOverrides:
         if language == "en":
             actual = self._canonical_english(value)
             for entry in self._english_entries:
-                if actual == entry["canonical"]:
+                if actual == entry["canonical"] and (
+                    not entry["consumed"]
+                    or actual not in self._english_collisions
+                ):
                     entry["consumed"] = True
                     phones = list(entry["tokens"])
                     phone_ids = self._inference_webui.cleaned_text_to_sequence(

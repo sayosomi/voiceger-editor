@@ -195,6 +195,23 @@ def synthesize_audio_query(
                 (segment.language, segment.text)
                 for segment in query.voicegerSegments
             )
+        elif (
+            plan.text_language == "English"
+            and len(query.voicegerSegments) > 1
+            and any(segment.englishGroups is not None
+                    for segment in query.voicegerSegments)
+        ):
+            # Pinned Voiceger processes all-English input with one clean_text_inf
+            # call. Preserve all JA-origin phonemes by supplying one complete
+            # English override and an exact whole-text LangSegment result.
+            if any(segment.phonemes is None for segment in query.voicegerSegments):
+                raise ValueError("Converted English synthesis requires explicit phonemes")
+            mixed_kwargs["english_overrides"] = [(
+                plan.text,
+                [phone for segment in query.voicegerSegments
+                 for phone in segment.phonemes],
+            )]
+            mixed_kwargs["language_segments"] = (("en", plan.text),)
         if (
             capture_mixed_lab_provenance
             and {segment.language for segment in query.voicegerSegments}

@@ -56,14 +56,22 @@ class PronunciationPitchEvents(BaseModel):
     events: List[JapanesePitchEvent] = Field(min_length=2)
 
 
+class EnglishPhonemeGroupBoundary(BaseModel):
+    """Durable boundaries for JA-origin English ARPAbet editing."""
+
+    label: str = Field(min_length=1)
+    count: int = Field(ge=1)
+
+
 class VoicegerSegment(BaseModel):
-    """Adapter extension used only when the utterance is multilingual."""
+    """Adapter extension for explicitly prepared language sections."""
 
     language: str
     text: str
     accentPhraseStart: Optional[int] = None
     accentPhraseCount: Optional[int] = None
     phonemes: Optional[List[str]] = None
+    englishGroups: Optional[List[EnglishPhonemeGroupBoundary]] = None
     pronunciationTerminator: Optional[str] = None
     pronunciationPunctuation: Optional[List[PronunciationPunctuation]] = None
 
@@ -82,6 +90,8 @@ class VoicegerSegment(BaseModel):
         data = handler(self)
         if self.phonemes is None:
             data.pop("phonemes", None)
+        if self.englishGroups is None:
+            data.pop("englishGroups", None)
         if self.pronunciationTerminator is None:
             data.pop("pronunciationTerminator", None)
         if self.pronunciationPunctuation is None:

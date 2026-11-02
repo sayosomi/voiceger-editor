@@ -53,8 +53,9 @@ class TuiShortcutTests(unittest.TestCase):
             "japanese": {
                 "p": "preview", "a": "apply", "s": "save_dictionary",
                 "d": "dictionary", "e": "edit_text", "x": "delete_section",
-                "c": "clear", "r": "reset",
+                "c": "clear", "r": "reset", "v": "convert_arpabet",
             },
+            "convert_confirmation": {"v": "convert"},
             "english_word": {
                 "p": "preview", "a": "apply", "s": "save_dictionary",
                 "d": "dictionary", "e": "edit_text", "x": "delete_section",
