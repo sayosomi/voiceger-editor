@@ -1,6 +1,6 @@
 # Issue #335 — Web final acceptance and release-readiness record
 
-**Status: NOT READY TO RELEASE** (2026-11-02 JST; approved draft documentation and parity inventory present; final device/runtime evidence and independent review remain).
+**Status: NOT READY TO RELEASE** (2026-11-03 JST; approved draft documentation, parity matrix, exact-head automated tests, and Android/Tailscale Human E2E evidenced; independent review, ACL policy inspection, and publication authorization remain).
 This is an internal acceptance checklist, **not user-facing release notes** or publication instructions. No proposed Japanese/English release-note prose is recorded here before Human text approval. The published v0.1.1 guides and release remain unchanged.
 
 ## Grounded baseline
@@ -21,10 +21,11 @@ This is an internal acceptance checklist, **not user-facing release notes** or p
 - [ ] Independent accuracy/semantic review of the matrix, resolve all known gaps.
 - [x] Human-approved exact JA/EN user-facing text was obtained in the earlier #335 documentation review: README introductory copy, Web setup, Web usage, compatibility text and index/setup links (2026-11-02 JST). No new user-facing prose has been written during main reconciliation.
 - [x] Existing approved JA/EN Web guides, README / indices / setup / compatibility drafts are carried forward unchanged; prior 14-document relative-link check found 118 valid relative targets. Re-evaluate any *future changed* user-facing prose for explicit Human approval.
-- [ ] Verify documented Mac-local Web startup command and token/auth steps against actual packaged entrypoint (no accidental `0.0.0.0` bind).
-- [ ] Run final exact-head aggregate `CI` after all proposed changes, verify Python 3.9 packaging and optional dependency requirements. Latest verification workflow for the integrated #336 branch: [CI 41452100577](https://github.com/sayosomi/voiceger-editor/actions/runs/41452100577), on `55b69d037ce5c5f76a316b5a03019dcba2fd65fd` (this record update supersedes that HEAD; recheck the new HEAD).
-- [ ] Verify opt-in real Voiceger synthesis/integration in isolated scratch environment; do not modify Voiceger source or live user config.
-- [ ] Confirm real Mac Tailscale Serve + ACL and isolated Android UX/audio + Mac accepted-file E2E. Existing CI does not verify physical Serve/ACL.
+- [x] Documented Web startup targets existing `voiceger_editor.web:app` with `127.0.0.1` binding; `VOICEGER_WEB_TOKEN` >= 32 is enforced by `web_security.py`; CI builds/installs the Web package, and physical E2E verified the same app via `create_web_app`. The exact user-guide shell launcher was not separately exercised as a manual command.
+- [ ] Required aggregate `CI` succeeded at `afc71148d18aeb0cafd80799875122e6461abd82` ([CI 41452433896](https://github.com/sayosomi/voiceger-editor/actions/runs/41452433896)): Python 3.9 units, Windows startup, Linux wheel/sdist clean-install. Recheck CI at the final PR HEAD after this evidence-only documentation update.
+- [ ] Real Voiceger synthesis for the Web accepted-Take path succeeded in Human E2E at `afc71148...` using disposable scratch. Separately, merged #322 / PR #337 recorded pinned pure/mixed-language integration PASS at earlier implementation checkpoints, with synthesis source untouched since; the opt-in full integration suite has not been rerun at this exact PR HEAD. Preserve the distinction.
+- [x] Human physical Android/Tailscale E2E PASS on `afc71148d18aeb0cafd80799875122e6461abd82` (2026-11-03 JST): phone navigation/audio, adopted Take, accepted Mac audio in isolated `scratch/issue335-e2e/output`; evidence recorded in PR #336 discussion. No repeated human feature assertions required.
+- [ ] Independently inspect Mac Tailscale Serve/Funnel exposure and tailnet ACL policy: working authenticated tailnet connectivity does not by itself establish policy scope.
 - [ ] Independent blocking review PASS for exact final pushed PR HEAD.
 - [ ] Human approves intended version, final release notes and **separate** publication/tag/PyPI steps.
 - [ ] Review user-guide claims against exact intended release commit; any unresolved restrictions remain explicit.
