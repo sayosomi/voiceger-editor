@@ -1,6 +1,6 @@
 # Issue #335 — Web final acceptance and release-readiness record
 
-**Status: NOT READY TO RELEASE** (2026-11-02 JST; initial inventory only).
+**Status: NOT READY TO RELEASE** (2026-11-02 JST; approved draft documentation and parity inventory present; final device/runtime evidence and independent review remain).
 This is an internal acceptance checklist, **not user-facing release notes** or publication instructions. No proposed Japanese/English release-note prose is recorded here before Human text approval. The published v0.1.1 guides and release remain unchanged.
 
 ## Grounded baseline
@@ -19,10 +19,10 @@ This is an internal acceptance checklist, **not user-facing release notes** or p
 - [x] Reviewed prior CI packages Web HTML/CSS/JS in the wheel and smoke-installs `[api,tui,lab,web]`; Windows startup CI is a **limited** startup check only. Recheck at final release HEAD.
 - [x] Initial internal [TUI↔Web matrix](tui-web-parity-matrix.md) inventoried with explicit unverified gates.
 - [ ] Independent accuracy/semantic review of the matrix, resolve all known gaps.
-- [ ] Explicit Human approval of **exact JA and EN user-facing text**, before any user-doc write.
-- [ ] Review draft JA/EN Web guides, README / indices / setup / compatibility changes already present in PR #336 against approved wording and current UI; verify links/translations and obtain any outstanding Human text approval before merge.
+- [x] Human-approved exact JA/EN user-facing text was obtained in the earlier #335 documentation review: README introductory copy, Web setup, Web usage, compatibility text and index/setup links (2026-11-02 JST). No new user-facing prose has been written during main reconciliation.
+- [x] Existing approved JA/EN Web guides, README / indices / setup / compatibility drafts are carried forward unchanged; prior 14-document relative-link check found 118 valid relative targets. Re-evaluate any *future changed* user-facing prose for explicit Human approval.
 - [ ] Verify documented Mac-local Web startup command and token/auth steps against actual packaged entrypoint (no accidental `0.0.0.0` bind).
-- [ ] Run final exact-head aggregate `CI` after all proposed changes, verify Python 3.9 packaging and optional dependency requirements.
+- [ ] Run final exact-head aggregate `CI` after all proposed changes, verify Python 3.9 packaging and optional dependency requirements. Latest verification workflow for the integrated #336 branch: [CI 41452100577](https://github.com/sayosomi/voiceger-editor/actions/runs/41452100577), on `55b69d037ce5c5f76a316b5a03019dcba2fd65fd` (this record update supersedes that HEAD; recheck the new HEAD).
 - [ ] Verify opt-in real Voiceger synthesis/integration in isolated scratch environment; do not modify Voiceger source or live user config.
 - [ ] Confirm real Mac Tailscale Serve + ACL and isolated Android UX/audio + Mac accepted-file E2E. Existing CI does not verify physical Serve/ACL.
 - [ ] Independent blocking review PASS for exact final pushed PR HEAD.
