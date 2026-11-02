@@ -28,12 +28,12 @@
       <section id="view-connect" class="screen" aria-labelledby="connect-title">
         <div class="screen-heading">
           
-          <h2 id="connect-title" tabindex="-1">MacのVoiceger Editorに接続</h2>
+          <h2 id="connect-title" tabindex="-1">Voiceger Editorに接続</h2>
           <p class="supporting">アクセストークンを入力するとBatch Listが開きます。トークンは保存されません。</p>
         </div>
         <form id="auth-form" class="field-stack">
           <label for="web-token">Webアクセストークン</label>
-          <input id="web-token" type="password" minlength="32" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Mac側で表示されたトークン">
+          <input id="web-token" type="password" minlength="32" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="サーバーのアクセストークン">
           <button type="submit" id="connect-button" class="primary-button">接続する</button>
         </form>
         <p id="auth-status" class="help-text" role="status" aria-live="polite">未接続</p>
@@ -89,14 +89,14 @@
         <div id="recipe-read-panel" hidden>
           <p class="field-title">保存済みBatch</p>
           <p id="recipe-empty" class="help-text" hidden>読み込めるBatchファイルはありません。</p>
-          <ul id="recipe-files" class="recipe-files" aria-label="Mac側のBatchレシピ一覧"></ul>
+          <ul id="recipe-files" class="recipe-files" aria-label="Batchファイル一覧"></ul>
           <p class="help-text">レシピから生成済みTakeや採用状態は復元されません。</p>
         </div>
         <form id="recipe-save-form" class="field-stack" hidden>
           <label for="recipe-filename">ファイル名</label>
           <input id="recipe-filename" type="text" value="batch.voiceger.json" maxlength="180" required
             autocomplete="off" autocapitalize="off" spellcheck="false">
-          <p class="help-text">保存先：MacのOutputフォルダ（変更不可）。推奨拡張子は .voiceger.json です。</p>
+          <p class="help-text">保存先：Outputフォルダ（ここでは変更不可）。推奨拡張子は .voiceger.json です。</p>
           <button type="submit" class="primary-button full-button">保存</button>
         </form>
       </section>
@@ -323,7 +323,7 @@
         <h2 id="dictionary-management-title" tabindex="-1">辞書管理</h2>
         <div class="dictionary-management">
           <h3>インポート</h3>
-          <p class="help-text">MacのOutputフォルダから辞書ファイルを選択します。</p>
+          <p class="help-text">Outputフォルダから辞書ファイルを選択します。</p>
           <label class="field-stack" for="dictionary-import-file">ファイルを選択
             <select id="dictionary-import-file"></select>
           </label>
@@ -332,7 +332,7 @@
         </div>
         <div class="dictionary-management">
           <h3>エクスポート</h3>
-          <p class="help-text">MacのOutputフォルダに保存します。</p>
+          <p class="help-text">Outputフォルダに保存します。</p>
           <div class="dictionary-export-actions">
             <button type="button" id="dictionary-export-native">ZIPバックアップ（日本語・英語）</button>
             <button type="button" id="dictionary-export-voicevox">VOICEVOX JSON（日本語）</button>
@@ -463,7 +463,7 @@
         </form>
         <form id="output-settings-form" class="setting-section output-settings-section" novalidate hidden>
           <h3>出力</h3>
-          <label for="output-dir">保存先（Mac）
+          <label for="output-dir">保存先
             <input id="output-dir" type="text" autocomplete="off" autocapitalize="off"
               spellcheck="false" required>
           </label>
@@ -488,7 +488,7 @@
               <select id="output-encoding" required></select>
             </label>
           </div>
-          <p id="output-ffmpeg-note" class="help-text" hidden>MP3にはMac側のFFmpegが必要です。</p>
+          <p id="output-ffmpeg-note" class="help-text" hidden>MP3にはサーバー側のFFmpegが必要です。</p>
           <p class="field-title">付随ファイル</p>
           <div class="output-sidecars">
             <label class="check-row" for="output-text"><input type="checkbox" id="output-text">TXT</label>
@@ -503,11 +503,11 @@
           <p id="server-version" class="help-text">Voiceger Editor Web</p>
         </div>
         <div class="danger-zone">
-          <p class="help-text">作業を終了すると、Mac側のBatchと未保存のTakeは消えます。保存済み音声は残ります。</p>
+          <p class="help-text">作業を終了すると、Batchと未保存のTakeは消えます。保存済み音声は残ります。</p>
           <button type="button" id="close-session" class="danger-button">作業を終了</button>
         </div>
       </section>
-      <audio id="phone-player" controls preload="none" hidden aria-label="スマホで音声を再生"></audio>
+      <audio id="phone-player" controls preload="none" hidden aria-label="音声を再生"></audio>
     </main>
   </div>
 </body>
