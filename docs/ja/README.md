@@ -9,6 +9,8 @@
 2. [はじめての音声生成](<tui.md>)  
    Caption の追加から Take の生成・採用までの基本操作
 
+Web UIを使用する場合は、[セットアップ](web-setup.md)と[操作ガイド](web.md)を参照してください。
+
 基本的な操作の流れは次のとおりです。
 
 ``` text
@@ -22,6 +24,8 @@ Caption を追加
 
 ## ドキュメント
 
+- [Web UIのセットアップ](web-setup.md) — インストール、起動、別端末からの接続
+- [Web UIの使い方](web.md) — Caption、発音、Take、辞書、設定の操作
 - [BATCH LIST](<batch-list.md>)  
   Caption の追加・管理、一括生成、バッチファイルの読み書き
 - [BATCH ITEM](<batch-item.md>)  

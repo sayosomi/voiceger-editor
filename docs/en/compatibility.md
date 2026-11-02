@@ -6,7 +6,7 @@ Something outside this scope may still work, but it is not guaranteed.
 
 ## Version stability
 
-0.1.0 was the initial public release. The current documentation describes v0.1.1 behavior within the 0.1 series.
+0.1.0 was the initial public release. This guide covers the TUI, Web UI, and HTTP API in the Voiceger Editor 0.1 series. See the release notes for changes between versions.
 
 Before 1.0, user-facing interfaces may still change as the project gains real-world usage. This includes TUI behavior, settings and dictionary formats, and Voiceger Editor API extensions. Breaking changes will be documented in release notes.
 
@@ -57,6 +57,20 @@ TUI playback on Windows requires `ffplay.exe` in `PATH`.
 This automated verification does not run a real Voiceger synthesis, an interactive keyboard TUI session, or LAB alignment on Windows.
 
 LAB output is not part of the verified 0.1 Windows support boundary. See [LAB Output](lab-output.md).
+
+## Web UI Platform Compatibility
+
+The Web UI consists of a server running Voiceger and a browser used to operate it. Speech synthesis, working Batch sessions, and audio file storage are managed on the server.
+
+The Web server has been tested on macOS with a real Voiceger installation. Complete Web UI and synthesis workflows have not been physically verified on Linux or Windows servers.
+
+Browser operation has been tested locally on macOS and remotely from Android through Tailscale Serve. iOS, iPadOS, and other OS/browser combinations have not been physically verified.
+
+The Web server listens on the local address `127.0.0.1`. Tailscale Serve provides access from other permitted devices. Public internet exposure and Tailscale Funnel are not part of the supported deployment model.
+
+The TUI, Web UI, and VOICEVOX-compatible HTTP API have separate startup methods.
+
+See [Web UI Setup](web-setup.md) and [Using the Web UI](web.md).
 
 ## Supported speech scope
 
@@ -207,8 +221,7 @@ See [LAB Output](lab-output.md).
 
 ## Output files
 
-Accepted TUI Takes can be saved as WAV or FLAC, or as MP3 when ffmpeg is
-available. The default basename template is:
+Accepted Takes from the TUI or Web UI can be saved as WAV or FLAC, or as MP3 when FFmpeg is available. The default basename template is:
 
 ```text
 {YYYYMMDDHHmm}_{style}_{caption}

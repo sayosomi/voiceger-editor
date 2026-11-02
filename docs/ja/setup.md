@@ -123,6 +123,7 @@ voiceger-editor
 
 以下の機能を使用する場合は、追加の準備が必要です。
 
+- [Web UI](web-setup.md) — ブラウザ操作とTailscale Serveによる別端末からの接続
 - [HTTP API](http-api.md) — HTTP API のインストールと起動
 - [LAB 出力](lab.md) — LAB 出力に必要な依存パッケージと外部ツール
 - [MP3 出力](mp3.md) — MP3 出力に必要な FFmpeg の導入

@@ -2,19 +2,13 @@
 
 [日本語](README.md) | **English**
 
-Voiceger Editor is a pronunciation and synthesis editor for [Voiceger](https://github.com/zunzun999/voiceger_v2).
+Voiceger Editor is a pronunciation and speech synthesis editor for [Voiceger](https://github.com/zunzun999/voiceger_v2).
 
-It adds:
+It provides a keyboard-first terminal interface (TUI) and a browser-based Web UI. The Web server runs on a computer with Voiceger installed and can be accessed from other PCs and mobile devices through Tailscale.
 
-- a keyboard-first TUI;
-- Japanese pronunciation and pitch-accent editing;
-- English ARPAbet pronunciation and stress editing;
-- multiple generated Takes;
-- Japanese and English user dictionaries;
-- optional TXT and LAB output;
-- a VOICEVOX-style HTTP API.
+You can edit Japanese pronunciation and pitch accent, English ARPAbet phonemes and stress, generate and compare multiple Takes, and save your preferred audio. Japanese, English, and mixed Japanese-English text are supported.
 
-Voiceger itself is not included or modified.
+Voiceger, its models, and reference audio are not included and must be installed separately.
 
 > [!IMPORTANT]
 > Audio generated with Voiceger:Zundamon is **not covered by the MIT License of Voiceger Editor**.
@@ -133,6 +127,8 @@ The corresponding Zundamon style IDs match VOICEVOX.
 See [HTTP API](docs/en/api.md).
 
 ## Documentation
+
+For browser-based operation, see [Web UI Setup](docs/en/web-setup.md) and [Using the Web UI](docs/en/web.md).
 
 - [Setup](docs/en/setup.md)
 - [TUI](docs/en/tui.md)

@@ -78,6 +78,20 @@ WindowsのTUIで音声を再生するには、PATHから実行できる`ffplay.e
 
 詳しくは[セットアップ](setup.md)と[LAB出力](lab.md)を参照してください。
 
+### Web UI
+
+Web UIは、Voicegerを実行するサーバーと、操作に使用するブラウザで構成されます。音声生成、作業中のBatch、音声ファイルの保存はサーバー側で管理されます。
+
+WebサーバーはmacOSで実機動作を確認しています。Linux・WindowsでのWeb UIと実Voiceger音声生成を組み合わせた一連の動作は、実機検証の対象外です。
+
+ブラウザでの操作は、macOS上からのローカルアクセスと、AndroidからのTailscale Serve接続を確認しています。iOS・iPadOSや、そのほかのOS・ブラウザの組み合わせは実機検証していません。
+
+Webサーバーはローカルアドレス`127.0.0.1`で起動し、別の端末からはTailscale Serveを使用します。インターネットへの一般公開やTailscale Funnelは想定していません。
+
+TUI、Web UI、VOICEVOX互換HTTP APIは、それぞれ起動方法が異なります。
+
+詳しくは[Web UIのセットアップ](web-setup.md)と[Web UIの使い方](web.md)を参照してください。
+
 ## 対応する言語
 
 Voiceger Editor 0.1系は、日本語、英語、日本語と英語が混在する文章に対応しています。
@@ -130,7 +144,7 @@ Voiceger Editor独自の拡張フィールドもあるため、VOICEVOX Engine�
 
 ## 音声ファイルの対応範囲
 
-TUIで採用したTakeは、WAV・FLAC形式で保存できます。FFmpegが使用できる環境ではMP3形式にも対応します。
+TUIまたはWeb UIで採用したTakeは、WAV・FLAC形式で保存できます。FFmpegが使用できる環境ではMP3形式にも対応します。
 
 TXT・LABファイルも必要に応じて出力できますが、LABには追加の依存パッケージや外部ツールが必要です。
 
