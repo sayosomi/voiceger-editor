@@ -802,6 +802,8 @@ body { background: #fafaf6; }
   margin: 17px 0 0; color: #788472; font-size: 12px; line-height: 1.6;
 }
 #view-session .voice-credit a { color: #477c35; text-decoration: underline; text-underline-offset: 2px; }
+#view-session #server-version { color: #477c35; text-decoration: underline; text-underline-offset: 2px; }
+#view-session #server-version:focus-visible { outline: 3px solid #8278a5; outline-offset: 2px; }
 
 @media (min-width: 650px) {
   #view-list .list-toolbar, #view-list .caption-list { margin-inline: -36px; padding-inline: 28px; }
