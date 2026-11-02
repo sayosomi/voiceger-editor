@@ -41,25 +41,24 @@
       </section>
 
       <section id="view-list" class="screen" aria-labelledby="batch-title" hidden>
-        <div class="section-top">
-          <div>
-            
+        <div class="section-top batch-summary">
+          <div class="batch-heading">
             <h2 id="batch-title" tabindex="-1">Batch List</h2>
-          </div>
-          <div class="list-toolbar">
             <span id="batch-count" class="counter" hidden>0件</span>
-            <div class="batch-menu-wrap">
-              <button type="button" id="open-batch-menu" class="reorder-toggle" aria-expanded="false" aria-controls="batch-menu" aria-label="Batchファイル">ファイル</button>
-              <div id="batch-menu" class="batch-menu" hidden>
-                <button type="button" id="recipe-open-read">読み込む</button>
-                <button type="button" id="recipe-open-save">保存</button>
-              </div>
-            </div>
-            <button type="button" id="toggle-reorder" class="reorder-toggle" aria-pressed="false">並べ替え</button>
-            <button type="button" id="toggle-delete" class="reorder-toggle" aria-pressed="false">削除</button>
           </div>
+          <button type="button" id="open-add" class="batch-add-action">＋ Caption追加</button>
         </div>
-        
+        <div class="list-toolbar">
+          <div class="batch-menu-wrap">
+            <button type="button" id="open-batch-menu" class="reorder-toggle" aria-expanded="false" aria-controls="batch-menu" aria-label="Batchファイル">ファイル</button>
+            <div id="batch-menu" class="batch-menu" hidden>
+              <button type="button" id="recipe-open-read">読み込む</button>
+              <button type="button" id="recipe-open-save">保存</button>
+            </div>
+          </div>
+          <button type="button" id="toggle-reorder" class="reorder-toggle" aria-pressed="false">並べ替え</button>
+          <button type="button" id="toggle-delete" class="reorder-toggle" aria-pressed="false">削除</button>
+        </div>
         <p id="reorder-help" class="help-text compact-note" hidden>ハンドルをドラッグして移動できます。</p>
         <div id="batch-progress-panel" class="batch-progress-panel" role="status" aria-live="polite" hidden>
           <div class="batch-progress-heading"><strong>一括生成中</strong><span id="batch-progress-total"></span></div>
@@ -73,7 +72,7 @@
           
         </div>
         <div class="sticky-action batch-actions" id="add-action">
-          <button type="button" id="open-add" class="primary-button">＋ Caption追加</button>
+          <p class="batch-generation-summary"><strong id="batch-included-count">0件を選択中</strong><span>音声をまとめて生成</span></p>
           <button type="button" id="generate-batch" class="primary-button">一括生成</button>
         </div>
         <div class="sticky-action" id="delete-action" hidden>
@@ -116,15 +115,16 @@
       </section>
 
       <section id="view-item" class="screen" aria-labelledby="item-title" hidden>
-        <div class="section-top item-titlebar">
+        <div class="item-back-row">
           <button type="button" id="item-back" class="back-button">← Batch List</button>
+          <span id="item-position" class="item-position" aria-label="現在のCaption"></span>
+        </div>
+        <div class="section-top item-titlebar">
           <h2 id="item-title" tabindex="-1">Caption</h2>
+          <button type="button" id="open-caption-edit" class="item-link">編集</button>
         </div>
         <div id="caption-display" class="item-caption">
-          <div class="section-top item-caption-header">
-            <p id="caption-text" class="item-caption-text"></p>
-            <button type="button" id="open-caption-edit" class="item-link">編集</button>
-          </div>
+          <p id="caption-text" class="item-caption-text"></p>
         </div>
         <form id="edit-caption-form" class="field-stack item-inline-form" hidden>
           <label for="edit-caption">Caption</label>
@@ -160,20 +160,7 @@
         <p id="item-voice-error" class="field-error" role="alert" hidden></p>
         <div class="item-quick-actions">
           <button type="button" id="preview-audio" hidden>▶ Preview</button>
-          <button type="button" id="edit-take-count" class="item-link">Take数</button>
         </div>
-        <form id="item-takes-form" class="field-stack item-inline-form" hidden>
-          <label for="item-takes-mode">Take数</label>
-          <select id="item-takes-mode">
-            <option value="default">標準Take数を使う</option>
-            <option value="custom">個別に指定</option>
-          </select>
-          <input id="item-takes" type="number" min="1" max="100" step="1" required hidden aria-label="個別Take数">
-          <div class="button-row">
-            <button type="submit" class="primary-button">保存</button>
-            <button type="button" id="cancel-take-count">キャンセル</button>
-          </div>
-        </form>
         <div id="operation-panel" class="operation-panel" hidden>
           <p id="operation-progress" role="status" aria-live="polite"></p>
           <button type="button" id="cancel-audio" hidden>キャンセル</button>
@@ -183,14 +170,28 @@
           <div class="item-takes-heading">
             <h3>Takes</h3>
             <span id="take-count-label" class="item-take-count"></span>
+            <button type="button" id="edit-take-count" class="item-link">変更</button>
             <button type="button" id="open-take-menu" class="item-menu-button" aria-label="Take全体の操作" aria-expanded="false" hidden>⋯</button>
           </div>
+          <form id="item-takes-form" class="field-stack item-inline-form" hidden>
+            <label for="item-takes-mode">Take数</label>
+            <select id="item-takes-mode">
+              <option value="default">標準Take数を使う</option>
+              <option value="custom">個別に指定</option>
+            </select>
+            <input id="item-takes" type="number" min="1" max="100" step="1" required hidden aria-label="個別Take数">
+            <div class="button-row">
+              <button type="submit" class="primary-button">保存</button>
+              <button type="button" id="cancel-take-count">キャンセル</button>
+            </div>
+          </form>
+
           <div id="take-menu" class="item-take-menu" hidden>
             <button type="button" id="regenerate-unaccepted" hidden>未採用Takeを再生成</button>
             <button type="button" id="clear-takes" hidden>候補をクリア</button>
           </div>
-          <button type="button" id="generate-audio" class="primary-button full-button" hidden>Takeを生成</button>
           <ol id="take-list" class="take-list" aria-label="生成したTake"></ol>
+          <button type="button" id="generate-audio" class="primary-button full-button" hidden>Takeを生成</button>
         </section>
         <div class="item-navigation">
           <button type="button" id="previous-item">← 前のCaption</button>
@@ -503,6 +504,7 @@
           <p class="field-title">Webサーバー</p>
           <p id="server-version" class="help-text">Voiceger Editor Web</p>
         </div>
+        <p class="voice-credit">音源：<a href="https://zunko.jp/con_ongen_kiyaku.html" target="_blank" rel="noopener noreferrer">Voiceger:ずんだもん(TTS)</a></p>
         <div class="danger-zone">
           <p class="help-text">作業を終了すると、Batchと未保存のTakeは消えます。保存済み音声は残ります。</p>
           <button type="button" id="close-session" class="danger-button">作業を終了</button>

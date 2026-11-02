@@ -536,3 +536,379 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .dictionary-import-extra p { font-size: 12px; color: #526e62; line-height: 1.5; margin: 8px 0 0; }
 .dictionary-import-extra select { width: 100%; min-height: 44px; padding: 8px; border: 1px solid #cbdcd2; border-radius: 10px; background: #fff; }
 #dictionary-import-review-message { margin: 0 0 14px; }
+
+/* Issue #338: approved Zunda Pop visual refresh.
+   Presentation-only. Preserve the Web API, ids, and item controls. */
+:root {
+  color: #30362d;
+  background: #fafaf6;
+  --zp-header: #a6d16b;
+  --zp-ink: #30362d;
+  --zp-paper: #fafaf6;
+  --zp-line: #dde3d7;
+  --zp-link: #477c35;
+  --zp-violet: #625c7d;
+}
+body { background: #fafaf6; }
+.app-header {
+  background: var(--zp-header);
+  border-bottom: 1px solid #98c35f;
+  min-height: 52px;
+  padding-top: max(8px, env(safe-area-inset-top));
+  padding-bottom: 8px;
+}
+.app-header .brand-symbol { display: none; }
+.brand { gap: 0; }
+.brand-name { color: var(--zp-ink); font-size: 16px; font-weight: 750; letter-spacing: -.3px; }
+.global-nav { gap: 2px; }
+.global-nav .header-action,
+.global-nav .header-action[aria-current="page"] {
+  color: var(--zp-ink); background: transparent; border: 0;
+  border-radius: 6px; font-size: 12px; font-weight: 550; padding: 8px;
+}
+.global-nav .header-action[aria-current="page"] { text-decoration: underline; text-underline-offset: 5px; }
+.app-header button:focus-visible { outline-color: #40582a; }
+.screen { color: var(--zp-ink); }
+.screen h2, .screen h3 { color: var(--zp-ink); }
+.screen h2 { font-weight: 700; }
+.screen h3 { font-weight: 650; }
+.screen .back-button {
+  color: var(--zp-link); background: transparent; border: 0;
+  border-radius: 6px; font-weight: 500;
+}
+.screen .item-link { border-radius: 6px; }
+.screen .primary-button { border-radius: 6px; }
+.screen input:not([type="checkbox"]), .screen textarea, .screen select {
+  border-radius: 6px;
+}
+.screen .setting-section { border-color: var(--zp-line); }
+
+/* Batch List: quiet heading, track rows, separate generation dock. */
+#view-list { padding-top: 20px; }
+#view-list .batch-summary { align-items: flex-end; gap: 8px; margin-bottom: 13px; }
+#view-list .batch-heading { min-width: 0; }
+#view-list #batch-title {
+  font-size: 29px; font-weight: 750; letter-spacing: -.8px; line-height: 1.1;
+}
+#view-list .counter {
+  display: block; width: max-content; padding: 4px 0 0; margin: 0;
+  color: #75806f; background: transparent; border-radius: 0;
+  font-weight: 450; font-size: 12px;
+}
+#view-list .batch-add-action {
+  border: 0; border-bottom: 2px solid #ed9dbc; background: none;
+  border-radius: 0; min-height: 44px; padding: 9px 0 4px;
+  color: var(--zp-link); font-weight: 650; font-size: 13px;
+  white-space: nowrap; flex: none;
+}
+#view-list .list-toolbar {
+  display: flex; justify-content: flex-start; margin: 0 -20px;
+  padding: 0 12px; border-block: 1px solid var(--zp-line);
+  background: #fff; gap: 0;
+}
+#view-list .reorder-toggle {
+  border: 0; background: transparent; border-radius: 6px;
+  min-height: 44px; padding: 9px 10px;
+  font-size: 12px; font-weight: 550; color: #53614a;
+}
+#view-list #toggle-delete { margin-left: auto; color: #98516b; }
+#view-list .reorder-toggle[aria-pressed="true"] { background: #e8efdf; }
+#view-list .caption-list {
+  display: block; padding: 0 0 10px; margin: 0 -20px;
+  background: #fff; border-bottom: 1px solid var(--zp-line);
+}
+#view-list .caption-card {
+  margin: 0; background: #fff; border: 0; border-bottom: 1px solid var(--zp-line);
+  border-radius: 0; gap: 0; min-height: 76px;
+}
+#view-list .caption-list:not(.reorder-mode):not(.delete-mode) .caption-card {
+  flex-direction: row-reverse; align-items: center;
+}
+#view-list .caption-open {
+  border: 0; border-radius: 0; background: transparent; min-width: 0;
+  min-height: 74px; padding: 11px 0 11px 20px; gap: 11px;
+  color: var(--zp-ink); font-size: 15px; font-weight: 450;
+}
+#view-list .caption-index {
+  min-width: 36px; color: #9fc58b; font-size: 26px; font-weight: 740;
+  letter-spacing: -.6px; font-variant-numeric: tabular-nums;
+}
+#view-list .caption-text { font-weight: 450; line-height: 1.5; }
+#view-list .caption-meta { color: #717e6c; font-size: 11px; margin-top: 5px; }
+#view-list .caption-chevron { display: none; }
+#view-list .include-control {
+  width: 58px; min-height: 74px; flex: 0 0 58px;
+}
+#view-list .include-check, #view-list .delete-check {
+  width: 23px; height: 23px; accent-color: #90bd4b;
+}
+#view-list .caption-card.is-excluded { background: #fff; }
+#view-list .caption-card.is-excluded .caption-text { color: #98a393; }
+#view-list .reorder-mode .caption-card { align-items: stretch; }
+#view-list .reorder-mode .caption-open { flex: 1; padding-right: 12px; }
+#view-list .reorder-handle {
+  border: 1px solid #d2dec9; border-radius: 6px;
+  background: #edf3e9; color: #537743; min-height: 74px; flex-basis: 48px;
+}
+#view-list .delete-select-row { min-height: 74px; border: 0; }
+#view-list .empty-state { border-radius: 6px; }
+#view-list .batch-actions {
+  display: flex; justify-content: space-between; gap: 10px; align-items: center;
+  margin: 8px -20px -20px; padding: 14px 20px max(16px, env(safe-area-inset-bottom));
+  background: #f4f6ef; border-top: 1px solid var(--zp-line);
+}
+#view-list .batch-generation-summary { margin: 0; display: grid; gap: 1px; font-size: 12px; color: #687760; min-width: 0; }
+#view-list .batch-generation-summary strong { color: #344b2d; font-size: 14px; font-weight: 650; }
+#view-list .batch-actions > #generate-batch {
+  flex: none; min-height: 48px; min-width: 120px; padding: 10px 14px;
+  background: var(--zp-header); border: 1px solid #8cb95a;
+  color: #263b1e; font-size: 13px; font-weight: 750; border-radius: 6px;
+}
+#view-list #delete-action { background: #f4f6ef; }
+#view-list .batch-menu { border-radius: 6px; border-color: var(--zp-line); }
+#view-list .batch-menu button { border-radius: 6px; }
+
+/* Batch Item: same information hierarchy as the approved screenshot. */
+#view-item { padding-top: 15px; }
+#view-item .item-back-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px;
+}
+#view-item .item-back-row .back-button {
+  margin: 0; padding: 0; min-height: 36px;
+  color: var(--zp-link); font-weight: 500; font-size: 13px;
+}
+#view-item .item-position { font-size: 12px; color: #788472; font-variant-numeric: tabular-nums; }
+#view-item .item-titlebar { margin: 0 0 8px; align-items: center; }
+#view-item .item-titlebar h2 {
+  font-size: 24px; font-weight: 750; line-height: 1.3; letter-spacing: -.5px;
+}
+#view-item .item-titlebar .item-link {
+  min-height: 44px; border: 0; background: transparent; padding: 9px 3px;
+  color: var(--zp-link); font-size: 12px; font-weight: 500;
+}
+#view-item .item-caption {
+  margin: 0 0 18px; padding: 15px 12px; background: #fff;
+  border: 0; border-left: 3px solid #f3a0c1;
+}
+#view-item .item-caption-text { font-size: 15px; line-height: 1.65; font-weight: 450; }
+#view-item .item-pronunciation {
+  border-top: 1px solid var(--zp-line); border-bottom: 0;
+  padding: 16px 0 3px; margin: 0;
+}
+#view-item .item-pronunciation > .section-top { gap: 8px; margin: 0 0 11px; }
+#view-item .item-pronunciation h3, #view-item .item-takes-heading h3 {
+  font-size: 21px; line-height: 1.4; letter-spacing: -.4px; font-weight: 700;
+}
+#view-item .pronunciation-header-actions { margin-left: auto; }
+#view-item .pronunciation-header-actions .item-link,
+#view-item #open-pronunciation {
+  min-height: 44px; border: 0; background: none; border-radius: 6px;
+  font-weight: 500; font-size: 12px; color: var(--zp-link);
+  padding: 8px 4px;
+}
+#view-item .pronunciation-sections { display: grid; gap: 8px; padding-top: 0; }
+#view-item .pronunciation-section {
+  border: 1px solid var(--zp-line); border-radius: 6px; background: #fff;
+}
+#view-item .pronunciation-source-button {
+  min-height: 44px; border: 0; background: #fff; padding: 9px 12px;
+  color: #788472; font-size: 12px; font-weight: 500;
+}
+#view-item .pronunciation-source-button strong { color: #788472; font-weight: 550; }
+#view-item .section-header-chevron { color: var(--zp-link); font-size: 20px; }
+#view-item .pronunciation-entry {
+  min-height: 44px; padding: 9px 12px; border-top: 1px solid #eef0eb;
+  color: var(--zp-ink); font-size: 14px;
+}
+#view-item .pronunciation-value { color: var(--zp-ink); }
+#view-item .item-voice-grid { gap: 12px; padding-top: 14px; }
+#view-item .item-voice-grid label { color: #788472; font-size: 12px; font-weight: 500; }
+#view-item .item-voice-grid input, #view-item .item-voice-grid select {
+  border: 1px solid #cbd7c6; min-height: 47px; border-radius: 6px;
+  color: var(--zp-ink); background: #fff; font-size: 14px;
+}
+#view-item .item-quick-actions {
+  justify-content: flex-end; padding: 14px 0 16px; gap: 0;
+  border-bottom: 1px solid var(--zp-line);
+}
+#view-item #preview-audio {
+  border: 1px solid #e3e0e8; border-radius: 100px; background: #fff;
+  min-height: 44px; color: #77718f; font-size: 13px; font-weight: 500;
+  padding: 10px 15px;
+}
+#view-item .item-takes-section {
+  display: grid; gap: 11px; border: 0; padding: 13px 0 4px;
+}
+#view-item .item-takes-heading { align-items: center; gap: 9px; }
+#view-item .item-takes-heading h3 { min-width: 0; flex: 1; margin: 0; }
+#view-item .item-take-count { color: #788472; font-weight: 450; white-space: nowrap; }
+#view-item #edit-take-count {
+  min-height: 44px; border: 0; background: transparent; padding: 6px 2px;
+  font-size: 12px; color: #77718f; font-weight: 500; white-space: nowrap;
+}
+#view-item .item-menu-button {
+  border: 0; border-radius: 6px; background: transparent;
+  min-width: 44px; color: #788472; padding: 7px;
+}
+#view-item .take-list {
+  display: block; margin: 0; padding: 0; border-top: 1px solid var(--zp-line);
+  background: #fff;
+}
+#view-item .take-card {
+  display: flex; position: relative; align-items: center; gap: 7px;
+  min-height: 56px; padding: 5px 6px; border: 0;
+  border-bottom: 1px solid var(--zp-line); border-radius: 0; background: #fff;
+}
+#view-item .take-card.is-playing, #view-item .take-card.is-paused,
+#view-item .take-card.is-loading { border-width: 1px; padding-bottom: 12px; }
+#view-item .take-play {
+  min-width: 0; flex: 1; min-height: 44px; display: flex; align-items: center;
+  border: 0; border-radius: 6px; background: transparent;
+  padding: 4px 3px; font-size: 13px; font-weight: 500; color: var(--zp-ink);
+}
+#view-item .take-play-icon {
+  flex: none; width: 34px; height: 34px; display: grid; place-items: center;
+  border-radius: 100px; background: #f4f2f7; color: #686181;
+  font-size: 12px; margin-right: 2px;
+}
+#view-item .take-duration { color: #788472; font-size: 10px; }
+#view-item .take-accepted { color: var(--zp-link); font-size: 12px; font-weight: 500; }
+#view-item .take-accept {
+  min-height: 44px; border: 1px solid #e2dfe8; border-radius: 100px;
+  color: #77718f; background: #fff; font-size: 12px; font-weight: 500;
+  padding: 9px 12px;
+}
+#view-item .take-regenerate {
+  min-width: 44px; min-height: 44px; border: 0; background: transparent;
+  border-radius: 6px; color: #77718f;
+}
+#view-item #generate-audio {
+  width: 100%; min-height: 48px; margin-top: 8px; padding: 11px 15px;
+  border-radius: 999px; border: 1px solid var(--zp-violet);
+  background: var(--zp-violet); color: #fff;
+  font-weight: 550; font-size: 14px; letter-spacing: 0;
+}
+#view-item #generate-audio::before { content: "≋"; font-weight: 750; margin-right: 6px; }
+#view-item .item-takes-section .item-inline-form { border-color: var(--zp-line); }
+#view-item .item-navigation { margin-top: 5px; padding: 12px 0 4px; }
+#view-item .item-navigation button {
+  min-height: 44px; padding: 9px 0; border: 0;
+  background: transparent; border-radius: 6px;
+  color: var(--zp-link); font-size: 12px; font-weight: 500;
+}
+
+/* Credit is discoverable from Settings, never in the editing header/footer. */
+#view-session .voice-credit {
+  margin: 17px 0 0; color: #788472; font-size: 12px; line-height: 1.6;
+}
+#view-session .voice-credit a { color: #477c35; text-decoration: underline; text-underline-offset: 2px; }
+
+@media (min-width: 650px) {
+  #view-list .list-toolbar, #view-list .caption-list { margin-inline: -36px; padding-inline: 28px; }
+  #view-list .batch-actions { margin-inline: -36px; padding-inline: 36px; }
+}
+@media (max-width: 350px) {
+  #view-list .list-toolbar, #view-list .caption-list { margin-inline: -14px; }
+  #view-list .batch-actions { margin-inline: -14px; padding-inline: 14px; }
+  #view-list .batch-add-action { font-size: 12px; }
+  #view-list #batch-title { font-size: 26px; }
+  #view-item .item-takes-heading { gap: 4px; }
+  #view-item .take-card { gap: 4px; }
+  #view-item .take-duration { font-size: 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #view-item #generate-audio { transition: none; }
+}
+
+/* Issue #338 Human visual review: notification breathing room and one shared
+   button palette across connection, Batch, pronunciation, dictionary, settings.
+   Primary = muted violet; secondary = pale violet; navigation = green;
+   destructive = soft red. No behavior or control size changes. */
+:root {
+  --zp-control-subtle: #f5f3f8;
+  --zp-control-border: #dcd7e5;
+  --zp-control-text: #625c7d;
+  --zp-danger-text: #96524a;
+  --zp-danger-surface: #fff4f2;
+  --zp-danger-border: #eacbc5;
+}
+
+/* The flash message sits under the sticky header on every screen. */
+#feedback:not([hidden]) {
+  margin-top: 12px;
+  background: #edf3e9;
+  color: #3c6432;
+  border: 1px solid var(--zp-line);
+  border-radius: 6px;
+}
+
+/* Consistent primary actions; only the Take-generation CTA is pill-shaped. */
+.screen button.primary-button,
+#view-list .batch-actions > #generate-batch {
+  background: var(--zp-violet);
+  border: 1px solid var(--zp-violet);
+  color: #fff;
+  border-radius: 6px;
+}
+#view-item #generate-audio { border-radius: 999px; }
+
+/* Standard secondary buttons, including nested edit and tool screens. */
+.screen button.item-link,
+.screen button.reorder-toggle,
+.screen .button-row button:not(.primary-button):not(.danger-button),
+.screen .pronunciation-assists button,
+.screen .pronunciation-actions-secondary button:not(#delete-section),
+.screen .section-secondary-actions button:not(#delete-section),
+.screen .item-take-menu button:not(#clear-takes),
+.screen .dictionary-export-actions button,
+.screen .recipe-files button,
+.screen .dictionary-tabs button:not([aria-pressed="true"]),
+#view-session #reset-settings,
+#view-item #cancel-audio,
+#view-pronunciation #cancel-pronunciation-audio,
+#view-section #cancel-section-audio,
+#view-dictionary-pron #dictionary-preview,
+#view-pronunciation #preview-pronunciation,
+#view-section #preview-section,
+#view-pronunciation #dictionary-quick-generate,
+#view-pronunciation #dictionary-quick-preview,
+#view-pronunciation #dictionary-quick-cancel,
+#view-list .batch-menu button {
+  color: var(--zp-control-text);
+  background: var(--zp-control-subtle);
+  border: 1px solid var(--zp-control-border);
+  border-radius: 6px;
+}
+
+/* Selected language tabs must match other primary actions. */
+.screen .dictionary-tabs button[aria-pressed="true"] {
+  color: #fff;
+  background: var(--zp-violet);
+  border: 1px solid var(--zp-violet);
+  border-radius: 6px;
+}
+
+/* Keep link-like controls light, as approved in the Batch Item mockup. */
+#view-item .item-titlebar .item-link,
+#view-item .pronunciation-header-actions .item-link,
+#view-item #open-pronunciation,
+#view-item #edit-take-count,
+#view-item .item-navigation button,
+#view-list .batch-add-action {
+  color: var(--zp-link);
+  background: transparent;
+  border-color: transparent;
+}
+#view-list .batch-add-action { border-bottom: 2px solid #ed9dbc; }
+
+/* Destructive actions always retain a distinct warning color. */
+.screen button.danger-button,
+#view-list #delete-selected.danger-button,
+#view-item #clear-takes,
+#view-section #delete-section {
+  color: var(--zp-danger-text);
+  background: var(--zp-danger-surface);
+  border: 1px solid var(--zp-danger-border);
+  border-radius: 6px;
+}
+.screen button:focus-visible { outline-color: #8278a5; }

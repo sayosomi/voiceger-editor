@@ -6,11 +6,11 @@ This is an internal acceptance checklist, **not user-facing release notes** or p
 ## Grounded baseline
 
 - Repository: `sayosomi/voiceger-editor`
-- Refreshed GitHub remote `main` (2026-11-02 JST): `1ab38a439ff29b270537078efa867e8b486bfdde`. Existing Draft PR #336 has its own branch ancestry and must incorporate current main before final exact-head acceptance.
+- GitHub remote `main` (2026-11-02 JST): `44fe32bf4f68c12a16e3cde09c584f63d6e28455`. The #336 branch has incorporated this main checkpoint; final exact-head CI and review of the resulting PR commit are still required.
 - Published latest release (GitHub): `v0.1.1` (2026-10-28 UTC); its release text describes the TUI and compatibility API. Do not silently rewrite those published statements.
 - Source package version: `voiceger_editor/_version.py` = `0.1.1`; `pyproject.toml` reads this dynamically. **No next release version has been selected.**
 - Compared with published `v0.1.1`, current main includes the Web frontend, batch/pronunciation/Take/dictionary/settings/output workflows, TUI/shared-core changes, and merged #322 JA-pronunciation-to-ARPAbet conversion for both TUI and Web. Recompute exact tag-to-release-HEAD comparison when the release target is chosen.
-- Previous main checkpoint `a5b38a5...` passed [CI 41319648352](https://github.com/sayosomi/voiceger-editor/actions/runs/41319648352). Merged #322 PR #337 implementation HEAD `5c990c850fdb7891db96238db345614b28264c2b` passed [CI 41331395649](https://github.com/sayosomi/voiceger-editor/actions/runs/41331395649). **These are not CI at the current main `1ab38a4...` or at the final release commit.** CI includes Python 3.9 unit tests, Windows startup boundary, and Linux wheel/sdist clean-install smoke, but does not certify Mac Tailscale configuration or physical Windows synthesis.
+- Previous main checkpoint `a5b38a5...` passed [CI 41319648352](https://github.com/sayosomi/voiceger-editor/actions/runs/41319648352). Merged #322 PR #337 implementation HEAD `5c990c850fdb7891db96238db345614b28264c2b` passed [CI 41331395649](https://github.com/sayosomi/voiceger-editor/actions/runs/41331395649). Following #338 / PR #339, [CI 41421723550](https://github.com/sayosomi/voiceger-editor/actions/runs/41421723550) succeeded at current main `44fe32bf4f68c12a16e3cde09c584f63d6e28455`; Human Android appearance/interaction signoff for #338 is recorded. **None of these checks establishes CI or full final E2E at the intended release commit.** CI includes Python 3.9 unit tests, Windows startup boundary, and Linux wheel/sdist clean-install smoke, but does not certify Mac Tailscale configuration or physical Windows synthesis.
 
 ## Checklist (check only on direct evidence at intended release HEAD)
 
@@ -20,7 +20,7 @@ This is an internal acceptance checklist, **not user-facing release notes** or p
 - [x] Initial internal [TUI↔Web matrix](tui-web-parity-matrix.md) inventoried with explicit unverified gates.
 - [ ] Independent accuracy/semantic review of the matrix, resolve all known gaps.
 - [ ] Explicit Human approval of **exact JA and EN user-facing text**, before any user-doc write.
-- [ ] Update README / indices / setup / navigation / compatibility user docs and verify link/translation consistency.
+- [ ] Review draft JA/EN Web guides, README / indices / setup / compatibility changes already present in PR #336 against approved wording and current UI; verify links/translations and obtain any outstanding Human text approval before merge.
 - [ ] Verify documented Mac-local Web startup command and token/auth steps against actual packaged entrypoint (no accidental `0.0.0.0` bind).
 - [ ] Run final exact-head aggregate `CI` after all proposed changes, verify Python 3.9 packaging and optional dependency requirements.
 - [ ] Verify opt-in real Voiceger synthesis/integration in isolated scratch environment; do not modify Voiceger source or live user config.

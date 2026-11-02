@@ -995,6 +995,9 @@
     $("toggle-delete").textContent = deleteMode ? "キャンセル" : "削除";
     $("toggle-delete").setAttribute("aria-pressed", String(deleteMode));
     $("add-action").hidden = reorderMode || deleteMode;
+    $("open-add").hidden = reorderMode || deleteMode;
+    $("batch-included-count").textContent =
+      batch.items.filter(function (entry) { return entry.included; }).length + "件を選択中";
     $("delete-action").hidden = !deleteMode;
     $("reorder-help").hidden = !reorderMode;
     var list = $("caption-list");
@@ -1198,9 +1201,13 @@
       return;
     }
     var item = batch.items[index];
-    $("item-title").textContent = (index + 1) + " / " + batch.items.length;
+    $("item-title").textContent = "Caption";
+    $("item-position").textContent =
+      String(index + 1).padStart(2, "0") + " / " +
+      String(batch.items.length).padStart(2, "0");
     $("caption-text").textContent = item.caption;
     $("caption-display").hidden = captionEditMode;
+    $("open-caption-edit").hidden = captionEditMode;
     $("edit-caption-form").hidden = !captionEditMode;
     if (!keepCaptionDraft) $("edit-caption").value = item.caption;
     $("item-takes-mode").value = item.take_count_override === null ? "default" : "custom";
@@ -1209,7 +1216,7 @@
     $("item-takes").hidden = item.take_count_override === null;
     $("item-takes-form").hidden = !takeCountEditMode;
     $("edit-take-count").hidden = takeCountEditMode;
-    $("edit-take-count").textContent = "Take数 " + item.effective_take_count;
+    $("edit-take-count").textContent = "変更";
     renderItemVoice(item);
     $("item-pronunciation").hidden = !item.is_prepared;
     var pure = !!item.pronunciation;
@@ -1575,10 +1582,20 @@
     var prepared = Boolean(item.is_prepared);
     var takes = item.takes || [];
     $("preview-audio").hidden = !prepared;
-    $("generate-audio").hidden = !prepared || takes.length !== 0;
-    $("generate-audio").textContent = item.effective_take_count + "本生成";
+    $("generate-audio").hidden = !prepared;
+    // The bottom action remains visible with Takes; safely reuse the existing
+    // unaccepted-only regeneration route rather than replacing accepted Takes.
+    setFixed("generate-audio", !prepared ||
+      (takes.length > 0 && takes.every(function (take) { return take.accepted; })));
+    var allAccepted = takes.length > 0 &&
+      takes.every(function (take) { return take.accepted; });
+    $("generate-audio").textContent = allAccepted ? "すべて採用済み" :
+      takes.length ? "未採用Takeを再生成" : "Takeを生成";
+    $("generate-audio").setAttribute("aria-label",
+      takes.length ? (allAccepted ? "すべてのTakeが採用済み" : "未採用Takeを再生成") :
+      item.effective_take_count + "本のTakeを生成");
     $("prepare-retry").hidden = prepared || !autoPrepareFailures.has(item.id);
-    $("take-count-label").textContent = takes.length ? takes.length + "本" : "";
+    $("take-count-label").textContent = "Take数 " + item.effective_take_count;
     $("open-take-menu").hidden = !prepared;
     $("open-take-menu").setAttribute("aria-expanded", String(takeMenuOpen));
     $("take-menu").hidden = !prepared || !takeMenuOpen;
@@ -2641,7 +2658,10 @@
     if (!togglePlayback("preview", selectedId)) startAudio(selectedId, "/audio/preview");
   });
   $("generate-audio").addEventListener("click", function () {
-    startAudio(selectedId, "/takes/generate");
+    var item = batch && batch.items.find(function (entry) { return entry.id === selectedId; });
+    if (!item) return;
+    startAudio(selectedId, item.takes && item.takes.length ?
+      "/takes/regenerate" : "/takes/generate");
   });
   $("regenerate-unaccepted").addEventListener("click", function () {
     startAudio(selectedId, "/takes/regenerate");
@@ -2850,6 +2870,7 @@
     captionEditMode = true;
     $("edit-caption-form").hidden = false;
     $("caption-display").hidden = true;
+    $("open-caption-edit").hidden = true;
     $("edit-caption").focus();
   });
   $("cancel-caption-edit").addEventListener("click", function () {
