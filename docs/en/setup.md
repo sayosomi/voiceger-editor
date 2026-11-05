@@ -22,13 +22,13 @@ Install Voiceger from the official project:
 
 https://github.com/zunzun999/voiceger_v2
 
-Voiceger Editor 0.1 is tested with this Voiceger revision:
+Voiceger Editor v0.2.0 is tested with this Voiceger revision:
 
 ```text
 f77c1172baf1f490bb962f2d2acd01c852ef3464
 ```
 
-Other revisions may work, but they are not part of the 0.1 compatibility guarantee.
+Other revisions may work, but they are not part of the v0.2.0 compatibility guarantee.
 
 ## 2. Set `VOICEGER_ROOT`
 
@@ -50,7 +50,7 @@ If it is not set, Voiceger Editor tries the `voiceger_v2` directory in your home
 
 ## 3. Activate Voiceger's Python environment
 
-Voiceger Editor 0.1 uses Python 3.9 and is intended to run inside Voiceger's `.venv`.
+Voiceger Editor v0.2.0 uses Python 3.9 and is intended to run inside Voiceger's `.venv`.
 
 On macOS or Linux:
 
@@ -80,10 +80,10 @@ Install the TUI from PyPI:
 python -m pip install "voiceger-editor[tui]"
 ```
 
-For the exact v0.1.1 release:
+For the exact v0.2.0 release:
 
 ```text
-python -m pip install "voiceger-editor[tui]==0.1.1"
+python -m pip install "voiceger-editor[tui]==0.2.0"
 ```
 
 Check the installed version:
@@ -92,10 +92,10 @@ Check the installed version:
 voiceger-editor --version
 ```
 
-Expected output for v0.1.1:
+Expected output for v0.2.0:
 
 ```text
-voiceger-editor 0.1.1
+voiceger-editor 0.2.0
 ```
 
 ### API support
@@ -128,7 +128,7 @@ python -m pip install "voiceger-editor[tui,api,lab]"
 
 Japanese LAB output also requires Julius.
 
-Windows LAB output is not part of the verified 0.1 Windows support boundary. See [LAB Output](lab-output.md) before installing the `lab` extra on Windows.
+Windows LAB output is not part of the verified v0.2.0 Windows support boundary. See [LAB Output](lab-output.md) before installing the `lab` extra on Windows.
 
 ## 5. Check the Voiceger environment
 

@@ -40,9 +40,9 @@ For browser-based operation, see [Web UI Setup](web-setup.md) and [Using the Web
 - [HTTP API](api.md) — VOICEVOX-style API installation, endpoints, and examples.
 - [Compatibility](compatibility.md) — tested Voiceger revision, language scope, and compatibility limits.
 
-## Supported 0.1 scope
+## Supported speech scope
 
-The documented 0.1 speech scope is:
+The documented speech scope is:
 
 - Japanese;
 - English;
@@ -54,7 +54,7 @@ English-only Captions and English sections inside mixed text use editable ARPAbe
 
 ## Project names
 
-The public 0.1 names are:
+The public names are:
 
 ```text
 Product:        Voiceger Editor

@@ -37,7 +37,7 @@ $env:VOICEGER_ROOT = "$HOME\voiceger_v2"
 & "$env:VOICEGER_ROOT\.venv\Scripts\Activate.ps1"
 ```
 
-Voiceger Editor 0.1 is tested with Voiceger revision:
+Voiceger Editor v0.2.0 is tested with Voiceger revision:
 
 ```text
 f77c1172baf1f490bb962f2d2acd01c852ef3464
@@ -88,13 +88,13 @@ BATCH LIST
 
 English-only Captions use the same Batch List → Batch Item workflow and Voiceger's native English mode.
 
-The supported 0.1 speech scope is:
+The supported speech scope is:
 
 - Japanese;
 - English;
 - Japanese with English sections.
 
-0.1.0 was the initial public release. This documentation describes the v0.1.1 behavior within the 0.1 series. Interfaces may still change before 1.0.
+0.1.0 was the initial public release. This documentation describes Voiceger Editor v0.2.0. Interfaces may still change before 1.0.
 
 See [Compatibility](docs/en/compatibility.md) for details.
 

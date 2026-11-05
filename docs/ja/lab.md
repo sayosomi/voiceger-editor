@@ -34,7 +34,7 @@ Juliusの実行ファイルをインストールし、コマンドラインか�
 
 ### Windowsでの注意点
 
-Voiceger Editor 0.1では、Windows上のLAB出力は動作確認済みの対象に含まれていません。
+Voiceger Editor v0.2.0では、Windows上のLAB出力は動作確認済みの対象に含まれていません。
 
 PocketSphinx 5.1.1にはPython 3.9用のWindows向けビルド済みパッケージがなく、ソースからのビルドが必要になる場合があります。
 

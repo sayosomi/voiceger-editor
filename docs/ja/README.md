@@ -49,7 +49,7 @@ Caption を追加
 
 ## 対応する文章
 
-Voiceger Editor 0.1 では、次の文章を扱えます。
+Voiceger Editor v0.2.0 では、次の文章を扱えます。
 
 - 日本語
 - 英語

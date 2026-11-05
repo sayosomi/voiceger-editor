@@ -55,7 +55,7 @@ Voiceger本体、モデル、参照音声は含まれていません。Voiceger�
 
 [Voiceger公式リポジトリ](https://github.com/zunzun999/voiceger_v2)
 
-Voiceger Editor 0.1系は、Python 3.9と次のVoiceger revisionを対象に動作確認しています。
+Voiceger Editor v0.2.0は、Python 3.9と次のVoiceger revisionを対象に動作確認しています。
 
 ```text
 f77c1172baf1f490bb962f2d2acd01c852ef3464
@@ -179,7 +179,7 @@ WAV音声
 
 ## 対応環境・制限事項
 
-Voiceger Editor 0.1系はPython 3.9での動作を対象としています。
+Voiceger Editor v0.2.0はPython 3.9での動作を対象としています。
 
 日本語、英語、日本語と英語が混在する文章に対応しています。
 

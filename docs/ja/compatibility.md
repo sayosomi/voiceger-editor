@@ -1,6 +1,6 @@
 # 互換性
 
-このページでは、Voiceger Editor 0.1系の対応環境、対応機能、既知の制限事項について説明します。
+このページでは、Voiceger Editor v0.2.0の対応環境、対応機能、既知の制限事項について説明します。
 
 ここに記載されていない環境や機能でも動作する可能性はありますが、動作を保証するものではありません。
 
@@ -20,7 +20,7 @@ voiceger-editor --version
 
 ## Voicegerとの互換性
 
-Voiceger Editor 0.1系は、次のVoiceger revisionを対象に動作確認されています。
+Voiceger Editor v0.2.0は、次のVoiceger revisionを対象に動作確認されています。
 
 ```text
 f77c1172baf1f490bb962f2d2acd01c852ef3464
@@ -42,7 +42,7 @@ Voicegerのrevisionが動作確認済みのものと異なる場合は、通常�
 
 ## Python
 
-Voiceger Editor 0.1系が対応するPythonのバージョンは、**Python 3.9**です。
+Voiceger Editor v0.2.0が対応するPythonのバージョンは、**Python 3.9**です。
 
 Voiceger Editorは、VoicegerのPython仮想環境で実行することを想定しています。
 
@@ -60,7 +60,7 @@ Voiceger Editorは、macOSおよびLinuxでの使用を想定しています。
 
 ### Windows
 
-Voiceger Editor 0.1系では、Windows向けにPython 3.9を使用した自動テストを実施しています。
+Voiceger Editor v0.2.0では、Windows向けにPython 3.9を使用した自動テストを実施しています。
 
 確認している内容は次のとおりです。
 
@@ -74,7 +74,7 @@ Voiceger Editor 0.1系では、Windows向けにPython 3.9を使用した自動�
 
 WindowsのTUIで音声を再生するには、PATHから実行できる`ffplay.exe`が必要です。
 
-また、WindowsでのLAB出力は0.1系の動作確認済み範囲には含まれていません。
+また、WindowsでのLAB出力はv0.2.0の動作確認済み範囲には含まれていません。
 
 詳しくは[セットアップ](setup.md)と[LAB出力](lab.md)を参照してください。
 
@@ -94,7 +94,7 @@ TUI、Web UI、VOICEVOX互換HTTP APIは、それぞれ起動方法が異なり�
 
 ## 対応する言語
 
-Voiceger Editor 0.1系は、日本語、英語、日本語と英語が混在する文章に対応しています。
+Voiceger Editor v0.2.0は、日本語、英語、日本語と英語が混在する文章に対応しています。
 
 日本語では読みやアクセントの編集、英語ではARPAbetによる発音や強勢の編集ができます。
 
@@ -104,7 +104,7 @@ Voiceger Editor 0.1系は、日本語、英語、日本語と英語が混在す�
 
 ### その他の言語
 
-Voiceger本体が別の言語モードに対応していても、Voiceger Editor 0.1系で同じ機能を使用できるとは限りません。
+Voiceger本体が別の言語モードに対応していても、Voiceger Editor v0.2.0で同じ機能を使用できるとは限りません。
 
 日本語・英語以外の言語は、現在の動作保証の対象外です。
 
@@ -154,7 +154,7 @@ HTTP APIの`/synthesis`はWAV音声を返し、TUIの保存形式やファイル
 
 ## アプリケーション名
 
-Voiceger Editor 0.1系で使用する正式な名称は次のとおりです。
+Voiceger Editor v0.2.0で使用する正式な名称は次のとおりです。
 
 | 項目 | 名称 |
 |---|---|
