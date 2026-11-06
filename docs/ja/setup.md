@@ -8,7 +8,7 @@ Voiceger をインストールします。
 
 インストール手順は [Voiceger 公式リポジトリ](https://github.com/zunzun999/voiceger_v2)を参照してください。
 
-Voiceger Editor 0.1 は Python 3.9 に対応しています。動作確認済みの Voiceger revision や対応OSについては [互換性](compatibility.md) を参照してください。
+Voiceger Editor v0.2.0 は Python 3.9 に対応しています。動作確認済みの Voiceger revision や対応OSについては [互換性](compatibility.md) を参照してください。
 
 ## 2. Python 環境の設定
 
@@ -73,7 +73,7 @@ voiceger-editor --check
 
 ```text
 [OK] Voiceger installation layout was detected.
-[OK] Python 3.9.6 matches the 0.1 supported runtime.
+[OK] Python 3.9.6 matches the supported Python 3.9 runtime.
 [OK] Required Voiceger model files are available.
 [OK] Voiceger reference assets are available (8 style(s) detected).
 

@@ -23,7 +23,7 @@ def _validate_caption(caption: str) -> None:
         raise ValueError("caption must not be empty")
     if "\n" in caption or "\r" in caption:
         raise ValueError(
-            "0.1 supports one utterance per request; newlines are not supported"
+            "Only one utterance per request is supported; newlines are not supported"
         )
 
 
