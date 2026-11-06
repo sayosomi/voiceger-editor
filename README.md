@@ -81,8 +81,6 @@ $env:VOICEGER_ROOT = "$HOME\voiceger_v2"
 
 ### 3. Voiceger Editorをインストールする
 
-以下のコマンドはPyPIで公開済みの最新版をインストールします。このREADMEで説明するv0.2.0が公開されるまでは、旧バージョンがインストールされます。
-
 ```bash
 python -m pip install "voiceger-editor[tui]"
 ```

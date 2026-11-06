@@ -43,7 +43,7 @@ Voiceger Editor v0.2.0 is tested with Voiceger revision:
 f77c1172baf1f490bb962f2d2acd01c852ef3464
 ```
 
-Install the latest published Voiceger Editor package from PyPI. This README describes the v0.2.0 source tree; before that version is published, the following command installs an earlier release:
+Install Voiceger Editor from PyPI:
 
 ```text
 python -m pip install "voiceger-editor[tui]"

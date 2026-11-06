@@ -74,13 +74,13 @@ It should report Python 3.9.
 
 ## 4. Install Voiceger Editor
 
-Install the latest published TUI package from PyPI. Until v0.2.0 is published, this may install an earlier version than the source described in this guide:
+Install the TUI from PyPI:
 
 ```text
 python -m pip install "voiceger-editor[tui]"
 ```
 
-Once v0.2.0 is published to PyPI, install that exact version with:
+For the exact v0.2.0 release:
 
 ```text
 python -m pip install "voiceger-editor[tui]==0.2.0"
@@ -92,7 +92,7 @@ Check the installed version:
 voiceger-editor --version
 ```
 
-After installing v0.2.0, the expected output is:
+Expected output for v0.2.0:
 
 ```text
 voiceger-editor 0.2.0
